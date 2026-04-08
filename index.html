@@ -28,6 +28,10 @@
 
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
         .msg-animate { animation: fadeIn 0.3s ease-out forwards; }
+        
+        /* Check Result Animation */
+        .check-passed { color: #10b981; }
+        .check-failed { color: #ef4444; }
     </style>
 </head>
 <body class="flex h-screen p-4 gap-4 bg-[#f0f2f5]">
@@ -74,24 +78,57 @@
         </footer>
     </main>
 
-    <!-- 우측: 분석 정보 -->
+    <!-- 우측: 분석 정보 및 시스템 체크 -->
     <aside class="w-72 flex flex-col gap-4">
-        <div class="glass-panel rounded-3xl p-6 shadow-sm flex-1 flex flex-col">
-            <h3 class="text-sm font-bold text-gray-800 mb-4">실시간 인사이트</h3>
-            <div id="insight-stream" class="text-[11px] text-gray-500 flex flex-col gap-3 overflow-y-auto">
-                <p class="italic text-gray-300">임원들의 핵심 의견이 요약됩니다.</p>
+        <div class="glass-panel rounded-3xl p-6 shadow-sm flex-1 flex flex-col overflow-hidden">
+            <h3 class="text-sm font-bold text-gray-800 mb-4 flex justify-between items-center">
+                실시간 인사이트
+                <button onclick="toggleCheckModal()" class="text-[9px] bg-gray-200 px-2 py-1 rounded hover:bg-gray-300 transition-colors">시스템 진단</button>
+            </h3>
+            <div id="insight-stream" class="text-[11px] text-gray-500 flex flex-col gap-3 overflow-y-auto flex-1">
+                <p class="italic text-gray-300 text-center py-10">임원들의 핵심 의견이 요약됩니다.</p>
             </div>
         </div>
-        <div class="bg-gray-900 rounded-3xl p-6 shadow-xl h-48">
+        <div class="bg-gray-900 rounded-3xl p-6 shadow-xl h-48 overflow-hidden flex flex-col">
             <h3 class="text-sm font-bold text-blue-400 mb-2">대표님을 위한 결론</h3>
-            <div id="final-summary" class="text-[11px] text-gray-400 leading-relaxed italic">
+            <div id="final-summary" class="text-[11px] text-gray-400 leading-relaxed italic overflow-y-auto flex-1">
                 회의 종료 후 요약됩니다.
             </div>
         </div>
     </aside>
 
+    <!-- 시스템 진단 모달 -->
+    <div id="check-modal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden animate-msg">
+            <div class="bg-blue-600 p-4 flex justify-between items-center">
+                <h4 class="text-white font-bold text-sm">AI 시스템 자가 진단</h4>
+                <button onclick="toggleCheckModal()" class="text-white/80 hover:text-white text-xl">&times;</button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div id="check-items" class="space-y-3">
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="text-gray-500">API 키 연결 상태</span>
+                        <span id="check-api" class="font-bold text-gray-400">대기 중</span>
+                    </div>
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="text-gray-500">모델 경로 유효성 (${MODEL})</span>
+                        <span id="check-model" class="font-bold text-gray-400">대기 중</span>
+                    </div>
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="text-gray-500">평균 응답 지연(Latency)</span>
+                        <span id="check-speed" class="font-bold text-gray-400">대기 중</span>
+                    </div>
+                </div>
+                <button id="run-check-btn" onclick="startDiagnostic()" class="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-xs transition-all">진단 시작</button>
+            </div>
+            <div class="px-6 pb-6 text-[10px] text-gray-400 text-center">
+                * 404 오류 발생 시 모델명을 확인해 주세요.
+            </div>
+        </div>
+    </div>
+
     <script>
-        // API 설정 (오류가 났던 preview 모델 대신 안정적인 1.5-flash 사용)
+        // API 설정
         const API_KEY = ""; // 환경에서 자동 제공됨
         const MODEL = "gemini-1.5-flash";
 
@@ -108,6 +145,7 @@
 
         function init() {
             const list = document.getElementById('officer-list');
+            list.innerHTML = '';
             officers.forEach(off => {
                 const div = document.createElement('div');
                 div.id = `card-${off.id}`;
@@ -123,12 +161,72 @@
             });
         }
 
-        async function callAI(prompt, system) {
+        // 모달 토글 기능
+        function toggleCheckModal() {
+            const modal = document.getElementById('check-modal');
+            modal.classList.toggle('hidden');
+        }
+
+        // 진단 기능 시작
+        async function startDiagnostic() {
+            const btn = document.getElementById('run-check-btn');
+            const apiSpan = document.getElementById('check-api');
+            const modelSpan = document.getElementById('check-model');
+            const speedSpan = document.getElementById('check-speed');
+
+            btn.disabled = true;
+            btn.innerText = "진단 중...";
+            apiSpan.className = "font-bold text-blue-500 animate-pulse";
+            apiSpan.innerText = "연결 시도 중";
+            modelSpan.innerText = "대기 중";
+            speedSpan.innerText = "대기 중";
+
+            const startTime = performance.now();
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`;
             
-            // 지연 방지를 위한 타임아웃 처리 (10초)
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: "Hello, this is a connection test. reply 'OK'" }] }]
+                    })
+                });
+
+                const endTime = performance.now();
+                const latency = Math.round(endTime - startTime);
+
+                if (response.ok) {
+                    apiSpan.className = "font-bold check-passed";
+                    apiSpan.innerText = "정상 (200 OK)";
+                    modelSpan.className = "font-bold check-passed";
+                    modelSpan.innerText = "유효함";
+                    speedSpan.className = `font-bold ${latency < 2000 ? 'check-passed' : 'text-orange-500'}`;
+                    speedSpan.innerText = `${latency}ms`;
+                } else {
+                    const errorData = await response.json();
+                    apiSpan.className = "font-bold check-failed";
+                    apiSpan.innerText = "오류 발생";
+                    modelSpan.className = "font-bold check-failed";
+                    modelSpan.innerText = `확인 실패 (${response.status})`;
+                    speedSpan.innerText = "-";
+                    console.error("Diagnostic Error:", errorData);
+                }
+            } catch (e) {
+                apiSpan.className = "font-bold check-failed";
+                apiSpan.innerText = "연결 실패";
+                modelSpan.innerText = "차단됨";
+                speedSpan.innerText = "오프라인";
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "진단 재시작";
+            }
+        }
+
+        async function callAI(prompt, system) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`;
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            const timeoutId = setTimeout(() => controller.abort(), 12000); // 좀 더 넉넉하게 12초 설정
 
             try {
                 const response = await fetch(url, {
@@ -142,6 +240,10 @@
                 });
                 clearTimeout(timeoutId);
                 const data = await response.json();
+                
+                if (data.error) {
+                    return `시스템 오류: ${data.error.message}`;
+                }
                 return data.candidates?.[0]?.content?.parts?.[0]?.text || "의견을 정리하는 데 어려움이 있습니다.";
             } catch (e) {
                 return e.name === 'AbortError' ? "응답 지연이 발생했습니다. 다음 단계로 진행합니다." : "네트워크 오류가 발생했습니다.";
@@ -171,7 +273,6 @@
                 addMessage(`${off.id} (${off.name})`, response, true, off.color);
                 history.push(`${off.id}: ${response}`);
                 
-                // 인사이트 박스 업데이트
                 const insightBox = document.getElementById('insight-stream');
                 if (insightBox.querySelector('p.italic')) insightBox.innerHTML = '';
                 const item = document.createElement('div');
@@ -179,10 +280,9 @@
                 item.innerHTML = `<b class="text-blue-600">[${off.id}]</b> ${response.substring(0, 40)}...`;
                 insightBox.prepend(item);
                 
-                await new Promise(r => setTimeout(r, 500)); // 자연스러운 흐름을 위한 딜레이
+                await new Promise(r => setTimeout(r, 600)); 
             }
 
-            // 최종 요약
             const summary = await callAI(history.join('\n'), "너는 회의 서기다. 위 대화 내용을 종합하여 대표가 오늘 바로 실행해야 할 액션 아이템 3가지를 정리하라.");
             document.getElementById('final-summary').innerText = summary;
             document.getElementById('status-tag').innerText = "Completed";
