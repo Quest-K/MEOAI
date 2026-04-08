@@ -9,263 +9,213 @@
     <style>
         body {
             font-family: 'Noto Sans KR', sans-serif;
-            background: linear-gradient(135deg, #fdfcfb 0%, #e2d1c3 100%);
+            background: #f8f9fa;
             height: 100vh;
             margin: 0;
             overflow: hidden;
         }
-        .watercolor-bg {
-            background: rgba(255, 255, 255, 0.75);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.4);
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 0, 0, 0.05);
         }
-        .chat-container::-webkit-scrollbar { width: 5px; }
-        .chat-container::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
+        .chat-scroll::-webkit-scrollbar { width: 4px; }
+        .chat-scroll::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 10px; }
         
-        .officer-card { transition: all 0.3s ease; border-left: 4px solid transparent; opacity: 0.6; }
-        .officer-card.active { border-left-color: #3b82f6; background: white; transform: scale(1.05); opacity: 1; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
-        .officer-card.completed { opacity: 0.95; border-left-color: #10b981; }
+        .officer-card { transition: all 0.2s ease; border-left: 4px solid transparent; }
+        .officer-card.active { border-left-color: #2563eb; background: #eff6ff; transform: translateX(5px); }
+        .officer-card.waiting { opacity: 0.5; }
 
-        .bg-ceo { background-color: #e3f2fd; } .bg-cso { background-color: #f3e5f5; }
-        .bg-cfo { background-color: #fff3e0; } .bg-cdo { background-color: #e8f5e9; }
-        .bg-cmo { background-color: #fce4ec; } .bg-coo { background-color: #efebe9; }
-        .bg-cpo { background-color: #e0f2f1; } .bg-cro { background-color: #fffde7; }
-
-        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .animate-msg { animation: slideIn 0.4s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        .msg-animate { animation: fadeIn 0.3s ease-out forwards; }
     </style>
 </head>
-<body class="flex h-screen p-4 gap-4">
+<body class="flex h-screen p-4 gap-4 bg-[#f0f2f5]">
 
-    <!-- 좌측: 임원 리스트 -->
-    <aside class="w-72 watercolor-bg rounded-3xl p-6 flex flex-col gap-4 shadow-xl overflow-y-auto">
-        <div class="mb-2">
-            <h1 class="text-2xl font-bold text-gray-800 tracking-tight">Meogo</h1>
-            <p class="text-[10px] text-blue-500 font-bold uppercase tracking-widest italic">8-Executive AI Board</p>
+    <!-- 사이드바: 8인 임원진 -->
+    <aside class="w-64 glass-panel rounded-3xl p-5 flex flex-col gap-3 shadow-sm overflow-y-auto">
+        <div class="mb-4">
+            <h1 class="text-xl font-bold text-gray-900 tracking-tight">Meogo</h1>
+            <p class="text-[10px] text-blue-600 font-bold uppercase tracking-widest">Executive Board</p>
         </div>
-        
-        <div id="officer-list" class="flex flex-col gap-3"></div>
-
-        <div class="mt-auto pt-4 border-t border-gray-100 flex flex-col gap-2">
-            <p class="text-[9px] text-gray-400 text-center mb-2 font-medium">System: Gemini 1.5 Flash</p>
-            <button onclick="resetConference()" class="w-full py-2 text-[10px] text-gray-400 hover:text-red-500 transition-colors">회의 초기화</button>
+        <div id="officer-list" class="flex flex-col gap-2">
+            <!-- 임원 카드가 JS로 생성됨 -->
         </div>
     </aside>
 
-    <!-- 중앙: 메인 회의장 -->
-    <main class="flex-1 flex flex-col watercolor-bg rounded-3xl shadow-xl overflow-hidden relative">
-        <header class="p-6 border-b border-gray-100 flex justify-between items-center bg-white/40">
+    <!-- 메인: 컨퍼런스 홀 -->
+    <main class="flex-1 flex flex-col glass-panel rounded-3xl shadow-lg overflow-hidden">
+        <header class="px-8 py-5 border-b border-gray-100 flex justify-between items-center bg-white/50">
             <div>
-                <h2 class="text-lg font-bold text-gray-700">MEOAI 전략 회의실</h2>
-                <p id="topic-display" class="text-xs text-gray-400 italic">안건을 입력하시면 8인의 임원이 순차적으로 발언합니다.</p>
+                <h2 class="text-lg font-bold text-gray-800">MEOAI 전략 회의</h2>
+                <p id="topic-text" class="text-xs text-gray-400">안건을 입력하면 회의가 시작됩니다.</p>
             </div>
-            <div id="status-badge" class="px-4 py-1.5 bg-gray-100 text-gray-400 text-[10px] rounded-full font-bold uppercase tracking-widest shadow-inner transition-all">Standby</div>
+            <div id="status-tag" class="text-[10px] font-bold px-3 py-1 rounded-full bg-gray-100 text-gray-400 uppercase">Ready</div>
         </header>
 
-        <!-- 채팅창 -->
-        <div id="chat-container" class="flex-1 overflow-y-auto p-8 flex flex-col gap-6 chat-container">
-            <div class="flex flex-col items-start max-w-[85%] animate-msg">
-                <div class="text-[10px] font-bold text-gray-400 ml-1 mb-1 italic uppercase">System Notification</div>
-                <div class="bg-white/80 p-5 rounded-2xl rounded-tl-none shadow-sm text-sm text-gray-600 border border-blue-50 leading-relaxed">
-                    대표님, API 연결 및 모델 설정이 완료되었습니다.<br>
-                    <strong>Meogo</strong>의 시장 안착과 수익화 전략에 대해 질문해 주세요.
+        <div id="chat-box" class="flex-1 overflow-y-auto p-8 flex flex-col gap-6 chat-scroll">
+            <div class="msg-animate flex flex-col items-start max-w-[80%]">
+                <span class="text-[10px] font-bold text-gray-400 mb-1">SYSTEM</span>
+                <div class="bg-white p-4 rounded-2xl rounded-tl-none shadow-sm text-sm text-gray-600 border border-gray-100">
+                    반갑습니다 대표님. Meogo의 성공적인 런칭을 위해 8인의 AI 임원이 대기 중입니다. 비즈니스 전략이나 고민되는 지점을 말씀해 주세요.
                 </div>
             </div>
         </div>
 
-        <!-- 입력창 -->
-        <footer class="p-6 bg-white/60 border-t border-gray-100 backdrop-blur-md">
-            <div class="relative flex gap-3">
-                <input type="text" id="user-input" onkeypress="if(event.keyCode==13) startConference()" placeholder="대표님, 오늘 논의할 핵심 안건은 무엇입니까?" 
-                    class="flex-1 p-4 rounded-2xl border-none focus:ring-2 focus:ring-blue-200 outline-none shadow-inner bg-white/90 text-sm placeholder:text-gray-300">
-                <button id="send-btn" onclick="startConference()" class="px-8 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all font-bold disabled:bg-gray-400">
+        <footer class="p-6 bg-white/80 border-t border-gray-100">
+            <div class="flex gap-2 bg-gray-50 p-2 rounded-2xl border border-gray-200">
+                <input type="text" id="user-input" onkeypress="if(event.keyCode==13) runMeeting()" 
+                    placeholder="대표님, 오늘 논의할 안건을 입력하세요..." 
+                    class="flex-1 bg-transparent border-none focus:ring-0 px-4 text-sm outline-none">
+                <button id="start-btn" onclick="runMeeting()" class="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-blue-700 transition-all shadow-md shadow-blue-100">
                     상담 시작
                 </button>
             </div>
         </footer>
     </main>
 
-    <!-- 우측: 분석 리포트 -->
-    <aside class="w-80 flex flex-col gap-4">
-        <section class="watercolor-bg rounded-3xl p-6 shadow-xl flex-[1.5] flex flex-col overflow-hidden">
-            <h3 class="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
-                <span class="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span> 실시간 전략 리포트
-            </h3>
-            <div id="analysis-content" class="text-xs text-gray-600 flex flex-col gap-4 overflow-y-auto pr-2">
-                <p class="italic text-gray-400 text-center py-10">임원들의 인사이트 요약이 여기에 표시됩니다.</p>
+    <!-- 우측: 분석 정보 -->
+    <aside class="w-72 flex flex-col gap-4">
+        <div class="glass-panel rounded-3xl p-6 shadow-sm flex-1 flex flex-col">
+            <h3 class="text-sm font-bold text-gray-800 mb-4">실시간 인사이트</h3>
+            <div id="insight-stream" class="text-[11px] text-gray-500 flex flex-col gap-3 overflow-y-auto">
+                <p class="italic text-gray-300">임원들의 핵심 의견이 요약됩니다.</p>
             </div>
-        </section>
-
-        <section class="bg-white/90 rounded-3xl p-6 shadow-xl flex-1 flex flex-col overflow-hidden">
-            <h3 class="text-sm font-bold text-gray-800 mb-3">최종 의사결정 요약</h3>
-            <div id="decision-summary" class="text-[11px] text-gray-500 leading-relaxed overflow-y-auto flex-1 italic">
-                회의가 완료되면 AI 서기가 요약문을 작성합니다.
+        </div>
+        <div class="bg-gray-900 rounded-3xl p-6 shadow-xl h-48">
+            <h3 class="text-sm font-bold text-blue-400 mb-2">대표님을 위한 결론</h3>
+            <div id="final-summary" class="text-[11px] text-gray-400 leading-relaxed italic">
+                회의 종료 후 요약됩니다.
             </div>
-        </section>
+        </div>
     </aside>
 
     <script>
-        // API 설정 (이미지에서 발생한 404/모델없음 오류 방지를 위해 1.5-flash로 고정)
-        const API_KEY = "AIzaSyDOuootRofHJ4AOSEanA-B8V5wzuNBIcuc";
-        const MODEL_NAME = "gemini-1.5-flash";
+        // API 설정 (오류가 났던 preview 모델 대신 안정적인 1.5-flash 사용)
+        const API_KEY = ""; // 환경에서 자동 제공됨
+        const MODEL = "gemini-1.5-flash";
 
-        const roles = [
-            { key: "CEO", name: "비전 & 지역상생", color: "bg-ceo", prompt: "지역 소상공인 매출 증대와 ESG 가치를 지키면서 수익성을 확보하는 관점." },
-            { key: "CSO", name: "전략 & 경쟁우위", color: "bg-cso", prompt: "글로벌 트래블 마켓에서 경쟁사를 압도할 수 있는 전략적 차별점 제시." },
-            { key: "CFO", name: "재무 & 리스크", color: "bg-cfo", prompt: "수익 모델(광고/수수료)의 현실성과 초기 투자 대비 회수 기간 분석." },
-            { key: "CDO", name: "데이터 & 인프라", color: "bg-cdo", prompt: "데이터 수집 가치와 기술적 확장성, Supabase 인프라 효율성 관점." },
-            { key: "CMO", name: "마케팅 & 고객경험", color: "bg-cmo", prompt: "외국인 여행객 타겟 바이럴 전략 및 브랜드 인지도 상승 방안." },
-            { key: "COO", name: "운영 & 효율성", color: "bg-coo", prompt: "1인 개발 환경에서 자동화 및 운영 리소스 최소화 방안." },
-            { key: "CPO", name: "제품 & UX 비평", color: "bg-cpo", prompt: "사용자 경험(UX) 관점에서의 미션 수행 재미와 인터페이스 비평." },
-            { key: "CRO", name: "매출 & 성장동력", color: "bg-cro", prompt: "단기 매출 극대화와 장기적인 스케일업(투자 유치 등) 전략." }
+        const officers = [
+            { id: "CEO", name: "비전 & 지역상생", color: "bg-blue-50", duty: "지역 소상공인 매출 증대와 ESG 가치 수호" },
+            { id: "CSO", name: "전략 & 경쟁우위", color: "bg-purple-50", duty: "글로벌 트래블 시장 경쟁력 및 차별화 전략" },
+            { id: "CFO", name: "재무 & 리스크", color: "bg-orange-50", duty: "수익 모델 검증 및 현금 흐름 분석" },
+            { id: "CDO", name: "데이터 & 인프라", color: "bg-green-50", duty: "데이터 가치 추출 및 기술적 확장성 검토" },
+            { id: "CMO", name: "마케팅 & 고객경험", color: "bg-pink-50", duty: "외국인 타겟 브랜딩 및 UX 비평" },
+            { id: "COO", name: "운영 & 효율성", color: "bg-gray-100", duty: "1인 개발 환경의 운영 자동화 전략" },
+            { id: "CPO", name: "제품 & 서비스", color: "bg-teal-50", duty: "미션 시스템의 재미와 사용자 유지 전략" },
+            { id: "CRO", name: "매출 & 성장", color: "bg-yellow-50", duty: "단기 수익화 및 장기 스케일업 전략" }
         ];
 
-        let discussionHistory = [];
-
         function init() {
-            const listContainer = document.getElementById('officer-list');
-            listContainer.innerHTML = '';
-            roles.forEach(role => {
-                const card = document.createElement('div');
-                card.id = `card-${role.key}`;
-                card.className = `officer-card ${role.color} p-4 rounded-2xl flex flex-col gap-1 shadow-sm`;
-                card.innerHTML = `
-                    <div class="flex justify-between items-center">
-                        <span class="text-xs font-bold text-gray-800">${role.key}</span>
-                        <div class="status-dot w-2 h-2 rounded-full bg-gray-300 transition-all"></div>
+            const list = document.getElementById('officer-list');
+            officers.forEach(off => {
+                const div = document.createElement('div');
+                div.id = `card-${off.id}`;
+                div.className = `officer-card ${off.color} p-4 rounded-2xl shadow-sm cursor-default border border-black/5`;
+                div.innerHTML = `
+                    <div class="flex justify-between items-start mb-1">
+                        <span class="text-xs font-bold text-gray-800">${off.id}</span>
+                        <div class="status-dot w-1.5 h-1.5 rounded-full bg-gray-300"></div>
                     </div>
-                    <span class="text-[10px] text-gray-600">${role.name}</span>
+                    <div class="text-[10px] text-gray-500 leading-tight">${off.name}</div>
                 `;
-                listContainer.appendChild(card);
+                list.appendChild(div);
             });
         }
 
-        async function callGemini(prompt, systemInstruction) {
-            const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${API_KEY}`;
+        async function callAI(prompt, system) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`;
+            
+            // 지연 방지를 위한 타임아웃 처리 (10초)
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
 
             try {
-                const response = await fetch(API_URL, {
+                const response = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         contents: [{ parts: [{ text: prompt }] }],
-                        systemInstruction: { parts: [{ text: systemInstruction }] }
-                    })
+                        systemInstruction: { parts: [{ text: system }] }
+                    }),
+                    signal: controller.signal
                 });
-                
-                const result = await response.json();
-                if (response.ok) {
-                    return result.candidates?.[0]?.content?.parts?.[0]?.text;
-                } else {
-                    console.error("API Error Response:", result);
-                    // 이미지에서 확인된 모델 오류 대응
-                    if (result.error?.status === "NOT_FOUND") return "오류: 모델명을 찾을 수 없습니다. (1.5-flash 재확인 필요)";
-                    return `오류: ${result.error?.message || "알 수 없는 API 오류"}`;
-                }
-            } catch (error) {
-                console.error("Fetch Exception:", error);
-                return "네트워크 지연으로 인해 의견을 정리하지 못했습니다.";
+                clearTimeout(timeoutId);
+                const data = await response.json();
+                return data.candidates?.[0]?.content?.parts?.[0]?.text || "의견을 정리하는 데 어려움이 있습니다.";
+            } catch (e) {
+                return e.name === 'AbortError' ? "응답 지연이 발생했습니다. 다음 단계로 진행합니다." : "네트워크 오류가 발생했습니다.";
             }
         }
 
-        async function startConference() {
+        async function runMeeting() {
             const input = document.getElementById('user-input');
             const topic = input.value.trim();
             if (!topic) return;
 
             input.value = '';
-            document.getElementById('send-btn').disabled = true;
-            document.getElementById('topic-display').innerText = `Current Topic: ${topic}`;
-            const badge = document.getElementById('status-badge');
-            badge.innerText = "Discussion";
-            badge.className = "px-4 py-1.5 bg-blue-100 text-blue-600 text-[10px] rounded-full font-bold uppercase animate-pulse shadow-sm";
+            document.getElementById('start-btn').disabled = true;
+            document.getElementById('topic-text').innerText = `주제: ${topic}`;
+            document.getElementById('status-tag').innerText = "In Session";
+            document.getElementById('status-tag').className = "text-[10px] font-bold px-3 py-1 rounded-full bg-blue-100 text-blue-600 uppercase animate-pulse";
 
-            addMessage("대표님 (Owner)", topic, false);
-            discussionHistory = [`안건: ${topic}`];
+            addMessage("대표님", topic, false);
+            let history = [`안건: ${topic}`];
 
-            for (const role of roles) {
-                setActiveOfficer(role.key);
+            for (const off of officers) {
+                updateUI(off.id);
+                const sys = `너는 Meogo 컴퍼니의 ${off.id}이다. 역할: ${off.duty}. 대표의 질문에 대해 아주 날카롭고 비판적이면서도 현실적인 대안을 2~3문장으로 한국어로 답변하라.`;
+                const usr = `현재 토론 내용: ${history.join('\n')}`;
                 
-                const sysPrompt = `너는 Meogo 컴퍼니의 ${role.key}이다. ${role.prompt} 대표의 질문에 대해 너의 전문 분야에서 아주 날카롭고 구체적인 인사이트(한국어, 2~3문장)를 말하라.`;
-                const usrPrompt = `안건: ${topic}\n지금까지의 토론 흐름: ${discussionHistory.slice(-2).join(" | ")}`;
+                const response = await callAI(usr, sys);
+                addMessage(`${off.id} (${off.name})`, response, true, off.color);
+                history.push(`${off.id}: ${response}`);
                 
-                const response = await callGemini(usrPrompt, sysPrompt);
+                // 인사이트 박스 업데이트
+                const insightBox = document.getElementById('insight-stream');
+                if (insightBox.querySelector('p.italic')) insightBox.innerHTML = '';
+                const item = document.createElement('div');
+                item.className = "p-3 bg-white rounded-xl shadow-sm border border-gray-100 msg-animate";
+                item.innerHTML = `<b class="text-blue-600">[${off.id}]</b> ${response.substring(0, 40)}...`;
+                insightBox.prepend(item);
                 
-                addMessage(`${role.key} (${role.name})`, response, true, role.color);
-                discussionHistory.push(`${role.key}: ${response}`);
-                updateAnalysis(role.key, response);
-                
-                // 임원간 대화 사이의 짧은 대기 시간
-                await new Promise(r => setTimeout(r, 800));
+                await new Promise(r => setTimeout(r, 500)); // 자연스러운 흐름을 위한 딜레이
             }
 
-            finishConference();
+            // 최종 요약
+            const summary = await callAI(history.join('\n'), "너는 회의 서기다. 위 대화 내용을 종합하여 대표가 오늘 바로 실행해야 할 액션 아이템 3가지를 정리하라.");
+            document.getElementById('final-summary').innerText = summary;
+            document.getElementById('status-tag').innerText = "Completed";
+            document.getElementById('status-tag').className = "text-[10px] font-bold px-3 py-1 rounded-full bg-green-100 text-green-600 uppercase";
+            document.getElementById('start-btn').disabled = false;
         }
 
-        function addMessage(sender, text, isAi, colorClass = "") {
-            const container = document.getElementById('chat-container');
-            const msgDiv = document.createElement('div');
-            msgDiv.className = `flex flex-col ${isAi ? 'items-start' : 'items-end'} max-w-[90%] ${!isAi ? 'ml-auto' : ''} animate-msg`;
-            
-            msgDiv.innerHTML = `
-                <div class="text-[10px] font-bold text-gray-400 ${isAi ? 'ml-1' : 'mr-1'} mb-1 italic uppercase">${sender}</div>
-                <div class="${isAi ? (colorClass || 'bg-white') : 'bg-blue-600 text-white'} p-4 rounded-2xl ${isAi ? 'rounded-tl-none' : 'rounded-tr-none'} shadow-md text-sm border border-black/5 leading-relaxed">
+        function addMessage(sender, text, isAi, color = "") {
+            const box = document.getElementById('chat-box');
+            const div = document.createElement('div');
+            div.className = `msg-animate flex flex-col ${isAi ? 'items-start' : 'items-end'} max-w-[85%] ${!isAi ? 'ml-auto' : ''}`;
+            div.innerHTML = `
+                <span class="text-[10px] font-bold text-gray-400 mb-1 uppercase">${sender}</span>
+                <div class="${isAi ? color : 'bg-blue-600 text-white'} p-4 rounded-2xl ${isAi ? 'rounded-tl-none' : 'rounded-tr-none'} shadow-sm text-sm border border-black/5">
                     ${text}
                 </div>
             `;
-            container.appendChild(msgDiv);
-            container.scrollTop = container.scrollHeight;
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
         }
 
-        function setActiveOfficer(key) {
-            roles.forEach(r => {
-                const card = document.getElementById(`card-${r.key}`);
+        function updateUI(activeId) {
+            officers.forEach(off => {
+                const card = document.getElementById(`card-${off.id}`);
                 const dot = card.querySelector('.status-dot');
-                if (r.key === key) {
+                if (off.id === activeId) {
                     card.classList.add('active');
-                    dot.classList.remove('bg-gray-300', 'bg-green-400');
-                    dot.classList.add('bg-blue-500');
-                    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    dot.className = "status-dot w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping";
                 } else {
                     card.classList.remove('active');
-                    if (discussionHistory.some(h => h.startsWith(r.key + ":"))) {
-                        card.classList.add('completed');
-                        dot.classList.remove('bg-blue-500', 'bg-gray-300');
-                        dot.classList.add('bg-green-400');
-                    }
+                    dot.className = "status-dot w-1.5 h-1.5 rounded-full bg-green-400";
                 }
             });
-        }
-
-        function updateAnalysis(key, text) {
-            const container = document.getElementById('analysis-content');
-            if (container.querySelector('p.italic')) container.innerHTML = '';
-            
-            const item = document.createElement('div');
-            item.className = "p-3 bg-white/60 rounded-xl border border-white shadow-sm animate-msg text-[11px] leading-snug";
-            item.innerHTML = `<span class="font-bold text-blue-600 block mb-1">[${key}] 인사이트</span> ${text.length > 50 ? text.substring(0, 50) + "..." : text}`;
-            container.prepend(item);
-        }
-
-        async function finishConference() {
-            const badge = document.getElementById('status-badge');
-            badge.innerText = "Summarizing";
-            
-            const summarySys = "너는 전략 회의 기록 전문가다. 8명의 임원이 나눈 대화를 바탕으로 대표가 즉시 실행해야 할 '3대 핵심 과제'를 도출하고, 각각의 기대효과를 한국어로 요약하라.";
-            const summary = await callGemini(discussionHistory.join("\n"), summarySys);
-            
-            document.getElementById('decision-summary').innerHTML = `
-                <div class="bg-blue-50/70 p-4 rounded-2xl border-l-4 border-blue-500 shadow-sm text-gray-700 animate-msg">
-                    ${(summary || "결론 도출 중 오류가 발생했습니다.").replace(/\n/g, '<br>')}
-                </div>`;
-            
-            badge.innerText = "Completed";
-            badge.className = "px-4 py-1.5 bg-green-100 text-green-600 text-[10px] rounded-full font-bold uppercase shadow-sm";
-            document.getElementById('send-btn').disabled = false;
-        }
-
-        function resetConference() {
-            if(confirm("현재 회의 내용을 초기화하시겠습니까?")) location.reload();
         }
 
         window.onload = init;
