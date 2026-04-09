@@ -9,7 +9,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #050810; color: #e2e8f0; }
+        body { font-family: 'Inter', sans-serif; background-color: #050810; color: #e2e8f0; overflow-x: hidden; }
         .mono { font-family: 'JetBrains Mono', monospace; }
         .glass-panel { background: rgba(30, 41, 59, 0.4); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.05); }
         .binance-gold { color: #F3BA2F; }
@@ -18,9 +18,17 @@
         .input-field:focus { border-color: #F3BA2F; outline: none; background: rgba(255,255,255,0.1); }
         .btn-primary { background-color: #F3BA2F; color: black; font-weight: 700; transition: all 0.3s ease; }
         .btn-primary:hover { transform: translateY(-1px); filter: brightness(1.1); box-shadow: 0 4px 20px rgba(243, 186, 47, 0.2); }
+        .tab-btn { color: #64748b; border-bottom: 2px solid transparent; }
         .tab-btn.active { color: #F3BA2F; border-bottom: 2px solid #F3BA2F; }
+        
+        /* 테이블 스크롤 및 고정 헤더 최적화 */
+        .table-wrapper { max-height: 600px; overflow-y: auto; scrollbar-gutter: stable; }
+        thead th { sticky top: 0; background: #0c1220; z-index: 10; border-bottom: 2px solid rgba(243, 186, 47, 0.2); }
+        
         ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(243, 186, 47, 0.3); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(243, 186, 47, 0.5); }
     </style>
 </head>
 <body class="min-h-screen">
@@ -33,10 +41,10 @@
                     Back
                 </a>
                 <div class="h-4 w-[1px] bg-white/10"></div>
-                <h1 class="font-bold tracking-tight text-lg">TRADING <span class="binance-gold">TERMINAL</span></h1>
+                <h1 class="font-bold tracking-tight text-lg uppercase">Trading <span class="binance-gold">Terminal</span></h1>
             </div>
             <div id="connection-status" class="flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full bg-red-500"></span>
+                <span id="status-dot" class="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span>
                 <span id="user-display" class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Checking...</span>
             </div>
         </div>
@@ -44,12 +52,12 @@
 
     <main class="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
         
-        <!-- Left Sidebar: Settings & Portfolio -->
+        <!-- Left Sidebar -->
         <div class="lg:col-span-4 space-y-6">
             <div class="glass-panel rounded-[2.5rem] p-8">
                 <div class="flex items-center gap-3 mb-6">
                     <div class="w-10 h-10 rounded-xl bg-binance-gold/10 flex items-center justify-center">
-                        <svg class="w-6 h-6 binance-gold" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"></path></svg>
+                        <svg class="w-6 h-6 binance-gold" fill="currentColor" viewBox="0 0 20 20"><path d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z"></path></svg>
                     </div>
                     <div>
                         <h2 class="font-bold">API 설정</h2>
@@ -60,12 +68,12 @@
                 <form id="api-storage-form" class="space-y-4">
                     <input type="password" id="input-api-key" required class="input-field w-full px-4 py-3 rounded-xl text-sm" placeholder="API Key">
                     <input type="password" id="input-secret-key" required class="input-field w-full px-4 py-3 rounded-xl text-sm" placeholder="Secret Key">
-                    <button type="submit" id="save-trigger" class="w-full btn-primary py-3 rounded-xl text-sm">설정 업데이트</button>
+                    <button type="submit" class="w-full btn-primary py-3 rounded-xl text-sm">설정 업데이트</button>
                 </form>
             </div>
 
             <div class="glass-panel rounded-[2.5rem] p-8">
-                <h3 class="text-[10px] font-bold text-slate-500 mb-4 uppercase tracking-[0.2em]">Data Filter</h3>
+                <h3 class="text-[10px] font-bold text-slate-500 mb-4 uppercase tracking-[0.2em]">조회 필터</h3>
                 <div class="space-y-4">
                     <div class="grid grid-cols-2 gap-2">
                         <div>
@@ -77,38 +85,41 @@
                             <input type="date" id="end-date" class="input-field w-full px-3 py-2 rounded-lg text-[11px]">
                         </div>
                     </div>
-                    <button onclick="fetchHistory()" class="w-full bg-white/5 hover:bg-white/10 border border-white/10 py-3 rounded-xl text-xs font-bold transition-all">내역 조회 및 분석</button>
+                    <button onclick="fetchHistory()" class="w-full bg-white/5 hover:bg-binance-gold hover:text-black border border-white/10 py-3 rounded-xl text-xs font-bold transition-all">전체 내역 불러오기</button>
                 </div>
             </div>
         </div>
 
-        <!-- Right: Activity Terminal -->
+        <!-- Right Terminal -->
         <div class="lg:col-span-8 flex flex-col gap-6">
-            <div id="analysis-summary" class="hidden grid grid-cols-1 md:grid-cols-3 gap-4"></div>
+            <div id="summary-cards" class="hidden grid grid-cols-1 md:grid-cols-3 gap-4"></div>
 
-            <div class="glass-panel rounded-[2.5rem] p-8 min-h-[500px] flex flex-col">
-                <div class="flex gap-6 border-b border-white/5 mb-6">
-                    <button onclick="switchTab('futures')" id="tab-futures" class="tab-btn active pb-4 text-sm font-bold transition-all">선물 거래 내역</button>
-                    <button onclick="switchTab('summary')" id="tab-summary" class="tab-btn pb-4 text-sm font-bold transition-all">심볼별 요약 통계</button>
-                    <button onclick="switchTab('transactions')" id="tab-transactions" class="tab-btn pb-4 text-sm font-bold transition-all">입출금 내역</button>
+            <div class="glass-panel rounded-[2.5rem] p-8 min-h-[600px] flex flex-col">
+                <div class="flex items-center justify-between border-b border-white/5 mb-6">
+                    <div class="flex gap-6">
+                        <button onclick="switchTab('futures')" id="tab-futures" class="tab-btn active pb-4 text-sm font-bold transition-all">선물 거래 내역</button>
+                        <button onclick="switchTab('summary')" id="tab-summary" class="tab-btn pb-4 text-sm font-bold transition-all">심볼별 요약</button>
+                    </div>
+                    <div id="data-count" class="text-[10px] text-slate-500 font-mono pb-4">0 Rows Loaded</div>
                 </div>
 
                 <div id="loading-state" class="hidden flex-1 flex flex-col items-center justify-center py-20">
                     <div class="w-10 h-10 border-2 border-binance-gold border-t-transparent rounded-full animate-spin"></div>
-                    <p class="mt-4 text-xs text-slate-500">바이낸스에서 데이터를 불러오는 중...</p>
+                    <p class="mt-4 text-xs text-slate-500">대용량 데이터를 분석 중입니다...</p>
                 </div>
 
                 <div id="empty-state" class="flex-1 flex flex-col items-center justify-center py-20 text-center">
                     <div class="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mb-4">
                         <svg class="w-8 h-8 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                     </div>
-                    <p class="text-sm text-slate-500">조회할 기간을 선택하고 버튼을 눌러주세요.</p>
+                    <p class="text-sm text-slate-500">조회 필터를 설정하고 데이터를 불러오세요.</p>
                 </div>
 
-                <div id="table-container" class="hidden overflow-x-auto">
-                    <table class="w-full text-left text-xs">
-                        <thead id="table-head" class="text-slate-500 uppercase border-b border-white/5"></thead>
-                        <tbody id="table-body" class="mono"></tbody>
+                <!-- Table Container with Scroller -->
+                <div id="table-container" class="hidden table-wrapper">
+                    <table class="w-full text-left text-xs relative">
+                        <thead id="table-head"></thead>
+                        <tbody id="table-body" class="mono divide-y divide-white/5"></tbody>
                     </table>
                 </div>
             </div>
@@ -124,28 +135,31 @@
         let userConfig = null;
         let currentUser = null;
         let rawTradeData = [];
-        let usdToKrw = 1350; // 기본 환율 (실시간 API 연동 전 가상 데이터)
+        let usdToKrw = 1350;
 
         // 초기 날짜 설정
-        const today = new Date();
-        const lastWeek = new Date(today);
-        lastWeek.setDate(today.getDate() - 7);
-        document.getElementById('start-date').value = lastWeek.toISOString().split('T')[0];
-        document.getElementById('end-date').value = today.toISOString().split('T')[0];
+        const initDates = () => {
+            const today = new Date();
+            const lastWeek = new Date(today);
+            lastWeek.setDate(today.getDate() - 7);
+            document.getElementById('start-date').value = lastWeek.toISOString().split('T')[0];
+            document.getElementById('end-date').value = today.toISOString().split('T')[0];
+        };
 
         async function init() {
+            initDates();
             const { data: { session } } = await sb.auth.getSession();
             if (!session) { window.location.href = 'index.html'; return; }
             currentUser = session.user;
             document.getElementById('user-display').innerText = currentUser.email;
-            document.querySelector('#connection-status span').classList.replace('bg-red-500', 'bg-emerald-500');
+            document.getElementById('status-dot').classList.replace('bg-red-500', 'bg-emerald-500');
 
             const { data } = await sb.from('user_settings').select('*').eq('user_id', currentUser.id).maybeSingle();
             if (data) {
                 userConfig = data;
                 document.getElementById('input-api-key').value = "****************";
                 document.getElementById('input-secret-key').value = "****************";
-                document.getElementById('api-status-text').innerText = "API 연결 완료";
+                document.getElementById('api-status-text').innerText = "API 연결 완료 (v1.1)";
                 document.getElementById('api-status-text').classList.add('text-emerald-500');
             }
         }
@@ -154,13 +168,7 @@
             currentTab = tab;
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             document.getElementById(`tab-${tab}`).classList.add('active');
-            
-            if (rawTradeData.length > 0 || currentTab === 'transactions') {
-                renderContent();
-            } else {
-                document.getElementById('empty-state').classList.remove('hidden');
-                document.getElementById('table-container').classList.add('hidden');
-            }
+            renderContent();
         }
 
         async function fetchHistory() {
@@ -172,11 +180,14 @@
             document.getElementById('loading-state').classList.remove('hidden');
             document.getElementById('empty-state').classList.add('hidden');
             document.getElementById('table-container').classList.add('hidden');
+            document.getElementById('data-count').innerText = "Loading...";
 
             try {
-                await getFuturesTrades(start, end);
+                // 한 번에 최대 1000개 요청 (바이낸스 선물 API limit 최대치)
+                await getFuturesTrades(start, end, 1000);
                 renderContent();
             } catch (err) {
+                console.error(err);
                 alert("데이터 조회 중 오류 발생: " + err.message);
             } finally {
                 document.getElementById('loading-state').classList.add('hidden');
@@ -187,31 +198,24 @@
             return CryptoJS.HmacSHA256(queryString, secret).toString();
         }
 
-        async function getFuturesTrades(startTime, endTime) {
+        async function getFuturesTrades(startTime, endTime, limit = 1000) {
             const endpoint = "https://fapi.binance.com/fapi/v1/userTrades";
             const timestamp = Date.now();
-            const query = `startTime=${startTime}&endTime=${endTime}&timestamp=${timestamp}`;
+            // limit 파라미터 추가하여 데이터 누락 방지
+            const query = `startTime=${startTime}&endTime=${endTime}&limit=${limit}&timestamp=${timestamp}`;
             const signature = getSignature(query, userConfig.binance_secret);
             
             const response = await fetch(`${endpoint}?${query}&signature=${signature}`, {
                 headers: { 'X-MBX-APIKEY': userConfig.binance_key }
             });
-            rawTradeData = await response.json();
-        }
-
-        function renderContent() {
-            const head = document.getElementById('table-head');
-            const body = document.getElementById('table-body');
-            body.innerHTML = "";
-            document.getElementById('table-container').classList.remove('hidden');
-
-            if (currentTab === 'futures') {
-                renderFuturesTable(rawTradeData);
-            } else if (currentTab === 'summary') {
-                renderSummaryTable(rawTradeData);
-            } else if (currentTab === 'transactions') {
-                head.innerHTML = `<tr><th class="py-4 px-4">날짜/시간</th><th>코인</th><th>금액</th><th>상태</th></tr>`;
-                body.innerHTML = `<tr><td colspan="4" class="py-10 text-center text-slate-500">입출금 내역이 없습니다.</td></tr>`;
+            
+            const result = await response.json();
+            if (Array.isArray(result)) {
+                // 시간순(내림차순) 정렬: 최신 거래가 위로 오도록
+                rawTradeData = result.sort((a, b) => b.time - a.time);
+                document.getElementById('data-count').innerText = `${rawTradeData.length} Rows Loaded`;
+            } else {
+                throw new Error(result.msg || "데이터 형식이 올바르지 않습니다.");
             }
         }
 
@@ -222,74 +226,92 @@
             return { date, time };
         }
 
-        function renderFuturesTable(data) {
+        function renderContent() {
+            if (rawTradeData.length === 0) return;
+            
+            const head = document.getElementById('table-head');
+            const body = document.getElementById('table-body');
+            body.innerHTML = "";
+            document.getElementById('table-container').classList.remove('hidden');
+
+            if (currentTab === 'futures') {
+                renderFuturesTable();
+            } else if (currentTab === 'summary') {
+                renderSummaryTable();
+            }
+        }
+
+        function renderFuturesTable() {
             const head = document.getElementById('table-head');
             const body = document.getElementById('table-body');
             
-            if (!data || data.length === 0 || data.msg) {
-                document.getElementById('empty-state').classList.remove('hidden');
-                document.getElementById('table-container').classList.add('hidden');
-                return;
-            }
-
-            head.innerHTML = `<tr>
-                <th class="py-4 px-4">날짜/시간 (초 단위)</th>
-                <th>심볼</th>
-                <th>사이드</th>
-                <th>가격</th>
-                <th>수량 / 거래대금</th>
-                <th>수수료 (KRW)</th>
+            head.innerHTML = `<tr class="bg-[#0c1220]">
+                <th class="py-4 px-4 sticky top-0">날짜/시간</th>
+                <th class="py-4 sticky top-0">심볼</th>
+                <th class="py-4 sticky top-0">사이드</th>
+                <th class="py-4 sticky top-0 text-right">가격</th>
+                <th class="py-4 sticky top-0 text-right">수량/거래대금</th>
+                <th class="py-4 px-4 sticky top-0 text-right">수수료 (KRW)</th>
             </tr>`;
 
-            data.forEach(row => {
+            // DocumentFragment 사용하여 렌더링 성능 개선 (대량 데이터 대응)
+            const fragment = document.createDocumentFragment();
+
+            rawTradeData.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = "border-b border-white/5 hover:bg-white/5 transition-colors group";
+                
                 const { date, time } = formatDateTime(row.time);
                 const sideClass = row.side === 'BUY' ? 'text-emerald-400' : 'text-red-400';
                 const quoteQty = parseFloat(row.quoteQty);
                 const krwValue = (quoteQty * usdToKrw).toLocaleString();
                 const commissionKrw = (parseFloat(row.commission) * usdToKrw).toLocaleString(undefined, { maximumFractionDigits: 0 });
 
-                body.innerHTML += `
-                    <tr class="border-b border-white/5 hover:bg-white/5 transition-colors group">
-                        <td class="py-4 px-4 whitespace-nowrap">
-                            <span class="text-slate-400 text-[10px]">${date}</span>
-                            <span class="binance-gold ml-1 font-bold text-xs">${time}</span>
-                        </td>
-                        <td class="font-bold text-white">${row.symbol}</td>
-                        <td class="font-bold ${sideClass}">${row.side}</td>
-                        <td class="text-slate-300 font-mono">${parseFloat(row.price).toLocaleString()}</td>
-                        <td class="text-slate-300 font-mono">
-                            <div>${row.qty} <span class="text-[10px] text-slate-500">QTY</span></div>
-                            <div class="text-[10px] text-emerald-500/70">₩${krwValue}</div>
-                        </td>
-                        <td class="text-slate-500 text-[10px]">
-                            <div>${row.commission} ${row.commissionAsset}</div>
-                            <div class="binance-gold">약 ₩${commissionKrw}</div>
-                        </td>
-                    </tr>`;
+                tr.innerHTML = `
+                    <td class="py-3 px-4 whitespace-nowrap">
+                        <span class="text-slate-500 text-[9px] block">${date}</span>
+                        <span class="binance-gold font-bold text-[11px]">${time}</span>
+                    </td>
+                    <td class="font-bold text-white">${row.symbol}</td>
+                    <td class="font-bold ${sideClass}">${row.side}</td>
+                    <td class="text-slate-300 text-right font-mono">${parseFloat(row.price).toLocaleString()}</td>
+                    <td class="text-slate-300 text-right font-mono">
+                        <div class="text-[11px]">${parseFloat(row.qty).toFixed(4)}</div>
+                        <div class="text-[10px] text-slate-500">₩${krwValue}</div>
+                    </td>
+                    <td class="px-4 text-right">
+                        <div class="text-slate-400 text-[10px]">${row.commission} ${row.commissionAsset}</div>
+                        <div class="binance-gold text-[10px] font-bold">₩${commissionKrw}</div>
+                    </td>
+                `;
+                fragment.appendChild(tr);
             });
+            body.appendChild(fragment);
         }
 
-        function renderSummaryTable(data) {
+        function renderSummaryTable() {
             const head = document.getElementById('table-head');
             const body = document.getElementById('table-body');
             
-            if (!data || data.length === 0 || data.msg) {
-                body.innerHTML = `<tr><td colspan="4" class="py-10 text-center text-slate-500">분석할 거래 데이터가 없습니다.</td></tr>`;
-                return;
-            }
-
             const summary = {};
-            data.forEach(row => {
+            rawTradeData.forEach(row => {
                 if (!summary[row.symbol]) {
-                    summary[row.symbol] = { buy: 0, sell: 0, fees: 0 };
+                    summary[row.symbol] = { buy: 0, sell: 0, fees: 0, count: 0 };
                 }
                 const amount = parseFloat(row.quoteQty);
                 if (row.side === 'BUY') summary[row.symbol].buy += amount;
                 else summary[row.symbol].sell += amount;
                 summary[row.symbol].fees += parseFloat(row.commission);
+                summary[row.symbol].count++;
             });
 
-            head.innerHTML = `<tr><th class="py-4 px-4">심볼</th><th>총 매수/매도 대금</th><th>실현 순익 (USD)</th><th>실현 순익 (KRW)</th></tr>`;
+            head.innerHTML = `<tr class="bg-[#0c1220]">
+                <th class="py-4 px-4 sticky top-0">심볼</th>
+                <th class="py-4 sticky top-0">거래 횟수</th>
+                <th class="py-4 sticky top-0 text-right">매수/매도 합계</th>
+                <th class="py-4 sticky top-0 text-right">실현 수익 (USD)</th>
+                <th class="py-4 px-4 sticky top-0 text-right">실현 수익 (KRW)</th>
+            </tr>`;
             
             Object.keys(summary).forEach(symbol => {
                 const s = summary[symbol];
@@ -298,15 +320,16 @@
 
                 body.innerHTML += `
                     <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
-                        <td class="py-4 px-4 font-bold text-base text-white">${symbol}</td>
-                        <td class="font-mono text-[11px]">
-                            <div class="text-emerald-500">B: $${s.buy.toLocaleString()}</div>
-                            <div class="text-red-400">S: $${s.sell.toLocaleString()}</div>
+                        <td class="py-4 px-4 font-bold text-white">${symbol}</td>
+                        <td class="text-slate-400">${s.count}회</td>
+                        <td class="text-right font-mono text-[10px]">
+                            <div class="text-emerald-500/70">B: $${s.buy.toLocaleString()}</div>
+                            <div class="text-red-400/70">S: $${s.sell.toLocaleString()}</div>
                         </td>
-                        <td class="font-bold font-mono ${netProfit >= 0 ? 'text-emerald-400' : 'text-red-500'}">
+                        <td class="text-right font-bold font-mono ${netProfit >= 0 ? 'text-emerald-400' : 'text-red-500'}">
                             ${netProfit >= 0 ? '+' : ''}$${netProfit.toLocaleString(undefined, {minimumFractionDigits: 2})}
                         </td>
-                        <td class="font-bold font-mono ${netProfit >= 0 ? 'text-emerald-400' : 'text-red-500'}">
+                        <td class="px-4 text-right font-bold font-mono ${netProfit >= 0 ? 'text-emerald-400' : 'text-red-500'} text-sm">
                             ${netProfit >= 0 ? '+' : ''}₩${krwProfit}
                         </td>
                     </tr>`;
