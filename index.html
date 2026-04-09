@@ -14,6 +14,7 @@
         .bg-binance-gold { background-color: #F3BA2F; }
         .input-field { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); transition: all 0.3s ease; }
         .input-field:focus { border-color: #F3BA2F; outline: none; background: rgba(255,255,255,0.08); }
+        #message { transition: all 0.3s ease; }
     </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-6">
@@ -67,7 +68,8 @@
                 </button>
             </form>
 
-            <div id="message" class="mt-6 text-center text-xs font-medium hidden"></div>
+            <!-- Message Box -->
+            <div id="message" class="mt-6 text-center text-[11px] font-medium p-3 rounded-xl hidden"></div>
         </div>
 
         <p class="text-center text-slate-600 text-[10px] mt-8 uppercase tracking-widest">
@@ -76,9 +78,9 @@
     </div>
 
     <script>
-        // Supabase 초기화
-        const SUPABASE_URL = "https://your-project.supabase.co";
-        const SUPABASE_KEY = "your-anon-key";
+        // 사용자가 제공한 실제 API 정보 적용
+        const SUPABASE_URL = "https://pcmrpxcpjynmayactgan.supabase.co";
+        const SUPABASE_KEY = "sb_publishable_endfjcxVBfda-lzjOpPbrQ_DTdF3MHZ";
         const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         const tabLogin = document.getElementById('tab-login');
@@ -89,26 +91,26 @@
 
         // 탭 전환 로직
         tabLogin.onclick = () => {
-            tabLogin.classList.add('bg-white/10', 'text-white');
-            tabLogin.classList.remove('text-slate-500');
-            tabSignup.classList.remove('bg-white/10', 'text-white');
-            tabSignup.classList.add('text-slate-500');
+            tabLogin.className = 'flex-1 py-2 text-xs font-bold rounded-xl bg-white/10 text-white transition-all';
+            tabSignup.className = 'flex-1 py-2 text-xs font-bold rounded-xl text-slate-500 hover:text-white transition-all';
             loginForm.classList.remove('hidden');
             signupForm.classList.add('hidden');
+            msgBox.classList.add('hidden');
         };
 
         tabSignup.onclick = () => {
-            tabSignup.classList.add('bg-white/10', 'text-white');
-            tabSignup.classList.remove('text-slate-500');
-            tabLogin.classList.remove('bg-white/10', 'text-white');
-            tabLogin.classList.add('text-slate-500');
+            tabSignup.className = 'flex-1 py-2 text-xs font-bold rounded-xl bg-white/10 text-white transition-all';
+            tabLogin.className = 'flex-1 py-2 text-xs font-bold rounded-xl text-slate-500 hover:text-white transition-all';
             signupForm.classList.remove('hidden');
             loginForm.classList.add('hidden');
+            msgBox.classList.add('hidden');
         };
 
         function showMessage(text, isError = false) {
             msgBox.innerText = text;
-            msgBox.className = `mt-6 text-center text-xs font-medium ${isError ? 'text-red-400' : 'text-emerald-400'}`;
+            msgBox.className = `mt-6 text-center text-[11px] font-medium p-3 rounded-xl ${
+                isError ? 'text-red-400 bg-red-400/10 border border-red-400/20' : 'text-emerald-400 bg-emerald-400/10 border border-emerald-400/20'
+            }`;
             msgBox.classList.remove('hidden');
         }
 
@@ -119,19 +121,26 @@
             const password = document.getElementById('signup-password').value;
             const fullName = document.getElementById('signup-name').value;
 
-            const { data, error } = await sb.auth.signUp({
-                email,
-                password,
-                options: {
-                    data: { full_name: fullName },
-                    emailRedirectTo: window.location.origin + '/analysis.html'
-                }
-            });
+            try {
+                const { data, error } = await sb.auth.signUp({
+                    email,
+                    password,
+                    options: {
+                        data: { full_name: fullName },
+                        emailRedirectTo: window.location.origin + '/home.html'
+                    }
+                });
 
-            if (error) {
-                showMessage(error.message, true);
-            } else {
-                showMessage("인증 이메일이 발송되었습니다. 메일함을 확인해주세요!");
+                if (error) throw error;
+                
+                if (data.user && data.user.identities && data.user.identities.length === 0) {
+                    showMessage("이미 가입된 이메일입니다. 로그인 탭을 이용해 주세요.", true);
+                } else {
+                    showMessage("인증 메일이 발송되었습니다. 메일함(또는 스팸함)을 확인해주세요.");
+                }
+            } catch (err) {
+                showMessage(err.message, true);
+                console.error("Signup Error:", err);
             }
         };
 
@@ -141,26 +150,29 @@
             const email = document.getElementById('login-email').value;
             const password = document.getElementById('login-password').value;
 
-            const { data, error } = await sb.auth.signInWithPassword({
-                email,
-                password
-            });
+            try {
+                const { data, error } = await sb.auth.signInWithPassword({
+                    email,
+                    password
+                });
 
-            if (error) {
-                showMessage(error.message, true);
-            } else {
-                showMessage("로그인 성공! 대시보드로 이동합니다.");
+                if (error) throw error;
+
+                showMessage("로그인 성공! 대시보드로 이동 중...");
                 setTimeout(() => {
-                    window.location.href = 'analysis.html';
+                    window.location.href = 'home.html';
                 }, 1000);
+            } catch (err) {
+                showMessage(err.message || "이메일 또는 비밀번호를 확인하세요.", true);
+                console.error("Login Error:", err);
             }
         };
 
-        // 이미 로그인된 세션이 있는지 확인
+        // 기존 세션 확인
         async function checkSession() {
             const { data: { session } } = await sb.auth.getSession();
             if (session) {
-                window.location.href = 'analysis.html';
+                window.location.href = 'home.html';
             }
         }
         checkSession();
