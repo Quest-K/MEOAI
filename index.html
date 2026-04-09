@@ -44,7 +44,7 @@
         </div>
         <div id="connectionStatus" class="flex items-center gap-2 text-xs">
             <span class="w-2 h-2 rounded-full bg-red-500" id="statusDot"></span>
-            <span id="statusText">Supabase 연결 필요</span>
+            <span id="statusText">Supabase 연결 확인 중...</span>
         </div>
     </header>
 
@@ -99,12 +99,12 @@
     </main>
 
     <script>
-        // --- 1. CONFIGURATION (입력 필요) ---
-        const SUPABASE_URL = ""; // 사용자의 Supabase URL
-        const SUPABASE_ANON_KEY = ""; // 사용자의 Anon Key
-        const GEMINI_API_KEY = ""; // Gemini API Key (빈칸일 경우 실행환경에서 제공됨)
+        // --- 1. CONFIGURATION (업데이트됨) ---
+        const SUPABASE_URL = "https://pcmrpxcpjynmayactgan.supabase.co"; 
+        const SUPABASE_ANON_KEY = "sb_publishable_endfjcxVBfda-lzjOpPbrQ_DTdF3MHZ"; 
+        const GEMINI_API_KEY = "AIzaSyDOuootRofHJ4AOSEanA-B8V5wzuNBIcuc"; 
 
-        // Supabase Client
+        // Supabase Client 초기화
         const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         
         // App State
@@ -112,7 +112,7 @@
         let isProcessing = false;
         let personas = {};
 
-        // 4단계 토론 순서 (정의된 로직)
+        // 4단계 토론 순서 (전략 회의 로직)
         const DISCUSSION_STAGES = [
             ['CEO', 'CPO', 'CMO'], // 1단계: 아이디어 확장
             ['CTO', 'CDO'],         // 2단계: 기술 검토
@@ -129,12 +129,14 @@
 
         async function checkConnection() {
             try {
+                // 단순 연결 확인 쿼리
                 const { data, error } = await supabase.from('participant_status').select('role_key').limit(1);
                 if (error) throw error;
                 document.getElementById('statusDot').className = "w-2 h-2 rounded-full bg-emerald-500";
                 document.getElementById('statusText').innerText = "Supabase 연결됨";
             } catch (err) {
                 console.error("Connection failed:", err);
+                document.getElementById('statusText').innerText = "연결 오류: API 설정을 확인하세요.";
             }
         }
 
@@ -166,31 +168,36 @@
             if (isProcessing) return;
             isProcessing = true;
 
-            // 1. 세션 생성
-            const { data: session, error } = await supabase
-                .from('conference_sessions')
-                .insert([{ title: topic }])
-                .select()
-                .single();
-            
-            if (error) return;
-            currentSessionId = session.id;
-
-            // 2. 화면 초기화
-            const chatContainer = document.getElementById('chatContainer');
-            chatContainer.innerHTML = '';
-            addMessage('User', topic, 'user');
-
-            // 3. 4단계 워크플로우 실행
-            for (let stageIndex = 0; stageIndex < DISCUSSION_STAGES.length; stageIndex++) {
-                const stageRoles = DISCUSSION_STAGES[stageIndex];
+            try {
+                // 1. 세션 생성
+                const { data: session, error } = await supabase
+                    .from('conference_sessions')
+                    .insert([{ title: topic }])
+                    .select()
+                    .single();
                 
-                for (const role of stageRoles) {
-                    await runAIRole(role, stageIndex + 1);
-                }
-            }
+                if (error) throw error;
+                currentSessionId = session.id;
 
-            isProcessing = false;
+                // 2. 화면 초기화
+                const chatContainer = document.getElementById('chatContainer');
+                chatContainer.innerHTML = '';
+                addMessage('User', topic, 'user');
+
+                // 3. 4단계 워크플로우 실행
+                for (let stageIndex = 0; stageIndex < DISCUSSION_STAGES.length; stageIndex++) {
+                    const stageRoles = DISCUSSION_STAGES[stageIndex];
+                    
+                    for (const role of stageRoles) {
+                        await runAIRole(role, stageIndex + 1);
+                    }
+                }
+            } catch (err) {
+                console.error("Discussion Error:", err);
+                addMessage('System', '오류가 발생했습니다. DB 테이블 설정을 확인해주세요.', 'ai');
+            } finally {
+                isProcessing = false;
+            }
         }
 
         async function runAIRole(role, stageNumber) {
@@ -240,7 +247,7 @@
         // --- 4. HELPERS ---
 
         async function callGemini(prompt) {
-            const apiKey = GEMINI_API_KEY || "";
+            const apiKey = GEMINI_API_KEY;
             const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
             
             let retryCount = 0;
@@ -256,7 +263,12 @@
                         })
                     });
                     const data = await res.json();
-                    return data.candidates[0].content.parts[0].text;
+                    
+                    if (data.candidates && data.candidates[0].content) {
+                        return data.candidates[0].content.parts[0].text;
+                    } else {
+                        throw new Error("Invalid API Response");
+                    }
                 } catch (e) {
                     retryCount++;
                     await new Promise(r => setTimeout(r, Math.pow(2, retryCount) * 1000));
@@ -303,7 +315,7 @@
 
             sendBtn.onclick = () => {
                 const val = userInput.value.trim();
-                if (val) {
+                if (val && !isProcessing) {
                     startDiscussion(val);
                     userInput.value = '';
                 }
