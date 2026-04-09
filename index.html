@@ -5,10 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>C-Suite AI Conference Room</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"></script>
-    <!-- Supabase JS Library -->
+    <!-- Supabase 라이브러리 하나만 사용 (CDN 버전) -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         .glass-morphism {
@@ -43,8 +40,8 @@
             <p class="text-xs text-slate-400 mt-1">8인의 전문 경영진이 당신의 비즈니스를 분석합니다.</p>
         </div>
         <div id="connectionStatus" class="flex items-center gap-2 text-xs">
-            <span class="w-2 h-2 rounded-full bg-red-500" id="statusDot"></span>
-            <span id="statusText">Supabase 연결 확인 중...</span>
+            <span class="w-2 h-2 rounded-full bg-yellow-500" id="statusDot"></span>
+            <span id="statusText">연결 확인 중...</span>
         </div>
     </header>
 
@@ -55,23 +52,19 @@
         <aside class="w-full md:w-64 border-r border-slate-800 p-4 bg-slate-900/30 overflow-y-auto">
             <h2 class="text-sm font-semibold mb-4 text-slate-500 uppercase tracking-wider">회의 참석자</h2>
             <div id="participantList" class="space-y-3">
-                <!-- Participants will be injected here -->
-                <div class="p-3 rounded-lg bg-slate-800/50 animate-pulse h-12"></div>
-                <div class="p-3 rounded-lg bg-slate-800/50 animate-pulse h-12"></div>
-                <div class="p-3 rounded-lg bg-slate-800/50 animate-pulse h-12"></div>
+                <!-- 동적 생성 -->
             </div>
         </aside>
 
         <!-- Chat Area -->
         <section class="flex-1 flex flex-col relative bg-slate-950/50">
             <div id="chatContainer" class="chat-container flex-1 overflow-y-auto p-6 space-y-6">
-                <!-- Welcome Message -->
-                <div class="max-w-2xl mx-auto text-center py-12">
+                <div id="welcomeMessage" class="max-w-2xl mx-auto text-center py-12">
                     <div class="w-16 h-16 bg-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
                         <svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z"></path></svg>
                     </div>
                     <h3 class="text-xl font-medium mb-2">새로운 전략 회의를 시작하세요</h3>
-                    <p class="text-slate-400 text-sm">비즈니스 아이디어, 마케팅 전략, 기술적 고민 등을 입력하면 8인의 C-Level AI가 토론을 시작합니다.</p>
+                    <p class="text-slate-400 text-sm">비즈니스 안건을 입력하면 C-Level AI 경영진이 4단계 토론을 수행합니다.</p>
                 </div>
             </div>
 
@@ -82,7 +75,7 @@
                         id="userInput" 
                         rows="2" 
                         class="w-full bg-slate-800 border border-slate-700 rounded-xl py-3 px-4 pr-16 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
-                        placeholder="회의 안건을 입력하세요... (예: 구독형 독서 어플의 수익 모델 분석)"
+                        placeholder="회의 안건을 입력하세요..."
                     ></textarea>
                     <button 
                         id="sendBtn"
@@ -90,9 +83,6 @@
                     >
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
                     </button>
-                </div>
-                <div class="text-[10px] text-center mt-2 text-slate-500">
-                    Gemini 2.5 Flash Preview 기반 | 효율적인 4단계 경영진 토론 시뮬레이션
                 </div>
             </div>
         </section>
@@ -103,15 +93,13 @@
         const SUPABASE_URL = "https://pcmrpxcpjynmayactgan.supabase.co"; 
         const SUPABASE_ANON_KEY = "sb_publishable_endfjcxVBfda-lzjOpPbrQ_DTdF3MHZ"; 
 
-        // 직책 그룹별 Gemini API Key 할당
         const GEMINI_KEYS = {
-            "GROUP1": "AIzaSyDOuootRofHJ4AOSEanA-B8V5wzuNBIcuc", // CEO, CSO
-            "GROUP2": "AIzaSyD1vAdVRyf7aeYhLxIDzd5Ln0SxYMNAtjI", // CPO, CMO
-            "GROUP3": "AIzaSyDkOTEUZq5tpX6qF14Is80jUT-Y-LjPVT4", // CTO, CDO
-            "GROUP4": "AIzaSyBpTVLu44pvfWId6qMtFjqE1oZjbZ4Fv3A"  // CFO, CRO
+            "GROUP1": "AIzaSyDOuootRofHJ4AOSEanA-B8V5wzuNBIcuc", 
+            "GROUP2": "AIzaSyD1vAdVRyf7aeYhLxIDzd5Ln0SxYMNAtjI", 
+            "GROUP3": "AIzaSyDkOTEUZq5tpX6qF14Is80jUT-Y-LjPVT4", 
+            "GROUP4": "AIzaSyBpTVLu44pvfWId6qMtFjqE1oZjbZ4Fv3A" 
         };
 
-        // 역할별 그룹 매핑
         const ROLE_GROUP_MAP = {
             "CEO": "GROUP1", "CSO": "GROUP1",
             "CPO": "GROUP2", "CMO": "GROUP2",
@@ -119,71 +107,86 @@
             "CFO": "GROUP4", "CRO": "GROUP4"
         };
 
-        // Supabase Client 초기화
-        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Supabase 초기화 (단 한 번만 수행)
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         
-        // App State
         let currentSessionId = null;
         let isProcessing = false;
         let personas = {};
 
-        // 4단계 토론 순서
         const DISCUSSION_STAGES = [
-            ['CEO', 'CPO', 'CMO'], // 1단계: 아이디어 확장
-            ['CTO', 'CDO'],         // 2단계: 기술 검토
-            ['CFO', 'CRO'],         // 3단계: 리스크 및 수익성
-            ['CSO', 'CEO']          // 4단계: 전략 요약 및 의결
+            ['CEO', 'CPO', 'CMO'], 
+            ['CTO', 'CDO'],         
+            ['CFO', 'CRO'],         
+            ['CSO', 'CEO']          
         ];
 
         // --- 2. INITIALIZATION ---
         window.onload = async () => {
+            console.log("Initializing App...");
             await checkConnection();
             await loadPersonas();
             setupEventListeners();
         };
 
         async function checkConnection() {
+            const statusDot = document.getElementById('statusDot');
+            const statusText = document.getElementById('statusText');
+
             try {
-                const { data, error } = await supabase.from('participant_status').select('role_key').limit(1);
-                if (error) throw error;
-                document.getElementById('statusDot').className = "w-2 h-2 rounded-full bg-emerald-500";
-                document.getElementById('statusText').innerText = "Supabase 연결됨";
+                // 스키마 확인 결과: participant_status 테이블 사용
+                const { data, error } = await supabaseClient.from('participant_status').select('role_key').limit(1);
+                
+                if (error) {
+                    console.error("Supabase Error:", error);
+                    statusDot.classList.replace('bg-yellow-500', 'bg-red-500');
+                    statusText.innerText = "연결 오류: 테이블 부재 또는 RLS 설정 확인";
+                    return;
+                }
+
+                statusDot.classList.replace('bg-yellow-500', 'bg-emerald-500');
+                statusText.innerText = "Supabase 연결됨";
             } catch (err) {
-                console.error("Connection failed:", err);
-                document.getElementById('statusText').innerText = "연결 오류: API 설정을 확인하세요.";
+                console.error("Critical Connection Error:", err);
+                statusDot.classList.replace('bg-yellow-500', 'bg-red-500');
+                statusText.innerText = "네트워크 오류";
             }
         }
 
         async function loadPersonas() {
-            const { data, error } = await supabase.from('participant_status').select('*');
-            if (data) {
-                const listEl = document.getElementById('participantList');
-                listEl.innerHTML = '';
-                data.forEach(p => {
-                    personas[p.role_key] = p.persona_description;
-                    const div = document.createElement('div');
-                    div.id = `status-${p.role_key}`;
-                    div.className = "p-3 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-between transition-all";
-                    div.innerHTML = `
-                        <div class="flex items-center gap-2">
-                            <div class="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold">${p.role_key}</div>
-                            <span class="text-xs font-medium">${p.role_key}</span>
-                        </div>
-                        <span class="status-indicator text-[10px] text-slate-500">대기중</span>
-                    `;
-                    listEl.appendChild(div);
-                });
+            const { data, error } = await supabaseClient.from('participant_status').select('*');
+            const listEl = document.getElementById('participantList');
+            
+            if (error || !data || data.length === 0) {
+                listEl.innerHTML = '<p class="text-[10px] text-red-400 p-2">페르소나 데이터를 불러올 수 없습니다. 테이블에 데이터를 추가해 주세요.</p>';
+                return;
             }
+
+            listEl.innerHTML = '';
+            data.forEach(p => {
+                personas[p.role_key] = p.persona_description;
+                const div = document.createElement('div');
+                div.id = `status-${p.role_key}`;
+                div.className = "p-3 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-between transition-all";
+                div.innerHTML = `
+                    <div class="flex items-center gap-2">
+                        <div class="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold">${p.role_key}</div>
+                        <span class="text-xs font-medium">${p.role_key}</span>
+                    </div>
+                    <span class="status-indicator text-[10px] text-slate-500">대기중</span>
+                `;
+                listEl.appendChild(div);
+            });
         }
 
-        // --- 3. CORE LOGIC: DISCUSSION ---
-
+        // --- 3. DISCUSSION LOGIC ---
         async function startDiscussion(topic) {
             if (isProcessing) return;
             isProcessing = true;
 
             try {
-                const { data: session, error } = await supabase
+                // 스키마: conference_sessions (id, title, created_at)
+                const { data: session, error } = await supabaseClient
                     .from('conference_sessions')
                     .insert([{ title: topic }])
                     .select()
@@ -192,8 +195,7 @@
                 if (error) throw error;
                 currentSessionId = session.id;
 
-                const chatContainer = document.getElementById('chatContainer');
-                chatContainer.innerHTML = '';
+                document.getElementById('welcomeMessage')?.remove();
                 addMessage('User', topic, 'user');
 
                 for (let stageIndex = 0; stageIndex < DISCUSSION_STAGES.length; stageIndex++) {
@@ -203,8 +205,8 @@
                     }
                 }
             } catch (err) {
-                console.error("Discussion Error:", err);
-                addMessage('System', '오류가 발생했습니다. DB 테이블 설정을 확인해주세요.', 'ai');
+                console.error("Discussion Initiation Error:", err);
+                addMessage('System', '회의 시작 중 오류가 발생했습니다. DB 권한을 확인해 주세요.', 'ai');
             } finally {
                 isProcessing = false;
             }
@@ -213,88 +215,61 @@
         async function runAIRole(role, stageNumber) {
             updateUIStatus(role, true);
 
-            const { data: history } = await supabase
+            // 스키마: meeting_messages (session_id, role_key, content, analysis_type)
+            const { data: history } = await supabaseClient
                 .from('meeting_messages')
                 .select('role_key, content')
                 .eq('session_id', currentSessionId)
                 .order('created_at', { ascending: true });
 
-            const historyText = history ? history.map(m => `${m.role_key}: ${m.content}`).join('\n') : "회의 시작 전입니다.";
+            const historyText = history ? history.map(m => `${m.role_key}: ${m.content}`).join('\n') : "";
             
             const systemPrompt = `
-                너는 주식회사 경영진의 한 명인 ${role}이다.
-                다음은 네 페르소나 설명이다: ${personas[role]}
-                
-                현재 회의의 주제와 이전 대화 내용은 다음과 같다:
-                ${historyText}
-
-                지금은 토론의 ${stageNumber}단계이다. 
-                네 직책의 관점에서 이전 대화들을 분석하고, 한 문장으로 매우 날카롭고 전문적인 의견을 제시해라. 
-                존댓말을 사용해라.
+                너는 ${role}이다. 
+                페르소나: ${personas[role] || "전문 경영진"}
+                회의 주제 및 히스토리: ${historyText}
+                현재 단계: ${stageNumber}/4
+                직책의 관점에서 간결하고 날카로운 의견을 한국어로 한 문장 제시하라.
             `;
 
             try {
-                // 해당 직책에 할당된 API Key 가져오기
                 const group = ROLE_GROUP_MAP[role];
                 const apiKey = GEMINI_KEYS[group];
-
                 const response = await callGemini(systemPrompt, apiKey);
                 
-                await supabase.from('meeting_messages').insert([{
+                await supabaseClient.from('meeting_messages').insert([{
                     session_id: currentSessionId,
                     role_key: role,
                     content: response,
-                    analysis_type: stageNumber === 4 ? 'conclusion' : 'general'
+                    analysis_type: stageNumber === 4 ? 'conclusion' : 'discussion'
                 }]);
 
                 addMessage(role, response, 'ai');
             } catch (err) {
-                console.error(err);
+                console.error(`Error with ${role}:`, err);
             } finally {
                 updateUIStatus(role, false);
             }
         }
 
-        // --- 4. HELPERS ---
-
         async function callGemini(prompt, apiKey) {
             const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-            
-            let retryCount = 0;
-            const maxRetries = 5;
-
-            while (retryCount < maxRetries) {
-                try {
-                    const res = await fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: prompt }] }]
-                        })
-                    });
-                    const data = await res.json();
-                    
-                    if (data.candidates && data.candidates[0].content) {
-                        return data.candidates[0].content.parts[0].text;
-                    } else {
-                        throw new Error("Invalid API Response");
-                    }
-                } catch (e) {
-                    retryCount++;
-                    await new Promise(r => setTimeout(r, Math.pow(2, retryCount) * 1000));
-                }
-            }
-            throw new Error("Gemini API 호출 실패");
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+            });
+            const data = await res.json();
+            return data.candidates[0].content.parts[0].text;
         }
 
         function addMessage(sender, text, type) {
             const chatContainer = document.getElementById('chatContainer');
             const div = document.createElement('div');
             const isUser = type === 'user';
-            
             div.className = `flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`;
             div.innerHTML = `
-                <div class="max-w-[80%] p-4 rounded-2xl ${isUser ? 'bg-blue-600 rounded-tr-none' : 'bg-slate-800 border border-slate-700 rounded-tl-none'}">
+                <div class="max-w-[85%] p-4 rounded-2xl ${isUser ? 'bg-blue-600' : 'bg-slate-800 border border-slate-700'}">
                     <div class="text-[10px] font-bold mb-1 opacity-60 uppercase">${sender}</div>
                     <div class="text-sm leading-relaxed">${text}</div>
                 </div>
@@ -306,37 +281,30 @@
         function updateUIStatus(role, isThinking) {
             const el = document.getElementById(`status-${role}`);
             if (!el) return;
-            
             const indicator = el.querySelector('.status-indicator');
             if (isThinking) {
                 el.classList.add('border-blue-500', 'bg-blue-500/10', 'thinking');
-                indicator.innerText = "생각 중...";
-                indicator.classList.replace('text-slate-500', 'text-blue-400');
+                indicator.innerText = "분석 중...";
+                indicator.className = "status-indicator text-[10px] text-blue-400";
             } else {
                 el.classList.remove('border-blue-500', 'bg-blue-500/10', 'thinking');
                 indicator.innerText = "대기중";
-                indicator.classList.replace('text-blue-400', 'text-slate-500');
+                indicator.className = "status-indicator text-[10px] text-slate-500";
             }
         }
 
         function setupEventListeners() {
             const sendBtn = document.getElementById('sendBtn');
             const userInput = document.getElementById('userInput');
-
-            sendBtn.onclick = () => {
+            const handler = () => {
                 const val = userInput.value.trim();
                 if (val && !isProcessing) {
                     startDiscussion(val);
                     userInput.value = '';
                 }
             };
-
-            userInput.onkeydown = (e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    sendBtn.click();
-                }
-            };
+            sendBtn.onclick = handler;
+            userInput.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handler(); } };
         }
     </script>
 </body>
