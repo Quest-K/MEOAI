@@ -3,298 +3,319 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Meogo AI 전략 회의실 v2.6 (Supervisor)</title>
+    <title>C-Suite AI Conference Room</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700&display=swap" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"></script>
+    <!-- Supabase JS Library -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        body { font-family: 'Noto Sans KR', sans-serif; background: #f0f2f5; height: 100vh; overflow: hidden; }
-        .glass-panel { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.3); }
-        .chat-scroll::-webkit-scrollbar { width: 4px; }
-        .chat-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        .officer-card { transition: all 0.3s ease; border-left: 4px solid transparent; position: relative; }
-        .officer-card.active { border-left-color: #2563eb; background: #eff6ff; transform: scale(1.02); z-index: 10; }
-        .officer-card.system-checker { border-left-color: #10b981; background: #f0fdf4; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .msg-animate { animation: fadeIn 0.4s ease-out forwards; }
-        
-        /* Markdown-like 스타일 지원 */
-        .response-content b { font-weight: 700; color: #1e40af; }
-        .response-content ul { list-style-type: disc; margin-left: 1.25rem; margin-top: 0.5rem; }
-        .response-content li { margin-bottom: 0.25rem; }
+        .glass-morphism {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .chat-container::-webkit-scrollbar {
+            width: 6px;
+        }
+        .chat-container::-webkit-scrollbar-thumb {
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+        }
+        @keyframes pulse-custom {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .thinking {
+            animation: pulse-custom 1.5s infinite;
+        }
     </style>
 </head>
-<body class="flex h-screen p-4 gap-4">
+<body class="bg-slate-900 text-slate-100 font-sans min-h-screen flex flex-col">
 
-    <!-- 좌측 사이드바: 임원진 리스트 및 API 설정 -->
-    <aside class="w-72 glass-panel rounded-3xl p-5 flex flex-col gap-3 shadow-xl overflow-y-auto">
-        <div class="mb-4 px-2">
-            <h1 class="text-2xl font-extrabold text-blue-900 italic tracking-tighter">Meogo <span class="text-xs font-normal text-gray-400 not-italic">Admin</span></h1>
-            <p class="text-[10px] text-green-600 font-bold uppercase tracking-widest mt-1">System & Board Monitor</p>
+    <!-- Header -->
+    <header class="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-900/50 sticky top-0 z-10">
+        <div>
+            <h1 class="text-2xl font-bold bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
+                C-Suite AI Strategy Room
+            </h1>
+            <p class="text-xs text-slate-400 mt-1">8인의 전문 경영진이 당신의 비즈니스를 분석합니다.</p>
         </div>
+        <div id="connectionStatus" class="flex items-center gap-2 text-xs">
+            <span class="w-2 h-2 rounded-full bg-red-500" id="statusDot"></span>
+            <span id="statusText">Supabase 연결 필요</span>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 flex flex-col md:flex-row overflow-hidden">
         
-        <div class="mb-4 px-2">
-            <label class="text-[9px] font-bold text-gray-400 ml-1 uppercase">Gemini API Access</label>
-            <div class="relative mt-1">
-                <input type="password" id="api-key" placeholder="API Key 입력 (엔터 시 검증)" 
-                    class="w-full text-xs p-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-green-400 transition-all">
+        <!-- Left Sidebar: Participant Status -->
+        <aside class="w-full md:w-64 border-r border-slate-800 p-4 bg-slate-900/30 overflow-y-auto">
+            <h2 class="text-sm font-semibold mb-4 text-slate-500 uppercase tracking-wider">회의 참석자</h2>
+            <div id="participantList" class="space-y-3">
+                <!-- Participants will be injected here -->
+                <div class="p-3 rounded-lg bg-slate-800/50 animate-pulse h-12"></div>
+                <div class="p-3 rounded-lg bg-slate-800/50 animate-pulse h-12"></div>
+                <div class="p-3 rounded-lg bg-slate-800/50 animate-pulse h-12"></div>
             </div>
-            <p class="text-[8px] text-gray-400 mt-1 px-1">* 입력하지 않으면 환경 기본키를 사용합니다.</p>
-        </div>
+        </aside>
 
-        <div id="officer-list" class="flex flex-col gap-2.5">
-            <!-- JS로 주입됨 -->
-        </div>
-    </aside>
-
-    <!-- 메인: 컨퍼런스 홀 -->
-    <main class="flex-1 flex flex-col glass-panel rounded-3xl shadow-2xl overflow-hidden border border-white">
-        <header class="px-8 py-5 border-b border-gray-100 flex justify-between items-center bg-white/80">
-            <div>
-                <h2 class="text-xl font-bold text-gray-800">전략 컨퍼런스 홀</h2>
-                <div class="flex items-center gap-2 mt-1">
-                    <span id="system-indicator" class="w-2 h-2 bg-gray-300 rounded-full"></span>
-                    <p id="topic-text" class="text-xs text-gray-500 uppercase font-medium tracking-tight">System Idle</p>
+        <!-- Chat Area -->
+        <section class="flex-1 flex flex-col relative bg-slate-950/50">
+            <div id="chatContainer" class="chat-container flex-1 overflow-y-auto p-6 space-y-6">
+                <!-- Welcome Message -->
+                <div class="max-w-2xl mx-auto text-center py-12">
+                    <div class="w-16 h-16 bg-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z"></path></svg>
+                    </div>
+                    <h3 class="text-xl font-medium mb-2">새로운 전략 회의를 시작하세요</h3>
+                    <p class="text-slate-400 text-sm">비즈니스 아이디어, 마케팅 전략, 기술적 고민 등을 입력하면 8인의 C-Level AI가 토론을 시작합니다.</p>
                 </div>
             </div>
-            <div id="status-tag" class="text-[10px] font-black px-4 py-1.5 rounded-full bg-gray-100 text-gray-400 border border-gray-200 uppercase">Ready</div>
-        </header>
 
-        <!-- 채팅 영역 -->
-        <div id="chat-box" class="flex-1 overflow-y-auto p-8 flex flex-col gap-6 chat-scroll bg-[#fcfcfd]">
-            <!-- 메시지 흐름 -->
-        </div>
-
-        <!-- 하단 입력창 -->
-        <footer class="p-6 bg-white border-t border-gray-100">
-            <div class="flex gap-3 bg-gray-50 p-2 rounded-2xl border border-gray-200 shadow-inner">
-                <input type="text" id="user-input" onkeypress="if(event.keyCode==13) runMeeting()" 
-                    placeholder="안건을 입력하세요. CTO가 시스템 점검 후 회의를 시작합니다..." 
-                    class="flex-1 bg-transparent border-none focus:ring-0 px-4 text-sm outline-none">
-                <button id="start-btn" onclick="runMeeting()" class="bg-slate-800 text-white px-8 py-3 rounded-xl font-bold text-sm hover:bg-black transition-all active:scale-95 disabled:bg-gray-300">
-                    회의 시작
-                </button>
+            <!-- Input Area -->
+            <div class="p-4 border-t border-slate-800 bg-slate-900/80">
+                <div class="max-w-4xl mx-auto relative">
+                    <textarea 
+                        id="userInput" 
+                        rows="2" 
+                        class="w-full bg-slate-800 border border-slate-700 rounded-xl py-3 px-4 pr-16 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
+                        placeholder="회의 안건을 입력하세요... (예: 구독형 독서 어플의 수익 모델 분석)"
+                    ></textarea>
+                    <button 
+                        id="sendBtn"
+                        class="absolute right-2 bottom-2 p-2 bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                    </button>
+                </div>
+                <div class="text-[10px] text-center mt-2 text-slate-500">
+                    Gemini 2.5 Flash Preview 기반 | 효율적인 4단계 경영진 토론 시뮬레이션
+                </div>
             </div>
-        </footer>
+        </section>
     </main>
 
-    <!-- 우측: 로그 및 요약 -->
-    <aside class="w-80 flex flex-col gap-4">
-        <div class="glass-panel rounded-3xl p-6 shadow-xl flex-1 flex flex-col overflow-hidden">
-            <h3 class="text-sm font-bold text-gray-800 mb-4 uppercase tracking-widest flex justify-between">
-                Live Log
-                <span id="log-count" class="text-blue-500 font-black">0</span>
-            </h3>
-            <div id="insight-stream" class="text-[11px] text-gray-500 flex flex-col gap-3 overflow-y-auto flex-1 pr-1 chat-scroll italic">
-                <p class="text-center py-20 text-gray-300 font-light">감독자가 시스템 로그를<br>실시간으로 기록합니다.</p>
-            </div>
-        </div>
-        <div class="bg-[#0f172a] rounded-3xl p-6 h-72 flex flex-col border border-white/10 shadow-2xl">
-            <h3 class="text-sm font-bold text-emerald-400 mb-3 flex items-center gap-2">
-                <span class="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
-                최종 의사결정 지원
-            </h3>
-            <div id="final-summary" class="text-[12px] text-slate-400 leading-relaxed overflow-y-auto flex-1 chat-scroll custom-markdown">
-                회의 종료 후 시스템 요약이 출력됩니다.
-            </div>
-        </div>
-    </aside>
-
     <script>
-        const MODEL = "gemini-1.5-flash";
-        let defaultApiKey = ""; // 환경 주입용
+        // --- 1. CONFIGURATION (입력 필요) ---
+        const SUPABASE_URL = ""; // 사용자의 Supabase URL
+        const SUPABASE_ANON_KEY = ""; // 사용자의 Anon Key
+        const GEMINI_API_KEY = ""; // Gemini API Key (빈칸일 경우 실행환경에서 제공됨)
 
-        const officers = [
-            { id: "CTO", name: "시스템 감독자", color: "bg-green-50", duty: "API 연결 상태 점검 및 데이터 무결성 확인. 회의 프로세스 가동 승인권자." },
-            { id: "CEO", name: "비전 & ESG", color: "bg-blue-50", duty: "지역 소상공인 상생 및 ESG 경영 가치 수호. 사업의 본질적 방향성 검토." },
-            { id: "CFO", name: "재무 & 리스크", color: "bg-orange-50", duty: "1인 개발 환경의 수익 모델(BM) 검증 및 매몰 비용 리스크 분석." },
-            { id: "CMO", name: "마케팅 & UX", color: "bg-pink-50", duty: "외국인 타겟 랭킹 시스템 리텐션 및 브랜드 인지 효율성 분석." },
-            { id: "CPO", name: "제품 전략", color: "bg-teal-50", duty: "Flutter/Supabase 환경에서의 미션 콘텐츠 재미와 기술적 실현 가능성 비평." }
+        // Supabase Client
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        // App State
+        let currentSessionId = null;
+        let isProcessing = false;
+        let personas = {};
+
+        // 4단계 토론 순서 (정의된 로직)
+        const DISCUSSION_STAGES = [
+            ['CEO', 'CPO', 'CMO'], // 1단계: 아이디어 확장
+            ['CTO', 'CDO'],         // 2단계: 기술 검토
+            ['CFO', 'CRO'],         // 3단계: 리스크 및 수익성
+            ['CSO', 'CEO']          // 4단계: 전략 요약 및 의결
         ];
 
-        function init() {
-            const list = document.getElementById('officer-list');
-            list.innerHTML = '';
-            officers.forEach(off => {
-                const div = document.createElement('div');
-                div.id = `card-${off.id}`;
-                div.className = `officer-card ${off.color} p-4 rounded-2xl shadow-sm border border-black/5 ${off.id === 'CTO' ? 'system-checker' : ''}`;
-                div.innerHTML = `
-                    <div class="flex justify-between items-start mb-1">
-                        <span class="text-[10px] font-black text-gray-800">${off.id}</span>
-                        <div class="status-dot w-2 h-2 rounded-full bg-gray-300"></div>
-                    </div>
-                    <div class="text-[11px] font-bold text-gray-700">${off.name}</div>
-                `;
-                list.appendChild(div);
-            });
-        }
+        // --- 2. INITIALIZATION ---
+        window.onload = async () => {
+            await checkConnection();
+            await loadPersonas();
+            setupEventListeners();
+        };
 
-        // 텍스트 내의 **내용** 을 <b>내용</b>으로 변환하는 간단한 렌더러
-        function formatText(text) {
-            return text
-                .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
-                .replace(/\n/g, '<br>')
-                .replace(/- (.*?)($|<br>)/g, '<li>$1</li>');
-        }
-
-        async function callAI(prompt, system, key) {
-            const activeKey = key || defaultApiKey;
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${activeKey}`;
-            
+        async function checkConnection() {
             try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: prompt }] }],
-                        systemInstruction: { parts: [{ text: system }] }
-                    })
+                const { data, error } = await supabase.from('participant_status').select('role_key').limit(1);
+                if (error) throw error;
+                document.getElementById('statusDot').className = "w-2 h-2 rounded-full bg-emerald-500";
+                document.getElementById('statusText').innerText = "Supabase 연결됨";
+            } catch (err) {
+                console.error("Connection failed:", err);
+            }
+        }
+
+        async function loadPersonas() {
+            const { data, error } = await supabase.from('participant_status').select('*');
+            if (data) {
+                const listEl = document.getElementById('participantList');
+                listEl.innerHTML = '';
+                data.forEach(p => {
+                    personas[p.role_key] = p.persona_description;
+                    const div = document.createElement('div');
+                    div.id = `status-${p.role_key}`;
+                    div.className = "p-3 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-between transition-all";
+                    div.innerHTML = `
+                        <div class="flex items-center gap-2">
+                            <div class="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold">${p.role_key}</div>
+                            <span class="text-xs font-medium">${p.role_key}</span>
+                        </div>
+                        <span class="status-indicator text-[10px] text-slate-500">대기중</span>
+                    `;
+                    listEl.appendChild(div);
                 });
-                
-                const data = await response.json();
-                if (data.error) throw new Error(data.error.message);
-                return data.candidates?.[0]?.content?.parts?.[0]?.text || "응답이 없습니다.";
-            } catch (e) {
-                console.error("API 호출 중 오류:", e);
-                return `[ERROR] ${e.message}`;
             }
         }
 
-        async function runMeeting() {
-            const userApiKey = document.getElementById('api-key').value.trim();
-            const input = document.getElementById('user-input');
-            const topic = input.value.trim();
+        // --- 3. CORE LOGIC: DISCUSSION ---
+
+        async function startDiscussion(topic) {
+            if (isProcessing) return;
+            isProcessing = true;
+
+            // 1. 세션 생성
+            const { data: session, error } = await supabase
+                .from('conference_sessions')
+                .insert([{ title: topic }])
+                .select()
+                .single();
             
-            if (!topic) return;
+            if (error) return;
+            currentSessionId = session.id;
 
-            // UI 초기화
-            input.value = '';
-            document.getElementById('start-btn').disabled = true;
-            document.getElementById('chat-box').innerHTML = '';
-            document.getElementById('insight-stream').innerHTML = '';
-            document.getElementById('final-summary').innerText = '회의 결과를 정리 중입니다...';
-            document.getElementById('topic-text').innerText = topic;
-            document.getElementById('status-tag').innerText = "Running";
-            document.getElementById('status-tag').className = "text-[10px] font-black px-4 py-1.5 rounded-full bg-blue-100 text-blue-600 uppercase border border-blue-200 animate-pulse";
+            // 2. 화면 초기화
+            const chatContainer = document.getElementById('chatContainer');
+            chatContainer.innerHTML = '';
+            addMessage('User', topic, 'user');
 
-            addMessage("대표님", topic, false);
-
-            // 1단계: CTO 시스템 체크
-            updateUI("CTO", "active");
-            addMessage("CTO (시스템 감독자)", "회의 시작 전 시스템 무결성 및 API 경로를 점검합니다...", true, "bg-green-50");
-            
-            const checkResult = await callAI("안녕, 시스템 점검 중이야. 연결이 정상이라면 'OK'라고만 짧게 대답해.", "너는 시스템 모니터링 엔진이다.", userApiKey);
-            
-            if (checkResult.includes("[ERROR]")) {
-                addMessage("CTO (오류 보고)", `❌ 연결 실패: ${checkResult}\nAPI 키를 확인하거나 잠시 후 다시 시도하십시오.`, true, "bg-red-100 text-red-700");
-                updateUI("CTO", "error");
-                resetMeetingUI();
-                return;
-            }
-
-            addMessage("CTO (시스템 감독자)", "✅ 시스템 가동 승인. 모든 임원진이 대표님의 안건을 인지했습니다. 회의를 시작합니다.", true, "bg-green-50");
-            document.getElementById('system-indicator').className = "w-2 h-2 bg-green-500 rounded-full animate-pulse";
-            addLog("CTO", "System Health Check Passed");
-
-            let history = [`안건: ${topic}`];
-            
-            // 2단계: 나머지 임원 순차 회의
-            for (let i = 1; i < officers.length; i++) {
-                const off = officers[i];
-                updateUI(off.id, "active");
+            // 3. 4단계 워크플로우 실행
+            for (let stageIndex = 0; stageIndex < DISCUSSION_STAGES.length; stageIndex++) {
+                const stageRoles = DISCUSSION_STAGES[stageIndex];
                 
-                const sys = `너는 Meogo 컴퍼니의 ${off.id}(${off.name})이다. 
-                회사의 핵심가치: 외국인 관광객 미션 제공, 소상공인 상생, ESG 실천.
-                너의 역할: ${off.duty}.
-                대표의 안건에 대해 1인 개발자의 현실적 제약(Flutter, Supabase 사용)을 반영하여 아주 날카롭고 비판적으로 분석하라. 한국어로 답변할 것.`;
-                
-                const usr = `[현재까지의 회의 기록]\n${history.join('\n')}\n\n[대표의 안건] ${topic}\n위 기록을 참고하여 너의 입장을 짧고 강하게 말해라.`;
-                
-                const response = await callAI(usr, sys, userApiKey);
-                
-                if (response.includes("[ERROR]")) {
-                    addMessage("CTO (긴급 보고)", `회의 중단: ${off.id} 데이터 수신 중 예외가 발생했습니다.`, true, "bg-red-50 text-red-600");
-                    break;
+                for (const role of stageRoles) {
+                    await runAIRole(role, stageIndex + 1);
                 }
-
-                addMessage(`${off.id} (${off.name})`, response, true, off.color);
-                history.push(`${off.id}: ${response}`);
-                addLog(off.id, "Response received");
-
-                await new Promise(r => setTimeout(r, 800)); // 시각적 흐름을 위한 지연
             }
 
-            // 3단계: 요약 및 액션 플랜
-            updateUI(null, "done");
-            const summarySys = "너는 Meogo의 전략 회의 서기다. 위 대화 내용을 바탕으로 대표가 '즉시 실행해야 할 항목' 3가지를 명확하게 도출하라. 비즈니스 관점에서 요약할 것.";
-            const summaryPrompt = history.join('\n');
-            const summaryResult = await callAI(summaryPrompt, summarySys, userApiKey);
-            
-            document.getElementById('final-summary').innerHTML = formatText(summaryResult);
-            document.getElementById('status-tag').innerText = "Completed";
-            document.getElementById('status-tag').className = "text-[10px] font-black px-4 py-1.5 rounded-full bg-green-100 text-green-600 uppercase border border-green-200";
-            document.getElementById('start-btn').disabled = false;
-            addLog("SYSTEM", "Meeting Concluded");
+            isProcessing = false;
         }
 
-        function addMessage(sender, text, isAi, color = "") {
-            const box = document.getElementById('chat-box');
+        async function runAIRole(role, stageNumber) {
+            updateUIStatus(role, true);
+
+            // 대화 기록 가져오기 (Context 제공용)
+            const { data: history } = await supabase
+                .from('meeting_messages')
+                .select('role_key, content')
+                .eq('session_id', currentSessionId)
+                .order('created_at', { ascending: true });
+
+            const historyText = history ? history.map(m => `${m.role_key}: ${m.content}`).join('\n') : "회의 시작 전입니다.";
+            
+            const systemPrompt = `
+                너는 주식회사 경영진의 한 명인 ${role}이다.
+                다음은 네 페르소나 설명이다: ${personas[role]}
+                
+                현재 회의의 주제와 이전 대화 내용은 다음과 같다:
+                ${historyText}
+
+                지금은 토론의 ${stageNumber}단계이다. 
+                네 직책의 관점에서 이전 대화들을 분석하고, 한 문장으로 매우 날카롭고 전문적인 의견을 제시해라. 
+                존댓말을 사용해라.
+            `;
+
+            try {
+                const response = await callGemini(systemPrompt);
+                
+                // DB 저장
+                await supabase.from('meeting_messages').insert([{
+                    session_id: currentSessionId,
+                    role_key: role,
+                    content: response,
+                    analysis_type: stageNumber === 4 ? 'conclusion' : 'general'
+                }]);
+
+                // UI 업데이트
+                addMessage(role, response, 'ai');
+            } catch (err) {
+                console.error(err);
+            } finally {
+                updateUIStatus(role, false);
+            }
+        }
+
+        // --- 4. HELPERS ---
+
+        async function callGemini(prompt) {
+            const apiKey = GEMINI_API_KEY || "";
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            
+            let retryCount = 0;
+            const maxRetries = 5;
+
+            while (retryCount < maxRetries) {
+                try {
+                    const res = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }]
+                        })
+                    });
+                    const data = await res.json();
+                    return data.candidates[0].content.parts[0].text;
+                } catch (e) {
+                    retryCount++;
+                    await new Promise(r => setTimeout(r, Math.pow(2, retryCount) * 1000));
+                }
+            }
+            throw new Error("Gemini API 호출 실패");
+        }
+
+        function addMessage(sender, text, type) {
+            const chatContainer = document.getElementById('chatContainer');
             const div = document.createElement('div');
-            div.className = `msg-animate flex flex-col ${isAi ? 'items-start' : 'items-end'} max-w-[85%] ${!isAi ? 'ml-auto' : ''}`;
+            const isUser = type === 'user';
+            
+            div.className = `flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`;
             div.innerHTML = `
-                <span class="text-[10px] font-black text-gray-400 mb-1 uppercase px-1">${sender}</span>
-                <div class="${isAi ? color : 'bg-slate-800 text-white'} p-4 rounded-2xl ${isAi ? 'rounded-tl-none' : 'rounded-tr-none'} shadow-sm text-sm border border-black/5 response-content">
-                    ${formatText(text)}
+                <div class="max-w-[80%] p-4 rounded-2xl ${isUser ? 'bg-blue-600 rounded-tr-none' : 'bg-slate-800 border border-slate-700 rounded-tl-none'}">
+                    <div class="text-[10px] font-bold mb-1 opacity-60 uppercase">${sender}</div>
+                    <div class="text-sm leading-relaxed">${text}</div>
                 </div>
             `;
-            box.appendChild(div);
-            box.scrollTop = box.scrollHeight;
+            chatContainer.appendChild(div);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
         }
 
-        function addLog(id, msg) {
-            const stream = document.getElementById('insight-stream');
-            if (stream.innerText.includes('로그를')) stream.innerHTML = '';
+        function updateUIStatus(role, isThinking) {
+            const el = document.getElementById(`status-${role}`);
+            if (!el) return;
             
-            const log = document.createElement('div');
-            log.className = "p-2 bg-white rounded-lg shadow-sm border border-gray-100 msg-animate text-[10px] flex gap-2 items-center";
-            log.innerHTML = `<span class="text-blue-500 font-black px-1 py-0.5 bg-blue-50 rounded text-[8px] uppercase">${id}</span> <span class="text-gray-400">${msg}</span>`;
-            stream.prepend(log);
-            
-            const count = document.getElementById('log-count');
-            count.innerText = parseInt(count.innerText) + 1;
+            const indicator = el.querySelector('.status-indicator');
+            if (isThinking) {
+                el.classList.add('border-blue-500', 'bg-blue-500/10', 'thinking');
+                indicator.innerText = "생각 중...";
+                indicator.classList.replace('text-slate-500', 'text-blue-400');
+            } else {
+                el.classList.remove('border-blue-500', 'bg-blue-500/10', 'thinking');
+                indicator.innerText = "대기중";
+                indicator.classList.replace('text-blue-400', 'text-slate-500');
+            }
         }
 
-        function updateUI(activeId, status) {
-            officers.forEach(off => {
-                const card = document.getElementById(`card-${off.id}`);
-                if (!card) return;
-                const dot = card.querySelector('.status-dot');
-                
-                if (off.id === activeId) {
-                    card.classList.add('active');
-                    if (status === 'error') {
-                        dot.className = "status-dot w-2 h-2 rounded-full bg-red-500";
-                    } else {
-                        dot.className = "status-dot w-2 h-2 rounded-full bg-blue-500 animate-ping";
-                    }
-                } else {
-                    card.classList.remove('active');
-                    if (status === 'done' || card.querySelector('.bg-blue-500')) {
-                        dot.className = "status-dot w-2 h-2 rounded-full bg-green-400";
-                    } else {
-                        dot.className = "status-dot w-2 h-2 rounded-full bg-gray-300";
-                    }
+        function setupEventListeners() {
+            const sendBtn = document.getElementById('sendBtn');
+            const userInput = document.getElementById('userInput');
+
+            sendBtn.onclick = () => {
+                const val = userInput.value.trim();
+                if (val) {
+                    startDiscussion(val);
+                    userInput.value = '';
                 }
-            });
-        }
+            };
 
-        function resetMeetingUI() {
-            document.getElementById('start-btn').disabled = false;
-            document.getElementById('status-tag').innerText = "Ready";
-            document.getElementById('status-tag').className = "text-[10px] font-black px-4 py-1.5 rounded-full bg-gray-100 text-gray-400 border border-gray-200 uppercase";
+            userInput.onkeydown = (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendBtn.click();
+                }
+            };
         }
-
-        window.onload = init;
     </script>
 </body>
 </html>
