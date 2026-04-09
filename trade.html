@@ -6,6 +6,7 @@
     <title>C-Suite | Trading Terminal</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; background-color: #050810; color: #e2e8f0; }
@@ -16,6 +17,9 @@
         .input-field:focus { border-color: #F3BA2F; outline: none; background: rgba(255,255,255,0.1); }
         .btn-primary { background-color: #F3BA2F; color: black; font-weight: 700; transition: all 0.3s ease; }
         .btn-primary:hover { transform: translateY(-1px); filter: brightness(1.1); box-shadow: 0 4px 20px rgba(243, 186, 47, 0.2); }
+        .tab-btn.active { color: #F3BA2F; border-bottom: 2px solid #F3BA2F; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
     </style>
 </head>
 <body class="min-h-screen">
@@ -31,14 +35,15 @@
                 <h1 class="font-bold tracking-tight text-lg">TRADING <span class="binance-gold">TERMINAL</span></h1>
             </div>
             <div id="connection-status" class="flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
-                <span id="user-display" class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Checking Session...</span>
+                <span class="w-2 h-2 rounded-full bg-red-500"></span>
+                <span id="user-display" class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Checking...</span>
             </div>
         </div>
     </nav>
 
     <main class="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
         
+        <!-- Left Sidebar: Settings & Portfolio -->
         <div class="lg:col-span-4 space-y-6">
             <div class="glass-panel rounded-[2.5rem] p-8">
                 <div class="flex items-center gap-3 mb-6">
@@ -46,145 +51,207 @@
                         <svg class="w-6 h-6 binance-gold" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"></path></svg>
                     </div>
                     <div>
-                        <h2 class="font-bold">Binance API</h2>
-                        <p class="text-[10px] text-slate-500 uppercase tracking-tighter">Connection Settings</p>
+                        <h2 class="font-bold">API 설정</h2>
+                        <p id="api-status-text" class="text-[10px] text-slate-500 uppercase">연결 대기 중</p>
                     </div>
                 </div>
 
                 <form id="api-storage-form" class="space-y-4">
-                    <div class="space-y-2">
-                        <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">API Key</label>
-                        <input type="password" id="input-api-key" required class="input-field w-full px-4 py-4 rounded-2xl text-sm" placeholder="Input Key...">
-                    </div>
-                    <div class="space-y-2">
-                        <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">Secret Key</label>
-                        <input type="password" id="input-secret-key" required class="input-field w-full px-4 py-4 rounded-2xl text-sm" placeholder="Input Secret...">
-                    </div>
-                    <button type="submit" id="save-trigger" class="w-full btn-primary py-4 rounded-2xl mt-4 text-sm">
-                        설정 저장 및 연결
-                    </button>
+                    <input type="password" id="input-api-key" required class="input-field w-full px-4 py-3 rounded-xl text-sm" placeholder="API Key">
+                    <input type="password" id="input-secret-key" required class="input-field w-full px-4 py-3 rounded-xl text-sm" placeholder="Secret Key">
+                    <button type="submit" id="save-trigger" class="w-full btn-primary py-3 rounded-xl text-sm">설정 업데이트</button>
                 </form>
-                <div id="notify-box" class="mt-4 text-[11px] text-center hidden p-3 rounded-xl border"></div>
             </div>
 
             <div class="glass-panel rounded-[2.5rem] p-8">
-                <h3 class="text-xs font-bold text-slate-400 mb-6 uppercase tracking-[0.2em]">Portfolio Summary</h3>
-                <div class="space-y-2">
-                    <div class="flex justify-between items-baseline">
-                        <span class="text-3xl font-bold tracking-tighter">$ 0.00</span>
-                        <span class="text-xs text-emerald-400 font-bold">+0.00%</span>
+                <h3 class="text-[10px] font-bold text-slate-500 mb-4 uppercase tracking-[0.2em]">Data Filter</h3>
+                <div class="space-y-4">
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-[9px] text-slate-500 uppercase ml-1">Start Date</label>
+                            <input type="date" id="start-date" class="input-field w-full px-3 py-2 rounded-lg text-[11px]">
+                        </div>
+                        <div>
+                            <label class="text-[9px] text-slate-500 uppercase ml-1">End Date</label>
+                            <input type="date" id="end-date" class="input-field w-full px-3 py-2 rounded-lg text-[11px]">
+                        </div>
                     </div>
-                    <p class="text-[10px] text-slate-600 font-medium uppercase">Last updated: Just now</p>
+                    <button onclick="fetchHistory()" class="w-full bg-white/5 hover:bg-white/10 border border-white/10 py-3 rounded-xl text-xs font-bold transition-all">내역 조회하기</button>
                 </div>
             </div>
         </div>
 
+        <!-- Right: Activity Terminal -->
         <div class="lg:col-span-8 flex flex-col gap-6">
-            <div class="glass-panel rounded-[2.5rem] flex-1 flex flex-col items-center justify-center p-12 text-center border-dashed border-white/10">
-                <div class="w-20 h-20 bg-white/5 rounded-[2rem] flex items-center justify-center mb-6 rotate-12">
-                    <svg class="w-10 h-10 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            <div class="glass-panel rounded-[2.5rem] p-8 min-h-[500px] flex flex-col">
+                <div class="flex gap-6 border-b border-white/5 mb-6">
+                    <button onclick="switchTab('futures')" id="tab-futures" class="tab-btn active pb-4 text-sm font-bold transition-all">선물 거래 내역</button>
+                    <button onclick="switchTab('transactions')" id="tab-transactions" class="tab-btn pb-4 text-sm font-bold transition-all">입출금 내역</button>
                 </div>
-                <h3 class="text-2xl font-bold mb-3 italic">Terminal Restricted</h3>
-                <p class="text-slate-500 text-sm max-w-sm mx-auto leading-relaxed">
-                    API 키가 등록되지 않았습니다. 바이낸스 계정의 데이터를 안전하게 불러오기 위해 설정을 먼저 완료해 주세요.
-                </p>
+
+                <div id="loading-state" class="hidden flex-1 flex flex-col items-center justify-center py-20">
+                    <div class="w-10 h-10 border-2 border-binance-gold border-t-transparent rounded-full animate-spin"></div>
+                    <p class="mt-4 text-xs text-slate-500">바이낸스에서 데이터를 불러오는 중...</p>
+                </div>
+
+                <div id="empty-state" class="flex-1 flex flex-col items-center justify-center py-20 text-center">
+                    <div class="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mb-4">
+                        <svg class="w-8 h-8 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    </div>
+                    <p class="text-sm text-slate-500">조회할 기간을 선택하고 버튼을 눌러주세요.</p>
+                </div>
+
+                <div id="table-container" class="hidden overflow-x-auto">
+                    <table class="w-full text-left text-xs">
+                        <thead id="table-head" class="text-slate-500 uppercase border-b border-white/5">
+                            <!-- Headers injected here -->
+                        </thead>
+                        <tbody id="table-body">
+                            <!-- Rows injected here -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </main>
 
     <script>
-        // Supabase 인스턴스 초기화 (사용자 프로젝트 정보 적용)
         const SUPABASE_URL = "https://pcmrpxcpjynmayactgan.supabase.co";
         const SUPABASE_KEY = "sb_publishable_endfjcxVBfda-lzjOpPbrQ_DTdF3MHZ";
         const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        const apiForm = document.getElementById('api-storage-form');
-        const notifyBox = document.getElementById('notify-box');
-        const saveTrigger = document.getElementById('save-trigger');
-        let currentSessionUser = null;
+        let currentTab = 'futures';
+        let userConfig = null;
+        let currentUser = null;
 
-        async function initializeTerminal() {
-            // 1. 세션 확인
-            const { data: { session }, error } = await sb.auth.getSession();
-            if (!session) {
-                window.location.href = 'index.html'; // 로그인 안되어있으면 튕김
-                return;
+        // 초기 날짜 설정 (최근 7일)
+        const today = new Date();
+        const lastWeek = new Date(today);
+        lastWeek.setDate(today.getDate() - 7);
+        document.getElementById('start-date').value = lastWeek.toISOString().split('T')[0];
+        document.getElementById('end-date').value = today.toISOString().split('T')[0];
+
+        async function init() {
+            const { data: { session } } = await sb.auth.getSession();
+            if (!session) { window.location.href = 'index.html'; return; }
+            currentUser = session.user;
+            document.getElementById('user-display').innerText = currentUser.email;
+            document.querySelector('#connection-status span').classList.replace('bg-red-500', 'bg-emerald-500');
+
+            const { data } = await sb.from('user_settings').select('*').eq('user_id', currentUser.id).maybeSingle();
+            if (data) {
+                userConfig = data;
+                document.getElementById('input-api-key').value = "****************";
+                document.getElementById('input-secret-key').value = "****************";
+                document.getElementById('api-status-text').innerText = "API 연결 완료";
+                document.getElementById('api-status-text').classList.add('text-emerald-500');
             }
-            currentSessionUser = session.user;
-            
-            // 2. 상단 UI 업데이트
-            document.getElementById('user-display').innerText = currentSessionUser.email;
-            document.querySelector('#connection-status span').className = "w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_#10b981]";
-
-            // 3. 기존 저장된 API 키가 있는지 조회
-            fetchSavedConfig();
         }
 
-        async function fetchSavedConfig() {
-            try {
-                const { data, error } = await sb
-                    .from('user_settings')
-                    .select('binance_key')
-                    .eq('user_id', currentSessionUser.id)
-                    .maybeSingle();
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`tab-${tab}`).classList.add('active');
+            document.getElementById('empty-state').classList.remove('hidden');
+            document.getElementById('table-container').classList.add('hidden');
+        }
 
-                if (data) {
-                    document.getElementById('input-api-key').value = "********************";
-                    document.getElementById('input-secret-key').value = "********************";
-                    saveTrigger.innerText = "설정 업데이트";
-                    showNotification("기존 설정이 안전하게 로드되었습니다.", false);
+        async function fetchHistory() {
+            if (!userConfig) { alert("API 설정을 먼저 완료해주세요."); return; }
+            
+            const start = new Date(document.getElementById('start-date').value).getTime();
+            const end = new Date(document.getElementById('end-date').value).getTime();
+
+            document.getElementById('loading-state').classList.remove('hidden');
+            document.getElementById('empty-state').classList.add('hidden');
+            document.getElementById('table-container').classList.add('hidden');
+
+            try {
+                if (currentTab === 'futures') {
+                    await getFuturesTrades(start, end);
+                } else {
+                    await getDepositWithdrawHistory(start, end);
                 }
             } catch (err) {
-                console.error("Config fetch error:", err);
+                alert("데이터 조회 중 오류 발생: " + err.message);
+            } finally {
+                document.getElementById('loading-state').classList.add('hidden');
             }
         }
 
-        apiForm.onsubmit = async (e) => {
-            e.preventDefault();
-            const bKey = document.getElementById('input-api-key').value;
-            const bSecret = document.getElementById('input-secret-key').value;
+        // 바이낸스 서명 생성 함수
+        function getSignature(queryString, secret) {
+            return CryptoJS.HmacSHA256(queryString, secret).toString();
+        }
 
-            // 마스킹된 상태로 저장을 누르는 경우 방지
-            if (bKey.includes('***')) {
-                showNotification("수정할 새로운 키를 입력해 주세요.", true);
+        async function getFuturesTrades(startTime, endTime) {
+            const endpoint = "https://fapi.binance.com/fapi/v1/userTrades";
+            const timestamp = Date.now();
+            const query = `startTime=${startTime}&endTime=${endTime}&timestamp=${timestamp}`;
+            const signature = getSignature(query, userConfig.binance_secret);
+            
+            const response = await fetch(`${endpoint}?${query}&signature=${signature}`, {
+                headers: { 'X-MBX-APIKEY': userConfig.binance_key }
+            });
+            const data = await response.json();
+            renderTable('futures', data);
+        }
+
+        async function getDepositWithdrawHistory(startTime, endTime) {
+            // 입금 내역 조회
+            const depQuery = `startTime=${startTime}&endTime=${endTime}&timestamp=${Date.now()}`;
+            const depSig = getSignature(depQuery, userConfig.binance_secret);
+            const depRes = await fetch(`https://api.binance.com/sapi/v1/capital/deposit/hisrec?${depQuery}&signature=${depSig}`, {
+                headers: { 'X-MBX-APIKEY': userConfig.binance_key }
+            });
+            const deposits = await depRes.json();
+            
+            renderTable('transactions', deposits);
+        }
+
+        function renderTable(type, data) {
+            const head = document.getElementById('table-head');
+            const body = document.getElementById('table-body');
+            body.innerHTML = "";
+            
+            if (!data || data.length === 0 || (data.msg)) {
+                document.getElementById('empty-state').classList.remove('hidden');
                 return;
             }
 
-            saveTrigger.disabled = true;
-            saveTrigger.innerText = "시스템 암호화 중...";
+            document.getElementById('table-container').classList.remove('hidden');
 
-            try {
-                // Supabase의 user_settings 테이블에 upsert (없으면 생성, 있으면 수정)
-                const { error } = await sb
-                    .from('user_settings')
-                    .upsert({ 
-                        user_id: currentSessionUser.id,
-                        binance_key: bKey,
-                        binance_secret: bSecret,
-                        updated_at: new Date()
-                    });
-
-                if (error) throw error;
-
-                showNotification("API 정보가 Supabase 클라우드에 저장되었습니다.", false);
-                saveTrigger.innerText = "설정 업데이트";
-            } catch (err) {
-                showNotification("저장 실패: " + err.message, true);
-                saveTrigger.innerText = "다시 시도";
-            } finally {
-                saveTrigger.disabled = false;
+            if (type === 'futures') {
+                head.innerHTML = `<tr><th class="py-4">날짜</th><th>심볼</th><th>사이드</th><th>가격</th><th>수량</th><th>수수료</th></tr>`;
+                data.forEach(row => {
+                    const date = new Date(row.time).toLocaleDateString();
+                    body.innerHTML += `
+                        <tr class="border-b border-white/5 hover:bg-white/5">
+                            <td class="py-4 text-slate-400">${date}</td>
+                            <td class="font-bold">${row.symbol}</td>
+                            <td class="${row.side === 'BUY' ? 'text-emerald-400' : 'text-red-400'}">${row.side}</td>
+                            <td>${parseFloat(row.price).toFixed(2)}</td>
+                            <td>${row.qty}</td>
+                            <td class="text-slate-500">${row.commission} ${row.commissionAsset}</td>
+                        </tr>`;
+                });
+            } else {
+                head.innerHTML = `<tr><th class="py-4">날짜</th><th>코인</th><th>금액</th><th>상태</th><th>네트워크</th></tr>`;
+                data.forEach(row => {
+                    const date = new Date(row.insertTime).toLocaleDateString();
+                    body.innerHTML += `
+                        <tr class="border-b border-white/5 hover:bg-white/5">
+                            <td class="py-4 text-slate-400">${date}</td>
+                            <td class="font-bold">${row.coin}</td>
+                            <td class="text-emerald-400">+ ${row.amount}</td>
+                            <td>${row.status === 1 ? '완료' : '진행중'}</td>
+                            <td class="text-slate-500">${row.network}</td>
+                        </tr>`;
+                });
             }
-        };
-
-        function showNotification(msg, isError) {
-            notifyBox.innerText = msg;
-            notifyBox.className = `mt-4 text-[11px] text-center p-3 rounded-xl border ${
-                isError ? 'text-red-400 border-red-400/20 bg-red-400/5' : 'text-emerald-400 border-emerald-400/20 bg-emerald-400/5'
-            }`;
-            notifyBox.classList.remove('hidden');
         }
 
-        initializeTerminal();
+        init();
     </script>
 </body>
 </html>
