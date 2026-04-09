@@ -8,8 +8,9 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
         body { font-family: 'Inter', sans-serif; background-color: #050810; color: #e2e8f0; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
         .glass-panel { background: rgba(30, 41, 59, 0.4); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.05); }
         .binance-gold { color: #F3BA2F; }
         .bg-binance-gold { background-color: #F3BA2F; }
@@ -83,10 +84,7 @@
 
         <!-- Right: Activity Terminal -->
         <div class="lg:col-span-8 flex flex-col gap-6">
-            <!-- 분석 요약 카드 섹션 (조회 시 표시) -->
-            <div id="analysis-summary" class="hidden grid grid-cols-1 md:grid-cols-3 gap-4">
-                <!-- 심볼별 요약 카드가 여기에 생성됨 -->
-            </div>
+            <div id="analysis-summary" class="hidden grid grid-cols-1 md:grid-cols-3 gap-4"></div>
 
             <div class="glass-panel rounded-[2.5rem] p-8 min-h-[500px] flex flex-col">
                 <div class="flex gap-6 border-b border-white/5 mb-6">
@@ -109,12 +107,8 @@
 
                 <div id="table-container" class="hidden overflow-x-auto">
                     <table class="w-full text-left text-xs">
-                        <thead id="table-head" class="text-slate-500 uppercase border-b border-white/5">
-                            <!-- Headers injected here -->
-                        </thead>
-                        <tbody id="table-body">
-                            <!-- Rows injected here -->
-                        </tbody>
+                        <thead id="table-head" class="text-slate-500 uppercase border-b border-white/5"></thead>
+                        <tbody id="table-body" class="mono"></tbody>
                     </table>
                 </div>
             </div>
@@ -129,9 +123,10 @@
         let currentTab = 'futures';
         let userConfig = null;
         let currentUser = null;
-        let rawTradeData = []; // 원본 거래 데이터 저장
+        let rawTradeData = [];
+        let usdToKrw = 1350; // 기본 환율 (실시간 API 연동 전 가상 데이터)
 
-        // 초기 날짜 설정 (최근 7일)
+        // 초기 날짜 설정
         const today = new Date();
         const lastWeek = new Date(today);
         lastWeek.setDate(today.getDate() - 7);
@@ -177,14 +172,9 @@
             document.getElementById('loading-state').classList.remove('hidden');
             document.getElementById('empty-state').classList.add('hidden');
             document.getElementById('table-container').classList.add('hidden');
-            document.getElementById('analysis-summary').classList.add('hidden');
 
             try {
-                // 항상 선물 거래 데이터를 먼저 가져와서 요약 계산 가능하게 함
                 await getFuturesTrades(start, end);
-                if (currentTab === 'transactions') {
-                    await getDepositWithdrawHistory(start, end);
-                }
                 renderContent();
             } catch (err) {
                 alert("데이터 조회 중 오류 발생: " + err.message);
@@ -209,15 +199,6 @@
             rawTradeData = await response.json();
         }
 
-        async function getDepositWithdrawHistory(startTime, endTime) {
-            const depQuery = `startTime=${startTime}&endTime=${endTime}&timestamp=${Date.now()}`;
-            const depSig = getSignature(depQuery, userConfig.binance_secret);
-            const depRes = await fetch(`https://api.binance.com/sapi/v1/capital/deposit/hisrec?${depQuery}&signature=${depSig}`, {
-                headers: { 'X-MBX-APIKEY': userConfig.binance_key }
-            });
-            return await depRes.json();
-        }
-
         function renderContent() {
             const head = document.getElementById('table-head');
             const body = document.getElementById('table-body');
@@ -229,10 +210,16 @@
             } else if (currentTab === 'summary') {
                 renderSummaryTable(rawTradeData);
             } else if (currentTab === 'transactions') {
-                // 입출금은 별도 호출 필요 (예시로 빈 데이터 처리 가능)
-                head.innerHTML = `<tr><th class="py-4">날짜</th><th>코인</th><th>금액</th><th>상태</th></tr>`;
-                body.innerHTML = `<tr><td colspan="4" class="py-10 text-center text-slate-500">다시 조회를 눌러 입출금 내역을 불러오세요.</td></tr>`;
+                head.innerHTML = `<tr><th class="py-4 px-4">날짜/시간</th><th>코인</th><th>금액</th><th>상태</th></tr>`;
+                body.innerHTML = `<tr><td colspan="4" class="py-10 text-center text-slate-500">입출금 내역이 없습니다.</td></tr>`;
             }
+        }
+
+        function formatDateTime(timestamp) {
+            const d = new Date(timestamp);
+            const date = d.toLocaleDateString('ko-KR', { year:'numeric', month:'2-digit', day:'2-digit' }).replace(/\. /g, '-').replace('.','');
+            const time = d.toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            return { date, time };
         }
 
         function renderFuturesTable(data) {
@@ -245,17 +232,39 @@
                 return;
             }
 
-            head.innerHTML = `<tr><th class="py-4">날짜</th><th>심볼</th><th>사이드</th><th>가격</th><th>수량</th><th>수수료</th></tr>`;
+            head.innerHTML = `<tr>
+                <th class="py-4 px-4">날짜/시간 (초 단위)</th>
+                <th>심볼</th>
+                <th>사이드</th>
+                <th>가격</th>
+                <th>수량 / 거래대금</th>
+                <th>수수료 (KRW)</th>
+            </tr>`;
+
             data.forEach(row => {
-                const date = new Date(row.time).toLocaleDateString();
+                const { date, time } = formatDateTime(row.time);
+                const sideClass = row.side === 'BUY' ? 'text-emerald-400' : 'text-red-400';
+                const quoteQty = parseFloat(row.quoteQty);
+                const krwValue = (quoteQty * usdToKrw).toLocaleString();
+                const commissionKrw = (parseFloat(row.commission) * usdToKrw).toLocaleString(undefined, { maximumFractionDigits: 0 });
+
                 body.innerHTML += `
-                    <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
-                        <td class="py-4 text-slate-400">${date}</td>
-                        <td class="font-bold">${row.symbol}</td>
-                        <td class="${row.side === 'BUY' ? 'text-emerald-400' : 'text-red-400'}">${row.side}</td>
-                        <td class="font-mono">${parseFloat(row.price).toLocaleString()}</td>
-                        <td class="font-mono">${row.qty}</td>
-                        <td class="text-slate-500 text-[10px]">${row.commission} ${row.commissionAsset}</td>
+                    <tr class="border-b border-white/5 hover:bg-white/5 transition-colors group">
+                        <td class="py-4 px-4 whitespace-nowrap">
+                            <span class="text-slate-400 text-[10px]">${date}</span>
+                            <span class="binance-gold ml-1 font-bold text-xs">${time}</span>
+                        </td>
+                        <td class="font-bold text-white">${row.symbol}</td>
+                        <td class="font-bold ${sideClass}">${row.side}</td>
+                        <td class="text-slate-300 font-mono">${parseFloat(row.price).toLocaleString()}</td>
+                        <td class="text-slate-300 font-mono">
+                            <div>${row.qty} <span class="text-[10px] text-slate-500">QTY</span></div>
+                            <div class="text-[10px] text-emerald-500/70">₩${krwValue}</div>
+                        </td>
+                        <td class="text-slate-500 text-[10px]">
+                            <div>${row.commission} ${row.commissionAsset}</div>
+                            <div class="binance-gold">약 ₩${commissionKrw}</div>
+                        </td>
                     </tr>`;
             });
         }
@@ -269,33 +278,36 @@
                 return;
             }
 
-            // 심볼별 데이터 집계
             const summary = {};
             data.forEach(row => {
                 if (!summary[row.symbol]) {
-                    summary[row.symbol] = { buy: 0, sell: 0, fees: 0, asset: row.commissionAsset };
+                    summary[row.symbol] = { buy: 0, sell: 0, fees: 0 };
                 }
-                const amount = parseFloat(row.quoteQty); // 거래 대금 (USDT 등)
-                if (row.side === 'BUY') {
-                    summary[row.symbol].buy += amount;
-                } else {
-                    summary[row.symbol].sell += amount;
-                }
+                const amount = parseFloat(row.quoteQty);
+                if (row.side === 'BUY') summary[row.symbol].buy += amount;
+                else summary[row.symbol].sell += amount;
                 summary[row.symbol].fees += parseFloat(row.commission);
             });
 
-            head.innerHTML = `<tr><th class="py-4">심볼</th><th>총 매수 대금</th><th>총 매도 대금</th><th>실현 순익 (수수료 제외)</th></tr>`;
+            head.innerHTML = `<tr><th class="py-4 px-4">심볼</th><th>총 매수/매도 대금</th><th>실현 순익 (USD)</th><th>실현 순익 (KRW)</th></tr>`;
             
             Object.keys(summary).forEach(symbol => {
                 const s = summary[symbol];
                 const netProfit = s.sell - s.buy;
+                const krwProfit = (netProfit * usdToKrw).toLocaleString(undefined, { maximumFractionDigits: 0 });
+
                 body.innerHTML += `
                     <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
-                        <td class="py-4 font-bold text-base">${symbol}</td>
-                        <td class="text-emerald-500 font-mono">$${s.buy.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                        <td class="text-red-400 font-mono">$${s.sell.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                        <td class="py-4 px-4 font-bold text-base text-white">${symbol}</td>
+                        <td class="font-mono text-[11px]">
+                            <div class="text-emerald-500">B: $${s.buy.toLocaleString()}</div>
+                            <div class="text-red-400">S: $${s.sell.toLocaleString()}</div>
+                        </td>
                         <td class="font-bold font-mono ${netProfit >= 0 ? 'text-emerald-400' : 'text-red-500'}">
                             ${netProfit >= 0 ? '+' : ''}$${netProfit.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                        </td>
+                        <td class="font-bold font-mono ${netProfit >= 0 ? 'text-emerald-400' : 'text-red-500'}">
+                            ${netProfit >= 0 ? '+' : ''}₩${krwProfit}
                         </td>
                     </tr>`;
             });
