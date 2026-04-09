@@ -68,24 +68,30 @@
                 <div class="space-y-4">
                     <div class="grid grid-cols-2 gap-2">
                         <div>
-                            <label class="text-[9px] text-slate-500 uppercase ml-1">Start Date</label>
+                            <label class="text-[9px] text-slate-500 uppercase ml-1">시작일</label>
                             <input type="date" id="start-date" class="input-field w-full px-3 py-2 rounded-lg text-[11px]">
                         </div>
                         <div>
-                            <label class="text-[9px] text-slate-500 uppercase ml-1">End Date</label>
+                            <label class="text-[9px] text-slate-500 uppercase ml-1">종료일</label>
                             <input type="date" id="end-date" class="input-field w-full px-3 py-2 rounded-lg text-[11px]">
                         </div>
                     </div>
-                    <button onclick="fetchHistory()" class="w-full bg-white/5 hover:bg-white/10 border border-white/10 py-3 rounded-xl text-xs font-bold transition-all">내역 조회하기</button>
+                    <button onclick="fetchHistory()" class="w-full bg-white/5 hover:bg-white/10 border border-white/10 py-3 rounded-xl text-xs font-bold transition-all">내역 조회 및 분석</button>
                 </div>
             </div>
         </div>
 
         <!-- Right: Activity Terminal -->
         <div class="lg:col-span-8 flex flex-col gap-6">
+            <!-- 분석 요약 카드 섹션 (조회 시 표시) -->
+            <div id="analysis-summary" class="hidden grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- 심볼별 요약 카드가 여기에 생성됨 -->
+            </div>
+
             <div class="glass-panel rounded-[2.5rem] p-8 min-h-[500px] flex flex-col">
                 <div class="flex gap-6 border-b border-white/5 mb-6">
                     <button onclick="switchTab('futures')" id="tab-futures" class="tab-btn active pb-4 text-sm font-bold transition-all">선물 거래 내역</button>
+                    <button onclick="switchTab('summary')" id="tab-summary" class="tab-btn pb-4 text-sm font-bold transition-all">심볼별 요약 통계</button>
                     <button onclick="switchTab('transactions')" id="tab-transactions" class="tab-btn pb-4 text-sm font-bold transition-all">입출금 내역</button>
                 </div>
 
@@ -123,6 +129,7 @@
         let currentTab = 'futures';
         let userConfig = null;
         let currentUser = null;
+        let rawTradeData = []; // 원본 거래 데이터 저장
 
         // 초기 날짜 설정 (최근 7일)
         const today = new Date();
@@ -152,8 +159,13 @@
             currentTab = tab;
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             document.getElementById(`tab-${tab}`).classList.add('active');
-            document.getElementById('empty-state').classList.remove('hidden');
-            document.getElementById('table-container').classList.add('hidden');
+            
+            if (rawTradeData.length > 0 || currentTab === 'transactions') {
+                renderContent();
+            } else {
+                document.getElementById('empty-state').classList.remove('hidden');
+                document.getElementById('table-container').classList.add('hidden');
+            }
         }
 
         async function fetchHistory() {
@@ -165,13 +177,15 @@
             document.getElementById('loading-state').classList.remove('hidden');
             document.getElementById('empty-state').classList.add('hidden');
             document.getElementById('table-container').classList.add('hidden');
+            document.getElementById('analysis-summary').classList.add('hidden');
 
             try {
-                if (currentTab === 'futures') {
-                    await getFuturesTrades(start, end);
-                } else {
+                // 항상 선물 거래 데이터를 먼저 가져와서 요약 계산 가능하게 함
+                await getFuturesTrades(start, end);
+                if (currentTab === 'transactions') {
                     await getDepositWithdrawHistory(start, end);
                 }
+                renderContent();
             } catch (err) {
                 alert("데이터 조회 중 오류 발생: " + err.message);
             } finally {
@@ -179,7 +193,6 @@
             }
         }
 
-        // 바이낸스 서명 생성 함수
         function getSignature(queryString, secret) {
             return CryptoJS.HmacSHA256(queryString, secret).toString();
         }
@@ -193,62 +206,99 @@
             const response = await fetch(`${endpoint}?${query}&signature=${signature}`, {
                 headers: { 'X-MBX-APIKEY': userConfig.binance_key }
             });
-            const data = await response.json();
-            renderTable('futures', data);
+            rawTradeData = await response.json();
         }
 
         async function getDepositWithdrawHistory(startTime, endTime) {
-            // 입금 내역 조회
             const depQuery = `startTime=${startTime}&endTime=${endTime}&timestamp=${Date.now()}`;
             const depSig = getSignature(depQuery, userConfig.binance_secret);
             const depRes = await fetch(`https://api.binance.com/sapi/v1/capital/deposit/hisrec?${depQuery}&signature=${depSig}`, {
                 headers: { 'X-MBX-APIKEY': userConfig.binance_key }
             });
-            const deposits = await depRes.json();
-            
-            renderTable('transactions', deposits);
+            return await depRes.json();
         }
 
-        function renderTable(type, data) {
+        function renderContent() {
             const head = document.getElementById('table-head');
             const body = document.getElementById('table-body');
             body.innerHTML = "";
+            document.getElementById('table-container').classList.remove('hidden');
+
+            if (currentTab === 'futures') {
+                renderFuturesTable(rawTradeData);
+            } else if (currentTab === 'summary') {
+                renderSummaryTable(rawTradeData);
+            } else if (currentTab === 'transactions') {
+                // 입출금은 별도 호출 필요 (예시로 빈 데이터 처리 가능)
+                head.innerHTML = `<tr><th class="py-4">날짜</th><th>코인</th><th>금액</th><th>상태</th></tr>`;
+                body.innerHTML = `<tr><td colspan="4" class="py-10 text-center text-slate-500">다시 조회를 눌러 입출금 내역을 불러오세요.</td></tr>`;
+            }
+        }
+
+        function renderFuturesTable(data) {
+            const head = document.getElementById('table-head');
+            const body = document.getElementById('table-body');
             
-            if (!data || data.length === 0 || (data.msg)) {
+            if (!data || data.length === 0 || data.msg) {
                 document.getElementById('empty-state').classList.remove('hidden');
+                document.getElementById('table-container').classList.add('hidden');
                 return;
             }
 
-            document.getElementById('table-container').classList.remove('hidden');
+            head.innerHTML = `<tr><th class="py-4">날짜</th><th>심볼</th><th>사이드</th><th>가격</th><th>수량</th><th>수수료</th></tr>`;
+            data.forEach(row => {
+                const date = new Date(row.time).toLocaleDateString();
+                body.innerHTML += `
+                    <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
+                        <td class="py-4 text-slate-400">${date}</td>
+                        <td class="font-bold">${row.symbol}</td>
+                        <td class="${row.side === 'BUY' ? 'text-emerald-400' : 'text-red-400'}">${row.side}</td>
+                        <td class="font-mono">${parseFloat(row.price).toLocaleString()}</td>
+                        <td class="font-mono">${row.qty}</td>
+                        <td class="text-slate-500 text-[10px]">${row.commission} ${row.commissionAsset}</td>
+                    </tr>`;
+            });
+        }
 
-            if (type === 'futures') {
-                head.innerHTML = `<tr><th class="py-4">날짜</th><th>심볼</th><th>사이드</th><th>가격</th><th>수량</th><th>수수료</th></tr>`;
-                data.forEach(row => {
-                    const date = new Date(row.time).toLocaleDateString();
-                    body.innerHTML += `
-                        <tr class="border-b border-white/5 hover:bg-white/5">
-                            <td class="py-4 text-slate-400">${date}</td>
-                            <td class="font-bold">${row.symbol}</td>
-                            <td class="${row.side === 'BUY' ? 'text-emerald-400' : 'text-red-400'}">${row.side}</td>
-                            <td>${parseFloat(row.price).toFixed(2)}</td>
-                            <td>${row.qty}</td>
-                            <td class="text-slate-500">${row.commission} ${row.commissionAsset}</td>
-                        </tr>`;
-                });
-            } else {
-                head.innerHTML = `<tr><th class="py-4">날짜</th><th>코인</th><th>금액</th><th>상태</th><th>네트워크</th></tr>`;
-                data.forEach(row => {
-                    const date = new Date(row.insertTime).toLocaleDateString();
-                    body.innerHTML += `
-                        <tr class="border-b border-white/5 hover:bg-white/5">
-                            <td class="py-4 text-slate-400">${date}</td>
-                            <td class="font-bold">${row.coin}</td>
-                            <td class="text-emerald-400">+ ${row.amount}</td>
-                            <td>${row.status === 1 ? '완료' : '진행중'}</td>
-                            <td class="text-slate-500">${row.network}</td>
-                        </tr>`;
-                });
+        function renderSummaryTable(data) {
+            const head = document.getElementById('table-head');
+            const body = document.getElementById('table-body');
+            
+            if (!data || data.length === 0 || data.msg) {
+                body.innerHTML = `<tr><td colspan="4" class="py-10 text-center text-slate-500">분석할 거래 데이터가 없습니다.</td></tr>`;
+                return;
             }
+
+            // 심볼별 데이터 집계
+            const summary = {};
+            data.forEach(row => {
+                if (!summary[row.symbol]) {
+                    summary[row.symbol] = { buy: 0, sell: 0, fees: 0, asset: row.commissionAsset };
+                }
+                const amount = parseFloat(row.quoteQty); // 거래 대금 (USDT 등)
+                if (row.side === 'BUY') {
+                    summary[row.symbol].buy += amount;
+                } else {
+                    summary[row.symbol].sell += amount;
+                }
+                summary[row.symbol].fees += parseFloat(row.commission);
+            });
+
+            head.innerHTML = `<tr><th class="py-4">심볼</th><th>총 매수 대금</th><th>총 매도 대금</th><th>실현 순익 (수수료 제외)</th></tr>`;
+            
+            Object.keys(summary).forEach(symbol => {
+                const s = summary[symbol];
+                const netProfit = s.sell - s.buy;
+                body.innerHTML += `
+                    <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
+                        <td class="py-4 font-bold text-base">${symbol}</td>
+                        <td class="text-emerald-500 font-mono">$${s.buy.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                        <td class="text-red-400 font-mono">$${s.sell.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                        <td class="font-bold font-mono ${netProfit >= 0 ? 'text-emerald-400' : 'text-red-500'}">
+                            ${netProfit >= 0 ? '+' : ''}$${netProfit.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                        </td>
+                    </tr>`;
+            });
         }
 
         init();
