@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>C-Suite AI Conference Room</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Supabase 라이브러리 하나만 사용 (CDN 버전) -->
+    <!-- Supabase Library -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         .glass-morphism {
@@ -52,7 +52,7 @@
         <aside class="w-full md:w-64 border-r border-slate-800 p-4 bg-slate-900/30 overflow-y-auto">
             <h2 class="text-sm font-semibold mb-4 text-slate-500 uppercase tracking-wider">회의 참석자</h2>
             <div id="participantList" class="space-y-3">
-                <!-- 동적 생성 -->
+                <!-- Dynamically generated -->
             </div>
         </aside>
 
@@ -107,7 +107,7 @@
             "CFO": "GROUP4", "CRO": "GROUP4"
         };
 
-        // Supabase 초기화 (단 한 번만 수행)
+        // Initialize Supabase Client
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         
         let currentSessionId = null;
@@ -134,13 +134,13 @@
             const statusText = document.getElementById('statusText');
 
             try {
-                // 스키마 확인 결과: participant_status 테이블 사용
+                // Check table: participant_status
                 const { data, error } = await supabaseClient.from('participant_status').select('role_key').limit(1);
                 
                 if (error) {
                     console.error("Supabase Error:", error);
                     statusDot.classList.replace('bg-yellow-500', 'bg-red-500');
-                    statusText.innerText = "연결 오류: 테이블 부재 또는 RLS 설정 확인";
+                    statusText.innerText = "연결 오류: 테이블 확인 필요";
                     return;
                 }
 
@@ -158,7 +158,7 @@
             const listEl = document.getElementById('participantList');
             
             if (error || !data || data.length === 0) {
-                listEl.innerHTML = '<p class="text-[10px] text-red-400 p-2">페르소나 데이터를 불러올 수 없습니다. 테이블에 데이터를 추가해 주세요.</p>';
+                listEl.innerHTML = '<p class="text-[10px] text-red-400 p-2">페르소나 데이터를 불러올 수 없습니다.</p>';
                 return;
             }
 
@@ -185,7 +185,7 @@
             isProcessing = true;
 
             try {
-                // 스키마: conference_sessions (id, title, created_at)
+                // Table: conference_sessions (id, title, created_at)
                 const { data: session, error } = await supabaseClient
                     .from('conference_sessions')
                     .insert([{ title: topic }])
@@ -206,7 +206,7 @@
                 }
             } catch (err) {
                 console.error("Discussion Initiation Error:", err);
-                addMessage('System', '회의 시작 중 오류가 발생했습니다. DB 권한을 확인해 주세요.', 'ai');
+                addMessage('System', '회의 시작 중 오류가 발생했습니다.', 'ai');
             } finally {
                 isProcessing = false;
             }
@@ -215,7 +215,7 @@
         async function runAIRole(role, stageNumber) {
             updateUIStatus(role, true);
 
-            // 스키마: meeting_messages (session_id, role_key, content, analysis_type)
+            // Fetch history from meeting_messages
             const { data: history } = await supabaseClient
                 .from('meeting_messages')
                 .select('role_key, content')
@@ -227,9 +227,9 @@
             const systemPrompt = `
                 너는 ${role}이다. 
                 페르소나: ${personas[role] || "전문 경영진"}
-                회의 주제 및 히스토리: ${historyText}
-                현재 단계: ${stageNumber}/4
-                직책의 관점에서 간결하고 날카로운 의견을 한국어로 한 문장 제시하라.
+                회의 히스토리: ${historyText}
+                현재 토론 단계: ${stageNumber}/4
+                위 히스토리를 참고하여 ${role}의 관점에서 전략적인 의견을 한국어로 한 문장 제시하라.
             `;
 
             try {
@@ -237,6 +237,7 @@
                 const apiKey = GEMINI_KEYS[group];
                 const response = await callGemini(systemPrompt, apiKey);
                 
+                // Table: meeting_messages (session_id, role_key, content, analysis_type)
                 await supabaseClient.from('meeting_messages').insert([{
                     session_id: currentSessionId,
                     role_key: role,
@@ -247,20 +248,35 @@
                 addMessage(role, response, 'ai');
             } catch (err) {
                 console.error(`Error with ${role}:`, err);
+                addMessage('System', `${role} 응답 생성 실패`, 'ai');
             } finally {
                 updateUIStatus(role, false);
             }
         }
 
         async function callGemini(prompt, apiKey) {
+            // Updated URL format to avoid 404
             const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-            const res = await fetch(url, {
+            
+            const response = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }]
+                })
             });
-            const data = await res.json();
-            return data.candidates[0].content.parts[0].text;
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                console.error("Gemini API Error details:", errorData);
+                throw new Error(`API Request failed with status ${response.status}`);
+            }
+
+            const data = await response.json();
+            const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+            
+            if (!text) throw new Error("Invalid response structure from Gemini");
+            return text;
         }
 
         function addMessage(sender, text, type) {
@@ -269,8 +285,8 @@
             const isUser = type === 'user';
             div.className = `flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`;
             div.innerHTML = `
-                <div class="max-w-[85%] p-4 rounded-2xl ${isUser ? 'bg-blue-600' : 'bg-slate-800 border border-slate-700'}">
-                    <div class="text-[10px] font-bold mb-1 opacity-60 uppercase">${sender}</div>
+                <div class="max-w-[85%] p-4 rounded-2xl ${isUser ? 'bg-blue-600' : 'bg-slate-800 border border-slate-700 shadow-lg'}">
+                    <div class="text-[10px] font-bold mb-1 opacity-60 uppercase tracking-tight">${sender}</div>
                     <div class="text-sm leading-relaxed">${text}</div>
                 </div>
             `;
@@ -285,7 +301,7 @@
             if (isThinking) {
                 el.classList.add('border-blue-500', 'bg-blue-500/10', 'thinking');
                 indicator.innerText = "분석 중...";
-                indicator.className = "status-indicator text-[10px] text-blue-400";
+                indicator.className = "status-indicator text-[10px] text-blue-400 font-medium";
             } else {
                 el.classList.remove('border-blue-500', 'bg-blue-500/10', 'thinking');
                 indicator.innerText = "대기중";
@@ -296,6 +312,7 @@
         function setupEventListeners() {
             const sendBtn = document.getElementById('sendBtn');
             const userInput = document.getElementById('userInput');
+            
             const handler = () => {
                 const val = userInput.value.trim();
                 if (val && !isProcessing) {
@@ -303,8 +320,14 @@
                     userInput.value = '';
                 }
             };
+
             sendBtn.onclick = handler;
-            userInput.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handler(); } };
+            userInput.onkeydown = (e) => { 
+                if (e.key === 'Enter' && !e.shiftKey) { 
+                    e.preventDefault(); 
+                    handler(); 
+                } 
+            };
         }
     </script>
 </body>
