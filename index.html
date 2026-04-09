@@ -99,10 +99,25 @@
     </main>
 
     <script>
-        // --- 1. CONFIGURATION (업데이트됨) ---
+        // --- 1. CONFIGURATION ---
         const SUPABASE_URL = "https://pcmrpxcpjynmayactgan.supabase.co"; 
         const SUPABASE_ANON_KEY = "sb_publishable_endfjcxVBfda-lzjOpPbrQ_DTdF3MHZ"; 
-        const GEMINI_API_KEY = "AIzaSyDOuootRofHJ4AOSEanA-B8V5wzuNBIcuc"; 
+
+        // 직책 그룹별 Gemini API Key 할당
+        const GEMINI_KEYS = {
+            "GROUP1": "AIzaSyDOuootRofHJ4AOSEanA-B8V5wzuNBIcuc", // CEO, CSO
+            "GROUP2": "AIzaSyD1vAdVRyf7aeYhLxIDzd5Ln0SxYMNAtjI", // CPO, CMO
+            "GROUP3": "AIzaSyDkOTEUZq5tpX6qF14Is80jUT-Y-LjPVT4", // CTO, CDO
+            "GROUP4": "AIzaSyBpTVLu44pvfWId6qMtFjqE1oZjbZ4Fv3A"  // CFO, CRO
+        };
+
+        // 역할별 그룹 매핑
+        const ROLE_GROUP_MAP = {
+            "CEO": "GROUP1", "CSO": "GROUP1",
+            "CPO": "GROUP2", "CMO": "GROUP2",
+            "CTO": "GROUP3", "CDO": "GROUP3",
+            "CFO": "GROUP4", "CRO": "GROUP4"
+        };
 
         // Supabase Client 초기화
         const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -112,7 +127,7 @@
         let isProcessing = false;
         let personas = {};
 
-        // 4단계 토론 순서 (전략 회의 로직)
+        // 4단계 토론 순서
         const DISCUSSION_STAGES = [
             ['CEO', 'CPO', 'CMO'], // 1단계: 아이디어 확장
             ['CTO', 'CDO'],         // 2단계: 기술 검토
@@ -129,7 +144,6 @@
 
         async function checkConnection() {
             try {
-                // 단순 연결 확인 쿼리
                 const { data, error } = await supabase.from('participant_status').select('role_key').limit(1);
                 if (error) throw error;
                 document.getElementById('statusDot').className = "w-2 h-2 rounded-full bg-emerald-500";
@@ -169,7 +183,6 @@
             isProcessing = true;
 
             try {
-                // 1. 세션 생성
                 const { data: session, error } = await supabase
                     .from('conference_sessions')
                     .insert([{ title: topic }])
@@ -179,15 +192,12 @@
                 if (error) throw error;
                 currentSessionId = session.id;
 
-                // 2. 화면 초기화
                 const chatContainer = document.getElementById('chatContainer');
                 chatContainer.innerHTML = '';
                 addMessage('User', topic, 'user');
 
-                // 3. 4단계 워크플로우 실행
                 for (let stageIndex = 0; stageIndex < DISCUSSION_STAGES.length; stageIndex++) {
                     const stageRoles = DISCUSSION_STAGES[stageIndex];
-                    
                     for (const role of stageRoles) {
                         await runAIRole(role, stageIndex + 1);
                     }
@@ -203,7 +213,6 @@
         async function runAIRole(role, stageNumber) {
             updateUIStatus(role, true);
 
-            // 대화 기록 가져오기 (Context 제공용)
             const { data: history } = await supabase
                 .from('meeting_messages')
                 .select('role_key, content')
@@ -225,9 +234,12 @@
             `;
 
             try {
-                const response = await callGemini(systemPrompt);
+                // 해당 직책에 할당된 API Key 가져오기
+                const group = ROLE_GROUP_MAP[role];
+                const apiKey = GEMINI_KEYS[group];
+
+                const response = await callGemini(systemPrompt, apiKey);
                 
-                // DB 저장
                 await supabase.from('meeting_messages').insert([{
                     session_id: currentSessionId,
                     role_key: role,
@@ -235,7 +247,6 @@
                     analysis_type: stageNumber === 4 ? 'conclusion' : 'general'
                 }]);
 
-                // UI 업데이트
                 addMessage(role, response, 'ai');
             } catch (err) {
                 console.error(err);
@@ -246,8 +257,7 @@
 
         // --- 4. HELPERS ---
 
-        async function callGemini(prompt) {
-            const apiKey = GEMINI_API_KEY;
+        async function callGemini(prompt, apiKey) {
             const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
             
             let retryCount = 0;
