@@ -131,8 +131,8 @@
             <div class="glass-panel rounded-[2.5rem] p-8 min-h-[500px] flex flex-col">
                 <div class="flex items-center justify-between border-b border-white/5 mb-6">
                     <div class="flex gap-6 items-end">
-                        <button onclick="switchTab('futures')" id="tab-futures" class="tab-btn active pb-4 text-sm font-bold transition-all">선물 거래 내역</button>
-                        <button onclick="switchTab('summary')" id="tab-summary" class="tab-btn pb-4 text-sm font-bold transition-all">심볼별 요약</button>
+                        <button onclick="switchTab('summary')" id="tab-summary" class="tab-btn active pb-4 text-sm font-bold transition-all">심볼별 요약</button>
+                        <button onclick="switchTab('futures')" id="tab-futures" class="tab-btn pb-4 text-sm font-bold transition-all">선물 거래 내역</button>
                         <div id="filter-indicator" class="hidden pb-4 flex items-center gap-2">
                             <span class="w-[1px] h-3 bg-white/20"></span>
                             <span id="active-symbol" class="text-[11px] font-bold binance-gold uppercase bg-binance-gold/10 px-2 py-0.5 rounded"></span>
@@ -171,7 +171,7 @@
         const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         const apiKey = ""; // Gemini API Key (Runtime provided)
 
-        let currentTab = 'futures';
+        let currentTab = 'summary'; // 기본 탭을 요약으로 변경
         let userConfig = null;
         let currentUser = null;
         let rawTradeData = [];
@@ -235,7 +235,11 @@
             
             const result = await response.json();
             if (Array.isArray(result)) {
-                rawTradeData = result.sort((a, b) => b.time - a.time);
+                // 실제 체결되지 않았거나 데이터가 비정상적인 경우 필터링 (주문 취소 등)
+                // 선물 거래의 경우 realizedPnl이 0이어도 체결 건일 수 있으므로 qty가 0보다 큰지 확인
+                rawTradeData = result
+                    .filter(t => parseFloat(t.qty) > 0) 
+                    .sort((a, b) => b.time - a.time);
                 document.getElementById('data-count').innerText = `${rawTradeData.length} Rows Loaded`;
             } else throw new Error(result.msg);
         }
@@ -279,13 +283,13 @@
             resultPanel.classList.remove('hidden');
             aiContent.innerHTML = `<div class="flex items-center gap-2 text-slate-400"><div class="w-4 h-4 border-2 border-binance-gold border-t-transparent rounded-full animate-spin"></div>데이터 패턴을 추출하는 중...</div>`;
 
-            // AI에 전달할 데이터 요약 (최근 100건으로 제한하여 토큰 절약 및 핵심 분석)
+            // AI에 전달할 데이터 요약
             const analysisData = rawTradeData.slice(0, 100).map(t => ({
                 t: new Date(t.time).toLocaleString(),
                 s: t.symbol,
                 sd: t.side,
                 p: t.price,
-                q: t.quoteQty,
+                q: parseFloat(t.quoteQty).toFixed(0),
                 r: t.realizedPnl
             }));
 
@@ -312,7 +316,6 @@
                 const data = await response.json();
                 const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "분석 결과를 가져오지 못했습니다.";
                 
-                // 마크다운 스타일을 간단히 HTML로 변환 (볼드체 정도)
                 aiContent.innerHTML = text.replace(/\*\*(.*?)\*\*/g, '<b class="binance-gold">$1</b>');
                 resultPanel.scrollIntoView({ behavior: 'smooth' });
 
@@ -355,7 +358,7 @@
                     <td class="font-bold text-white">${row.symbol}</td>
                     <td class="${row.side === 'BUY' ? 'text-emerald-400' : 'text-red-400'} font-bold">${row.side}</td>
                     <td class="text-right font-mono">${parseFloat(row.price).toLocaleString()}</td>
-                    <td class="text-right font-mono text-slate-400">$${parseFloat(row.quoteQty).toLocaleString()}</td>
+                    <td class="text-right font-mono text-slate-400">$${parseFloat(row.quoteQty).toFixed(0).toLocaleString()}</td>
                     <td class="px-4 text-right font-bold ${pnlClass}">${pnl > 0 ? '+' : ''}${pnl.toFixed(2)}</td>
                 `;
                 body.appendChild(tr);
