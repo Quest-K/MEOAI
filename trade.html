@@ -22,9 +22,29 @@
         ::-webkit-scrollbar-thumb { background: rgba(243, 186, 47, 0.2); border-radius: 10px; }
         .scan-anim { animation: scan 2s infinite linear; }
         @keyframes scan { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
+        
+        /* Modal Styles */
+        .modal-overlay { background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(8px); }
     </style>
 </head>
 <body class="min-h-screen pb-20">
+
+    <!-- Chart Modal -->
+    <div id="chart-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 modal-overlay">
+        <div class="glass-card w-full max-w-5xl h-[80vh] rounded-3xl overflow-hidden flex flex-col relative">
+            <div class="p-4 border-b border-white/10 flex justify-between items-center bg-black/40">
+                <h3 id="modal-symbol-title" class="font-bold binance-gold">SYMBOL CHART</h3>
+                <button onclick="closeChart()" class="text-slate-400 hover:text-white p-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <div id="tradingview-container" class="flex-grow w-full">
+                <!-- Widget will be injected here -->
+            </div>
+        </div>
+    </div>
 
     <nav class="p-6 flex justify-between items-center max-w-7xl mx-auto">
         <div>
@@ -188,6 +208,9 @@
         </section>
     </main>
 
+    <!-- TradingView Script -->
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+
     <script>
         const SUPABASE_URL = "https://pcmrpxcpjynmayactgan.supabase.co";
         const SUPABASE_KEY = "sb_publishable_endfjcxVBfda-lzjOpPbrQ_DTdF3MHZ";
@@ -264,7 +287,7 @@
                 const side = parseFloat(pos.positionAmt) > 0 ? 'LONG' : 'SHORT';
                 const roe = (parseFloat(pos.unrealizedProfit) / (parseFloat(pos.initialMargin) || 1) * 100).toFixed(2);
                 return `
-                    <tr class="hover:bg-white/5 transition-all">
+                    <tr class="hover:bg-white/5 transition-all cursor-pointer" onclick="openChart('${pos.symbol}')">
                         <td class="px-6 py-4 font-bold">${pos.symbol}<br><span class="text-[10px] text-slate-500">${pos.leverage}x</span></td>
                         <td class="px-6 py-4"><span class="px-2 py-0.5 rounded text-[10px] ${side==='LONG'?'bg-emerald-500/20 text-emerald-400':'bg-red-500/20 text-red-400'}">${side}</span><br>${Math.abs(pos.positionAmt)}</td>
                         <td class="px-6 py-4 text-slate-400">${parseFloat(pos.entryPrice).toFixed(4)}<br><span class="text-white">${parseFloat(pos.markPrice).toFixed(4)}</span></td>
@@ -286,7 +309,6 @@
             const statusText = document.getElementById('scan-status-text');
             const statusIcon = document.getElementById('scan-status-icon');
             
-            // 필터 파라미터 읽기
             const interval = document.getElementById('f-interval').value;
             const symbolLimit = parseInt(document.getElementById('f-limit-symbols').value);
 
@@ -297,7 +319,6 @@
             statusText.innerText = `분석 중... (주기: ${interval}, 모드: ${mode === 'down' ? '하락' : '상승 반전'})`;
 
             try {
-                // 1. 거래대금 상위 종목 가져오기
                 const tickerData = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr').then(r => r.json());
                 const sortedSymbols = tickerData
                     .filter(t => t.symbol.endsWith('USDT'))
@@ -315,7 +336,6 @@
                         renderScanResult(symbol, mode);
                         foundCount++;
                     }
-                    // API 속도 제한 고려 (약간의 지연)
                     await new Promise(r => setTimeout(r, 50));
                 }
 
@@ -331,7 +351,6 @@
 
         async function analyzeSymbol(symbol, mode, interval) {
             try {
-                // K라인 데이터 가져오기
                 const klines = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=100`).then(r => r.json());
                 if (klines.length < 70) return false;
 
@@ -342,27 +361,24 @@
                 const getMA = (data, period) => data.slice(-period).reduce((a, b) => a + b, 0) / period;
 
                 if (mode === 'down') {
-                    // 하락 필터 값
                     const downMins = parseInt(document.getElementById('f-down-mins').value);
                     const tightPct = parseFloat(document.getElementById('f-down-tight').value) / 100;
                     const maPeriods = document.getElementById('f-down-ma').value.split(',').map(Number);
                     
-                    // 1. 최고가 경과 시간 체크
-                    const candlesToLook = Math.ceil(1440 / (parseInt(interval) || 30)); // 24시간치 캔들 수
+                    const intervalVal = parseInt(interval) || 30;
+                    const candlesToLook = Math.ceil(1440 / intervalVal);
                     const lastHighs = highs.slice(-candlesToLook);
                     const maxHigh = Math.max(...lastHighs);
                     const maxIndex = lastHighs.lastIndexOf(maxHigh);
-                    const minsSinceHigh = (lastHighs.length - 1 - maxIndex) * (parseInt(interval) || 30);
+                    const minsSinceHigh = (lastHighs.length - 1 - maxIndex) * intervalVal;
                     if (minsSinceHigh < downMins) return false;
 
-                    // 2. 이평선 저항 및 추세 체크
                     for (let p of maPeriods) {
                         const ma = getMA(prices, p);
                         const prevMa = getMA(prices.slice(0, -1), p);
                         if (currentPrice >= ma || ma >= prevMa) return false; 
                     }
 
-                    // 3. 단기 이평 근접도
                     const ma5 = getMA(prices, 5);
                     const ma10 = getMA(prices, 10);
                     const diff5 = Math.abs(currentPrice - ma5) / currentPrice;
@@ -371,19 +387,16 @@
                     return diff5 <= tightPct && diff10 <= tightPct;
 
                 } else if (mode === 'reversal') {
-                    // 상승 반전 필터 값
                     const mainMaPeriods = document.getElementById('f-rev-ma').value.split(',').map(Number);
                     const shortP1 = parseInt(document.getElementById('f-rev-ma-short1').value);
                     const shortP2 = parseInt(document.getElementById('f-rev-ma-short2').value);
 
-                    // 1. 메인 이평 하락 추세 확인
                     for (let p of mainMaPeriods) {
                         const ma = getMA(prices, p);
                         const prevMa = getMA(prices.slice(0, -1), p);
                         if (ma >= prevMa) return false;
                     }
 
-                    // 2. 단기 이평 골든크로스/정배열 및 가격 위치
                     const maS1 = getMA(prices, shortP1);
                     const maS2 = getMA(prices, shortP2);
                     
@@ -396,11 +409,49 @@
             const resultsBox = document.getElementById('scan-results');
             const color = mode === 'down' ? 'text-red-400 border-red-500/30 bg-red-500/5' : 'text-emerald-400 border-emerald-500/30 bg-emerald-500/5';
             const html = `
-                <div class="px-3 py-2 rounded-xl border ${color} text-[10px] font-bold flex flex-col items-center justify-center transition-all hover:scale-105 cursor-pointer">
+                <div onclick="openChart('${symbol}')" class="px-3 py-2 rounded-xl border ${color} text-[10px] font-bold flex flex-col items-center justify-center transition-all hover:scale-105 cursor-pointer">
                     <span>${symbol}</span>
                 </div>
             `;
             resultsBox.insertAdjacentHTML('beforeend', html);
+        }
+
+        // --- Chart Functions ---
+        function openChart(symbol) {
+            const modal = document.getElementById('chart-modal');
+            const title = document.getElementById('modal-symbol-title');
+            const container = document.getElementById('tradingview-container');
+            const interval = document.getElementById('f-interval').value;
+            
+            // Convert binance interval to TradingView interval
+            let tvInterval = "30";
+            if(interval === "15m") tvInterval = "15";
+            if(interval === "1h") tvInterval = "60";
+            if(interval === "4h") tvInterval = "240";
+
+            title.innerText = `${symbol} Futures Chart (${interval})`;
+            modal.classList.remove('hidden');
+            container.innerHTML = `<div id="tv_widget_holder" class="w-full h-full"></div>`;
+
+            new TradingView.widget({
+                "autosize": true,
+                "symbol": `BINANCE:${symbol}.P`,
+                "interval": tvInterval,
+                "timezone": "Asia/Seoul",
+                "theme": "dark",
+                "style": "1",
+                "locale": "kr",
+                "toolbar_bg": "#f1f3f6",
+                "enable_publishing": false,
+                "hide_side_toolbar": false,
+                "allow_symbol_change": true,
+                "container_id": "tv_widget_holder"
+            });
+        }
+
+        function closeChart() {
+            document.getElementById('chart-modal').classList.add('hidden');
+            document.getElementById('tradingview-container').innerHTML = '';
         }
 
         function toggleFilterSettings() { document.getElementById('filter-settings').classList.toggle('hidden'); }
