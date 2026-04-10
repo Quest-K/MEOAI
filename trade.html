@@ -19,12 +19,10 @@
         .input-field:focus { border-color: #F3BA2F; background: rgba(255,255,255,0.07); outline: none; }
         .btn-primary { background-color: #F3BA2F; color: black; font-weight: 700; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
         .btn-primary:hover { transform: translateY(-1px); filter: brightness(1.1); box-shadow: 0 0 20px rgba(243, 186, 47, 0.3); }
-        .tab-btn { color: #94a3b8; border-bottom: 2px solid transparent; cursor: pointer; padding-bottom: 0.75rem; font-size: 0.875rem; font-weight: 600; }
-        .tab-btn.active { color: #F3BA2F; border-bottom: 2px solid #F3BA2F; }
         
         .card-stat { background: linear-gradient(145deg, rgba(30, 41, 59, 0.4), rgba(15, 23, 42, 0.6)); border: 1px solid rgba(255, 255, 255, 0.03); }
         
-        .table-wrapper { max-height: 600px; overflow-y: auto; }
+        .table-wrapper { max-height: 400px; overflow-y: auto; }
         thead th { position: sticky; top: 0; background: #0f172a; z-index: 10; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
         
         ::-webkit-scrollbar { width: 4px; }
@@ -32,9 +30,14 @@
         
         .ai-loading { animation: pulse-gold 1.5s infinite; pointer-events: none; opacity: 0.7; }
         @keyframes pulse-gold { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.5); } }
+
+        .chart-container { height: 500px; width: 100%; border-radius: 1.5rem; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.05); }
+        .clickable-row { cursor: pointer; transition: background 0.2s; }
+        .clickable-row:hover { background: rgba(243, 186, 47, 0.05) !important; }
+        .active-row { background: rgba(243, 186, 47, 0.1) !important; border-left: 3px solid #F3BA2F; }
     </style>
 </head>
-<body class="min-h-screen">
+<body class="min-h-screen pb-20">
 
     <nav class="border-b border-white/5 bg-slate-950/50 backdrop-blur-xl sticky top-0 z-50">
         <div class="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
@@ -48,7 +51,7 @@
             </div>
             <div id="account-summary-top" class="hidden md:flex items-center gap-8 px-6 border-l border-white/10 ml-6">
                 <div>
-                    <p class="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Available USDT</p>
+                    <p class="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Available Balance</p>
                     <p id="top-avail-balance" class="text-sm font-black mono text-emerald-400">0.00</p>
                 </div>
                 <div>
@@ -103,7 +106,7 @@
         </div>
 
         <div class="grid grid-cols-12 gap-6">
-            <!-- Sidebar: API & Info -->
+            <!-- Sidebar -->
             <div class="col-span-12 lg:col-span-3 space-y-6">
                 <div class="glass-panel rounded-3xl p-6 border-white/5">
                     <h3 class="text-xs font-bold text-slate-500 mb-4 uppercase tracking-widest">Connect Exchange</h3>
@@ -114,22 +117,24 @@
                     </form>
                 </div>
 
+                <!-- AI Quick Insight -->
                 <div id="ai-suggestion-box" class="hidden glass-panel rounded-3xl p-6 border-binance-gold/30">
                     <div class="flex items-center gap-2 mb-4">
                         <div class="w-2 h-2 rounded-full bg-binance-gold animate-pulse"></div>
-                        <span class="text-[10px] font-bold binance-gold uppercase">AI Risk Alert</span>
+                        <span class="text-[10px] font-bold binance-gold uppercase">AI Trading Guide</span>
                     </div>
                     <div id="ai-brief" class="text-xs leading-relaxed text-slate-400"></div>
                 </div>
             </div>
 
-            <!-- Main Table Content -->
+            <!-- Main Content Area -->
             <div class="col-span-12 lg:col-span-9 space-y-6">
+                <!-- Position Table -->
                 <div class="glass-panel rounded-3xl overflow-hidden">
                     <div class="px-6 py-4 border-b border-white/5 flex items-center justify-between">
                         <h3 class="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
                             <span class="w-2 h-4 bg-binance-gold rounded-full"></span>
-                            Active Positions
+                            Active Positions <span class="text-[10px] text-slate-500 normal-case ml-2">(Click symbol to view chart)</span>
                         </h3>
                         <span id="pos-count" class="text-[10px] font-mono text-slate-500">0 POSITIONS</span>
                     </div>
@@ -143,7 +148,7 @@
                                     <th class="p-4 text-right text-slate-500 uppercase tracking-tighter font-bold">Entry / Mark</th>
                                     <th class="p-4 text-right text-slate-500 uppercase tracking-tighter font-bold">uPnL / ROE</th>
                                     <th class="p-4 text-center text-slate-500 uppercase tracking-tighter font-bold">TP / SL Target</th>
-                                    <th class="p-4 text-right text-slate-500 uppercase tracking-tighter font-bold">Time</th>
+                                    <th class="p-4 text-right text-slate-500 uppercase tracking-tighter font-bold">Update</th>
                                 </tr>
                             </thead>
                             <tbody id="pos-table-body" class="mono divide-y divide-white/5">
@@ -155,12 +160,24 @@
                     </div>
                 </div>
 
-                <!-- Analysis Panel (Bottom) -->
-                <div id="ai-full-panel" class="hidden glass-panel rounded-3xl p-8 border-l-4 border-binance-gold">
-                    <h2 class="text-lg font-bold binance-gold mb-4 flex items-center gap-2">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-                        심층 리스크 분석 및 대응 전략
-                    </h2>
+                <!-- Chart Section -->
+                <div id="chart-section" class="hidden space-y-4">
+                    <div class="flex items-center justify-between">
+                        <h3 id="chart-title" class="text-sm font-bold uppercase tracking-widest binance-gold">--- CHART</h3>
+                        <button onclick="closeChart()" class="text-slate-500 hover:text-white text-xs">Close Chart ✕</button>
+                    </div>
+                    <div id="tv_chart_container" class="chart-container"></div>
+                </div>
+
+                <!-- Detailed AI Analysis Panel -->
+                <div id="ai-full-panel" class="hidden glass-panel rounded-3xl p-8 border-l-4 border-binance-gold shadow-2xl">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-lg font-bold binance-gold flex items-center gap-2">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                            심층 리스크 분석 및 추가 진입 가이드
+                        </h2>
+                        <span id="ai-timestamp" class="text-[10px] text-slate-500 mono"></span>
+                    </div>
                     <div id="ai-full-content" class="text-sm text-slate-300 leading-relaxed whitespace-pre-line space-y-4"></div>
                 </div>
             </div>
@@ -168,15 +185,15 @@
     </main>
 
     <script>
-        // Configuration
         const SUPABASE_URL = "https://pcmrpxcpjynmayactgan.supabase.co";
         const SUPABASE_KEY = "sb_publishable_endfjcxVBfda-lzjOpPbrQ_DTdF3MHZ";
         const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-        const apiKey = ""; // API Key used for Gemini 2.5 Flash
+        const apiKey = ""; // Gemini API Key
 
         let userConfig = null;
         let activePositions = [];
         let accountData = null;
+        let selectedSymbol = null;
 
         async function init() {
             const { data: { session } } = await sb.auth.getSession();
@@ -202,7 +219,6 @@
             const timestamp = Date.now();
             
             try {
-                // 1. Fetch Account Info (v2)
                 const accQuery = `timestamp=${timestamp}`;
                 const accSig = CryptoJS.HmacSHA256(accQuery, userConfig.binance_secret).toString();
                 const accRes = await fetch(`https://fapi.binance.com/fapi/v2/account?${accQuery}&signature=${accSig}`, {
@@ -210,14 +226,12 @@
                 });
                 accountData = await accRes.json();
 
-                // 2. Fetch Position Risk (v2)
                 const posSig = CryptoJS.HmacSHA256(accQuery, userConfig.binance_secret).toString();
                 const posRes = await fetch(`https://fapi.binance.com/fapi/v2/positionRisk?${accQuery}&signature=${posSig}`, {
                     headers: { 'X-MBX-APIKEY': userConfig.binance_key }
                 });
                 const posData = await posRes.json();
                 
-                // Grouping Logic: 시,분,초가 같은 데이터를 하나로 합산
                 const rawPositions = posData.filter(p => parseFloat(p.positionAmt) !== 0);
                 activePositions = groupPositionsByTime(rawPositions);
                 
@@ -227,16 +241,11 @@
             }
         }
 
-        /**
-         * 시,분,초가 같은 경우를 1건으로 묶어 합산하는 로직
-         */
         function groupPositionsByTime(positions) {
             const groups = {};
-
             positions.forEach(pos => {
                 const updateTime = parseInt(pos.updateTime);
                 const date = new Date(updateTime);
-                // 시:분:초 형식의 키 생성 (예: 2024-03-20 14:05:10)
                 const timeKey = `${pos.symbol}_${date.getFullYear()}-${date.getMonth()+1}-${date.getDate()} ${date.getHours()}:${date.getMinutes()}:${date.getSeconds()}`;
 
                 if (!groups[timeKey]) {
@@ -249,27 +258,21 @@
                         count: 1
                     };
                 } else {
-                    // 합산 처리
                     const existing = groups[timeKey];
                     const newAmt = existing.positionAmt + parseFloat(pos.positionAmt);
-                    
-                    // 가중 평균 단가 계산 (단순 합산이 아닌 비중 반영)
                     const totalValue = (existing.positionAmt * existing.entryPrice) + (parseFloat(pos.positionAmt) * parseFloat(pos.entryPrice));
                     existing.entryPrice = totalValue / newAmt;
-                    
                     existing.positionAmt = newAmt;
                     existing.unrealizedProfit += parseFloat(pos.unrealizedProfit);
                     existing.count += 1;
                 }
             });
-
             return Object.values(groups);
         }
 
         function updateUI() {
             if (!accountData || !activePositions) return;
 
-            // Update Stats
             const availBalance = parseFloat(accountData.availableBalance);
             const totalWallet = parseFloat(accountData.totalWalletBalance);
             const totalUpnl = parseFloat(accountData.totalUnrealizedProfit);
@@ -284,18 +287,14 @@
             document.getElementById('account-summary-top').classList.remove('hidden');
             document.getElementById('pos-count').innerText = `${activePositions.length} BUNDLED POSITIONS`;
 
-            // Update Table
             const tbody = document.getElementById('pos-table-body');
-            if (activePositions.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" class="p-20 text-center text-slate-600">No active positions.</td></tr>`;
-                return;
-            }
-
             tbody.innerHTML = "";
+            
             activePositions.forEach(pos => {
                 const tr = document.createElement('tr');
-                tr.className = "hover:bg-white/5 transition-colors border-b border-white/5";
-                
+                tr.className = `clickable-row border-b border-white/5 ${selectedSymbol === pos.symbol ? 'active-row' : ''}`;
+                tr.onclick = () => loadChart(pos.symbol);
+
                 const amt = parseFloat(pos.positionAmt);
                 const entry = parseFloat(pos.entryPrice);
                 const mark = parseFloat(pos.markPrice);
@@ -303,11 +302,8 @@
                 const side = amt > 0 ? "LONG" : "SHORT";
                 const value = Math.abs(amt * mark);
                 const roe = (upnl / (value / parseFloat(pos.leverage))) * 100;
+                const timeStr = new Date(parseInt(pos.updateTime)).toLocaleTimeString([], { hour12: false });
 
-                const date = new Date(parseInt(pos.updateTime));
-                const timeStr = date.toLocaleTimeString([], { hour12: false });
-
-                // Risk Targets
                 const tp = side === "LONG" ? entry * 1.05 : entry * 0.95;
                 const sl = side === "LONG" ? entry * 0.97 : entry * 1.03;
 
@@ -337,12 +333,42 @@
                             <span class="px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 text-[9px] font-bold border border-rose-500/20">SL: ${sl.toLocaleString(undefined, {maximumFractionDigits: 4})}</span>
                         </div>
                     </td>
-                    <td class="p-4 text-right text-slate-500 text-[10px]">
-                        ${timeStr}
-                    </td>
+                    <td class="p-4 text-right text-slate-500 text-[10px]">${timeStr}</td>
                 `;
                 tbody.appendChild(tr);
             });
+        }
+
+        function loadChart(symbol) {
+            selectedSymbol = symbol;
+            document.getElementById('chart-section').classList.remove('hidden');
+            document.getElementById('chart-title').innerText = `${symbol} REAL-TIME CHART`;
+            updateUI(); // Refresh table to show active row
+
+            new TradingView.widget({
+                "autosize": true,
+                "symbol": `BINANCE:${symbol}PERP`,
+                "interval": "15",
+                "timezone": "Asia/Seoul",
+                "theme": "dark",
+                "style": "1",
+                "locale": "kr",
+                "toolbar_bg": "#0f172a",
+                "enable_publishing": false,
+                "hide_top_toolbar": false,
+                "save_image": false,
+                "container_id": "tv_chart_container",
+                "backgroundColor": "#020617",
+                "gridColor": "rgba(255, 255, 255, 0.05)"
+            });
+            
+            document.getElementById('chart-section').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function closeChart() {
+            document.getElementById('chart-section').classList.add('hidden');
+            selectedSymbol = null;
+            updateUI();
         }
 
         async function analyzePositions() {
@@ -357,7 +383,8 @@
             const briefContent = document.getElementById('ai-brief');
 
             fullPanel.classList.remove('hidden');
-            fullContent.innerHTML = `<div class="animate-pulse">현재 합산된 포지션의 평균 단가와 시장 변동성을 결합하여 최적의 탈출 및 수익 구간을 계산하고 있습니다...</div>`;
+            document.getElementById('ai-timestamp').innerText = `LAST ANALYSIS: ${new Date().toLocaleTimeString()}`;
+            fullContent.innerHTML = `<div class="animate-pulse">남은 잔액 ${accountData.availableBalance} USDT를 활용한 최적의 추가 진입 단가와 비중을 계산 중입니다...</div>`;
 
             const posSummary = activePositions.map(p => ({
                 symbol: p.symbol,
@@ -365,7 +392,8 @@
                 entry: p.entryPrice,
                 mark: p.markPrice,
                 upnl: p.unrealizedProfit,
-                lev: p.leverage
+                lev: p.leverage,
+                marginUsed: Math.abs(parseFloat(p.positionAmt) * parseFloat(p.markPrice)) / parseFloat(p.leverage)
             }));
 
             try {
@@ -374,28 +402,33 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         contents: [{ parts: [{ text: `
-                            현재 포지션 데이터(합산됨): ${JSON.stringify(posSummary)}
-                            계정 잔액: ${accountData.availableBalance} USDT
+                            [계정 상태]
+                            가용 잔액(Available Balance): ${accountData.availableBalance} USDT
+                            지갑 총액: ${accountData.totalWalletBalance} USDT
+                            현재 포지션 리스트: ${JSON.stringify(posSummary)}
                             
-                            요청 사항:
-                            1. 각 포지션별 평균 단가 기반 정밀 TP(Take Profit)와 SL(Stop Loss)을 제시하라.
-                            2. 현재 마진 사용량에 ㅈ른 청산 위험도를 분석하라.
-                            3. 한국어로 전문적인 퀀트 리포트 형식으로 작성하라.
+                            [분석 요청]
+                            1. 가용 잔액을 고려할 때, 손실 중인 포지션에 대하여 '물타기(추가 진입)'를 추천하는가?
+                            2. 추천한다면 '어느 가격대'에서 '얼마의 USDT'를 추가 진입해야 평단가가 효율적으로 낮아지는지 구체적인 수치를 제시하라. (남은 잔액의 일부만 사용하도록 설계)
+                            3. 수익 중인 포지션은 남은 잔액을 사용해 불타기를 할지, 아니면 익절할지 판단하라.
+                            4. 전체 계정의 생존을 위한 최종 리스크 가이드를 작성하라.
+                            
+                            형식: 전문적인 퀀트 트레이더의 보고서 스타일 (한국어)
                         ` }] }],
-                        systemInstruction: { parts: [{ text: "당신은 냉철한 리스크 관리 전문가입니다. 데이터에 기반한 생존 전략을 우선적으로 제시하십시오." }] }
+                        systemInstruction: { parts: [{ text: "당신은 세계 최고의 리스크 관리자이자 퀀트 분석가입니다. 보수적이고 정밀한 수치를 제공하십시오." }] }
                     })
                 });
 
                 const result = await response.json();
-                const text = result.candidates?.[0]?.content?.parts?.[0]?.text || "분석 데이터를 가져오지 못했습니다.";
+                const text = result.candidates?.[0]?.content?.parts?.[0]?.text || "데이터 분석 실패";
                 
                 fullContent.innerHTML = text.replace(/\*\*(.*?)\*\*/g, '<b class="binance-gold">$1</b>');
                 briefBox.classList.remove('hidden');
-                briefContent.innerText = text.split('.')[0] + "...";
+                briefContent.innerText = text.split('\n')[0];
                 fullPanel.scrollIntoView({ behavior: 'smooth' });
 
             } catch (err) {
-                fullContent.innerText = "분석 오류 발생: " + err.message;
+                fullContent.innerText = "분석 중 오류 발생: " + err.message;
             } finally {
                 btn.classList.remove('ai-loading');
             }
@@ -403,12 +436,12 @@
 
         document.getElementById('api-config-form').onsubmit = async (e) => {
             e.preventDefault();
-            alert("API 설정이 확인되었습니다. 동기화를 시작합니다.");
+            alert("API 연결을 시도합니다.");
             syncAll();
         };
 
         init();
-        setInterval(syncAll, 30000);
+        setInterval(syncAll, 15000); // 더 빠른 업데이트 (15초)
     </script>
 </body>
 </html>
