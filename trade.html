@@ -3,340 +3,442 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>C-Suite | Quant Market Scanner</title>
+    <title>C-Suite | Unified Trading Terminal</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #020617; color: #e2e8f0; }
+        body { font-family: 'Inter', sans-serif; background-color: #020617; color: #e2e8f0; overflow-x: hidden; }
         .mono { font-family: 'JetBrains Mono', monospace; }
         .glass-panel { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.05); }
         .binance-gold { color: #F3BA2F; }
+        .bg-binance-gold { background-color: #F3BA2F; }
         .btn-primary { background-color: #F3BA2F; color: black; font-weight: 700; transition: all 0.2s; }
         .btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
         .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
         .input-field { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 8px 12px; border-radius: 8px; font-size: 12px; }
         .input-field:focus { border-color: #F3BA2F; outline: none; }
-        .table-wrapper { max-height: 600px; overflow-y: auto; }
-        .clickable-row { cursor: pointer; transition: background 0.2s; }
-        .clickable-row:hover { background: rgba(243, 186, 47, 0.05); }
+        .table-wrapper { max-height: 500px; overflow-y: auto; }
         .indicator-tag { padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: 800; text-transform: uppercase; }
         .tag-red { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); }
         .tag-gold { background: rgba(243, 186, 47, 0.1); color: #F3BA2F; border: 1px solid rgba(243, 186, 47, 0.2); }
-        
-        /* 로딩 애니메이션 */
-        .loader { width: 16px; height: 16px; border: 2px solid #F3BA2F; border-bottom-color: transparent; border-radius: 50%; display: inline-block; animation: rotation 1s linear infinite; }
+        .loader { width: 14px; height: 14px; border: 2px solid #F3BA2F; border-bottom-color: transparent; border-radius: 50%; display: inline-block; animation: rotation 1s linear infinite; }
         @keyframes rotation { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .nav-tab { cursor: pointer; padding: 12px 16px; font-size: 11px; font-weight: 700; border-bottom: 2px solid transparent; transition: all 0.3s; color: #64748b; }
+        .nav-tab.active { color: #F3BA2F; border-bottom-color: #F3BA2F; background: rgba(243, 186, 47, 0.05); }
     </style>
 </head>
-<body class="min-h-screen pb-20">
+<body class="min-h-screen">
 
+    <!-- 상단 네비게이션 -->
     <nav class="border-b border-white/5 bg-slate-950/50 backdrop-blur-xl sticky top-0 z-50">
-        <div class="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
+        <div class="max-w-[1800px] mx-auto px-6 h-16 flex items-center justify-between">
             <div class="flex items-center gap-2">
                 <div class="w-8 h-8 bg-binance-gold rounded-lg flex items-center justify-center text-black font-black">C</div>
-                <span class="font-bold tracking-tighter text-xl uppercase">C-Suite <span class="binance-gold font-light">Quant Scanner</span></span>
+                <span class="font-bold tracking-tighter text-xl uppercase italic">C-Suite <span class="binance-gold font-light">Terminal</span></span>
             </div>
-            <div class="flex items-center gap-4 text-[10px] mono">
-                <span id="api-status" class="text-slate-500 italic uppercase">Trading System Online</span>
+            <div class="flex items-center gap-6">
+                <div id="connection-status" class="flex items-center gap-2 text-[10px] mono text-slate-500">
+                    <div class="w-2 h-2 rounded-full bg-slate-600"></div>
+                    OFFLINE
+                </div>
+                <button onclick="toggleSettings()" class="text-slate-400 hover:text-white transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                </button>
             </div>
         </div>
     </nav>
 
-    <main class="max-w-[1600px] mx-auto p-6 space-y-6">
+    <main class="max-w-[1800px] mx-auto p-6">
+        <!-- API 설정 모달 (Toggle 가능) -->
+        <div id="settings-panel" class="hidden mb-6 glass-panel rounded-3xl p-6 border-binance-gold/20">
+            <h3 class="text-xs font-bold binance-gold mb-4 uppercase tracking-widest">API Configuration</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="text-[10px] text-slate-500 block mb-1">Binance API Key</label>
+                    <input type="password" id="api-key" class="input-field w-full" placeholder="Enter Key">
+                </div>
+                <div>
+                    <label class="text-[10px] text-slate-500 block mb-1">Binance Secret Key</label>
+                    <input type="password" id="secret-key" class="input-field w-full" placeholder="Enter Secret">
+                </div>
+                <div class="flex items-end">
+                    <button onclick="saveApiKeys()" class="btn-primary w-full py-2 rounded-lg text-xs uppercase">Connect Account</button>
+                </div>
+            </div>
+        </div>
+
         <div class="grid grid-cols-12 gap-6">
-            
-            <!-- 필터 설정 사이드바 -->
-            <div class="col-span-12 lg:col-span-3 space-y-6">
+            <!-- 왼쪽: 계좌 현황 & 필터 설정 -->
+            <div class="col-span-12 lg:col-span-4 space-y-6">
+                <!-- 계좌 요약 (Assets) -->
                 <div class="glass-panel rounded-3xl p-6">
-                    <h3 class="text-xs font-bold text-slate-500 mb-6 uppercase tracking-widest border-b border-white/5 pb-2">Technical Filters</h3>
-                    
-                    <div class="space-y-5">
-                        <!-- 1) 고점 대비 경과 시간 -->
-                        <div>
-                            <label class="text-[10px] text-slate-400 block mb-2 font-bold uppercase">1. 고점 경과 시간 (24h High)</label>
-                            <div class="flex items-center gap-2">
-                                <input type="number" id="filter-high-minutes" class="input-field w-full" value="60" placeholder="분">
-                                <span class="text-xs text-slate-500 min-w-max">분 이상</span>
-                            </div>
-                            <p class="text-[9px] text-slate-500 mt-1 italic">* 24시간 최고점 도달 후 경과된 시간</p>
-                        </div>
-
-                        <!-- 2) 이동평균선 추세 조건 -->
-                        <div>
-                            <label class="text-[10px] text-slate-400 block mb-2 font-bold uppercase">2. 이동평균선 추세 (MA 30/60)</label>
-                            <div class="space-y-2">
-                                <label class="flex items-center gap-2 cursor-pointer group">
-                                    <input type="checkbox" id="filter-ma-bearish" checked class="accent-binance-gold">
-                                    <span class="text-xs text-slate-300 group-hover:text-white transition-colors">MA 30/60 역배열 (현재가 아래)</span>
-                                </label>
-                                <label class="flex items-center gap-2 cursor-pointer group">
-                                    <input type="checkbox" id="filter-ma-slope" checked class="accent-binance-gold">
-                                    <span class="text-xs text-slate-300 group-hover:text-white transition-colors">MA 30/60 하락 추세</span>
-                                </label>
-                            </div>
-                        </div>
-
-                        <!-- 3) 기본 시장 조건 -->
-                        <div>
-                            <label class="text-[10px] text-slate-400 block mb-2 font-bold uppercase">3. 기본 거래대금 (24h)</label>
-                            <select id="filter-vol" class="input-field w-full">
-                                <option value="50000000">$50M+</option>
-                                <option value="100000000" selected>$100M+</option>
-                                <option value="300000000">$300M+</option>
-                            </select>
-                        </div>
-
-                        <button id="scan-btn" onclick="startQuantScan()" class="w-full btn-primary py-4 rounded-xl text-xs uppercase shadow-lg shadow-binance-gold/10">
-                            Apply & Run Scanner
-                        </button>
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest">Account Assets</h3>
+                        <button onclick="fetchAccountData()" class="text-[10px] text-binance-gold hover:underline">Refresh</button>
+                    </div>
+                    <div id="asset-container" class="space-y-4">
+                        <div class="p-10 text-center text-slate-600 text-[11px]">API 연결 후 자산 정보가 표시됩니다.</div>
                     </div>
                 </div>
 
-                <!-- 실시간 상태 요약 -->
+                <!-- 퀀트 필터 설정 -->
+                <div class="glass-panel rounded-3xl p-6">
+                    <h3 class="text-xs font-bold text-slate-500 mb-6 uppercase tracking-widest border-b border-white/5 pb-2">Technical Strategy</h3>
+                    <div class="space-y-5">
+                        <div>
+                            <label class="text-[10px] text-slate-400 block mb-2 font-bold uppercase">1. 고점 경과 시간 (24h High)</label>
+                            <div class="flex items-center gap-2">
+                                <input type="number" id="filter-high-minutes" class="input-field w-full" value="60">
+                                <span class="text-xs text-slate-500 min-w-max">분 이상</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="text-[10px] text-slate-400 block mb-2 font-bold uppercase">2. 이평선 추세 (MA 30/60)</label>
+                            <div class="space-y-2">
+                                <label class="flex items-center gap-2 cursor-pointer group">
+                                    <input type="checkbox" id="filter-ma-bearish" checked class="accent-binance-gold">
+                                    <span class="text-xs text-slate-300 group-hover:text-white">MA 30/60 역배열 (현재가 아래)</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer group">
+                                    <input type="checkbox" id="filter-ma-slope" checked class="accent-binance-gold">
+                                    <span class="text-xs text-slate-300 group-hover:text-white">MA 30/60 하락 추세</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="text-[10px] text-slate-400 block mb-2 font-bold uppercase">3. 최소 거래대금</label>
+                            <select id="filter-vol" class="input-field w-full">
+                                <option value="50000000">$50M+</option>
+                                <option value="100000000" selected>$100M+</option>
+                            </select>
+                        </div>
+                        <button id="scan-btn" onclick="startUnifiedScan()" class="w-full btn-primary py-4 rounded-xl text-xs uppercase shadow-lg shadow-binance-gold/10">Run Strategy Scanner</button>
+                    </div>
+                </div>
+
+                <!-- 스캔 진행 상황 -->
                 <div id="scan-status-box" class="hidden glass-panel rounded-3xl p-6">
                     <div class="flex items-center justify-between mb-2">
-                        <span class="text-[10px] text-slate-500 font-bold uppercase">Scan Progress</span>
+                        <span class="text-[10px] text-slate-500 font-bold uppercase">Progress</span>
                         <span id="progress-percent" class="text-[10px] binance-gold mono">0%</span>
                     </div>
                     <div class="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
                         <div id="progress-bar" class="h-full bg-binance-gold transition-all duration-300" style="width: 0%"></div>
                     </div>
-                    <p id="progress-label" class="text-[9px] text-slate-500 mt-2 italic text-center">바이낸스 선물 종목 분석 중...</p>
                 </div>
             </div>
 
-            <!-- 메인 스캐너 결과 리스트 -->
-            <div class="col-span-12 lg:col-span-9 space-y-6">
-                <div class="flex items-center justify-between border-b border-white/5 pb-2">
-                    <div class="flex gap-4">
-                        <h3 class="text-sm font-black tracking-widest binance-gold">QUANT SCAN RESULTS</h3>
-                        <span id="match-count" class="text-[10px] mono text-slate-500 self-center">WAITING FOR SCAN</span>
-                    </div>
-                    <div class="flex items-center gap-2 text-[10px] text-slate-500 mono">
-                        <span>API LIMIT: <span id="api-limit" class="text-emerald-500">GOOD</span></span>
-                    </div>
+            <!-- 오른쪽: 현재 포지션 & 스캐너 결과 -->
+            <div class="col-span-12 lg:col-span-8 space-y-6">
+                <!-- 탭 메뉴 -->
+                <div class="flex border-b border-white/5">
+                    <div id="tab-positions" onclick="switchTab('positions')" class="nav-tab active uppercase">Current Positions</div>
+                    <div id="tab-scanner" onclick="switchTab('scanner')" class="nav-tab uppercase">Quant Scanner Results</div>
                 </div>
 
-                <div class="glass-panel rounded-3xl overflow-hidden shadow-2xl">
+                <!-- 1. 포지션 목록 -->
+                <div id="view-positions" class="glass-panel rounded-3xl overflow-hidden shadow-2xl">
                     <div class="table-wrapper">
                         <table class="w-full text-left text-[11px]">
                             <thead>
                                 <tr class="bg-slate-900/50">
                                     <th class="p-4 text-slate-500 uppercase font-bold">Symbol</th>
-                                    <th class="p-4 text-right text-slate-500 uppercase font-bold">Current Price</th>
-                                    <th class="p-4 text-right text-slate-500 uppercase font-bold">High Elapsed</th>
-                                    <th class="p-4 text-right text-slate-500 uppercase font-bold">Trend Signal</th>
-                                    <th class="p-4 text-right text-slate-500 uppercase font-bold">24h Vol</th>
-                                    <th class="p-4 text-center text-slate-500 uppercase font-bold">Analysis</th>
+                                    <th class="p-4 text-right text-slate-500 uppercase font-bold">Size</th>
+                                    <th class="p-4 text-right text-slate-500 uppercase font-bold">Entry/Mark</th>
+                                    <th class="p-4 text-right text-slate-500 uppercase font-bold">PNL (ROE%)</th>
+                                    <th class="p-4 text-center text-slate-500 uppercase font-bold">Action</th>
                                 </tr>
                             </thead>
-                            <tbody id="result-tbody" class="mono divide-y divide-white/5">
-                                <tr>
-                                    <td colspan="6" class="p-32 text-center">
-                                        <div class="text-slate-600 mb-2 font-bold uppercase tracking-widest text-xs">No Data Loaded</div>
-                                        <div class="text-[10px] text-slate-500">좌측 필터를 설정하고 스캐너를 실행하세요.</div>
-                                    </td>
-                                </tr>
+                            <tbody id="position-tbody" class="mono divide-y divide-white/5">
+                                <tr><td colspan="5" class="p-20 text-center text-slate-600">포지션 정보가 없습니다.</td></tr>
                             </tbody>
                         </table>
                     </div>
                 </div>
 
-                <!-- 차트 뷰어 (선택 시 노출) -->
-                <div id="chart-viewer" class="hidden space-y-4">
-                    <div class="flex items-center justify-between">
-                        <h4 id="selected-symbol-title" class="text-sm font-bold binance-gold">---</h4>
-                        <button onclick="document.getElementById('chart-viewer').classList.add('hidden')" class="text-slate-500 hover:text-white">✕ Close</button>
+                <!-- 2. 스캐너 결과 리스트 -->
+                <div id="view-scanner" class="hidden glass-panel rounded-3xl overflow-hidden shadow-2xl">
+                    <div class="table-wrapper">
+                        <table class="w-full text-left text-[11px]">
+                            <thead>
+                                <tr class="bg-slate-900/50">
+                                    <th class="p-4 text-slate-500 uppercase font-bold">Symbol</th>
+                                    <th class="p-4 text-right text-slate-500 uppercase font-bold">Price</th>
+                                    <th class="p-4 text-right text-slate-500 uppercase font-bold">High Elapsed</th>
+                                    <th class="p-4 text-right text-slate-500 uppercase font-bold">Signal</th>
+                                    <th class="p-4 text-center text-slate-500 uppercase font-bold">Chart</th>
+                                </tr>
+                            </thead>
+                            <tbody id="scanner-tbody" class="mono divide-y divide-white/5">
+                                <tr><td colspan="5" class="p-20 text-center text-slate-600">스캐너를 실행하여 종목을 찾으세요.</td></tr>
+                            </tbody>
+                        </table>
                     </div>
-                    <div id="tv_chart_container" class="h-[500px] w-full rounded-2xl overflow-hidden border border-white/10"></div>
+                </div>
+
+                <!-- 차트 영역 -->
+                <div id="chart-zone" class="hidden space-y-4">
+                    <div class="flex items-center justify-between">
+                        <h4 id="chart-title" class="text-sm font-bold binance-gold">ANALYSIS VIEW</h4>
+                        <button onclick="document.getElementById('chart-zone').classList.add('hidden')" class="text-slate-500 hover:text-white">✕ Close</button>
+                    </div>
+                    <div id="tv_container" class="h-[500px] w-full rounded-3xl overflow-hidden border border-white/10 shadow-2xl"></div>
                 </div>
             </div>
         </div>
     </main>
 
     <script>
-        // 전역 상태
+        // 전역 상태 관리
+        let API_KEY = "";
+        let SECRET_KEY = "";
+        let activeTab = 'positions';
         let matchedSymbols = [];
 
-        async function startQuantScan() {
-            const btn = document.getElementById('scan-btn');
-            const tbody = document.getElementById('result-tbody');
-            const statusBox = document.getElementById('scan-status-box');
+        // 탭 전환
+        function switchTab(tab) {
+            activeTab = tab;
+            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+            document.getElementById(`tab-${tab}`).classList.add('active');
             
-            // UI 초기화
-            btn.disabled = true;
-            statusBox.classList.remove('hidden');
-            tbody.innerHTML = `<tr><td colspan="6" class="p-32 text-center"><span class="loader mr-2"></span> <span class="binance-gold uppercase font-bold text-xs tracking-widest">Applying Quant Algorithms...</span></td></tr>`;
+            document.getElementById('view-positions').classList.add('hidden');
+            document.getElementById('view-scanner').classList.add('hidden');
+            document.getElementById(`view-${tab}`).classList.remove('hidden');
+        }
 
-            try {
-                // 1. 전체 선물 티커 정보 가져오기 (24시간 데이터)
-                const res = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr');
-                const tickers = await res.json();
-                
-                // 기본 거래대금 필터링 ($100M 이상 등)
-                const minVol = parseFloat(document.getElementById('filter-vol').value);
-                const filteredTickers = tickers.filter(t => t.symbol.endsWith('USDT') && parseFloat(t.quoteVolume) >= minVol);
-                
-                matchedSymbols = [];
-                const total = filteredTickers.length;
-                
-                // 필터 조건 값
-                const minHighElapsed = parseInt(document.getElementById('filter-high-minutes').value);
-                const checkMABearish = document.getElementById('filter-ma-bearish').checked;
-                const checkMASlope = document.getElementById('filter-ma-slope').checked;
+        function toggleSettings() {
+            const panel = document.getElementById('settings-panel');
+            panel.classList.toggle('hidden');
+        }
 
-                // 2. 종목별 캔들 데이터 심층 분석 (순차적/병렬 처리)
-                // 바이낸스 API 제한을 피하기 위해 10개씩 묶어서 처리
-                for(let i=0; i < total; i++) {
-                    const ticker = filteredTickers[i];
-                    
-                    // 진행률 표시
-                    const progress = Math.round(((i + 1) / total) * 100);
-                    document.getElementById('progress-bar').style.width = `${progress}%`;
-                    document.getElementById('progress-percent').innerText = `${progress}%`;
-                    document.getElementById('progress-label').innerText = `Analyzing ${ticker.symbol}... (${i+1}/${total})`;
+        function saveApiKeys() {
+            API_KEY = document.getElementById('api-key').value;
+            SECRET_KEY = document.getElementById('secret-key').value;
+            if(!API_KEY || !SECRET_KEY) return alert("API Key를 입력해 주세요.");
+            
+            document.getElementById('connection-status').innerHTML = `<div class="w-2 h-2 rounded-full bg-emerald-500"></div> CONNECTED`;
+            document.getElementById('connection-status').classList.remove('text-slate-500');
+            document.getElementById('connection-status').classList.add('text-emerald-500');
+            
+            fetchAccountData();
+            toggleSettings();
+        }
 
-                    // 24시간 최고점으로부터 경과 시간 계산
-                    // 캔들 데이터를 불러오기 전에 24시간 티커의 highPrice가 언제 발생했는지 직접 알 수는 없으므로, 
-                    // 1분봉 캔들 1440개를 가져와서 고점 위치를 찾습니다.
-                    const klRes = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${ticker.symbol}&interval=1m&limit=1440`);
-                    const klines = await klRes.json();
-                    
-                    if (klines.length < 100) continue;
-
-                    // 퀀트 분석 엔진 가동
-                    const analysis = runQuantAnalysis(klines, ticker, {
-                        minHighElapsed,
-                        checkMABearish,
-                        checkMASlope
-                    });
-
-                    if (analysis.isMatch) {
-                        matchedSymbols.push({
-                            ...ticker,
-                            quant: analysis
-                        });
-                    }
-                }
-
-                renderResults();
-            } catch (err) {
-                console.error(err);
-                tbody.innerHTML = `<tr><td colspan="6" class="p-20 text-center text-rose-500">Scan failed: ${err.message}</td></tr>`;
-            } finally {
-                btn.disabled = false;
-                statusBox.classList.add('hidden');
-            }
+        // 바이낸스 서명 생성 (HMAC SHA256)
+        function generateSignature(query) {
+            return CryptoJS.HmacSHA256(query, SECRET_KEY).toString(CryptoJS.enc.Hex);
         }
 
         /**
-         * 퀀트 분석 알고리즘
+         * 1. 계좌 및 포지션 정보 조회
          */
-        function runQuantAnalysis(klines, ticker, config) {
-            // 캔들 구조: [시간, 시가, 고가, 저가, 종가, 거래량, ...]
-            const prices = klines.map(k => parseFloat(k[4]));
-            const highs = klines.map(k => parseFloat(k[2]));
-            const currentTime = Date.now();
-            
-            // 1. 고점 경과 시간 계산
-            let maxHigh = 0;
-            let maxHighIndex = 0;
-            highs.forEach((h, idx) => {
-                if(h > maxHigh) {
-                    maxHigh = h;
-                    maxHighIndex = idx;
-                }
-            });
-            
-            const highTime = klines[maxHighIndex][0];
-            const elapsedMinutes = Math.floor((currentTime - highTime) / (1000 * 60));
-            
-            const cond1 = elapsedMinutes >= config.minHighElapsed;
+        async function fetchAccountData() {
+            if(!API_KEY) return;
+            const timestamp = Date.now();
+            const query = `timestamp=${timestamp}`;
+            const signature = generateSignature(query);
 
-            // 2. 이동평균선(MA 30, 60) 계산
-            const ma30 = calculateMA(prices, 30);
-            const ma60 = calculateMA(prices, 60);
-            const currentPrice = prices[prices.length - 1];
+            try {
+                // 자산 조회
+                const accRes = await fetch(`https://fapi.binance.com/fapi/v2/account?${query}&signature=${signature}`, {
+                    headers: { 'X-MBX-APIKEY': API_KEY }
+                });
+                const accData = await accRes.json();
+                renderAssets(accData.assets);
 
-            // 역배열 및 하락 추세 확인
-            let cond2 = true;
-            if (config.checkMABearish) {
-                // 현재가가 이평선들보다 아래에 있는지
-                cond2 = currentPrice < ma30 && currentPrice < ma60;
+                // 포지션 조회
+                const posRes = await fetch(`https://fapi.binance.com/fapi/v2/positionRisk?${query}&signature=${signature}`, {
+                    headers: { 'X-MBX-APIKEY': API_KEY }
+                });
+                const posData = await posRes.json();
+                renderPositions(posData);
+            } catch (err) {
+                console.error("Account Data Error:", err);
             }
-
-            let cond3 = true;
-            if (config.checkMASlope) {
-                // 이평선이 이전 값들보다 낮아지고 있는지 (최근 5봉 기준 하락 기울기)
-                const prevMa30 = calculateMA(prices.slice(0, -5), 30);
-                const prevMa60 = calculateMA(prices.slice(0, -5), 60);
-                cond3 = ma30 < prevMa30 && ma60 < prevMa60;
-            }
-
-            return {
-                isMatch: cond1 && cond2 && cond3,
-                elapsedMinutes,
-                ma30,
-                ma60,
-                slope: ma30 < calculateMA(prices.slice(0, -5), 30) ? 'DOWN' : 'UP'
-            };
         }
 
-        function calculateMA(data, period) {
-            if (data.length < period) return 0;
-            const slice = data.slice(-period);
-            return slice.reduce((a, b) => a + b, 0) / period;
-        }
-
-        function renderResults() {
-            const tbody = document.getElementById('result-tbody');
-            document.getElementById('match-count').innerText = `${matchedSymbols.length} SYMBOLS MATCHED`;
+        function renderAssets(assets) {
+            const container = document.getElementById('asset-container');
+            const mainAssets = assets.filter(a => parseFloat(a.walletBalance) > 0.01);
             
-            if (matchedSymbols.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" class="p-32 text-center text-slate-500 uppercase font-bold text-xs tracking-widest">No Symbols Match Your Criteria</td></tr>`;
+            if(mainAssets.length === 0) {
+                container.innerHTML = `<div class="text-center text-slate-500 text-[11px]">No active assets.</div>`;
                 return;
             }
 
-            tbody.innerHTML = matchedSymbols.map(item => {
-                const change = parseFloat(item.priceChangePercent);
-                const vol = (parseFloat(item.quoteVolume) / 1000000).toFixed(1);
-                
+            container.innerHTML = mainAssets.map(a => `
+                <div class="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5">
+                    <div>
+                        <div class="text-[10px] text-slate-500 font-bold uppercase">${a.asset}</div>
+                        <div class="text-sm font-black text-white">${parseFloat(a.walletBalance).toLocaleString()}</div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-[9px] text-slate-500">UNREALIZED PNL</div>
+                        <div class="text-xs font-bold ${parseFloat(a.unrealizedProfit) >= 0 ? 'text-emerald-400' : 'text-rose-500'}">
+                            ${parseFloat(a.unrealizedProfit).toFixed(2)} USDT
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderPositions(positions) {
+            const tbody = document.getElementById('position-tbody');
+            const activePos = positions.filter(p => Math.abs(parseFloat(p.positionAmt)) > 0);
+
+            if(activePos.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="p-20 text-center text-slate-600 font-bold tracking-widest uppercase text-[10px]">No Open Positions</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = activePos.map(p => {
+                const pnl = parseFloat(p.unRealizedProfit);
+                const roe = (pnl / (Math.abs(parseFloat(p.positionAmt)) * parseFloat(p.entryPrice) / parseFloat(p.leverage)) * 100).toFixed(2);
                 return `
-                    <tr class="clickable-row border-b border-white/5" onclick="showChart('${item.symbol}')">
-                        <td class="p-4">
-                            <div class="font-black text-white text-sm">${item.symbol}</div>
-                            <div class="text-[9px] text-slate-500 uppercase">Binance Perpetual</div>
+                    <tr class="clickable-row border-b border-white/5" onclick="loadChart('${p.symbol}')">
+                        <td class="p-4 font-black text-white">${p.symbol} <span class="text-[9px] text-binance-gold ml-1">${p.leverage}x</span></td>
+                        <td class="p-4 text-right mono ${parseFloat(p.positionAmt) > 0 ? 'text-emerald-400' : 'text-rose-500'} font-bold">
+                            ${parseFloat(p.positionAmt).toFixed(3)}
                         </td>
-                        <td class="p-4 text-right mono font-bold">
-                            ${parseFloat(item.lastPrice).toLocaleString()}
-                            <div class="text-[9px] ${change >= 0 ? 'text-emerald-500' : 'text-rose-500'}">${change >= 0 ? '+' : ''}${change}%</div>
-                        </td>
-                        <td class="p-4 text-right">
-                            <div class="text-xs binance-gold font-black">${item.quant.elapsedMinutes}m</div>
-                            <div class="text-[9px] text-slate-500 uppercase">Since 24h High</div>
+                        <td class="p-4 text-right text-slate-400">
+                            ${parseFloat(p.entryPrice).toLocaleString()}<br/>
+                            <span class="text-white font-bold">${parseFloat(p.markPrice).toLocaleString()}</span>
                         </td>
                         <td class="p-4 text-right">
-                            <div class="flex flex-col items-end gap-1">
-                                <span class="indicator-tag tag-red">Bearish MA Break</span>
-                                <span class="indicator-tag tag-gold">MA Slope Down</span>
-                            </div>
+                            <div class="font-black ${pnl >= 0 ? 'text-emerald-400' : 'text-rose-500'}">${pnl.toFixed(2)} USDT</div>
+                            <div class="text-[10px] ${pnl >= 0 ? 'text-emerald-500' : 'text-rose-600'}">(${roe}%)</div>
                         </td>
-                        <td class="p-4 text-right mono text-slate-400">$${vol}M</td>
                         <td class="p-4 text-center">
-                            <button class="bg-white/5 hover:bg-white/10 p-2 rounded-lg transition-all group">
-                                <svg class="w-4 h-4 text-slate-400 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-                            </button>
+                             <button class="px-2 py-1 bg-rose-500/20 text-rose-500 rounded text-[9px] font-bold hover:bg-rose-500 hover:text-white transition-all">CLOSE</button>
                         </td>
                     </tr>
                 `;
             }).join('');
         }
 
-        function showChart(symbol) {
-            document.getElementById('chart-viewer').classList.remove('hidden');
-            document.getElementById('selected-symbol-title').innerText = `${symbol} QUANT ANALYSIS CHART`;
+        /**
+         * 2. 퀀트 마켓 스캐너 기능
+         */
+        async function startUnifiedScan() {
+            const btn = document.getElementById('scan-btn');
+            const tbody = document.getElementById('scanner-tbody');
+            const statusBox = document.getElementById('scan-status-box');
+            
+            switchTab('scanner');
+            btn.disabled = true;
+            statusBox.classList.remove('hidden');
+            tbody.innerHTML = `<tr><td colspan="5" class="p-20 text-center"><span class="loader mr-2"></span> <span class="binance-gold uppercase font-bold text-[10px] tracking-widest">Searching High-Probability Setups...</span></td></tr>`;
+
+            try {
+                const res = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr');
+                const tickers = await res.json();
+                
+                const minVol = parseFloat(document.getElementById('filter-vol').value);
+                const filteredTickers = tickers.filter(t => t.symbol.endsWith('USDT') && parseFloat(t.quoteVolume) >= minVol);
+                
+                matchedSymbols = [];
+                const total = filteredTickers.length;
+                
+                const minHighElapsed = parseInt(document.getElementById('filter-high-minutes').value);
+                const checkMABearish = document.getElementById('filter-ma-bearish').checked;
+                const checkMASlope = document.getElementById('filter-ma-slope').checked;
+
+                for(let i=0; i < total; i++) {
+                    const ticker = filteredTickers[i];
+                    const progress = Math.round(((i + 1) / total) * 100);
+                    document.getElementById('progress-bar').style.width = `${progress}%`;
+                    document.getElementById('progress-percent').innerText = `${progress}%`;
+
+                    const klRes = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${ticker.symbol}&interval=1m&limit=1440`);
+                    const klines = await klRes.json();
+                    
+                    if (klines.length < 100) continue;
+
+                    const analysis = runQuantLogic(klines, ticker, { minHighElapsed, checkMABearish, checkMASlope });
+
+                    if (analysis.isMatch) {
+                        matchedSymbols.push({ ...ticker, quant: analysis });
+                    }
+                }
+                renderScannerResults();
+            } catch (err) {
+                tbody.innerHTML = `<tr><td colspan="5" class="p-20 text-center text-rose-500">Scanner Error: ${err.message}</td></tr>`;
+            } finally {
+                btn.disabled = false;
+                statusBox.classList.add('hidden');
+            }
+        }
+
+        function runQuantLogic(klines, ticker, config) {
+            const prices = klines.map(k => parseFloat(k[4]));
+            const highs = klines.map(k => parseFloat(k[2]));
+            
+            // 고점 경과 시간
+            let maxHigh = 0, maxHighIdx = 0;
+            highs.forEach((h, idx) => { if(h > maxHigh) { maxHigh = h; maxHighIdx = idx; } });
+            const elapsedMinutes = Math.floor((Date.now() - klines[maxHighIdx][0]) / 60000);
+            
+            // 이평선 계산
+            const ma30 = calculateMA(prices, 30);
+            const ma60 = calculateMA(prices, 60);
+            const currentPrice = prices[prices.length - 1];
+
+            const cond1 = elapsedMinutes >= config.minHighElapsed;
+            const cond2 = !config.checkMABearish || (currentPrice < ma30 && currentPrice < ma60);
+            const cond3 = !config.checkMASlope || (ma30 < calculateMA(prices.slice(0, -5), 30) && ma60 < calculateMA(prices.slice(0, -5), 60));
+
+            return { isMatch: cond1 && cond2 && cond3, elapsedMinutes };
+        }
+
+        function calculateMA(data, period) {
+            if (data.length < period) return 0;
+            return data.slice(-period).reduce((a, b) => a + b, 0) / period;
+        }
+
+        function renderScannerResults() {
+            const tbody = document.getElementById('scanner-tbody');
+            if (matchedSymbols.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="p-20 text-center text-slate-500 uppercase font-bold text-[10px]">No Matching Opportunities Found</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = matchedSymbols.map(item => {
+                const change = parseFloat(item.priceChangePercent);
+                return `
+                    <tr class="clickable-row border-b border-white/5" onclick="loadChart('${item.symbol}')">
+                        <td class="p-4 font-black text-white">${item.symbol}</td>
+                        <td class="p-4 text-right mono">
+                            ${parseFloat(item.lastPrice).toLocaleString()}
+                            <div class="text-[9px] ${change >= 0 ? 'text-emerald-500' : 'text-rose-500'}">${change >= 0 ? '+' : ''}${change}%</div>
+                        </td>
+                        <td class="p-4 text-right">
+                            <div class="text-xs binance-gold font-black">${item.quant.elapsedMinutes}m</div>
+                            <div class="text-[9px] text-slate-500 uppercase">Elapsed</div>
+                        </td>
+                        <td class="p-4 text-right">
+                            <div class="flex flex-col items-end gap-1">
+                                <span class="indicator-tag tag-red">Bearish Setup</span>
+                                <span class="indicator-tag tag-gold">MA Falling</span>
+                            </div>
+                        </td>
+                        <td class="p-4 text-center">
+                             <button class="text-binance-gold hover:text-white transition-colors">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+                             </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        /**
+         * 공통: 차트 로드
+         */
+        function loadChart(symbol) {
+            document.getElementById('chart-zone').classList.remove('hidden');
+            document.getElementById('chart-title').innerText = `${symbol} REAL-TIME ANALYSIS`;
             
             new TradingView.widget({
                 "autosize": true,
@@ -346,26 +448,17 @@
                 "theme": "dark",
                 "style": "1",
                 "locale": "kr",
-                "toolbar_bg": "#f1f3f6",
-                "enable_publishing": false,
-                "hide_side_toolbar": false,
-                "allow_symbol_change": true,
-                "container_id": "tv_chart_container",
-                "studies": [
-                    "MASimple@tv-basicstudies",
-                    "MASimple@tv-basicstudies"
-                ],
+                "container_id": "tv_container",
+                "studies": ["MASimple@tv-basicstudies", "MASimple@tv-basicstudies"],
                 "overrides": {
-                    "mainSeriesProperties.style": 1,
                     "paneProperties.background": "#020617"
                 }
             });
-            
-            document.getElementById('chart-viewer').scrollIntoView({ behavior: 'smooth' });
+            document.getElementById('chart-zone').scrollIntoView({ behavior: 'smooth' });
         }
 
-        // 초기 메시지
-        console.log("C-Suite Terminal: Quant Logic Ready.");
+        // 정기적인 계좌 데이터 업데이트 (1분마다)
+        setInterval(fetchAccountData, 60000);
     </script>
 </body>
 </html>
