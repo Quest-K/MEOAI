@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>C-Suite | AI Multi-Frame Terminal</title>
+    <title>C-Suite | Live Portfolio & Risk Analyzer</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
@@ -21,16 +21,15 @@
         .btn-primary:hover { transform: translateY(-1px); filter: brightness(1.1); box-shadow: 0 0 20px rgba(243, 186, 47, 0.3); }
         .tab-btn { color: #94a3b8; border-bottom: 2px solid transparent; cursor: pointer; padding-bottom: 0.75rem; font-size: 0.875rem; font-weight: 600; }
         .tab-btn.active { color: #F3BA2F; border-bottom: 2px solid #F3BA2F; }
-        .timeframe-btn { padding: 4px 10px; border-radius: 6px; font-size: 11px; background: rgba(255,255,255,0.05); color: #94a3b8; transition: all 0.2s; }
-        .timeframe-btn.active { background: #F3BA2F; color: black; font-weight: 700; }
         
-        .table-wrapper { max-height: 500px; overflow-y: auto; }
-        thead th { position: sticky; top: 0; background: #0f172a; z-index: 10; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .card-stat { background: linear-gradient(145deg, rgba(30, 41, 59, 0.4), rgba(15, 23, 42, 0.6)); border: 1px solid rgba(255, 255, 255, 0.03); }
+        
+        .table-wrapper { max-height: 600px; overflow-y: auto; }
+        thead th { position: sticky; top: 0; background: #0f172a; z-index: 10; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
         
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-thumb { background: rgba(243, 186, 47, 0.2); border-radius: 10px; }
-
-        .ai-gradient { background: linear-gradient(135deg, #F3BA2F 0%, #ffcc33 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        
         .ai-loading { animation: pulse-gold 1.5s infinite; pointer-events: none; opacity: 0.7; }
         @keyframes pulse-gold { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.5); } }
     </style>
@@ -44,327 +43,329 @@
                     <div class="w-8 h-8 bg-binance-gold rounded-lg flex items-center justify-center">
                         <svg class="w-5 h-5 text-black" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71L12 2z"/></svg>
                     </div>
-                    <span class="font-bold tracking-tighter text-xl">C-SUITE <span class="binance-gold font-light">QUANT</span></span>
+                    <span class="font-bold tracking-tighter text-xl uppercase">C-Suite <span class="binance-gold font-light">Terminal</span></span>
+                </div>
+            </div>
+            <div id="account-summary-top" class="hidden md:flex items-center gap-8 px-6 border-l border-white/10 ml-6">
+                <div>
+                    <p class="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Available USDT</p>
+                    <p id="top-avail-balance" class="text-sm font-black mono text-emerald-400">0.00</p>
+                </div>
+                <div>
+                    <p class="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Total Margin</p>
+                    <p id="top-total-margin" class="text-sm font-black mono text-rose-400">0.00</p>
                 </div>
             </div>
             <div class="flex items-center gap-4">
-                <div class="flex flex-col items-end">
-                    <span id="user-display" class="text-[10px] font-mono text-slate-400">CONNECTING...</span>
-                    <span id="status-text" class="text-[9px] font-bold text-red-500 uppercase tracking-tighter">Offline</span>
+                <div class="text-right">
+                    <span id="user-display" class="text-[10px] font-mono text-slate-400 block">NOT CONNECTED</span>
+                    <span id="status-text" class="text-[9px] font-bold text-red-500 uppercase tracking-tighter">OFFLINE</span>
                 </div>
-                <div id="status-dot" class="w-2 h-2 rounded-full bg-red-500"></div>
+                <div id="status-dot" class="w-2.5 h-2.5 rounded-full bg-red-500"></div>
             </div>
         </div>
     </nav>
 
-    <main class="max-w-[1600px] mx-auto p-6 grid grid-cols-12 gap-6">
+    <main class="max-w-[1600px] mx-auto p-6 space-y-6">
         
-        <!-- Left Sidebar: Controls -->
-        <div class="col-span-12 lg:col-span-3 space-y-6">
-            <div class="glass-panel rounded-3xl p-6 shadow-2xl">
-                <h3 class="text-xs font-bold text-slate-500 mb-4 uppercase tracking-widest">Exchange Access</h3>
-                <form id="api-storage-form" class="space-y-3">
-                    <div class="relative">
-                        <input type="password" id="input-api-key" required class="input-field w-full pl-4 pr-10 py-3 rounded-xl text-xs" placeholder="Binance API Key">
-                    </div>
-                    <div class="relative">
-                        <input type="password" id="input-secret-key" required class="input-field w-full pl-4 pr-10 py-3 rounded-xl text-xs" placeholder="Binance Secret Key">
-                    </div>
-                    <button type="submit" class="w-full btn-primary py-3 rounded-xl text-xs flex items-center justify-center gap-2">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
-                        API 인증 완료
-                    </button>
-                </form>
-            </div>
-
-            <div class="glass-panel rounded-3xl p-6">
-                <h3 class="text-xs font-bold text-slate-500 mb-4 uppercase tracking-widest">Query Filter</h3>
-                <div class="grid grid-cols-2 gap-3 mb-4">
-                    <input type="date" id="start-date" class="input-field px-3 py-2 rounded-lg text-[11px]">
-                    <input type="date" id="end-date" class="input-field px-3 py-2 rounded-lg text-[11px]">
+        <!-- Top Stats Row -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div class="card-stat rounded-2xl p-5 flex flex-col justify-between">
+                <span class="text-[10px] font-bold text-slate-500 uppercase">Wallet Balance</span>
+                <div class="flex items-baseline gap-2 mt-2">
+                    <h2 id="wallet-balance" class="text-2xl font-black mono">0.00</h2>
+                    <span class="text-xs text-slate-500">USDT</span>
                 </div>
-                <button onclick="fetchHistory()" class="w-full bg-white/5 hover:bg-white/10 border border-white/10 py-3 rounded-xl text-xs font-bold transition-all mb-2">기록 동기화</button>
-                <button onclick="analyzeTrading()" id="ai-analyze-btn" class="w-full py-4 bg-gradient-to-br from-yellow-500 to-amber-600 text-black font-black rounded-xl text-[11px] uppercase tracking-tighter flex items-center justify-center gap-2 shadow-lg shadow-yellow-500/10">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                    <span id="ai-btn-text">Multi-Frame AI 분석</span>
+            </div>
+            <div class="card-stat rounded-2xl p-5 flex flex-col justify-between">
+                <span class="text-[10px] font-bold text-slate-500 uppercase">Unrealized PnL</span>
+                <div class="flex items-baseline gap-2 mt-2">
+                    <h2 id="total-upnl" class="text-2xl font-black mono text-slate-400">0.00</h2>
+                    <span class="text-xs text-slate-500">USDT</span>
+                </div>
+            </div>
+            <div class="card-stat rounded-2xl p-5 border-l-4 border-binance-gold">
+                <span class="text-[10px] font-bold text-slate-500 uppercase">Margin Ratio</span>
+                <div class="flex items-baseline gap-2 mt-2">
+                    <h2 id="margin-ratio" class="text-2xl font-black mono">0.00%</h2>
+                </div>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="syncAll()" class="flex-1 btn-primary rounded-2xl flex flex-col items-center justify-center gap-1 group">
+                    <svg class="w-6 h-6 group-hover:rotate-180 transition-transform duration-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    <span class="text-[10px] uppercase font-bold">Sync Data</span>
+                </button>
+                <button onclick="analyzePositions()" class="flex-1 glass-panel hover:bg-white/10 rounded-2xl flex flex-col items-center justify-center gap-1">
+                    <svg class="w-6 h-6 binance-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    <span class="text-[10px] uppercase font-bold text-slate-400">AI Analyze</span>
                 </button>
             </div>
         </div>
 
-        <!-- Right Content: Charts & Tables -->
-        <div class="col-span-12 lg:col-span-9 space-y-6">
-            
-            <!-- AI Analysis Result -->
-            <div id="ai-result-panel" class="hidden glass-panel rounded-3xl p-8 border-binance-gold/20 overflow-hidden">
-                <div class="flex items-center justify-between mb-6">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-2xl bg-binance-gold/10 flex items-center justify-center">
-                            <svg class="w-6 h-6 binance-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
-                        </div>
-                        <h2 class="text-xl font-bold ai-gradient">퀀트 심층 진단 리포트</h2>
-                    </div>
-                    <button onclick="this.closest('#ai-result-panel').classList.add('hidden')" class="text-slate-500 hover:text-white">✕</button>
+        <div class="grid grid-cols-12 gap-6">
+            <!-- Sidebar: API & Info -->
+            <div class="col-span-12 lg:col-span-3 space-y-6">
+                <div class="glass-panel rounded-3xl p-6 border-white/5">
+                    <h3 class="text-xs font-bold text-slate-500 mb-4 uppercase tracking-widest">Connect Exchange</h3>
+                    <form id="api-config-form" class="space-y-4">
+                        <input type="password" id="input-api-key" required class="input-field w-full px-4 py-3 rounded-xl text-xs" placeholder="Binance API Key">
+                        <input type="password" id="input-secret-key" required class="input-field w-full px-4 py-3 rounded-xl text-xs" placeholder="Binance Secret Key">
+                        <button type="submit" class="w-full btn-primary py-3 rounded-xl text-xs font-bold uppercase tracking-tight">Access Terminal</button>
+                    </form>
                 </div>
-                <div id="ai-content" class="text-sm leading-relaxed text-slate-300 space-y-4 whitespace-pre-line border-l-2 border-binance-gold/30 pl-6"></div>
+
+                <div id="ai-suggestion-box" class="hidden glass-panel rounded-3xl p-6 border-binance-gold/30">
+                    <div class="flex items-center gap-2 mb-4">
+                        <div class="w-2 h-2 rounded-full bg-binance-gold animate-pulse"></div>
+                        <span class="text-[10px] font-bold binance-gold uppercase">AI Risk Alert</span>
+                    </div>
+                    <div id="ai-brief" class="text-xs leading-relaxed text-slate-400"></div>
+                </div>
             </div>
 
-            <!-- Enhanced Chart Panel with Multi-Frame Controls -->
-            <div id="chart-panel" class="hidden glass-panel rounded-3xl p-6 border-white/5">
-                <div class="flex items-center justify-between mb-4">
-                    <div class="flex items-center gap-4">
-                        <h3 id="chart-title" class="text-sm font-bold binance-gold uppercase tracking-widest">Symbol View</h3>
-                        <div class="flex gap-1">
-                            <button onclick="updateChartInterval('1')" class="timeframe-btn" data-interval="1">1m</button>
-                            <button onclick="updateChartInterval('15')" class="timeframe-btn" data-interval="15">15m</button>
-                            <button onclick="updateChartInterval('60')" class="timeframe-btn active" data-interval="60">1h</button>
-                            <button onclick="updateChartInterval('D')" class="timeframe-btn" data-interval="D">1d</button>
-                        </div>
+            <!-- Main Table Content -->
+            <div class="col-span-12 lg:col-span-9 space-y-6">
+                <div class="glass-panel rounded-3xl overflow-hidden">
+                    <div class="px-6 py-4 border-b border-white/5 flex items-center justify-between">
+                        <h3 class="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
+                            <span class="w-2 h-4 bg-binance-gold rounded-full"></span>
+                            Active Positions
+                        </h3>
+                        <span id="pos-count" class="text-[10px] font-mono text-slate-500">0 POSITIONS</span>
                     </div>
-                    <button onclick="document.getElementById('chart-panel').classList.add('hidden')" class="text-slate-500 hover:text-white">✕ Close</button>
+
+                    <div class="table-wrapper">
+                        <table class="w-full text-left text-[11px]">
+                            <thead>
+                                <tr class="bg-slate-900/50">
+                                    <th class="p-4 text-slate-500 uppercase tracking-tighter font-bold">Symbol / Side</th>
+                                    <th class="p-4 text-right text-slate-500 uppercase tracking-tighter font-bold">Size (USDT)</th>
+                                    <th class="p-4 text-right text-slate-500 uppercase tracking-tighter font-bold">Entry / Mark</th>
+                                    <th class="p-4 text-right text-slate-500 uppercase tracking-tighter font-bold">uPnL / ROE</th>
+                                    <th class="p-4 text-center text-slate-500 uppercase tracking-tighter font-bold">TP / SL Target</th>
+                                    <th class="p-4 text-right text-slate-500 uppercase tracking-tighter font-bold">Time</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pos-table-body" class="mono divide-y divide-white/5">
+                                <tr>
+                                    <td colspan="6" class="p-20 text-center text-slate-600">No active positions detected.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-                <div id="tradingview_widget" class="h-[450px] rounded-2xl overflow-hidden"></div>
-            </div>
 
-            <!-- Data Table -->
-            <div class="glass-panel rounded-3xl overflow-hidden flex flex-col min-h-[600px]">
-                <div class="p-6 border-b border-white/5 flex items-center justify-between bg-white/5">
-                    <div class="flex gap-8">
-                        <button onclick="switchTab('summary')" id="tab-summary" class="tab-btn active">종목별 성과 요약</button>
-                        <button onclick="switchTab('futures')" id="tab-futures" class="tab-btn">전체 체결 기록</button>
-                    </div>
-                    <div id="filter-indicator" class="hidden bg-binance-gold/10 px-3 py-1.5 rounded-full flex items-center gap-3">
-                        <span id="active-symbol" class="text-[10px] font-bold binance-gold tracking-widest"></span>
-                        <button onclick="clearSymbolFilter()" class="text-binance-gold/50 hover:text-binance-gold">✕</button>
-                    </div>
-                </div>
-
-                <div id="table-container" class="flex-1 table-wrapper p-2">
-                    <table class="w-full text-left text-[11px]">
-                        <thead id="table-head"></thead>
-                        <tbody id="table-body" class="mono divide-y divide-white/5"></tbody>
-                    </table>
-                    
-                    <div id="empty-state" class="py-40 text-center">
-                        <div class="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <svg class="w-8 h-8 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                        </div>
-                        <p class="text-slate-500">데이터를 불러와 분석을 시작하세요.</p>
-                    </div>
-
-                    <div id="loading-state" class="hidden py-40 text-center">
-                        <div class="w-8 h-8 border-2 border-binance-gold border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                        <p class="text-slate-500 font-bold animate-pulse">BINANCE DATA SYNCING...</p>
-                    </div>
+                <!-- Analysis Panel (Bottom) -->
+                <div id="ai-full-panel" class="hidden glass-panel rounded-3xl p-8 border-l-4 border-binance-gold">
+                    <h2 class="text-lg font-bold binance-gold mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                        심층 리스크 분석 및 대응 전략
+                    </h2>
+                    <div id="ai-full-content" class="text-sm text-slate-300 leading-relaxed whitespace-pre-line space-y-4"></div>
                 </div>
             </div>
         </div>
     </main>
 
     <script>
+        // Configuration
         const SUPABASE_URL = "https://pcmrpxcpjynmayactgan.supabase.co";
         const SUPABASE_KEY = "sb_publishable_endfjcxVBfda-lzjOpPbrQ_DTdF3MHZ";
         const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-        const apiKey = ""; 
+        const apiKey = ""; // API Key used for Gemini 2.5 Flash
 
-        let currentTab = 'summary'; 
         let userConfig = null;
-        let currentUser = null;
-        let rawTradeData = [];
-        let selectedSymbol = null;
-        let currentInterval = '60';
+        let activePositions = [];
+        let accountData = null;
 
         async function init() {
-            const today = new Date();
-            const lastWeek = new Date(today);
-            lastWeek.setDate(today.getDate() - 7);
-            document.getElementById('start-date').value = lastWeek.toISOString().split('T')[0];
-            document.getElementById('end-date').value = today.toISOString().split('T')[0];
-
             const { data: { session } } = await sb.auth.getSession();
             if (session) {
-                currentUser = session.user;
-                document.getElementById('user-display').innerText = currentUser.email;
-                document.getElementById('status-text').innerText = "Online";
+                const user = session.user;
+                document.getElementById('user-display').innerText = user.email;
+                document.getElementById('status-text').innerText = "ONLINE";
                 document.getElementById('status-text').className = "text-[9px] font-bold text-emerald-500 uppercase tracking-tighter";
-                document.getElementById('status-dot').className = "w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]";
-                
-                const { data } = await sb.from('user_settings').select('*').eq('user_id', currentUser.id).maybeSingle();
+                document.getElementById('status-dot').className = "w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]";
+
+                const { data } = await sb.from('user_settings').select('*').eq('user_id', user.id).maybeSingle();
                 if (data) {
                     userConfig = data;
                     document.getElementById('input-api-key').value = "****************";
                     document.getElementById('input-secret-key').value = "****************";
+                    syncAll();
                 }
             }
         }
 
-        async function fetchHistory() {
-            if (!userConfig) { alert("API 설정이 필요합니다."); return; }
-            const start = new Date(document.getElementById('start-date').value).getTime();
-            const end = new Date(document.getElementById('end-date').value).getTime();
-
-            document.getElementById('loading-state').classList.remove('hidden');
-            document.getElementById('empty-state').classList.add('hidden');
-            document.getElementById('table-container').classList.add('hidden');
-
+        async function syncAll() {
+            if (!userConfig) return;
+            const timestamp = Date.now();
+            
             try {
-                const endpoint = "https://fapi.binance.com/fapi/v1/userTrades";
-                const timestamp = Date.now();
-                const query = `startTime=${start}&endTime=${end}&limit=1000&timestamp=${timestamp}`;
-                const signature = CryptoJS.HmacSHA256(query, userConfig.binance_secret).toString();
-                
-                const response = await fetch(`${endpoint}?${query}&signature=${signature}`, {
+                // 1. Fetch Account Info (v2)
+                const accQuery = `timestamp=${timestamp}`;
+                const accSig = CryptoJS.HmacSHA256(accQuery, userConfig.binance_secret).toString();
+                const accRes = await fetch(`https://fapi.binance.com/fapi/v2/account?${accQuery}&signature=${accSig}`, {
                     headers: { 'X-MBX-APIKEY': userConfig.binance_key }
                 });
+                accountData = await accRes.json();
+
+                // 2. Fetch Position Risk (v2)
+                const posSig = CryptoJS.HmacSHA256(accQuery, userConfig.binance_secret).toString();
+                const posRes = await fetch(`https://fapi.binance.com/fapi/v2/positionRisk?${accQuery}&signature=${posSig}`, {
+                    headers: { 'X-MBX-APIKEY': userConfig.binance_key }
+                });
+                const posData = await posRes.json();
                 
-                const result = await response.json();
-                if (Array.isArray(result)) {
-                    rawTradeData = result.sort((a, b) => b.time - a.time);
-                    renderContent();
-                } else throw new Error(result.msg);
+                // Grouping Logic: 시,분,초가 같은 데이터를 하나로 합산
+                const rawPositions = posData.filter(p => parseFloat(p.positionAmt) !== 0);
+                activePositions = groupPositionsByTime(rawPositions);
+                
+                updateUI();
             } catch (err) {
-                alert("바이낸스 연동 오류: " + err.message);
-                document.getElementById('empty-state').classList.remove('hidden');
-            } finally {
-                document.getElementById('loading-state').classList.add('hidden');
-                document.getElementById('table-container').classList.remove('hidden');
+                console.error("Sync Error:", err);
             }
         }
 
-        function switchTab(tab) {
-            currentTab = tab;
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            document.getElementById(`tab-${tab}`).classList.add('active');
-            renderContent();
-        }
+        /**
+         * 시,분,초가 같은 경우를 1건으로 묶어 합산하는 로직
+         */
+        function groupPositionsByTime(positions) {
+            const groups = {};
 
-        function renderContent() {
-            if (rawTradeData.length === 0) return;
-            if (currentTab === 'futures') renderFuturesTable();
-            else renderSummaryTable();
-        }
+            positions.forEach(pos => {
+                const updateTime = parseInt(pos.updateTime);
+                const date = new Date(updateTime);
+                // 시:분:초 형식의 키 생성 (예: 2024-03-20 14:05:10)
+                const timeKey = `${pos.symbol}_${date.getFullYear()}-${date.getMonth()+1}-${date.getDate()} ${date.getHours()}:${date.getMinutes()}:${date.getSeconds()}`;
 
-        function filterBySymbol(symbol) {
-            selectedSymbol = symbol;
-            document.getElementById('active-symbol').innerText = symbol;
-            document.getElementById('filter-indicator').classList.remove('hidden');
-            loadTradingView(symbol, currentInterval);
-            switchTab('futures');
-        }
-
-        function clearSymbolFilter() {
-            selectedSymbol = null;
-            document.getElementById('filter-indicator').classList.add('hidden');
-            document.getElementById('chart-panel').classList.add('hidden');
-            renderContent();
-        }
-
-        function updateChartInterval(interval) {
-            currentInterval = interval;
-            document.querySelectorAll('.timeframe-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.interval === interval);
+                if (!groups[timeKey]) {
+                    groups[timeKey] = {
+                        ...pos,
+                        positionAmt: parseFloat(pos.positionAmt),
+                        unrealizedProfit: parseFloat(pos.unrealizedProfit),
+                        entryPrice: parseFloat(pos.entryPrice),
+                        markPrice: parseFloat(pos.markPrice),
+                        count: 1
+                    };
+                } else {
+                    // 합산 처리
+                    const existing = groups[timeKey];
+                    const newAmt = existing.positionAmt + parseFloat(pos.positionAmt);
+                    
+                    // 가중 평균 단가 계산 (단순 합산이 아닌 비중 반영)
+                    const totalValue = (existing.positionAmt * existing.entryPrice) + (parseFloat(pos.positionAmt) * parseFloat(pos.entryPrice));
+                    existing.entryPrice = totalValue / newAmt;
+                    
+                    existing.positionAmt = newAmt;
+                    existing.unrealizedProfit += parseFloat(pos.unrealizedProfit);
+                    existing.count += 1;
+                }
             });
-            if (selectedSymbol) loadTradingView(selectedSymbol, interval);
+
+            return Object.values(groups);
         }
 
-        function loadTradingView(symbol, interval) {
-            document.getElementById('chart-panel').classList.remove('hidden');
-            document.getElementById('chart-title').innerText = `${symbol} 선물 실시간 데이터`;
+        function updateUI() {
+            if (!accountData || !activePositions) return;
+
+            // Update Stats
+            const availBalance = parseFloat(accountData.availableBalance);
+            const totalWallet = parseFloat(accountData.totalWalletBalance);
+            const totalUpnl = parseFloat(accountData.totalUnrealizedProfit);
             
-            new TradingView.widget({
-                "autosize": true,
-                "symbol": `BINANCE:${symbol}.P`,
-                "interval": interval,
-                "timezone": "Asia/Seoul",
-                "theme": "dark",
-                "style": "1",
-                "locale": "kr",
-                "toolbar_bg": "#0f172a",
-                "enable_publishing": false,
-                "hide_side_toolbar": false,
-                "allow_symbol_change": true,
-                "container_id": "tradingview_widget",
-                "backgroundColor": "#0f172a",
-                "gridColor": "rgba(255, 255, 255, 0.03)"
-            });
-        }
+            document.getElementById('wallet-balance').innerText = totalWallet.toLocaleString(undefined, {minimumFractionDigits: 2});
+            document.getElementById('top-avail-balance').innerText = availBalance.toLocaleString(undefined, {minimumFractionDigits: 2});
+            document.getElementById('top-total-margin').innerText = parseFloat(accountData.totalInitialMargin).toLocaleString(undefined, {minimumFractionDigits: 2});
+            document.getElementById('total-upnl').innerText = (totalUpnl >= 0 ? '+' : '') + totalUpnl.toLocaleString(undefined, {minimumFractionDigits: 2});
+            document.getElementById('total-upnl').className = `text-2xl font-black mono ${totalUpnl >= 0 ? 'text-emerald-400' : 'text-rose-500'}`;
+            document.getElementById('margin-ratio').innerText = accountData.totalMaintMargin > 0 ? ((accountData.totalMaintMargin / accountData.totalMarginBalance) * 100).toFixed(2) + '%' : '0.00%';
+            
+            document.getElementById('account-summary-top').classList.remove('hidden');
+            document.getElementById('pos-count').innerText = `${activePositions.length} BUNDLED POSITIONS`;
 
-        function renderFuturesTable() {
-            const head = document.getElementById('table-head');
-            const body = document.getElementById('table-body');
-            head.innerHTML = `<tr><th class="p-4 uppercase tracking-tighter text-slate-500">Time</th><th class="p-4 uppercase tracking-tighter text-slate-500">Symbol</th><th class="p-4 uppercase tracking-tighter text-slate-500">Side</th><th class="p-4 text-right uppercase tracking-tighter text-slate-500">Price</th><th class="p-4 text-right uppercase tracking-tighter text-slate-500">PnL</th></tr>`;
-            body.innerHTML = "";
+            // Update Table
+            const tbody = document.getElementById('pos-table-body');
+            if (activePositions.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="p-20 text-center text-slate-600">No active positions.</td></tr>`;
+                return;
+            }
 
-            const data = selectedSymbol ? rawTradeData.filter(d => d.symbol === selectedSymbol) : rawTradeData;
-
-            data.forEach(row => {
+            tbody.innerHTML = "";
+            activePositions.forEach(pos => {
                 const tr = document.createElement('tr');
                 tr.className = "hover:bg-white/5 transition-colors border-b border-white/5";
-                const pnl = Math.round(parseFloat(row.realizedPnl || 0));
-                const pnlClass = pnl > 0 ? 'text-emerald-400' : pnl < 0 ? 'text-red-500' : 'text-slate-500';
+                
+                const amt = parseFloat(pos.positionAmt);
+                const entry = parseFloat(pos.entryPrice);
+                const mark = parseFloat(pos.markPrice);
+                const upnl = parseFloat(pos.unrealizedProfit);
+                const side = amt > 0 ? "LONG" : "SHORT";
+                const value = Math.abs(amt * mark);
+                const roe = (upnl / (value / parseFloat(pos.leverage))) * 100;
+
+                const date = new Date(parseInt(pos.updateTime));
+                const timeStr = date.toLocaleTimeString([], { hour12: false });
+
+                // Risk Targets
+                const tp = side === "LONG" ? entry * 1.05 : entry * 0.95;
+                const sl = side === "LONG" ? entry * 0.97 : entry * 1.03;
 
                 tr.innerHTML = `
-                    <td class="p-4 text-slate-500 text-[10px]">${new Date(row.time).toLocaleString()}</td>
-                    <td class="p-4 font-bold text-white">${row.symbol}</td>
-                    <td class="p-4 font-black ${row.side === 'BUY' ? 'text-emerald-500' : 'text-rose-500'}">${row.side}</td>
-                    <td class="p-4 text-right font-mono">${parseFloat(row.price).toLocaleString()}</td>
-                    <td class="p-4 text-right font-bold font-mono ${pnlClass}">${pnl > 0 ? '+' : ''}${pnl.toLocaleString()}</td>
-                `;
-                body.appendChild(tr);
-            });
-        }
-
-        function renderSummaryTable() {
-            const head = document.getElementById('table-head');
-            const body = document.getElementById('table-body');
-            head.innerHTML = `<tr><th class="p-4 uppercase tracking-tighter text-slate-500">Symbol</th><th class="p-4 uppercase tracking-tighter text-slate-500">Count</th><th class="p-4 text-right uppercase tracking-tighter text-slate-500">Volume</th><th class="p-4 text-right uppercase tracking-tighter text-slate-500">Net Profit</th></tr>`;
-            body.innerHTML = "";
-
-            const summary = {};
-            rawTradeData.forEach(row => {
-                if (!summary[row.symbol]) summary[row.symbol] = { pnl: 0, count: 0, volume: 0 };
-                summary[row.symbol].pnl += parseFloat(row.realizedPnl || 0);
-                summary[row.symbol].volume += parseFloat(row.quoteQty);
-                summary[row.symbol].count++;
-            });
-
-            Object.keys(summary).sort((a,b) => summary[b].pnl - summary[a].pnl).forEach(symbol => {
-                const s = summary[symbol];
-                const tr = document.createElement('tr');
-                tr.className = "hover:bg-binance-gold/5 cursor-pointer border-b border-white/5";
-                tr.onclick = () => filterBySymbol(symbol);
-                const totalPnl = Math.round(s.pnl);
-
-                tr.innerHTML = `
-                    <td class="p-4 font-bold text-white">${symbol}</td>
-                    <td class="p-4 text-slate-500 font-mono">${s.count} TRADES</td>
-                    <td class="p-4 text-right text-slate-400 font-mono">$${Math.round(s.volume).toLocaleString()}</td>
-                    <td class="p-4 text-right font-black font-mono ${totalPnl >= 0 ? 'text-emerald-400' : 'text-red-500'}">
-                        ${totalPnl >= 0 ? '+' : ''}${totalPnl.toLocaleString()}
+                    <td class="p-4">
+                        <div class="flex items-center gap-2">
+                            <span class="font-black text-white text-sm">${pos.symbol}</span>
+                            ${pos.count > 1 ? `<span class="bg-blue-500/20 text-blue-400 text-[8px] px-1 rounded border border-blue-500/30">x${pos.count}</span>` : ''}
+                        </div>
+                        <div class="text-[9px] font-bold ${side === 'LONG' ? 'text-emerald-500' : 'text-rose-500'}">${side} ${pos.leverage}x</div>
+                    </td>
+                    <td class="p-4 text-right">
+                        <div class="font-bold text-slate-300">$${value.toLocaleString(undefined, {maximumFractionDigits: 2})}</div>
+                        <div class="text-[10px] text-slate-500">${Math.abs(amt).toFixed(3)} Unit</div>
+                    </td>
+                    <td class="p-4 text-right">
+                        <div class="text-slate-400 font-mono">${entry.toLocaleString()}</div>
+                        <div class="text-[10px] binance-gold font-mono">${mark.toLocaleString()}</div>
+                    </td>
+                    <td class="p-4 text-right">
+                        <div class="font-black ${upnl >= 0 ? 'text-emerald-400' : 'text-rose-500'}">$${upnl.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+                        <div class="text-[10px] ${roe >= 0 ? 'text-emerald-500/70' : 'text-rose-500/70'}">${roe.toFixed(2)}%</div>
+                    </td>
+                    <td class="p-4 text-center">
+                        <div class="flex flex-col items-center gap-1">
+                            <span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[9px] font-bold border border-emerald-500/20">TP: ${tp.toLocaleString(undefined, {maximumFractionDigits: 4})}</span>
+                            <span class="px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 text-[9px] font-bold border border-rose-500/20">SL: ${sl.toLocaleString(undefined, {maximumFractionDigits: 4})}</span>
+                        </div>
+                    </td>
+                    <td class="p-4 text-right text-slate-500 text-[10px]">
+                        ${timeStr}
                     </td>
                 `;
-                body.appendChild(tr);
+                tbody.appendChild(tr);
             });
         }
 
-        async function analyzeTrading() {
-            if (rawTradeData.length === 0) return;
-            const btn = document.getElementById('ai-analyze-btn');
-            const btnText = document.getElementById('ai-btn-text');
-            const resultPanel = document.getElementById('ai-result-panel');
-            const aiContent = document.getElementById('ai-content');
-
+        async function analyzePositions() {
+            if (activePositions.length === 0) return;
+            
+            const btn = document.querySelector('button[onclick="analyzePositions()"]');
             btn.classList.add('ai-loading');
-            btnText.innerText = "멀티 프레임 시장 분석 중...";
-            resultPanel.classList.remove('hidden');
-            aiContent.innerHTML = `<div class="flex items-center gap-2"><div class="w-3 h-3 bg-binance-gold rounded-full animate-ping"></div> 현재 거래된 종목들의 1m/15m/1h/1d 추세를 교차 검증하고 있습니다...</div>`;
+            
+            const fullPanel = document.getElementById('ai-full-panel');
+            const fullContent = document.getElementById('ai-full-content');
+            const briefBox = document.getElementById('ai-suggestion-box');
+            const briefContent = document.getElementById('ai-brief');
 
-            const topSymbols = Object.entries(rawTradeData.reduce((acc, cur) => {
-                acc[cur.symbol] = (acc[cur.symbol] || 0) + 1;
-                return acc;
-            }, {})).sort((a,b) => b[1] - a[1]).slice(0, 3).map(i => i[0]);
+            fullPanel.classList.remove('hidden');
+            fullContent.innerHTML = `<div class="animate-pulse">현재 합산된 포지션의 평균 단가와 시장 변동성을 결합하여 최적의 탈출 및 수익 구간을 계산하고 있습니다...</div>`;
 
-            const analysisPayload = rawTradeData.slice(0, 40).map(t => ({
-                s: t.symbol, side: t.side, r: Math.round(t.realizedPnl), t: new Date(t.time).getHours() + "시"
+            const posSummary = activePositions.map(p => ({
+                symbol: p.symbol,
+                side: parseFloat(p.positionAmt) > 0 ? "LONG" : "SHORT",
+                entry: p.entryPrice,
+                mark: p.markPrice,
+                upnl: p.unrealizedProfit,
+                lev: p.leverage
             }));
 
             try {
@@ -373,31 +374,41 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         contents: [{ parts: [{ text: `
-                            거래 기록: ${JSON.stringify(analysisPayload)}
-                            주요 관심 종목: ${topSymbols.join(', ')}
+                            현재 포지션 데이터(합산됨): ${JSON.stringify(posSummary)}
+                            계정 잔액: ${accountData.availableBalance} USDT
                             
                             요청 사항:
-                            1. 멀티 타임프레임 관점에서 유저의 진입 시점이 추세 추종이었는지 역추세였는지 분석하라.
-                            2. 손실이 큰 구간의 시간대적 공통점을 찾아라.
-                            3. 1분봉 단타와 1시간봉 스윙 중 이 유저에게 더 높은 승률을 보이는 프레임을 제안하라.
-                            4. 모든 금액 수치는 정수로 표현하라.
+                            1. 각 포지션별 평균 단가 기반 정밀 TP(Take Profit)와 SL(Stop Loss)을 제시하라.
+                            2. 현재 마진 사용량에 ㅈ른 청산 위험도를 분석하라.
+                            3. 한국어로 전문적인 퀀트 리포트 형식으로 작성하라.
                         ` }] }],
-                        systemInstruction: { parts: [{ text: "당신은 세계 최고의 퀀트 트레이딩 분석가입니다. 말투는 매우 전문적이며, 감정을 배제하고 데이터에 기반한 뼈아픈 조언을 제공하십시오. 한국어로 작성하십시오." }] }
+                        systemInstruction: { parts: [{ text: "당신은 냉철한 리스크 관리 전문가입니다. 데이터에 기반한 생존 전략을 우선적으로 제시하십시오." }] }
                     })
                 });
+
                 const result = await response.json();
                 const text = result.candidates?.[0]?.content?.parts?.[0]?.text || "분석 데이터를 가져오지 못했습니다.";
-                aiContent.innerHTML = text.replace(/\*\*(.*?)\*\*/g, '<b class="binance-gold">$1</b>');
-                resultPanel.scrollIntoView({ behavior: 'smooth' });
+                
+                fullContent.innerHTML = text.replace(/\*\*(.*?)\*\*/g, '<b class="binance-gold">$1</b>');
+                briefBox.classList.remove('hidden');
+                briefContent.innerText = text.split('.')[0] + "...";
+                fullPanel.scrollIntoView({ behavior: 'smooth' });
+
             } catch (err) {
-                aiContent.innerText = "분석 실패: " + err.message;
+                fullContent.innerText = "분석 오류 발생: " + err.message;
             } finally {
                 btn.classList.remove('ai-loading');
-                btnText.innerText = "Multi-Frame AI 분석";
             }
         }
 
+        document.getElementById('api-config-form').onsubmit = async (e) => {
+            e.preventDefault();
+            alert("API 설정이 확인되었습니다. 동기화를 시작합니다.");
+            syncAll();
+        };
+
         init();
+        setInterval(syncAll, 30000);
     </script>
 </body>
 </html>
