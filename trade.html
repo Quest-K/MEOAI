@@ -42,20 +42,26 @@
 
     <main class="max-w-7xl mx-auto px-6 space-y-6">
         
-        <!-- API Configuration (Collabsible) -->
+        <!-- API Configuration -->
         <section class="glass-card rounded-3xl p-6">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-sm font-bold flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full bg-binance-gold animate-pulse"></span>
+                    <span id="api-status-dot" class="w-2 h-2 rounded-full bg-slate-600"></span>
                     API 연결 설정
                 </h2>
-                <button onclick="toggleAPISection()" class="text-[10px] text-slate-500 underline">설정 접기/펴기</button>
+                <div class="flex gap-4 items-center">
+                    <span id="save-msg" class="text-[10px] text-emerald-400 hidden">저장되었습니다</span>
+                    <button onclick="toggleAPISection()" class="text-[10px] text-slate-500 underline">설정 접기/펴기</button>
+                </div>
             </div>
-            <div id="api-section" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div id="api-section" class="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <input type="password" id="api-key" class="input-field px-4 py-2 rounded-xl text-xs" placeholder="Binance API Key">
                 <input type="password" id="api-secret" class="input-field px-4 py-2 rounded-xl text-xs" placeholder="Binance Secret Key">
-                <button onclick="fetchFuturesData()" class="bg-binance-gold text-black font-bold text-xs py-2 rounded-xl hover:brightness-110 transition-all">
-                    실시간 데이터 불러오기
+                <button onclick="saveAndFetch()" class="bg-binance-gold text-black font-bold text-xs py-2 rounded-xl hover:brightness-110 transition-all">
+                    API 정보 저장 및 조회
+                </button>
+                <button onclick="fetchFuturesData()" class="border border-white/10 text-white font-bold text-xs py-2 rounded-xl hover:bg-white/5 transition-all">
+                    새로고침
                 </button>
             </div>
         </section>
@@ -98,10 +104,9 @@
                         </tr>
                     </thead>
                     <tbody id="position-list" class="divide-y divide-white/5">
-                        <!-- Data rows will be injected here -->
                         <tr>
                             <td colspan="5" class="px-6 py-20 text-center text-slate-500 text-sm italic">
-                                API Key를 입력하고 '데이터 불러오기'를 눌러주세요.
+                                API 정보를 불러오는 중이거나 설정이 필요합니다.
                             </td>
                         </tr>
                     </tbody>
@@ -116,18 +121,85 @@
         const SUPABASE_KEY = "sb_publishable_endfjcxVBfda-lzjOpPbrQ_DTdF3MHZ";
         const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+        // Global State
+        let currentUser = null;
+        const appId = "c-suite-vault"; // 고유 앱 아이디
+
         // UI Elements
         const positionList = document.getElementById('position-list');
         const apiSection = document.getElementById('api-section');
+        const apiStatusDot = document.getElementById('api-status-dot');
 
-        // Check Session
+        // Check Session and Load Settings
         async function init() {
             const { data: { session }, error } = await sb.auth.getSession();
             if (!session) {
                 window.location.href = 'index.html';
                 return;
             }
-            document.getElementById('user-email').innerText = session.user.email;
+            currentUser = session.user;
+            document.getElementById('user-email').innerText = currentUser.email;
+
+            // Supabase에서 API 정보 불러오기
+            await loadSavedApiSettings();
+        }
+
+        async function loadSavedApiSettings() {
+            try {
+                // Rule 1 적용: /artifacts/{appId}/users/{userId}/{collectionName}
+                const { data, error } = await sb
+                    .from('user_settings')
+                    .select('api_key, api_secret')
+                    .eq('user_id', currentUser.id)
+                    .single();
+
+                if (data && data.api_key && data.api_secret) {
+                    document.getElementById('api-key').value = data.api_key;
+                    document.getElementById('api-secret').value = data.api_secret;
+                    apiStatusDot.classList.replace('bg-slate-600', 'bg-emerald-500');
+                    
+                    // 정보가 있으면 바로 데이터 조회
+                    fetchFuturesData();
+                }
+            } catch (err) {
+                console.log("기존 설정이 없습니다.");
+            }
+        }
+
+        async function saveAndFetch() {
+            const apiKey = document.getElementById('api-key').value;
+            const apiSecret = document.getElementById('api-secret').value;
+
+            if (!apiKey || !apiSecret) {
+                alert("API Key와 Secret을 모두 입력해주세요.");
+                return;
+            }
+
+            try {
+                // Supabase에 저장 (upsert 사용)
+                const { error } = await sb
+                    .from('user_settings')
+                    .upsert({ 
+                        user_id: currentUser.id,
+                        api_key: apiKey,
+                        api_secret: apiSecret,
+                        updated_at: new Date()
+                    }, { onConflict: 'user_id' });
+
+                if (error) throw error;
+
+                // 성공 메시지 표시
+                const msg = document.getElementById('save-msg');
+                msg.classList.remove('hidden');
+                apiStatusDot.classList.replace('bg-slate-600', 'bg-emerald-500');
+                setTimeout(() => msg.classList.add('hidden'), 3000);
+
+                // 데이터 조회 실행
+                fetchFuturesData();
+            } catch (err) {
+                console.error("Save Error:", err);
+                alert("설정 저장 중 오류가 발생했습니다: " + err.message);
+            }
         }
 
         function toggleAPISection() {
@@ -145,25 +217,23 @@
             const apiSecret = document.getElementById('api-secret').value;
 
             if (!apiKey || !apiSecret) {
-                alert("API Key와 Secret을 모두 입력해주세요.");
+                alert("API Key가 설정되지 않았습니다.");
                 return;
             }
 
+            apiStatusDot.classList.add('animate-pulse');
+
             try {
-                // Binance Futures API Endpoint
                 const baseUrl = "https://fapi.binance.com";
                 const timestamp = Date.now();
                 const query = `timestamp=${timestamp}`;
-                
-                // HMAC SHA256 Signature
                 const signature = CryptoJS.HmacSHA256(query, apiSecret).toString();
                 
-                // Fetch Account Info (Balance & Positions)
                 const response = await fetch(`${baseUrl}/fapi/v2/account?${query}&signature=${signature}`, {
                     headers: { 'X-MBX-APIKEY': apiKey }
                 });
 
-                if (!response.ok) throw new Error("API 연결 실패. Key를 확인하세요.");
+                if (!response.ok) throw new Error("API 연결 실패. 권한 또는 키를 확인하세요.");
 
                 const data = await response.json();
                 renderDashboard(data);
@@ -171,17 +241,17 @@
             } catch (err) {
                 console.error(err);
                 alert(err.message);
+            } finally {
+                apiStatusDot.classList.remove('animate-pulse');
             }
         }
 
         function renderDashboard(data) {
-            // Summary Metrics
             document.getElementById('total-balance').innerHTML = `${parseFloat(data.totalWalletBalance).toFixed(2)} <span class="text-xs text-slate-500">USDT</span>`;
             document.getElementById('total-pnl').innerHTML = `${parseFloat(data.totalUnrealizedProfit).toFixed(2)} <span class="text-xs text-slate-500">USDT</span>`;
             document.getElementById('total-pnl').className = `text-2xl font-bold ${parseFloat(data.totalUnrealizedProfit) >= 0 ? 'profit-up' : 'profit-down'}`;
             document.getElementById('available-balance').innerText = parseFloat(data.availableBalance).toFixed(2);
             
-            // Positions
             const activePos = data.positions.filter(p => parseFloat(p.positionAmt) !== 0);
             document.getElementById('active-positions').innerText = activePos.length;
             document.getElementById('last-update').innerText = `Last update: ${new Date().toLocaleTimeString()}`;
@@ -194,7 +264,8 @@
             positionList.innerHTML = activePos.map(pos => {
                 const side = parseFloat(pos.positionAmt) > 0 ? 'LONG' : 'SHORT';
                 const pnl = parseFloat(pos.unrealizedProfit);
-                const roe = (pnl / parseFloat(pos.initialMargin) * 100).toFixed(2);
+                const initialMargin = parseFloat(pos.initialMargin);
+                const roe = initialMargin !== 0 ? (pnl / initialMargin * 100).toFixed(2) : "0.00";
                 
                 return `
                     <tr class="hover:bg-white/5 transition-all">
@@ -228,7 +299,6 @@
             }).join('');
         }
 
-        // Initialize
         init();
     </script>
 </body>
