@@ -3,46 +3,233 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>C-Suite Vault - 거래소</title>
+    <title>C-Suite | Futures Trading Terminal</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Crypto JS for API Signatures -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #050810; color: #e2e8f0; }
+        body { font-family: 'Inter', sans-serif; background-color: #050810; color: #e2e8f0; overflow-x: hidden; }
         .glass-card { background: rgba(30, 41, 59, 0.4); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.05); }
         .binance-gold { color: #F3BA2F; }
         .bg-binance-gold { background-color: #F3BA2F; }
         .border-binance-gold { border-color: #F3BA2F; }
         .input-field { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); transition: all 0.3s ease; }
-        .input-field:focus { border-color: #F3BA2F; outline: none; background: rgba(255,255,255,0.08); }
+        .input-field:focus { border-color: #F3BA2F; outline: none; }
+        .profit-up { color: #0ecb81; }
+        .profit-down { color: #f6465d; }
         
-        .loading-spinner {
-            border: 3px solid rgba(243, 186, 47, 0.1);
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            border-left-color: #F3BA2F;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(243, 186, 47, 0.2); border-radius: 10px; }
     </style>
 </head>
-<body class="min-h-screen">
+<body class="min-h-screen pb-20">
 
-    <!-- 로딩 오버레이 -->
-    <div id="loading-overlay" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#050810]">
-        <div class="loading-spinner mb-4"></div>
-        <p class="text-slate-500 animate-pulse text-xs tracking-widest uppercase">Securing Connection...</p>
-    </div>
+    <!-- Navigation -->
+    <nav class="p-6 flex justify-between items-center max-w-7xl mx-auto">
+        <div>
+            <h1 class="text-xl font-bold tracking-tighter">C-SUITE <span class="binance-gold">TRADE</span></h1>
+            <p class="text-[10px] text-slate-500 uppercase tracking-widest">Futures Intelligence</p>
+        </div>
+        <div class="flex items-center gap-4">
+            <span id="user-email" class="text-xs text-slate-400"></span>
+            <button onclick="handleLogout()" class="text-xs font-bold text-slate-500 hover:text-white transition-all">로그아웃</button>
+        </div>
+    </nav>
 
-    <!-- 네비게이션 -->
-    <nav class="border-b border-white/5 bg-black/20 backdrop-blur-md sticky top-0 z-40">
-        <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-            <div class="flex items-center gap-8">
-                <a href="home.html" class="text-2xl font-bold tracking-tighter">C-SUITE <span class="binance-gold">VAULT</span></a>
-                <div class="hidden md:flex gap-8 text-[11px] font-bold uppercase tracking-widest text-slate-500">
-                    <a href="home.html" class="hover:text-white transition-colors">Dashboard</a>
-                    <a href="trade.html" class
+    <main class="max-w-7xl mx-auto px-6 space-y-6">
+        
+        <!-- API Configuration (Collabsible) -->
+        <section class="glass-card rounded-3xl p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-sm font-bold flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-binance-gold animate-pulse"></span>
+                    API 연결 설정
+                </h2>
+                <button onclick="toggleAPISection()" class="text-[10px] text-slate-500 underline">설정 접기/펴기</button>
+            </div>
+            <div id="api-section" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <input type="password" id="api-key" class="input-field px-4 py-2 rounded-xl text-xs" placeholder="Binance API Key">
+                <input type="password" id="api-secret" class="input-field px-4 py-2 rounded-xl text-xs" placeholder="Binance Secret Key">
+                <button onclick="fetchFuturesData()" class="bg-binance-gold text-black font-bold text-xs py-2 rounded-xl hover:brightness-110 transition-all">
+                    실시간 데이터 불러오기
+                </button>
+            </div>
+        </section>
+
+        <!-- Metrics Overview -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="glass-card rounded-3xl p-6">
+                <p class="text-[10px] text-slate-500 uppercase font-bold mb-1">총 증거금 (Wallet Balance)</p>
+                <h3 id="total-balance" class="text-2xl font-bold">0.00 <span class="text-xs text-slate-500">USDT</span></h3>
+            </div>
+            <div class="glass-card rounded-3xl p-6">
+                <p class="text-[10px] text-slate-500 uppercase font-bold mb-1">미실현 손익 (Unrealized PNL)</p>
+                <h3 id="total-pnl" class="text-2xl font-bold">0.00 <span class="text-xs text-slate-500">USDT</span></h3>
+            </div>
+            <div class="glass-card rounded-3xl p-6">
+                <p class="text-[10px] text-slate-500 uppercase font-bold mb-1">사용 가능한 잔고</p>
+                <h3 id="available-balance" class="text-2xl font-bold text-slate-300">0.00</h3>
+            </div>
+            <div class="glass-card rounded-3xl p-6 border-l-4 border-binance-gold">
+                <p class="text-[10px] text-slate-500 uppercase font-bold mb-1">활성 포지션 수</p>
+                <h3 id="active-positions" class="text-2xl font-bold">0</h3>
+            </div>
+        </div>
+
+        <!-- Positions Table -->
+        <section class="glass-card rounded-[2.5rem] overflow-hidden">
+            <div class="p-6 border-b border-white/5 flex justify-between items-center">
+                <h2 class="font-bold">보유 선물 포지션 <span class="text-xs font-normal text-slate-500 ml-2">Binance Futures Live</span></h2>
+                <div id="last-update" class="text-[10px] text-slate-500 italic">Last update: --:--:--</div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-black/20 text-[10px] uppercase text-slate-500 font-bold">
+                        <tr>
+                            <th class="px-6 py-4">Symbol</th>
+                            <th class="px-6 py-4">Position / Size</th>
+                            <th class="px-6 py-4">Entry / Mark Price</th>
+                            <th class="px-6 py-4">Liq. Price</th>
+                            <th class="px-6 py-4 text-right">ROE% / PNL</th>
+                        </tr>
+                    </thead>
+                    <tbody id="position-list" class="divide-y divide-white/5">
+                        <!-- Data rows will be injected here -->
+                        <tr>
+                            <td colspan="5" class="px-6 py-20 text-center text-slate-500 text-sm italic">
+                                API Key를 입력하고 '데이터 불러오기'를 눌러주세요.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // 1. Supabase Initialization
+        const SUPABASE_URL = "https://pcmrpxcpjynmayactgan.supabase.co";
+        const SUPABASE_KEY = "sb_publishable_endfjcxVBfda-lzjOpPbrQ_DTdF3MHZ";
+        const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // UI Elements
+        const positionList = document.getElementById('position-list');
+        const apiSection = document.getElementById('api-section');
+
+        // Check Session
+        async function init() {
+            const { data: { session }, error } = await sb.auth.getSession();
+            if (!session) {
+                window.location.href = 'index.html';
+                return;
+            }
+            document.getElementById('user-email').innerText = session.user.email;
+        }
+
+        function toggleAPISection() {
+            apiSection.classList.toggle('hidden');
+        }
+
+        async function handleLogout() {
+            await sb.auth.signOut();
+            window.location.href = 'index.html';
+        }
+
+        // 2. Binance API Integration Logic
+        async function fetchFuturesData() {
+            const apiKey = document.getElementById('api-key').value;
+            const apiSecret = document.getElementById('api-secret').value;
+
+            if (!apiKey || !apiSecret) {
+                alert("API Key와 Secret을 모두 입력해주세요.");
+                return;
+            }
+
+            try {
+                // Binance Futures API Endpoint
+                const baseUrl = "https://fapi.binance.com";
+                const timestamp = Date.now();
+                const query = `timestamp=${timestamp}`;
+                
+                // HMAC SHA256 Signature
+                const signature = CryptoJS.HmacSHA256(query, apiSecret).toString();
+                
+                // Fetch Account Info (Balance & Positions)
+                const response = await fetch(`${baseUrl}/fapi/v2/account?${query}&signature=${signature}`, {
+                    headers: { 'X-MBX-APIKEY': apiKey }
+                });
+
+                if (!response.ok) throw new Error("API 연결 실패. Key를 확인하세요.");
+
+                const data = await response.json();
+                renderDashboard(data);
+                
+            } catch (err) {
+                console.error(err);
+                alert(err.message);
+            }
+        }
+
+        function renderDashboard(data) {
+            // Summary Metrics
+            document.getElementById('total-balance').innerHTML = `${parseFloat(data.totalWalletBalance).toFixed(2)} <span class="text-xs text-slate-500">USDT</span>`;
+            document.getElementById('total-pnl').innerHTML = `${parseFloat(data.totalUnrealizedProfit).toFixed(2)} <span class="text-xs text-slate-500">USDT</span>`;
+            document.getElementById('total-pnl').className = `text-2xl font-bold ${parseFloat(data.totalUnrealizedProfit) >= 0 ? 'profit-up' : 'profit-down'}`;
+            document.getElementById('available-balance').innerText = parseFloat(data.availableBalance).toFixed(2);
+            
+            // Positions
+            const activePos = data.positions.filter(p => parseFloat(p.positionAmt) !== 0);
+            document.getElementById('active-positions').innerText = activePos.length;
+            document.getElementById('last-update').innerText = `Last update: ${new Date().toLocaleTimeString()}`;
+
+            if (activePos.length === 0) {
+                positionList.innerHTML = `<tr><td colspan="5" class="px-6 py-20 text-center text-slate-500 text-sm italic">현재 보유중인 포지션이 없습니다.</td></tr>`;
+                return;
+            }
+
+            positionList.innerHTML = activePos.map(pos => {
+                const side = parseFloat(pos.positionAmt) > 0 ? 'LONG' : 'SHORT';
+                const pnl = parseFloat(pos.unrealizedProfit);
+                const roe = (pnl / parseFloat(pos.initialMargin) * 100).toFixed(2);
+                
+                return `
+                    <tr class="hover:bg-white/5 transition-all">
+                        <td class="px-6 py-5">
+                            <div class="font-bold text-sm">${pos.symbol}</div>
+                            <div class="text-[10px] text-slate-500 font-mono">${pos.leverage}x</div>
+                        </td>
+                        <td class="px-6 py-5">
+                            <span class="text-[10px] font-bold px-2 py-1 rounded bg-opacity-20 ${side === 'LONG' ? 'bg-emerald-500 text-emerald-400' : 'bg-red-500 text-red-400'}">
+                                ${side}
+                            </span>
+                            <div class="text-xs mt-1 font-mono">${Math.abs(parseFloat(pos.positionAmt))}</div>
+                        </td>
+                        <td class="px-6 py-5 font-mono text-xs">
+                            <div class="text-slate-400">${parseFloat(pos.entryPrice).toFixed(4)}</div>
+                            <div class="text-white">${parseFloat(pos.markPrice).toFixed(4)}</div>
+                        </td>
+                        <td class="px-6 py-5 font-mono text-xs text-orange-400">
+                            ${parseFloat(pos.liquidationPrice) === 0 ? '--' : parseFloat(pos.liquidationPrice).toFixed(4)}
+                        </td>
+                        <td class="px-6 py-5 text-right">
+                            <div class="text-sm font-bold ${pnl >= 0 ? 'profit-up' : 'profit-down'}">
+                                ${roe}%
+                            </div>
+                            <div class="text-[10px] ${pnl >= 0 ? 'text-emerald-500/60' : 'text-red-500/60'} font-mono">
+                                ${pnl.toFixed(2)} USDT
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Initialize
+        init();
+    </script>
+</body>
+</html>
