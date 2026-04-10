@@ -51,7 +51,6 @@
         </div>
         <div class="flex items-center gap-4">
             <div id="auth-status-area" class="text-right">
-                <!-- Dynamic Content -->
                 <span id="user-email" class="text-xs text-slate-400 block">Guest Mode</span>
                 <span id="auto-refresh-status" class="text-[9px] text-slate-600 font-mono italic">Sync disabled (Login required)</span>
             </div>
@@ -63,7 +62,7 @@
 
     <main class="max-w-7xl mx-auto px-6 space-y-6">
         
-        <!-- Scanner Section (Primary for Guest) -->
+        <!-- Scanner Section -->
         <section class="glass-card rounded-3xl p-6 border border-binance-gold/20">
             <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                 <div>
@@ -98,14 +97,19 @@
                 </div>
                 
                 <div class="space-y-3 border-l border-white/5 pl-6">
-                    <h3 class="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">상승 반전</h3>
-                    <div class="grid grid-cols-2 gap-2">
-                        <div class="col-span-2">
-                            <label class="text-[9px] text-slate-500 block mb-1">추세선(MA)</label>
-                            <input type="text" id="f-rev-ma" value="30,60" class="w-full input-field px-3 py-1.5 rounded-lg text-xs">
+                    <h3 class="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">상승 반전 (BB/MA)</h3>
+                    <div class="grid grid-cols-1 gap-2">
+                        <div class="p-2 bg-emerald-500/5 rounded-lg border border-emerald-500/10">
+                            <p class="text-[10px] text-emerald-300 leading-relaxed italic">
+                                * 현재가 < BB 중앙선(20MA)<br>
+                                * 5MA < 현재가 < 30MA<br>
+                                * 추세 역배열 확인 필터
+                            </p>
                         </div>
-                        <div><label class="text-[9px] text-slate-500 block mb-1">단기1</label><input type="number" id="f-rev-ma-short1" value="5" class="w-full input-field px-3 py-1.5 rounded-lg text-xs"></div>
-                        <div><label class="text-[9px] text-slate-500 block mb-1">단기2</label><input type="number" id="f-rev-ma-short2" value="10" class="w-full input-field px-3 py-1.5 rounded-lg text-xs"></div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div><label class="text-[9px] text-slate-500 block mb-1">중기 이평(기준)</label><input type="number" id="f-rev-ma-mid" value="30" class="w-full input-field px-3 py-1.5 rounded-lg text-xs"></div>
+                            <div><label class="text-[9px] text-slate-500 block mb-1">단기 이평</label><input type="number" id="f-rev-ma-short" value="5" class="w-full input-field px-3 py-1.5 rounded-lg text-xs"></div>
+                        </div>
                     </div>
                 </div>
 
@@ -135,9 +139,8 @@
             </div>
         </section>
 
-        <!-- Private Data Section (Only active if logged in) -->
+        <!-- Private Data Section -->
         <div id="private-data-area" class="space-y-6 opacity-40 pointer-events-none transition-all">
-            <!-- API Configuration -->
             <section class="glass-card rounded-3xl p-6">
                 <div class="flex justify-between items-center mb-4">
                     <h2 class="text-sm font-bold flex items-center gap-2">
@@ -156,7 +159,6 @@
                 </div>
             </section>
 
-            <!-- Metrics -->
             <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div class="glass-card rounded-3xl p-6">
                     <p class="text-[10px] text-slate-500 uppercase font-bold mb-1">총 증거금</p>
@@ -176,7 +178,6 @@
                 </div>
             </div>
 
-            <!-- Positions Table -->
             <section class="glass-card rounded-[2rem] overflow-hidden">
                 <div id="update-progress" style="width: 0%"></div>
                 <div class="p-6 border-b border-white/5 flex justify-between items-center">
@@ -267,7 +268,6 @@
             } catch (err) {}
         }
 
-        // --- Auto Update ---
         function startAutoUpdate() {
             if (updateTimer) clearInterval(updateTimer);
             updateTimer = setInterval(() => {
@@ -314,7 +314,7 @@
             }).join('') : '<tr><td colspan="4" class="px-6 py-10 text-center text-slate-600">활성 포지션 없음</td></tr>';
         }
 
-        // --- Scanner (Accessible to all) ---
+        // --- Scanner Functions ---
         let isScanning = false;
         async function startScanning(mode) {
             if (isScanning) return;
@@ -358,13 +358,26 @@
                 const getMA = (d, p) => d.slice(-p).reduce((a, b) => a + b, 0) / p;
 
                 if (mode === 'down') {
+                    // 기존 하락 조건 유지
                     const maP = document.getElementById('f-down-ma').value.split(',').map(Number);
                     for(let p of maP) if(current >= getMA(prices, p)) return false;
                     return true;
-                } else {
-                    const s1 = parseInt(document.getElementById('f-rev-ma-short1').value);
-                    const s2 = parseInt(document.getElementById('f-rev-ma-short2').value);
-                    return getMA(prices, s1) > getMA(prices, s2) && current > getMA(prices, s1);
+                } else if (mode === 'reversal') {
+                    // 새 상승 반전 필터 조건
+                    const ma5 = getMA(prices, 5);
+                    const ma20 = getMA(prices, 20); // BB 중앙선
+                    const ma30 = getMA(prices, 30);
+
+                    // 1. 볼린저밴드 중앙선(20MA)보다 현재가가 낮아야 함
+                    if (current >= ma20) return false;
+
+                    // 2. 현재가보다 5선이 밑에 있어야 함 (현재가 > 5MA)
+                    if (current <= ma5) return false;
+
+                    // 3. 현재가보다 30선이 위에 있어야 함 (현재가 < 30MA)
+                    if (current >= ma30) return false;
+
+                    return true;
                 }
             } catch(e) { return false; }
         }
