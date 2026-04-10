@@ -21,14 +21,16 @@
         .tab-btn { color: #64748b; border-bottom: 2px solid transparent; }
         .tab-btn.active { color: #F3BA2F; border-bottom: 2px solid #F3BA2F; }
         
-        /* 테이블 스크롤 및 고정 헤더 최적화 */
         .table-wrapper { max-height: 600px; overflow-y: auto; scrollbar-gutter: stable; }
-        thead th { sticky top: 0; background: #0c1220; z-index: 10; border-bottom: 2px solid rgba(243, 186, 47, 0.2); }
+        thead th { position: sticky; top: 0; background: #0c1220; z-index: 10; border-bottom: 2px solid rgba(243, 186, 47, 0.2); }
         
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: rgba(243, 186, 47, 0.3); border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: rgba(243, 186, 47, 0.5); }
+
+        .row-clickable { cursor: pointer; transition: background 0.2s; }
+        .row-clickable:hover { background: rgba(243, 186, 47, 0.05) !important; }
     </style>
 </head>
 <body class="min-h-screen">
@@ -92,13 +94,16 @@
 
         <!-- Right Terminal -->
         <div class="lg:col-span-8 flex flex-col gap-6">
-            <div id="summary-cards" class="hidden grid grid-cols-1 md:grid-cols-3 gap-4"></div>
-
             <div class="glass-panel rounded-[2.5rem] p-8 min-h-[600px] flex flex-col">
                 <div class="flex items-center justify-between border-b border-white/5 mb-6">
-                    <div class="flex gap-6">
+                    <div class="flex gap-6 items-end">
                         <button onclick="switchTab('futures')" id="tab-futures" class="tab-btn active pb-4 text-sm font-bold transition-all">선물 거래 내역</button>
                         <button onclick="switchTab('summary')" id="tab-summary" class="tab-btn pb-4 text-sm font-bold transition-all">심볼별 요약</button>
+                        <div id="filter-indicator" class="hidden pb-4 flex items-center gap-2">
+                            <span class="w-[1px] h-3 bg-white/20"></span>
+                            <span id="active-symbol" class="text-[11px] font-bold binance-gold uppercase bg-binance-gold/10 px-2 py-0.5 rounded"></span>
+                            <button onclick="clearSymbolFilter()" class="text-slate-500 hover:text-white text-[10px]">✕</button>
+                        </div>
                     </div>
                     <div id="data-count" class="text-[10px] text-slate-500 font-mono pb-4">0 Rows Loaded</div>
                 </div>
@@ -136,8 +141,8 @@
         let currentUser = null;
         let rawTradeData = [];
         let usdToKrw = 1350;
+        let selectedSymbol = null; // 필터링할 심볼 저장
 
-        // 초기 날짜 설정
         const initDates = () => {
             const today = new Date();
             const lastWeek = new Date(today);
@@ -171,6 +176,19 @@
             renderContent();
         }
 
+        function filterBySymbol(symbol) {
+            selectedSymbol = symbol;
+            document.getElementById('active-symbol').innerText = symbol;
+            document.getElementById('filter-indicator').classList.remove('hidden');
+            switchTab('futures'); // 상세 내역 탭으로 이동
+        }
+
+        function clearSymbolFilter() {
+            selectedSymbol = null;
+            document.getElementById('filter-indicator').classList.add('hidden');
+            renderContent();
+        }
+
         async function fetchHistory() {
             if (!userConfig) { alert("API 설정을 먼저 완료해주세요."); return; }
             
@@ -183,7 +201,6 @@
             document.getElementById('data-count').innerText = "Loading...";
 
             try {
-                // 한 번에 최대 1000개 요청 (바이낸스 선물 API limit 최대치)
                 await getFuturesTrades(start, end, 1000);
                 renderContent();
             } catch (err) {
@@ -201,7 +218,6 @@
         async function getFuturesTrades(startTime, endTime, limit = 1000) {
             const endpoint = "https://fapi.binance.com/fapi/v1/userTrades";
             const timestamp = Date.now();
-            // limit 파라미터 추가하여 데이터 누락 방지
             const query = `startTime=${startTime}&endTime=${endTime}&limit=${limit}&timestamp=${timestamp}`;
             const signature = getSignature(query, userConfig.binance_secret);
             
@@ -211,7 +227,6 @@
             
             const result = await response.json();
             if (Array.isArray(result)) {
-                // 시간순(내림차순) 정렬: 최신 거래가 위로 오도록
                 rawTradeData = result.sort((a, b) => b.time - a.time);
                 document.getElementById('data-count').innerText = `${rawTradeData.length} Rows Loaded`;
             } else {
@@ -229,7 +244,6 @@
         function renderContent() {
             if (rawTradeData.length === 0) return;
             
-            const head = document.getElementById('table-head');
             const body = document.getElementById('table-body');
             body.innerHTML = "";
             document.getElementById('table-container').classList.remove('hidden');
@@ -246,18 +260,22 @@
             const body = document.getElementById('table-body');
             
             head.innerHTML = `<tr class="bg-[#0c1220]">
-                <th class="py-4 px-4 sticky top-0">날짜/시간</th>
-                <th class="py-4 sticky top-0">심볼</th>
-                <th class="py-4 sticky top-0">사이드</th>
-                <th class="py-4 sticky top-0 text-right">가격</th>
-                <th class="py-4 sticky top-0 text-right">수량/거래대금</th>
-                <th class="py-4 px-4 sticky top-0 text-right">수수료 (KRW)</th>
+                <th class="py-4 px-4">날짜/시간</th>
+                <th class="py-4">심볼</th>
+                <th class="py-4">사이드</th>
+                <th class="py-4 text-right">가격</th>
+                <th class="py-4 text-right">수량/거래대금</th>
+                <th class="py-4 px-4 text-right">수수료 (KRW)</th>
             </tr>`;
 
-            // DocumentFragment 사용하여 렌더링 성능 개선 (대량 데이터 대응)
             const fragment = document.createDocumentFragment();
+            
+            // 필터링 적용
+            const displayData = selectedSymbol 
+                ? rawTradeData.filter(d => d.symbol === selectedSymbol)
+                : rawTradeData;
 
-            rawTradeData.forEach(row => {
+            displayData.forEach(row => {
                 const tr = document.createElement('tr');
                 tr.className = "border-b border-white/5 hover:bg-white/5 transition-colors group";
                 
@@ -306,11 +324,11 @@
             });
 
             head.innerHTML = `<tr class="bg-[#0c1220]">
-                <th class="py-4 px-4 sticky top-0">심볼</th>
-                <th class="py-4 sticky top-0">거래 횟수</th>
-                <th class="py-4 sticky top-0 text-right">매수/매도 합계</th>
-                <th class="py-4 sticky top-0 text-right">실현 수익 (USD)</th>
-                <th class="py-4 px-4 sticky top-0 text-right">실현 수익 (KRW)</th>
+                <th class="py-4 px-4">심볼 (클릭 시 상세조회)</th>
+                <th class="py-4">거래 횟수</th>
+                <th class="py-4 text-right">매수/매도 합계</th>
+                <th class="py-4 text-right">실현 수익 (USD)</th>
+                <th class="py-4 px-4 text-right">실현 수익 (KRW)</th>
             </tr>`;
             
             Object.keys(summary).forEach(symbol => {
@@ -318,9 +336,15 @@
                 const netProfit = s.sell - s.buy;
                 const krwProfit = (netProfit * usdToKrw).toLocaleString(undefined, { maximumFractionDigits: 0 });
 
-                body.innerHTML += `
-                    <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
-                        <td class="py-4 px-4 font-bold text-white">${symbol}</td>
+                const tr = document.createElement('tr');
+                tr.className = "border-b border-white/5 row-clickable";
+                tr.onclick = () => filterBySymbol(symbol);
+
+                tr.innerHTML = `
+                        <td class="py-4 px-4 font-bold text-white flex items-center gap-2">
+                            ${symbol}
+                            <svg class="w-3 h-3 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                        </td>
                         <td class="text-slate-400">${s.count}회</td>
                         <td class="text-right font-mono text-[10px]">
                             <div class="text-emerald-500/70">B: $${s.buy.toLocaleString()}</div>
@@ -331,8 +355,8 @@
                         </td>
                         <td class="px-4 text-right font-bold font-mono ${netProfit >= 0 ? 'text-emerald-400' : 'text-red-500'} text-sm">
                             ${netProfit >= 0 ? '+' : ''}₩${krwProfit}
-                        </td>
-                    </tr>`;
+                        </td>`;
+                body.appendChild(tr);
             });
         }
 
