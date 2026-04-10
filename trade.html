@@ -3,91 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MEOAI - 거래소</title>
+    <title>C-Suite Vault - 거래소</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Firebase SDK -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, collection, query, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // 환경 변수 설정
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-
-        // UI 요소
-        const userStatusEl = document.getElementById('user-status');
-        const loadingEl = document.getElementById('loading-overlay');
-        const tradeContentEl = document.getElementById('trade-content');
-
-        // 1. 자동 로그인 및 정보 동기화 로직
-        async function initApp() {
-            // home.html 등에서 저장했을 수 있는 로컬 정보 확인 (예시: user_info)
-            const savedUser = localStorage.getItem('meoai_user'); 
-            
-            // Firebase 인증 상태 관찰
-            onAuthStateChanged(auth, async (user) => {
-                if (user) {
-                    console.log("Logged in as:", user.uid);
-                    setupTradingData(user);
-                } else {
-                    // 로그인 정보가 없으면 익명 로그인 시도 (로그인 창을 띄우지 않기 위함)
-                    try {
-                        await signInAnonymously(auth);
-                    } catch (error) {
-                        console.error("Anonymous auth failed", error);
-                        showErrorMessage("인증에 실패했습니다. 페이지를 새로고침 해주세요.");
-                    }
-                }
-            });
-        }
-
-        // 2. 데이터 조회 및 UI 업데이트
-        function setupTradingData(user) {
-            const userRef = doc(db, 'artifacts', appId, 'users', user.uid, 'profile');
-            
-            // 유저 프로필 실시간 감시
-            onSnapshot(userRef, (docSnap) => {
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    updateUserUI(data);
-                } else {
-                    // 초기 유저 데이터가 없는 경우 기본값 세팅 제안 또는 생성 로직
-                    updateUserUI({ nickname: "Guest", balance: 0 });
-                }
-                loadingEl.classList.add('hidden');
-                tradeContentEl.classList.remove('opacity-0');
-            }, (error) => {
-                console.error("Firestore error:", error);
-            });
-        }
-
-        function updateUserUI(data) {
-            userStatusEl.innerHTML = `
-                <div class="flex items-center gap-2">
-                    <span class="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full">${data.nickname || '사용자'}</span>
-                    <span class="text-gray-600 font-bold">${(data.balance || 0).toLocaleString()} MEO</span>
-                </div>
-            `;
-        }
-
-        function showErrorMessage(msg) {
-            userStatusEl.innerHTML = `<span class="text-red-500 text-sm">${msg}</span>`;
-            loadingEl.classList.add('hidden');
-        }
-
-        window.onload = initApp;
-    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #050810; color: #e2e8f0; }
+        .glass-card { background: rgba(30, 41, 59, 0.4); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        .binance-gold { color: #F3BA2F; }
+        .bg-binance-gold { background-color: #F3BA2F; }
+        .border-binance-gold { border-color: #F3BA2F; }
+        .input-field { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); transition: all 0.3s ease; }
+        .input-field:focus { border-color: #F3BA2F; outline: none; background: rgba(255,255,255,0.08); }
+        
         .loading-spinner {
-            border: 4px solid rgba(0, 0, 0, 0.1);
+            border: 3px solid rgba(243, 186, 47, 0.1);
             width: 36px;
             height: 36px;
             border-radius: 50%;
-            border-left-color: #3b82f6;
+            border-left-color: #F3BA2F;
             animation: spin 1s linear infinite;
         }
         @keyframes spin {
@@ -96,131 +30,19 @@
         }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-900 min-h-screen">
+<body class="min-h-screen">
 
     <!-- 로딩 오버레이 -->
-    <div id="loading-overlay" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white">
+    <div id="loading-overlay" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#050810]">
         <div class="loading-spinner mb-4"></div>
-        <p class="text-gray-500 animate-pulse text-sm">로그인 정보를 동기화 중입니다...</p>
+        <p class="text-slate-500 animate-pulse text-xs tracking-widest uppercase">Securing Connection...</p>
     </div>
 
     <!-- 네비게이션 -->
-    <nav class="bg-white border-b border-gray-200 sticky top-0 z-40">
-        <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-            <div class="flex items-center gap-4">
-                <a href="home.html" class="font-black text-2xl tracking-tighter text-blue-600">MEOAI</a>
-                <div class="hidden md:flex gap-6 text-sm font-medium text-gray-500 ml-8">
-                    <a href="home.html" class="hover:text-blue-600">홈</a>
-                    <a href="trade.html" class="text-blue-600 border-b-2 border-blue-600 pb-1">거래소</a>
-                    <a href="#" class="hover:text-blue-600">내 자산</a>
-                </div>
-            </div>
-            <div id="user-status">
-                <!-- 로그인 정보가 표시될 곳 -->
-            </div>
-        </div>
-    </nav>
-
-    <!-- 메인 컨텐츠 -->
-    <main id="trade-content" class="max-w-7xl mx-auto p-4 md:p-8 opacity-0 transition-opacity duration-500">
-        <header class="mb-8">
-            <h1 class="text-3xl font-extrabold tracking-tight">실시간 거래소</h1>
-            <p class="text-gray-500 mt-2">MEO 토큰을 안전하게 거래하고 자산을 관리하세요.</p>
-        </header>
-
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <!-- 차트 영역 (목업) -->
-            <div class="lg:col-span-2 bg-white rounded-3xl border border-gray-200 p-6 shadow-sm">
-                <div class="flex justify-between items-center mb-6">
-                    <div>
-                        <span class="text-sm text-gray-400 font-medium">MEO / KRW</span>
-                        <div class="flex items-center gap-2">
-                            <h2 class="text-2xl font-bold">1,245.50</h2>
-                            <span class="text-green-500 text-sm font-semibold">+4.2%</span>
-                        </div>
-                    </div>
-                    <div class="flex gap-2">
-                        <button class="px-3 py-1 bg-gray-100 rounded-lg text-xs font-bold">1H</button>
-                        <button class="px-3 py-1 bg-blue-600 rounded-lg text-xs font-bold text-white">1D</button>
-                        <button class="px-3 py-1 bg-gray-100 rounded-lg text-xs font-bold">1W</button>
-                    </div>
-                </div>
-                <!-- 시각적 차트 목업 -->
-                <div class="h-64 bg-gray-50 rounded-2xl flex items-end justify-between px-4 pb-2 border border-dashed border-gray-200">
-                    <div class="w-8 bg-blue-200 h-20 rounded-t-sm"></div>
-                    <div class="w-8 bg-blue-300 h-32 rounded-t-sm"></div>
-                    <div class="w-8 bg-blue-400 h-28 rounded-t-sm"></div>
-                    <div class="w-8 bg-blue-500 h-44 rounded-t-sm"></div>
-                    <div class="w-8 bg-blue-300 h-36 rounded-t-sm"></div>
-                    <div class="w-8 bg-blue-600 h-52 rounded-t-sm"></div>
-                    <div class="w-8 bg-blue-400 h-40 rounded-t-sm"></div>
-                </div>
-            </div>
-
-            <!-- 거래 패널 -->
-            <div class="bg-white rounded-3xl border border-gray-200 p-6 shadow-sm">
-                <h3 class="text-lg font-bold mb-4">빠른 거래</h3>
-                <div class="flex gap-2 mb-6">
-                    <button class="flex-1 py-3 bg-blue-600 text-white rounded-2xl font-bold text-sm">매수</button>
-                    <button class="flex-1 py-3 bg-gray-100 text-gray-500 rounded-2xl font-bold text-sm">매도</button>
-                </div>
-                
-                <div class="space-y-4">
-                    <div>
-                        <label class="text-xs font-semibold text-gray-400 mb-1 block">주문 가격 (KRW)</label>
-                        <input type="number" value="1245.5" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono">
-                    </div>
-                    <div>
-                        <label class="text-xs font-semibold text-gray-400 mb-1 block">주문 수량 (MEO)</label>
-                        <input type="number" placeholder="0" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono">
-                    </div>
-                    <div class="pt-4 border-t border-gray-100">
-                        <div class="flex justify-between text-sm mb-4">
-                            <span class="text-gray-400">총 주문 금액</span>
-                            <span class="font-bold">0 KRW</span>
-                        </div>
-                        <button class="w-full py-4 bg-gray-900 text-white rounded-2xl font-bold hover:bg-black transition-colors">매수 주문하기</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- 하단 섹션: 내 거래 내역 -->
-        <section class="mt-8 bg-white rounded-3xl border border-gray-200 overflow-hidden shadow-sm">
-            <div class="p-6 border-b border-gray-100">
-                <h3 class="text-lg font-bold">최근 거래 내역</h3>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-sm">
-                    <thead class="bg-gray-50 text-gray-400 font-medium uppercase text-xs">
-                        <tr>
-                            <th class="px-6 py-4">시간</th>
-                            <th class="px-6 py-4">종류</th>
-                            <th class="px-6 py-4">가격</th>
-                            <th class="px-6 py-4">수량</th>
-                            <th class="px-6 py-4">상태</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-100">
-                        <tr>
-                            <td class="px-6 py-4 text-gray-500">2026-04-11 12:45</td>
-                            <td class="px-6 py-4 font-bold text-blue-600">매수</td>
-                            <td class="px-6 py-4 font-mono">1,245.5</td>
-                            <td class="px-6 py-4 font-mono">10.0</td>
-                            <td class="px-6 py-4"><span class="px-2 py-1 bg-green-100 text-green-700 rounded-md text-xs font-medium">체결완료</span></td>
-                        </tr>
-                        <tr>
-                            <td class="px-6 py-4 text-gray-500">2026-04-11 10:20</td>
-                            <td class="px-6 py-4 font-bold text-red-600">매도</td>
-                            <td class="px-6 py-4 font-mono">1,230.0</td>
-                            <td class="px-6 py-4 font-mono">5.5</td>
-                            <td class="px-6 py-4"><span class="px-2 py-1 bg-green-100 text-green-700 rounded-md text-xs font-medium">체결완료</span></td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </section>
-    </main>
-
-</body>
-</html>
+    <nav class="border-b border-white/5 bg-black/20 backdrop-blur-md sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+            <div class="flex items-center gap-8">
+                <a href="home.html" class="text-2xl font-bold tracking-tighter">C-SUITE <span class="binance-gold">VAULT</span></a>
+                <div class="hidden md:flex gap-8 text-[11px] font-bold uppercase tracking-widest text-slate-500">
+                    <a href="home.html" class="hover:text-white transition-colors">Dashboard</a>
+                    <a href="trade.html" class
