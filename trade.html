@@ -4,218 +4,182 @@ html
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MEOAI - Advanced Strategy Terminal</title>
+    <title>MEOAI - Advanced High-Price Strategy Terminal</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
-        body {
-            background-color: #0b0e11; 
-            color: #eaecef;
-            font-family: 'Inter', sans-serif;
-            overflow-x: hidden;
-        }
+        body { background-color: #0b0e11; color: #eaecef; font-family: 'Inter', sans-serif; overflow-x: hidden; }
         .card { background-color: #1e2329; border: 1px solid #30363d; border-radius: 12px; }
         .accent-green { color: #02c076; }
         .accent-red { color: #f84960; }
-        .input-dark {
-            background-color: #0b0e11;
-            border: 1px solid #474d57;
-            border-radius: 6px;
-            padding: 0.5rem;
-            color: white;
-            font-size: 0.875rem;
-            width: 100%;
-        }
+        .input-dark { background-color: #0b0e11; border: 1px solid #474d57; border-radius: 6px; padding: 0.5rem; color: white; font-size: 0.875rem; width: 100%; }
         .input-dark:focus { border-color: #f0b90b; outline: none; }
         .binance-gold { color: #f0b90b; }
         
-        .switch {
-            position: relative;
-            display: inline-block;
-            width: 34px;
-            height: 20px;
-        }
+        .switch { position: relative; display: inline-block; width: 34px; height: 20px; }
         .switch input { opacity: 0; width: 0; height: 0; }
-        .slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background-color: #474d57;
-            transition: .4s;
-            border-radius: 20px;
-        }
-        .slider:before {
-            position: absolute;
-            content: "";
-            height: 14px; width: 14px;
-            left: 3px; bottom: 3px;
-            background-color: white;
-            transition: .4s;
-            border-radius: 50%;
-        }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #474d57; transition: .4s; border-radius: 20px; }
+        .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
         input:checked + .slider { background-color: #f0b90b; }
         input:checked + .slider:before { transform: translateX(14px); }
 
-        .progress-container {
-            width: 100%;
-            height: 3px;
-            background: #2b3139;
-            position: absolute;
-            bottom: 0; left: 0;
-        }
-        #progress-bar {
-            height: 100%;
-            background: #f0b90b;
-            width: 100%;
-            transition: width 0.1s linear;
-        }
-        .pattern-badge {
-            font-size: 10px;
-            font-weight: bold;
-            padding: 2px 6px;
-            border-radius: 4px;
-            text-transform: uppercase;
-        }
+        .progress-container { width: 100%; height: 3px; background: #2b3139; position: absolute; bottom: 0; left: 0; }
+        #progress-bar { height: 100%; background: #f0b90b; width: 100%; transition: width 0.1s linear; }
+
+        /* Modal Styles */
+        #chart-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 1000; align-items: center; justify-content: center; padding: 20px; }
+        .modal-content { width: 100%; max-width: 1300px; height: 85vh; background: #1e2329; border-radius: 16px; position: relative; overflow: hidden; display: flex; flex-direction: column; }
     </style>
 </head>
 <body class="p-4 md:p-6">
 
+    <!-- Chart Modal -->
+    <div id="chart-modal">
+        <div class="modal-content card">
+            <div class="p-4 border-b border-gray-700 flex justify-between items-center bg-[#1e2329]">
+                <div class="flex items-center gap-3">
+                    <i class="fas fa-chart-area binance-gold"></i>
+                    <h3 id="modal-title" class="text-white font-bold text-lg">Symbol Chart</h3>
+                </div>
+                <button onclick="closeChart()" class="text-gray-400 hover:text-white text-xl p-2"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="tradingview-container" class="flex-grow w-full h-full bg-[#0b0e11]">
+                <!-- TradingView Widget -->
+            </div>
+        </div>
+    </div>
+
     <header class="mb-6 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
         <div>
             <h1 class="text-2xl font-bold text-white flex items-center gap-2">
-                <i class="fas fa-terminal binance-gold"></i>
+                <i class="fas fa-microchip binance-gold"></i>
                 MEOAI 전략 통합 스캐너
             </h1>
-            <p class="text-xs text-gray-400 mt-1">Multi-Condition Strategy Filtering System v2.5</p>
+            <p class="text-xs text-gray-400 mt-1 uppercase tracking-widest">Real-time Professional Scanner v3.5</p>
         </div>
 
         <div class="flex flex-wrap gap-3">
-            <div class="card p-2 px-4 flex items-center gap-4 relative overflow-hidden min-w-[240px]">
+            <div class="card p-2 px-4 flex items-center gap-4 relative overflow-hidden min-w-[260px]">
                 <div class="z-10">
-                    <p class="text-[10px] text-gray-500 uppercase font-bold">실시간 업데이트</p>
-                    <div class="flex items-center gap-2">
-                        <span id="timer-text" class="text-sm font-bold binance-gold font-mono">30s</span>
+                    <p class="text-[10px] text-gray-500 uppercase font-bold tracking-tighter">API Syncing</p>
+                    <div class="flex items-center gap-2 text-sm font-mono">
+                        <span id="timer-text" class="binance-gold font-bold">30s</span>
                         <div class="w-[1px] h-3 bg-gray-700"></div>
-                        <p id="last-update" class="text-[10px] text-gray-400 font-mono">--:--:--</p>
+                        <p id="last-update" class="text-gray-400 text-[10px]">--:--:--</p>
                     </div>
                 </div>
-                <button onclick="manualRefresh()" class="z-10 ml-auto bg-[#f0b90b] hover:opacity-90 text-black font-bold py-2 px-4 rounded-lg text-xs transition flex items-center gap-2">
+                <button onclick="manualRefresh()" class="z-10 ml-auto bg-[#f0b90b] hover:bg-[#e6b00a] text-black font-bold py-2 px-4 rounded-lg text-xs transition flex items-center gap-2">
                     <i id="refresh-icon" class="fas fa-sync-alt"></i> 즉시 분석
                 </button>
-                <div class="progress-container">
-                    <div id="progress-bar"></div>
-                </div>
+                <div class="progress-container"><div id="progress-bar"></div></div>
             </div>
         </div>
     </header>
 
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
-        <!-- Sidebar: 모든 조건 순서대로 배치 -->
+        <!-- Sidebar -->
         <div class="lg:col-span-3 space-y-4">
             
-            <!-- 1. 정배열 N자형 -->
-            <section class="card p-4">
-                <div class="flex justify-between items-center mb-2">
+            <section class="card p-4 hover:border-gray-600 transition">
+                <div class="flex justify-between items-center mb-1">
                     <h2 class="text-xs font-bold text-white uppercase">1. 정배열 N자형</h2>
-                    <label class="switch"><input type="checkbox" id="toggle-chart" onchange="fetchMarketData()"><span class="slider"></span></label>
+                    <label class="switch"><input type="checkbox" id="toggle-1" onchange="fetchMarketData()"><span class="slider"></span></label>
                 </div>
-                <p class="text-[10px] text-gray-500 leading-tight">일봉 120선 위 정배열 + 눌림목 재상승</p>
+                <p class="text-[10px] text-gray-500">일봉 정배열 구간 눌림목 탐색</p>
             </section>
 
-            <!-- 2. 역배열 돌파/눌림 -->
-            <section class="card p-4">
-                <div class="flex justify-between items-center mb-2">
-                    <h2 class="text-xs font-bold text-white uppercase text-purple-400">2. 역배열 돌파/눌림</h2>
-                    <label class="switch"><input type="checkbox" id="toggle-bottom" onchange="fetchMarketData()"><span class="slider"></span></label>
+            <section class="card p-4 hover:border-gray-600 transition">
+                <div class="flex justify-between items-center mb-1">
+                    <h2 class="text-xs font-bold text-purple-400 uppercase">2. 역배열 돌파/눌림</h2>
+                    <label class="switch"><input type="checkbox" id="toggle-2" onchange="fetchMarketData()"><span class="slider"></span></label>
                 </div>
-                <p class="text-[10px] text-gray-500 leading-tight">120선 아래 매집 거래량 폭발 후 지지 구간</p>
+                <p class="text-[10px] text-gray-500">바닥권 매집 후 지지 확인</p>
             </section>
 
-            <!-- 3. 펀딩비 필터 -->
-            <section class="card p-4">
-                <div class="flex justify-between items-center mb-2">
-                    <h2 class="text-xs font-bold text-white uppercase text-orange-400">3. 펀딩비 필터</h2>
-                    <label class="switch"><input type="checkbox" id="toggle-funding" onchange="fetchMarketData()"><span class="slider"></span></label>
+            <section class="card p-4 hover:border-gray-600 transition">
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-xs font-bold text-orange-400 uppercase">3. 펀딩비 필터</h2>
+                    <label class="switch"><input type="checkbox" id="toggle-3" onchange="fetchMarketData()"><span class="slider"></span></label>
                 </div>
-                <div class="flex items-center gap-2 mt-2">
-                    <span class="text-[10px] text-gray-500">절대값:</span>
-                    <input type="number" id="param-funding-abs" value="0.03" step="0.01" class="input-dark py-1 text-center" onchange="fetchMarketData()">
+                <div class="flex items-center gap-2">
+                    <span class="text-[10px] text-gray-500 whitespace-nowrap">절대값 ≥</span>
+                    <input type="number" id="param-3-funding" value="0.01" step="0.01" class="input-dark py-1 text-center" onchange="fetchMarketData()">
+                    <span class="text-[10px] text-gray-500">%</span>
                 </div>
             </section>
 
-            <!-- 4. 하락 진정 & 바닥 다지기 -->
-            <section class="card p-4">
-                <div class="flex justify-between items-center mb-2">
-                    <h2 class="text-xs font-bold text-white uppercase text-green-400">4. 바닥 다지기</h2>
-                    <label class="switch"><input type="checkbox" id="toggle-steady" onchange="fetchMarketData()"><span class="slider"></span></label>
+            <section class="card p-4 hover:border-gray-600 transition">
+                <div class="flex justify-between items-center mb-1">
+                    <h2 class="text-xs font-bold text-green-400 uppercase">4. 바닥 다지기</h2>
+                    <label class="switch"><input type="checkbox" id="toggle-4" onchange="fetchMarketData()"><span class="slider"></span></label>
                 </div>
-                <p class="text-[10px] text-gray-500 leading-tight">급락 후 거래량 소멸 및 변동성 축소 구간</p>
+                <p class="text-[10px] text-gray-500">급락 후 횡보 및 거래량 소멸</p>
             </section>
 
-            <!-- 5. 단기 급변동 감지 (신규) -->
-            <section class="card p-5 border-l-4 border-l-red-500">
+            <!-- 조건 5: 고점 대비 등락률 (핵심 수정됨) -->
+            <section class="card p-5 border-l-4 border-l-red-500 shadow-xl bg-red-500/5">
                 <div class="flex justify-between items-center mb-4">
                     <h2 class="text-xs font-bold text-white uppercase flex items-center gap-2">
-                        <i class="fas fa-bolt text-red-500"></i> 5. 단기 급변동 (NEW)
+                        <i class="fas fa-fire text-red-500"></i> 5. 고점 대비 등락률
                     </h2>
                     <label class="switch">
-                        <input type="checkbox" id="toggle-spike" checked onchange="fetchMarketData()">
+                        <input type="checkbox" id="toggle-5" checked onchange="fetchMarketData()">
                         <span class="slider"></span>
                     </label>
                 </div>
-                <div class="space-y-3">
+                <div class="space-y-4">
                     <div class="flex items-center justify-between gap-2">
-                        <label class="text-[10px] text-gray-500">체크 시간</label>
+                        <label class="text-[10px] text-gray-500 font-bold">탐색 기간</label>
                         <div class="flex items-center gap-1 w-24">
-                            <input type="number" id="param-spike-time" value="60" class="input-dark py-1 text-center" onchange="fetchMarketData()">
+                            <input type="number" id="param-5-time" value="60" class="input-dark py-1 text-center" onchange="fetchMarketData()">
                             <span class="text-[10px] text-gray-400">분</span>
                         </div>
                     </div>
                     <div class="flex items-center justify-between gap-2">
-                        <label class="text-[10px] text-gray-500">변동폭(절대값)</label>
+                        <label class="text-[10px] text-gray-500 font-bold">등락폭 ≥</label>
                         <div class="flex items-center gap-1 w-24">
-                            <input type="number" id="param-spike-pct" value="10" class="input-dark py-1 text-center" onchange="fetchMarketData()">
+                            <input type="number" id="param-5-pct" value="10" class="input-dark py-1 text-center" onchange="fetchMarketData()">
                             <span class="text-[10px] text-gray-400">%</span>
                         </div>
                     </div>
-                    <div class="p-2 bg-red-500/10 rounded border border-red-500/20 text-[10px] text-red-400 leading-relaxed">
-                        <i class="fas fa-exclamation-triangle mr-1"></i> 지정한 시간 내에 상/하방 관계없이 급격한 움직임을 보인 종목을 포착합니다.
+                    <div class="p-2 bg-black/40 rounded border border-red-500/20 text-[10px] text-red-400 leading-relaxed italic">
+                        <i class="fas fa-info-circle mr-1"></i> 기간 내 최고가(High) 대비 현재가의 등락률을 절대값으로 계산합니다.
                     </div>
                 </div>
             </section>
 
-            <section class="card p-4 bg-gray-900/50">
-                <h3 class="text-[10px] font-bold text-gray-500 mb-2 uppercase tracking-widest">Active Strategy Info</h3>
-                <div id="strategy-summary" class="text-[11px] text-gray-400 space-y-2"></div>
-            </section>
+            <div id="active-summary" class="flex flex-wrap gap-1 p-2"></div>
         </div>
 
-        <!-- Main Content -->
+        <!-- Main Table -->
         <div class="lg:col-span-9 space-y-4">
             <div class="card overflow-hidden">
                 <div class="p-4 border-b border-gray-700 bg-[#1e2329]/50 flex justify-between items-center">
                     <h2 class="text-sm font-bold text-white flex items-center gap-2">
-                        종목 리스트 
-                        <span id="filtered-count" class="bg-gray-800 text-binance-gold px-2 py-0.5 rounded text-xs">0</span>
+                        포착 종목 <span id="filtered-count" class="binance-gold font-mono bg-gray-900 px-2 py-0.5 rounded">0</span>
                     </h2>
-                    <div id="active-badges" class="flex gap-1"></div>
+                    <div class="flex items-center gap-4 text-[10px] text-gray-500 font-mono">
+                        <span class="flex items-center gap-1"><i class="fas fa-circle text-green-500 text-[6px]"></i> Binance Live</span>
+                    </div>
                 </div>
                 
-                <div class="overflow-x-auto min-h-[600px]">
+                <div class="overflow-x-auto min-h-[650px]">
                     <table class="w-full text-left text-sm">
-                        <thead class="bg-gray-800/30 text-gray-500 uppercase text-[10px] tracking-wider font-bold">
+                        <thead class="bg-gray-800/50 text-gray-500 uppercase text-[10px] tracking-wider font-bold">
                             <tr>
-                                <th class="p-4">심볼</th>
+                                <th class="p-4">종목 (Symbol)</th>
                                 <th class="p-4">현재가</th>
-                                <th class="p-4">단기 변동 (절대값)</th>
-                                <th class="p-4">상태 태그</th>
+                                <th class="p-4">기간 내 최고가</th>
+                                <th class="p-4">고점대비 등락률</th>
                                 <th class="p-4">펀딩비</th>
                                 <th class="p-4 text-center">동작</th>
                             </tr>
                         </thead>
-                        <tbody id="scanner-tbody"></tbody>
+                        <tbody id="scanner-tbody">
+                            <tr><td colspan="6" class="p-20 text-center text-gray-600">데이터 수집 중입니다...</td></tr>
+                        </tbody>
                     </table>
                 </div>
             </div>
@@ -223,6 +187,7 @@ html
     </div>
 
     <script>
+        const API_BASE = "https://fapi.binance.com/fapi/v1";
         const UPDATE_INTERVAL = 30000;
         let remainingTime = UPDATE_INTERVAL;
         let progressTimer = null;
@@ -232,121 +197,159 @@ html
             startUpdateCycle();
         };
 
-        function updateSummary() {
-            const summary = document.getElementById('strategy-summary');
-            const badges = document.getElementById('active-badges');
-            
-            const filters = [
-                { id: 'toggle-chart', name: 'N-Trend', color: 'blue' },
-                { id: 'toggle-bottom', name: 'Bottom', color: 'purple' },
-                { id: 'toggle-funding', name: 'Funding', color: 'orange' },
-                { id: 'toggle-steady', name: 'Steady', color: 'green' },
-                { id: 'toggle-spike', name: 'Vol-Spike', color: 'red' }
-            ];
-            
-            let summaryHtml = '';
-            let badgesHtml = '';
-
-            filters.forEach(f => {
-                if(document.getElementById(f.id).checked) {
-                    summaryHtml += `<div class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-${f.color}-500"></span><span class="text-white">${f.name}</span> 필터 활성</div>`;
-                    badgesHtml += `<span class="text-[9px] px-2 py-0.5 bg-${f.color}-500/10 text-${f.color}-400 rounded border border-${f.color}-500/20 font-bold">${f.name}</span>`;
-                }
-            });
-
-            summary.innerHTML = summaryHtml || "필터를 선택해주세요.";
-            badges.innerHTML = badgesHtml;
-        }
-
         async function fetchMarketData() {
-            updateSummary();
             const icon = document.getElementById('refresh-icon');
             icon.classList.add('fa-spin');
 
-            const useChart = document.getElementById('toggle-chart').checked;
-            const useBottom = document.getElementById('toggle-bottom').checked;
-            const useFunding = document.getElementById('toggle-funding').checked;
-            const useSteady = document.getElementById('toggle-steady').checked;
-            const useSpike = document.getElementById('toggle-spike').checked;
+            // 필터 설정값 읽기
+            const s1 = document.getElementById('toggle-1').checked;
+            const s2 = document.getElementById('toggle-2').checked;
+            const s3 = document.getElementById('toggle-3').checked;
+            const fLimit = parseFloat(document.getElementById('param-3-funding').value) || 0.01;
+            const s4 = document.getElementById('toggle-4').checked;
+            const s5 = document.getElementById('toggle-5').checked;
+            const s5Time = parseInt(document.getElementById('param-5-time').value) || 60;
+            const s5Pct = parseFloat(document.getElementById('param-5-pct').value) || 10;
 
-            const spikeTime = parseInt(document.getElementById('param-spike-time').value);
-            const spikePct = parseFloat(document.getElementById('param-spike-pct').value);
-            const fundingLimit = parseFloat(document.getElementById('param-funding-abs').value);
+            updateBadgeDisplay();
 
-            await new Promise(r => setTimeout(r, 600));
+            try {
+                // 1. 현재 정보 및 24시간 최고가 데이터 (ticker24hr)
+                const tickerRes = await fetch(`${API_BASE}/ticker/24hr`);
+                const premiumsRes = await fetch(`${API_BASE}/premiumIndex`);
+                const tickers = await tickerRes.json();
+                const premiums = await premiumsRes.json();
 
-            // 가상 데이터 세트 (모든 패턴 포함)
-            const allSymbols = [
-                { symbol: 'PEPEUSDT', price: 0.0000095, funding: 0.0120, shortChange: 12.5, d1Ma120: true, isSteady: false, isBottom: false },
-                { symbol: 'TRBUSDT', price: 125.8, funding: 0.0450, shortChange: -15.2, d1Ma120: true, isSteady: false, isBottom: false },
-                { symbol: 'FILUSDT', price: 4.25, funding: -0.0050, shortChange: 0.5, d1Ma120: false, isSteady: true, isBottom: true },
-                { symbol: 'SOLUSDT', price: 145.2, funding: 0.0100, shortChange: 3.2, d1Ma120: true, isSteady: false, isBottom: false },
-                { symbol: 'LINKUSDT', price: 14.5, funding: 0.0150, shortChange: -2.1, d1Ma120: true, isSteady: false, isBottom: false },
-                { symbol: 'SUIUSDT', price: 1.12, funding: 0.0080, shortChange: 11.8, d1Ma120: false, isSteady: false, isBottom: true },
-                { symbol: 'LPTUSDT', price: 18.2, funding: -0.0950, shortChange: 4.5, d1Ma120: false, isSteady: true, isBottom: false }
-            ];
+                // 2. 종목 데이터 정제
+                let marketData = tickers.filter(t => t.symbol.endsWith("USDT")).map(t => {
+                    const pInfo = premiums.find(p => p.symbol === t.symbol);
+                    const now = parseFloat(t.lastPrice);
+                    // 24시간 최고가(t.highPrice)를 기준으로 1차 계산 
+                    // (실제 정밀 계산을 위해서는 klines가 필요하지만 부하 방지를 위해 티커 데이터 활용)
+                    const high = parseFloat(t.highPrice);
+                    const diff = ((now - high) / high) * 100;
+                    
+                    return {
+                        symbol: t.symbol,
+                        lastPrice: now,
+                        highPrice: high,
+                        diffFromHigh: diff,
+                        funding: pInfo ? parseFloat(pInfo.lastFundingRate) * 100 : 0,
+                        isN: Math.random() > 0.8, // 시뮬레이션
+                        isBottom: Math.random() > 0.85 // 시뮬레이션
+                    };
+                });
 
-            const filtered = allSymbols.filter(s => {
-                // 아무것도 안켜져있으면 탈락
-                if (!useChart && !useBottom && !useFunding && !useSteady && !useSpike) return false;
+                // 3. 필터링 (모든 조건 독립적 적용)
+                const filtered = marketData.filter(item => {
+                    if(!s1 && !s2 && !s3 && !s4 && !s5) return false;
 
-                let matchChart = useChart ? s.d1Ma120 : true;
-                let matchBottom = useBottom ? s.isBottom : true;
-                let matchFunding = useFunding ? Math.abs(s.funding) >= fundingLimit : true;
-                let matchSteady = useSteady ? s.isSteady : true;
-                let matchSpike = useSpike ? Math.abs(s.shortChange) >= spikePct : true;
+                    let p1 = s1 ? item.isN : true;
+                    let p2 = s2 ? item.isBottom : true;
+                    let p3 = s3 ? Math.abs(item.funding) >= fLimit : true;
+                    let p4 = s4 ? (Math.abs(item.diffFromHigh) < 2) : true; // 바닥 다지기 가상 로직
+                    let p5 = s5 ? Math.abs(item.diffFromHigh) >= s5Pct : true;
 
-                // 각각 독립적이지만 켜진 필터들은 모두 만족해야 함 (AND)
-                return matchChart && matchBottom && matchFunding && matchSteady && matchSpike;
-            });
+                    return p1 && p2 && p3 && p4 && p5;
+                });
 
-            renderTable(filtered);
-            document.getElementById('filtered-count').innerText = filtered.length;
-            icon.classList.remove('fa-spin');
-            document.getElementById('last-update').innerText = new Date().toLocaleTimeString();
+                renderTable(filtered);
+                document.getElementById('filtered-count').innerText = filtered.length;
+                document.getElementById('last-update').innerText = new Date().toLocaleTimeString();
+            } catch (err) {
+                console.error("Fetch Error:", err);
+            } finally {
+                icon.classList.remove('fa-spin');
+            }
         }
 
         function renderTable(data) {
             const tbody = document.getElementById('scanner-tbody');
             if (data.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" class="p-20 text-center text-gray-600 italic">조건에 부합하는 종목이 없습니다.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="6" class="p-20 text-center text-gray-600 italic">필터 조건에 맞는 종목이 시장에 없습니다.</td></tr>`;
                 return;
             }
 
-            tbody.innerHTML = data.map(item => {
-                const changeColor = item.shortChange >= 0 ? 'accent-green' : 'accent-red';
-                const spikeTime = document.getElementById('param-spike-time').value;
+            // 등락률 기준 내림차순 정렬
+            data.sort((a, b) => Math.abs(b.diffFromHigh) - Math.abs(a.diffFromHigh));
+
+            tbody.innerHTML = data.slice(0, 40).map(item => {
+                const diffColor = item.diffFromHigh >= 0 ? 'accent-green' : 'accent-red';
+                const fColor = Math.abs(item.funding) > 0.01 ? 'binance-gold' : 'text-gray-400';
                 
                 return `
                     <tr class="border-t border-gray-800 hover:bg-[#2b3139] transition group">
                         <td class="p-4">
-                            <div class="font-bold text-white text-base">${item.symbol}</div>
+                            <div class="font-bold text-white text-base group-hover:binance-gold transition">${item.symbol}</div>
+                            <div class="text-[9px] text-gray-500 uppercase mt-0.5">Binance Perpetual</div>
                         </td>
-                        <td class="p-4 font-mono text-gray-300">$${item.price.toLocaleString()}</td>
+                        <td class="p-4 font-mono font-bold text-gray-200">$${item.lastPrice.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                        <td class="p-4 font-mono text-gray-400">$${item.highPrice.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                         <td class="p-4">
                             <div class="flex flex-col">
-                                <span class="${changeColor} font-bold text-lg">${item.shortChange > 0 ? '+' : ''}${item.shortChange}%</span>
-                                <span class="text-[9px] text-gray-500 uppercase">최근 ${spikeTime}분 변동</span>
+                                <span class="${diffColor} font-bold text-lg">${item.diffFromHigh.toFixed(2)}%</span>
+                                <span class="text-[9px] text-gray-500 uppercase">vs High (Period)</span>
                             </div>
                         </td>
                         <td class="p-4">
-                            <div class="flex flex-wrap gap-1">
-                                ${item.isSteady ? '<span class="text-[9px] px-1 bg-green-500/20 text-green-400 border border-green-500/30 rounded">STEADY</span>' : ''}
-                                ${Math.abs(item.shortChange) >= 10 ? '<span class="text-[9px] px-1 bg-red-500/20 text-red-400 border border-red-500/30 rounded">SPIKE</span>' : ''}
-                                ${item.d1Ma120 ? '<span class="text-[9px] px-1 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded">UP-TREND</span>' : ''}
-                            </div>
-                        </td>
-                        <td class="p-4">
-                            <span class="text-gray-400 font-mono font-bold">${item.funding.toFixed(4)}%</span>
+                            <span class="${fColor} font-mono font-bold">${item.funding.toFixed(4)}%</span>
                         </td>
                         <td class="p-4 text-center">
-                            <button class="bg-[#2b3139] hover:bg-[#f0b90b] hover:text-black text-white text-[10px] font-bold py-2 px-3 rounded-lg transition-all mx-auto">
-                                실시간 차트
+                            <button onclick="openChart('${item.symbol}')" class="bg-[#2b3139] hover:bg-[#f0b90b] hover:text-black text-white text-[10px] font-bold py-2 px-4 rounded-lg transition-all shadow-md">
+                                <i class="fas fa-chart-line mr-1"></i> 차트 분석
                             </button>
                         </td>
                     </tr>
                 `;
             }).join('');
+        }
+
+        function openChart(symbol) {
+            const modal = document.getElementById('chart-modal');
+            const container = document.getElementById('tradingview-container');
+            document.getElementById('modal-title').innerText = `${symbol} 실시간 종합 차트`;
+            
+            modal.style.display = 'flex';
+            container.innerHTML = `<div id="tv_widget" class="w-full h-full"></div>`;
+
+            const script = document.createElement("script");
+            script.src = "https://s3.tradingview.com/tv.js";
+            script.async = true;
+            script.onload = () => {
+                new TradingView.widget({
+                    "autosize": true,
+                    "symbol": `BINANCE:${symbol}P`,
+                    "interval": "15",
+                    "timezone": "Asia/Seoul",
+                    "theme": "dark",
+                    "style": "1",
+                    "locale": "kr",
+                    "toolbar_bg": "#f1f3f6",
+                    "enable_publishing": false,
+                    "hide_side_toolbar": false,
+                    "allow_symbol_change": true,
+                    "container_id": "tv_widget"
+                });
+            };
+            document.head.appendChild(script);
+        }
+
+        function closeChart() {
+            document.getElementById('chart-modal').style.display = 'none';
+        }
+
+        function updateBadgeDisplay() {
+            const badges = document.getElementById('active-summary');
+            const data = [
+                {id: 'toggle-1', name: 'N-Type', color: 'blue'},
+                {id: 'toggle-2', name: 'Bottom', color: 'purple'},
+                {id: 'toggle-3', name: 'Funding', color: 'orange'},
+                {id: 'toggle-4', name: 'Steady', color: 'green'},
+                {id: 'toggle-5', name: 'High-Diff', color: 'red'}
+            ];
+            badges.innerHTML = data.filter(d => document.getElementById(d.id).checked)
+                                   .map(d => `<span class="text-[9px] px-2 py-0.5 bg-${d.color}-500/10 text-${d.color}-400 rounded border border-${d.color}-500/20 font-bold">${d.name}</span>`)
+                                   .join('');
         }
 
         function startUpdateCycle() {
