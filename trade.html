@@ -3,196 +3,363 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Crypto Strategy Scanner</title>
+    <title>MEOAI - Advanced Trade Terminal</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
         body {
             background-color: #0d1117;
             color: #c9d1d9;
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-family: 'Inter', sans-serif;
         }
-        .card {
-            background-color: #161b22;
-            border: 1px solid #30363d;
-            border-radius: 8px;
-        }
+        .card { background-color: #161b22; border: 1px solid #30363d; border-radius: 12px; }
         .accent-green { color: #238636; }
         .accent-red { color: #da3633; }
-        .bg-green-soft { background-color: rgba(35, 134, 54, 0.1); }
-        .bg-red-soft { background-color: rgba(218, 54, 51, 0.1); }
-        .status-badge {
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 0.75rem;
-            font-weight: bold;
+        .input-dark {
+            background-color: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 0.5rem;
+            color: white;
+            font-size: 0.875rem;
+        }
+        .input-dark:focus { border-color: #58a6ff; outline: none; }
+        .status-badge { padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; }
+        
+        /* Loading animation */
+        .scan-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
         }
     </style>
 </head>
-<body class="p-4 md:p-8">
+<body class="p-4 md:p-6">
 
-    <!-- Header -->
-    <header class="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <!-- Header & Quick Controls -->
+    <header class="mb-6 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
         <div>
             <h1 class="text-2xl font-bold text-white flex items-center gap-2">
-                <i class="fas fa-chart-line accent-green"></i> 
-                전략 종목 스캐너 & 자산 관리
+                <i class="fas fa-microchip text-blue-500"></i>
+                MEOAI 전략 터미널
             </h1>
-            <p class="text-gray-400 text-sm mt-1">일봉 역배열 탈피 및 30분봉 눌림목 전략 실시간 모니터링</p>
-        </div>
-        <div class="card p-4 flex gap-6 items-center">
-            <div class="text-right">
-                <p class="text-xs text-gray-500 uppercase tracking-wider">총 자산 가치</p>
-                <p id="total-usdt-value" class="text-xl font-mono font-bold text-white">$ 0.00 <span class="text-xs text-gray-400">USDT</span></p>
+            <div id="api-status-bar" class="flex items-center gap-3 mt-1">
+                <div class="flex items-center gap-1.5">
+                    <span id="conn-indicator" class="w-2 h-2 rounded-full bg-gray-500"></span>
+                    <span id="conn-text" class="text-xs text-gray-500">API 미연결</span>
+                </div>
+                <span class="text-gray-600">|</span>
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-clock text-xs text-gray-500"></i>
+                    <span id="next-refresh" class="text-xs text-gray-400 font-mono">다음 갱신: --:--</span>
+                </div>
             </div>
-            <button onclick="calculateTotalValue()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm transition">
-                <i class="fas fa-sync-alt"></i> 갱신
-            </button>
+        </div>
+
+        <div class="flex flex-wrap gap-3">
+            <div class="card p-2 px-4 flex items-center gap-4">
+                <div>
+                    <p class="text-[10px] text-gray-500 uppercase">자동 갱신 주기</p>
+                    <select id="refresh-rate" class="bg-transparent text-sm font-bold text-blue-400 focus:outline-none cursor-pointer">
+                        <option value="30000">30초 마다</option>
+                        <option value="60000" selected>1분 마다</option>
+                        <option value="300000">5분 마다</option>
+                        <option value="600000">10분 마다</option>
+                        <option value="0">수동 갱신</option>
+                    </select>
+                </div>
+                <button onclick="manualRefresh()" class="bg-blue-600 hover:bg-blue-500 text-white p-2 px-4 rounded-lg text-sm transition flex items-center gap-2">
+                    <i id="refresh-icon" class="fas fa-sync-alt"></i> 즉시 갱신
+                </button>
+            </div>
         </div>
     </header>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
-        <!-- Strategy Scanning List -->
-        <div class="lg:col-span-2 space-y-6">
-            <section class="card overflow-hidden">
-                <div class="p-4 border-b border-gray-700 bg-gray-800/50 flex justify-between items-center">
-                    <h2 class="font-semibold text-white">포착된 종목 (스캐닝 조건 일치)</h2>
-                    <span class="status-badge bg-green-soft accent-green border border-green-800">실시간 스캔 중</span>
+        <!-- Left Column: Settings & Filter (NEW) -->
+        <div class="lg:col-span-3 space-y-6">
+            <section class="card p-5">
+                <h2 class="text-sm font-bold text-white mb-4 flex items-center gap-2 border-b border-gray-800 pb-2">
+                    <i class="fas fa-filter text-blue-400"></i> 스캔 조건 설정
+                </h2>
+                <div class="space-y-4">
+                    <div>
+                        <label class="text-xs text-gray-500 block mb-1">일봉 거래량 증가 (최소)</label>
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="filter-vol" value="500" class="input-dark w-full" onchange="saveFilters()">
+                            <span class="text-xs text-gray-400">%</span>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-500 block mb-1">이평선 정배열 기준</label>
+                        <select id="filter-ma" class="input-dark w-full" onchange="saveFilters()">
+                            <option value="ma99">MA 99 돌파 시</option>
+                            <option value="ma200">MA 200 돌파 시</option>
+                            <option value="all">완전 정배열 초입</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-500 block mb-1">최소 거래대금 (24h)</label>
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="filter-quote" value="10" class="input-dark w-full" onchange="saveFilters()">
+                            <span class="text-xs text-gray-400">M$</span>
+                        </div>
+                    </div>
+                    <div class="pt-2">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" id="filter-volatility" checked class="rounded bg-gray-900 border-gray-700 text-blue-500" onchange="saveFilters()">
+                            <span class="text-xs text-gray-300">변동성 돌파 종목 포함</span>
+                        </label>
+                    </div>
                 </div>
-                <div class="overflow-x-auto">
+            </section>
+
+            <section class="card p-5">
+                <h2 class="text-sm font-bold text-white mb-4 flex items-center gap-2 border-b border-gray-800 pb-2">
+                    <i class="fas fa-wallet text-yellow-500"></i> 자산 현황 (USDT)
+                </h2>
+                <div id="asset-list" class="space-y-3">
+                    <!-- Assets will be rendered here -->
+                </div>
+                <div class="mt-4 pt-3 border-t border-gray-800 flex justify-between items-center">
+                    <span class="text-xs text-gray-400">총 가치</span>
+                    <span id="total-val" class="font-mono text-lg font-bold text-green-400">$ 0.00</span>
+                </div>
+            </section>
+        </div>
+
+        <!-- Right Column: Scanning Results -->
+        <div class="lg:col-span-9 space-y-6">
+            <section class="card overflow-hidden">
+                <div class="p-4 border-b border-gray-700 bg-gray-800/30 flex justify-between items-center">
+                    <div class="flex items-center gap-3">
+                        <h2 class="font-semibold text-white">포착된 실시간 종목</h2>
+                        <span id="scan-status" class="status-badge bg-green-900/30 text-green-500 border border-green-800/50">IDLE</span>
+                    </div>
+                    <div class="text-xs text-gray-500">
+                        필터링된 종목: <span id="filtered-count" class="text-white">0</span>개
+                    </div>
+                </div>
+                <div class="overflow-x-auto min-h-[400px]">
                     <table class="w-full text-left text-sm">
-                        <thead class="bg-gray-800/30 text-gray-400">
+                        <thead class="bg-gray-800/10 text-gray-400 uppercase text-[11px] tracking-wider">
                             <tr>
-                                <th class="p-4 font-medium">심볼</th>
-                                <th class="p-4 font-medium">현재가</th>
-                                <th class="p-4 font-medium">일봉 거래량</th>
-                                <th class="p-4 font-medium">30분봉 상태</th>
-                                <th class="p-4 font-medium">액션</th>
+                                <th class="p-4 font-medium">Symbol</th>
+                                <th class="p-4 font-medium">Price</th>
+                                <th class="p-4 font-medium">Volume Δ</th>
+                                <th class="p-4 font-medium">30m Support</th>
+                                <th class="p-4 font-medium">Score</th>
+                                <th class="p-4 font-medium text-center">Action</th>
                             </tr>
                         </thead>
                         <tbody id="scanner-tbody">
-                            <!-- Mock Data Based on User Analysis -->
-                            <tr class="border-t border-gray-800 hover:bg-gray-800/20 transition">
-                                <td class="p-4 font-bold text-white">SOON/USDT</td>
-                                <td class="p-4 font-mono">$0.1346</td>
-                                <td class="p-4"><span class="accent-green">↑ 1,200%</span></td>
-                                <td class="p-4"><span class="status-badge bg-yellow-900/30 text-yellow-500 border border-yellow-700">눌림목 (MA30 지지)</span></td>
-                                <td class="p-4"><button class="text-blue-400 hover:underline">상세보기</button></td>
-                            </tr>
-                            <tr class="border-t border-gray-800 hover:bg-gray-800/20 transition">
-                                <td class="p-4 font-bold text-white">FF/USDT</td>
-                                <td class="p-4 font-mono">$0.0986</td>
-                                <td class="p-4"><span class="accent-green">↑ 850%</span></td>
-                                <td class="p-4"><span class="status-badge bg-blue-900/30 text-blue-400 border border-blue-700">횡보 수렴 중</span></td>
-                                <td class="p-4"><button class="text-blue-400 hover:underline">상세보기</button></td>
-                            </tr>
-                            <tr class="border-t border-gray-800 hover:bg-gray-800/20 transition">
-                                <td class="p-4 font-bold text-white">TNSR/USDT</td>
-                                <td class="p-4 font-mono">$0.0425</td>
-                                <td class="p-4"><span class="accent-red">↓ -5% (조정)</span></td>
-                                <td class="p-4"><span class="status-badge bg-red-900/30 text-red-400 border border-red-700">MA99 하단 대기</span></td>
-                                <td class="p-4"><button class="text-blue-400 hover:underline">상세보기</button></td>
+                            <!-- 로딩 상태 또는 데이터 출력 -->
+                            <tr>
+                                <td colspan="6" class="p-20 text-center text-gray-600">
+                                    <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+                                    <p>데이터를 불러오는 중입니다...</p>
+                                </td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
             </section>
-
-            <!-- Detailed Strategy Logic (Instructional) -->
-            <section class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div class="card p-5 bg-green-soft/5">
-                    <h3 class="text-green-500 font-bold mb-3"><i class="fas fa-check-circle"></i> 일봉 진입 조건 (Daily)</h3>
-                    <ul class="text-sm space-y-2 text-gray-300">
-                        <li>• 장기 하락/횡보 후 거래량 10배 이상 폭증</li>
-                        <li>• MA 99(하늘색) 라인 강력한 상향 돌파</li>
-                        <li>• 역배열에서 정배열로의 초입 형성</li>
-                    </ul>
-                </div>
-                <div class="card p-5 bg-blue-soft/5">
-                    <h3 class="text-blue-400 font-bold mb-3"><i class="fas fa-clock"></i> 30분봉 진입 타점 (30m)</h3>
-                    <ul class="text-sm space-y-2 text-gray-300">
-                        <li>• 급등 이후 거래량 없이 가격 조정 발생</li>
-                        <li>• MA 30 또는 MA 60 지지 확인 시 분할 매수</li>
-                        <li>• 볼린저 밴드 하단 혹은 이평선 수렴 구간 공략</li>
-                    </ul>
-                </div>
-            </section>
         </div>
-
-        <!-- Portfolio Management -->
-        <aside class="space-y-6">
-            <section class="card p-6">
-                <h2 class="font-bold text-white mb-4 flex items-center gap-2">
-                    <i class="fas fa-wallet text-yellow-500"></i> 내 보유 자산 (USDT 환산)
-                </h2>
-                <div class="space-y-4">
-                    <div class="space-y-1">
-                        <label class="text-xs text-gray-500 uppercase">SOON 보유량</label>
-                        <div class="flex gap-2">
-                            <input type="number" id="soon-qty" value="0" step="0.01" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white focus:outline-none focus:border-blue-500" oninput="calculateTotalValue()">
-                            <span class="text-xs self-center text-gray-400 w-12 text-right">SOON</span>
-                        </div>
-                    </div>
-                    <div class="space-y-1">
-                        <label class="text-xs text-gray-500 uppercase">FF 보유량</label>
-                        <div class="flex gap-2">
-                            <input type="number" id="ff-qty" value="0" step="0.01" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white focus:outline-none focus:border-blue-500" oninput="calculateTotalValue()">
-                            <span class="text-xs self-center text-gray-400 w-12 text-right">FF</span>
-                        </div>
-                    </div>
-                    <div class="space-y-1">
-                        <label class="text-xs text-gray-500 uppercase">TNSR 보유량</label>
-                        <div class="flex gap-2">
-                            <input type="number" id="tnsr-qty" value="0" step="0.01" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white focus:outline-none focus:border-blue-500" oninput="calculateTotalValue()">
-                            <span class="text-xs self-center text-gray-400 w-12 text-right">TNSR</span>
-                        </div>
-                    </div>
-                    <div class="space-y-1">
-                        <label class="text-xs text-gray-500 uppercase">NEAR 보유량</label>
-                        <div class="flex gap-2">
-                            <input type="number" id="near-qty" value="0" step="0.01" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white focus:outline-none focus:border-blue-500" oninput="calculateTotalValue()">
-                            <span class="text-xs self-center text-gray-400 w-12 text-right">NEAR</span>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <section class="card p-6">
-                <h2 class="font-bold text-white mb-3">전략 메모</h2>
-                <textarea class="w-full bg-gray-900 border border-gray-700 rounded p-3 text-sm text-gray-400 focus:outline-none focus:border-blue-500 h-32" placeholder="현재 시장 상황 및 매수 근거를 기록하세요..."></textarea>
-                <button class="w-full mt-4 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded text-sm transition">메모 저장</button>
-            </section>
-        </aside>
-
     </div>
 
     <script>
-        // 가격 정보 (Mock) - 실제 API 연결 시 해당 부분을 fetch로 대체
-        const prices = {
-            soon: 0.1346,
-            ff: 0.0986,
-            tnsr: 0.0425,
-            near: 1.344
+        // --- State Management ---
+        let apiConfig = null;
+        let refreshTimer = null;
+        let countdownTimer = null;
+        let nextRefreshTime = 0;
+
+        // --- Initialization ---
+        window.onload = () => {
+            loadApiConfig();
+            loadFilters();
+            startAutoRefresh();
+            fetchMarketData(); // 첫 실행
         };
 
-        function calculateTotalValue() {
-            const soonQty = parseFloat(document.getElementById('soon-qty').value) || 0;
-            const ffQty = parseFloat(document.getElementById('ff-qty').value) || 0;
-            const tnsrQty = parseFloat(document.getElementById('tnsr-qty').value) || 0;
-            const nearQty = parseFloat(document.getElementById('near-qty').value) || 0;
+        // 1. API 정보 로드
+        function loadApiConfig() {
+            const saved = localStorage.getItem('crypto_api_config');
+            const indicator = document.getElementById('conn-indicator');
+            const connText = document.getElementById('conn-text');
 
-            const total = (soonQty * prices.soon) + 
-                          (ffQty * prices.ff) + 
-                          (tnsrQty * prices.tnsr) + 
-                          (nearQty * prices.near);
-
-            document.getElementById('total-usdt-value').innerHTML = 
-                `$ ${total.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} <span class="text-xs text-gray-400">USDT</span>`;
+            if (saved) {
+                apiConfig = JSON.parse(saved);
+                indicator.className = "w-2 h-2 rounded-full bg-green-500 scan-pulse";
+                connText.innerText = `${apiConfig.exchange.toUpperCase()} 연결됨`;
+                connText.className = "text-xs text-green-400 font-bold";
+            } else {
+                indicator.className = "w-2 h-2 rounded-full bg-red-500";
+                connText.innerText = "API 정보 없음 (home.html에서 설정 필요)";
+            }
         }
 
-        // 초기 계산 호출
-        window.onload = calculateTotalValue;
+        // 2. 검색 조건 저장/로드
+        function saveFilters() {
+            const filters = {
+                vol: document.getElementById('filter-vol').value,
+                ma: document.getElementById('filter-ma').value,
+                quote: document.getElementById('filter-quote').value,
+                volatility: document.getElementById('filter-volatility').checked
+            };
+            localStorage.setItem('scan_filters', JSON.stringify(filters));
+            console.log("Filters saved:", filters);
+            fetchMarketData(); // 필터 변경 시 재조회
+        }
+
+        function loadFilters() {
+            const saved = localStorage.getItem('scan_filters');
+            if (saved) {
+                const f = JSON.parse(saved);
+                document.getElementById('filter-vol').value = f.vol;
+                document.getElementById('filter-ma').value = f.ma;
+                document.getElementById('filter-quote').value = f.quote;
+                document.getElementById('filter-volatility').checked = f.volatility;
+            }
+        }
+
+        // 3. 자동 갱신 로직
+        function startAutoRefresh() {
+            if (refreshTimer) clearInterval(refreshTimer);
+            if (countdownTimer) clearInterval(countdownTimer);
+
+            const interval = parseInt(document.getElementById('refresh-rate').value);
+            if (interval === 0) {
+                document.getElementById('next-refresh').innerText = "수동 갱신 모드";
+                return;
+            }
+
+            nextRefreshTime = Date.now() + interval;
+            updateCountdown();
+
+            countdownTimer = setInterval(updateCountdown, 1000);
+            refreshTimer = setInterval(() => {
+                fetchMarketData();
+                nextRefreshTime = Date.now() + interval;
+            }, interval);
+        }
+
+        function updateCountdown() {
+            const remain = Math.max(0, Math.floor((nextRefreshTime - Date.now()) / 1000));
+            const mins = Math.floor(remain / 60);
+            const secs = remain % 60;
+            document.getElementById('next-refresh').innerText = 
+                `다음 갱신: ${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        document.getElementById('refresh-rate').addEventListener('change', startAutoRefresh);
+
+        // 4. 데이터 페칭 및 렌더링 (API 연동 인터페이스)
+        async function fetchMarketData() {
+            const icon = document.getElementById('refresh-icon');
+            const statusBadge = document.getElementById('scan-status');
+            
+            icon.classList.add('fa-spin');
+            statusBadge.innerText = "SCANNING...";
+            statusBadge.className = "status-badge bg-blue-900/30 text-blue-400 border border-blue-800/50 scan-pulse";
+
+            try {
+                // 실 서비스 시: await fetch(`https://api.${apiConfig.exchange}.com/v3/...`)
+                // 여기서는 시뮬레이션 데이터를 사용합니다.
+                await new Promise(resolve => setTimeout(resolve, 800)); // Network Delay 시뮬레이션
+
+                const mockData = generateMockData();
+                renderScanner(mockData);
+                renderAssets(mockData);
+            } catch (err) {
+                console.error("Fetch Error:", err);
+            } finally {
+                icon.classList.remove('fa-spin');
+                statusBadge.innerText = "REAL-TIME LIVE";
+                statusBadge.className = "status-badge bg-green-900/30 text-green-500 border border-green-800/50";
+            }
+        }
+
+        function generateMockData() {
+            // 필터 값을 읽어와서 그에 맞는 더미 데이터 생성 시뮬레이션
+            const volCutoff = parseInt(document.getElementById('filter-vol').value);
+            return [
+                { symbol: 'SOON', price: 0.1346, volDelta: 1250, status: 'MA30 지지', score: 95 },
+                { symbol: 'FF', price: 0.0986, volDelta: 850, status: '수렴 완료', score: 88 },
+                { symbol: 'TNSR', price: 0.0425, volDelta: volCutoff + 50, status: '과매도 반등', score: 72 },
+                { symbol: 'NEAR', price: 5.42, volDelta: 120, status: '상단 저항', score: 45 },
+            ].filter(item => item.volDelta >= volCutoff);
+        }
+
+        function renderScanner(data) {
+            const tbody = document.getElementById('scanner-tbody');
+            document.getElementById('filtered-count').innerText = data.length;
+            
+            if (data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="p-10 text-center text-gray-500">조건에 일치하는 종목이 없습니다.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = data.map(item => `
+                <tr class="border-t border-gray-800 hover:bg-gray-800/30 transition group">
+                    <td class="p-4">
+                        <div class="font-bold text-white">${item.symbol}<span class="text-gray-500 text-[10px] ml-1">/USDT</span></div>
+                    </td>
+                    <td class="p-4 font-mono text-gray-300">$${item.price.toFixed(4)}</td>
+                    <td class="p-4">
+                        <span class="accent-green font-semibold">↑ ${item.volDelta}%</span>
+                    </td>
+                    <td class="p-4">
+                        <span class="text-xs px-2 py-1 bg-gray-800 rounded text-blue-300 border border-gray-700">${item.status}</span>
+                    </td>
+                    <td class="p-4 text-center">
+                        <div class="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">
+                            <div class="bg-blue-500 h-full" style="width: ${item.score}%"></div>
+                        </div>
+                    </td>
+                    <td class="p-4 text-center">
+                        <button class="bg-gray-800 group-hover:bg-blue-600 text-white text-xs py-1 px-3 rounded transition">상세차트</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function renderAssets(data) {
+            const container = document.getElementById('asset-list');
+            // Mock Asset Quantities
+            const holdings = { 'SOON': 1500, 'FF': 5000 }; 
+            let totalUsdt = 0;
+
+            let html = '';
+            for (const [sym, qty] of Object.entries(holdings)) {
+                const coin = data.find(d => d.symbol === sym);
+                const price = coin ? coin.price : 0;
+                const value = qty * price;
+                totalUsdt += value;
+
+                html += `
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs text-gray-400">${sym} (${qty.toLocaleString()})</span>
+                        <span class="text-xs font-mono text-white">$ ${value.toFixed(2)}</span>
+                    </div>
+                `;
+            }
+            
+            container.innerHTML = html || '<p class="text-xs text-gray-600 text-center py-4">보유 자산 없음</p>';
+            document.getElementById('total-val').innerText = `$ ${totalUsdt.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+        }
+
+        function manualRefresh() {
+            fetchMarketData();
+            const interval = parseInt(document.getElementById('refresh-rate').value);
+            if (interval > 0) {
+                nextRefreshTime = Date.now() + interval;
+            }
+        }
     </script>
 </body>
 </html>
