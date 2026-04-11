@@ -72,14 +72,18 @@
                 <div class="flex bg-black/40 p-1 rounded-xl mb-6">
                     <button onclick="switchTab('login')" id="tab-login" class="flex-1 py-2.5 text-[10px] font-black rounded-lg transition-all bg-gray-700">LOGIN</button>
                     <button onclick="switchTab('signup')" id="tab-signup" class="flex-1 py-2.5 text-[10px] font-black rounded-lg transition-all text-gray-500">SIGN UP</button>
+                    <button onclick="switchTab('guest')" id="tab-guest" class="flex-1 py-2.5 text-[10px] font-black rounded-lg transition-all text-gray-500">GUEST MODE</button>
                 </div>
                 <form id="auth-form" class="space-y-4">
                     <div id="signup-fields" class="hidden space-y-4">
                         <input type="text" id="full-name" class="input-field w-full p-4 rounded-xl text-xs" placeholder="FULL NAME">
                     </div>
-                    <input type="email" id="email" class="input-field w-full p-4 rounded-xl text-xs" placeholder="EMAIL ADDRESS" required>
-                    <input type="password" id="password" class="input-field w-full p-4 rounded-xl text-xs" placeholder="PASSWORD" required>
+                    <div id="credentials-fields" class="space-y-4">
+                        <input type="email" id="email" class="input-field w-full p-4 rounded-xl text-xs" placeholder="EMAIL ADDRESS">
+                        <input type="password" id="password" class="input-field w-full p-4 rounded-xl text-xs" placeholder="PASSWORD">
+                    </div>
                     <div id="api-fields" class="hidden space-y-4 pt-4 border-t border-white/5">
+                        <p class="text-[9px] text-amber-400 font-bold uppercase mb-2">Binance API Settings</p>
                         <input type="text" id="api-key" class="input-field w-full p-4 rounded-xl text-xs font-mono" placeholder="BINANCE API KEY">
                         <input type="password" id="api-secret" class="input-field w-full p-4 rounded-xl text-xs font-mono" placeholder="BINANCE SECRET KEY">
                     </div>
@@ -130,8 +134,6 @@
         const SUPABASE_URL = 'https://mgidrwfgcdcxgosotysg.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_FQt1zyzqKOI3LUSZ8DYNAQ_b9fOqhTx';
         
-        // 여러 프록시 후보 (순차적으로 시도하거나 가장 안정적인 것 사용)
-        // 403 에러가 났던 corsproxy.io 대신 AllOrigins의 raw 모드 재시도 또는 대안 적용
         const PROXY_URL = 'https://api.allorigins.win/raw?url='; 
         const BINANCE_BASE = 'https://fapi.binance.com';
 
@@ -139,36 +141,49 @@
         let userKeys = null;
         let syncInterval = null;
         let isSyncing = false;
+        let currentMode = 'login';
 
         function switchTab(mode) {
+            currentMode = mode;
             const sFields = document.getElementById('signup-fields');
+            const cFields = document.getElementById('credentials-fields');
             const aFields = document.getElementById('api-fields');
             const btn = document.getElementById('submit-btn');
-            const tLogin = document.getElementById('tab-login');
-            const tSignup = document.getElementById('tab-signup');
+            
+            const tabs = {
+                login: document.getElementById('tab-login'),
+                signup: document.getElementById('tab-signup'),
+                guest: document.getElementById('tab-guest')
+            };
+
+            // Reset tabs
+            Object.values(tabs).forEach(t => {
+                t.className = "flex-1 py-2.5 text-[10px] font-black rounded-lg transition-all text-gray-500";
+            });
+            tabs[mode].className = "flex-1 py-2.5 text-[10px] font-black rounded-lg transition-all bg-gray-700 text-white";
+
             if (mode === 'signup') {
-                sFields.classList.remove('hidden'); aFields.classList.remove('hidden');
+                sFields.classList.remove('hidden'); cFields.classList.remove('hidden'); aFields.classList.remove('hidden');
                 btn.innerText = 'CREATE ACCOUNT';
-                tSignup.className = "flex-1 py-2.5 text-[10px] font-black rounded-lg transition-all bg-gray-700";
-                tLogin.className = "flex-1 py-2.5 text-[10px] font-black rounded-lg transition-all text-gray-500";
+            } else if (mode === 'guest') {
+                sFields.classList.add('hidden'); cFields.classList.add('hidden'); aFields.classList.remove('hidden');
+                btn.innerText = 'START GUEST SESSION';
             } else {
-                sFields.classList.add('hidden'); aFields.classList.add('hidden');
+                sFields.classList.add('hidden'); cFields.classList.remove('hidden'); aFields.classList.add('hidden');
                 btn.innerText = 'LOGIN';
-                tLogin.className = "flex-1 py-2.5 text-[10px] font-black rounded-lg transition-all bg-gray-700";
-                tSignup.className = "flex-1 py-2.5 text-[10px] font-black rounded-lg transition-all text-gray-500";
             }
         }
 
         async function handleAuth(e) {
             e.preventDefault();
             const msg = document.getElementById('auth-message');
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
             msg.className = "mt-4 text-[10px] font-bold text-center text-amber-400 block";
             msg.innerText = "PROCESSING...";
 
             try {
-                if (document.getElementById('submit-btn').innerText.includes('CREATE')) {
+                if (currentMode === 'signup') {
+                    const email = document.getElementById('email').value;
+                    const password = document.getElementById('password').value;
                     const fullName = document.getElementById('full-name').value;
                     const apiKey = document.getElementById('api-key').value;
                     const apiSecret = document.getElementById('api-secret').value;
@@ -178,7 +193,25 @@
                         await sb.from('user_configs').upsert({ user_id: data.user.id, binance_api_key: apiKey, binance_api_secret: apiSecret });
                     }
                     msg.innerText = "SUCCESS! CHECK YOUR EMAIL.";
+                } else if (currentMode === 'guest') {
+                    const apiKey = document.getElementById('api-key').value;
+                    const apiSecret = document.getElementById('api-secret').value;
+                    if(!apiKey || !apiSecret) throw new Error("API Keys are required for guest mode.");
+                    
+                    userKeys = { binance_api_key: apiKey, binance_api_secret: apiSecret };
+                    msg.innerText = "GUEST SESSION STARTED";
+                    
+                    // Manually trigger UI for guest
+                    const aSec = document.getElementById('auth-section');
+                    const pSec = document.getElementById('profile-section');
+                    aSec.classList.add('hidden'); pSec.classList.remove('hidden');
+                    document.getElementById('user-name').innerText = 'GUEST PILOT';
+                    document.getElementById('user-email').innerText = 'Temporary Session';
+                    document.getElementById('loading-spinner').classList.remove('hidden');
+                    startSyncLoop();
                 } else {
+                    const email = document.getElementById('email').value;
+                    const password = document.getElementById('password').value;
                     const { error } = await sb.auth.signInWithPassword({ email, password });
                     if (error) throw error;
                     msg.innerText = "LOGIN SUCCESS!";
@@ -189,7 +222,11 @@
             }
         }
 
-        async function handleLogout() { await sb.auth.signOut(); location.reload(); }
+        async function handleLogout() { 
+            await sb.auth.signOut(); 
+            userKeys = null;
+            location.reload(); 
+        }
 
         async function fetchBinanceData() {
             if (!userKeys || isSyncing) return;
@@ -206,7 +243,6 @@
                 const posUrl = `${BINANCE_BASE}/fapi/v2/positionRisk?${query}&signature=${signature}`;
 
                 const callApi = async (url) => {
-                    // Cache buster 추가하여 프록시 캐싱 방지
                     const finalUrl = PROXY_URL + encodeURIComponent(url + "&cb=" + Date.now());
                     const res = await fetch(finalUrl, {
                         headers: { 'X-MBX-APIKEY': userKeys.binance_api_key }
@@ -239,10 +275,10 @@
                 document.getElementById('pulse-text').innerText = "SYNC ERROR";
                 document.getElementById('debug-status').innerText = "ERR: " + err.message;
                 
-                if (err.message.includes("PROXY") || err.message.includes("HTTP")) {
+                if (err.message.includes("PROXY") || err.message.includes("HTTP") || err.message.includes("403")) {
                     document.getElementById('connection-error').classList.remove('hidden');
                     document.getElementById('idle-text').classList.add('hidden');
-                    document.getElementById('api-status-label').innerText = "PROXY ERROR";
+                    document.getElementById('api-status-label').innerText = "CONNECTION BLOCKED";
                     document.getElementById('api-status-label').className = "text-[9px] font-black text-amber-500 uppercase tracking-wider";
                 }
             } finally {
@@ -323,6 +359,8 @@
         }
 
         function updateUI(user) {
+            if(userKeys && currentMode === 'guest') return; // Don't overwrite guest session if active
+
             const aSec = document.getElementById('auth-section');
             const pSec = document.getElementById('profile-section');
             const idleText = document.getElementById('idle-text');
