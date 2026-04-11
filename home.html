@@ -106,18 +106,22 @@
         </section>
 
         <!-- Summary Info -->
-        <div id="summary-container" class="hidden grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div id="summary-container" class="hidden grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <div class="card p-4">
-                <p class="text-sm text-gray-400">총 미실현 손익 (USDT)</p>
-                <p id="total-pnl" class="text-2xl font-bold mt-1">--</p>
+                <p class="text-sm text-gray-400">총 미실현 손익 (PNL)</p>
+                <p id="total-pnl" class="text-xl font-bold mt-1">--</p>
+            </div>
+            <div class="card p-4 border-l-2 border-blue-500">
+                <p class="text-sm text-gray-400">사용 가능 잔액 (Available)</p>
+                <p id="available-balance" class="text-xl font-bold mt-1 text-blue-400">--</p>
             </div>
             <div class="card p-4">
-                <p class="text-sm text-gray-400">지갑 잔고 (Wallet Balance)</p>
-                <p id="wallet-balance" class="text-2xl font-bold mt-1 text-white">--</p>
+                <p class="text-sm text-gray-400">지갑 총 잔고 (Wallet)</p>
+                <p id="wallet-balance" class="text-xl font-bold mt-1 text-white">--</p>
             </div>
             <div class="card p-4">
                 <p class="text-sm text-gray-400">활성 포지션 수</p>
-                <p id="position-count" class="text-2xl font-bold mt-1 text-white">--</p>
+                <p id="position-count" class="text-xl font-bold mt-1 text-white">--</p>
             </div>
         </div>
 
@@ -138,7 +142,7 @@
                 <table class="w-full text-left">
                     <thead class="bg-[#2b3139] text-gray-400 text-xs uppercase">
                         <tr>
-                            <th class="px-6 py-3">심볼 (Symbol)</th>
+                            <th class="px-6 py-3">심볼 / 펀딩비</th>
                             <th class="px-6 py-3">사이즈 (Size)</th>
                             <th class="px-6 py-3">진입가 (Entry)</th>
                             <th class="px-6 py-3">현재가 (Mark)</th>
@@ -217,25 +221,20 @@
             document.getElementById('fetchBtn').classList.add('opacity-50', 'cursor-not-allowed');
             document.getElementById('timer-ui').classList.remove('hidden');
             
-            // Start First Fetch
             runCycle();
         }
 
         function runCycle() {
-            // Fetch Data
             fetchData();
-            
-            // Reset Countdown based on selected interval
             const interval = parseInt(document.getElementById('refreshInterval').value);
             remainingSeconds = interval;
             updateCountdownUI();
 
-            // Set Countdown Timer (per 1 second)
             if (countdownTimer) clearInterval(countdownTimer);
             countdownTimer = setInterval(() => {
                 remainingSeconds--;
                 if (remainingSeconds <= 0) {
-                    runCycle(); // Re-fetch when zero
+                    runCycle();
                 } else {
                     updateCountdownUI();
                 }
@@ -246,10 +245,7 @@
             const interval = parseInt(document.getElementById('refreshInterval').value);
             const progressBar = document.getElementById('timer-progress');
             const countdownText = document.getElementById('countdown-text');
-            
             countdownText.innerText = remainingSeconds;
-            
-            // Calculate progress percentage
             const percentage = ((interval - remainingSeconds) / interval) * 100;
             progressBar.style.width = `${percentage}%`;
         }
@@ -257,17 +253,14 @@
         function stopAutoRefresh() {
             if (countdownTimer) clearInterval(countdownTimer);
             countdownTimer = null;
-            
             document.getElementById('stopBtn').classList.add('hidden');
             document.getElementById('fetchBtn').innerText = "조회 시작";
             document.getElementById('fetchBtn').disabled = false;
             document.getElementById('fetchBtn').classList.remove('opacity-50', 'cursor-not-allowed');
             document.getElementById('timer-ui').classList.add('hidden');
-            
             const statusBadge = document.getElementById('status-badge');
             statusBadge.innerText = "조회 중단됨";
             statusBadge.className = "px-3 py-1 rounded-full text-xs font-semibold bg-gray-700 text-gray-300";
-            
             showToast("자동 갱신이 중단되었습니다.", false);
         }
 
@@ -290,13 +283,15 @@
                 const queryString = `timestamp=${timestamp}`;
                 const signature = getSignature(queryString, secretKey);
 
-                const [accountRes, posRes] = await Promise.all([
+                // Fetch account, positions, and funding rates
+                const [accountRes, posRes, fundingRes] = await Promise.all([
                     fetch(`${BASE_URL}/fapi/v2/account?${queryString}&signature=${signature}`, {
                         headers: { 'X-MBX-APIKEY': apiKey }
                     }),
                     fetch(`${BASE_URL}/fapi/v2/positionRisk?${queryString}&signature=${signature}`, {
                         headers: { 'X-MBX-APIKEY': apiKey }
-                    })
+                    }),
+                    fetch(`${BASE_URL}/fapi/v1/premiumIndex`)
                 ]);
 
                 if (!accountRes.ok || !posRes.ok) {
@@ -306,8 +301,9 @@
 
                 const accountData = await accountRes.json();
                 const posData = await posRes.json();
+                const fundingData = await fundingRes.json();
 
-                updateUI(accountData, posData);
+                updateUI(accountData, posData, fundingData);
                 
                 statusBadge.innerText = "정상 작동 중";
                 statusBadge.className = "px-3 py-1 rounded-full text-xs font-semibold bg-green-900 text-green-300";
@@ -326,18 +322,29 @@
             }
         }
 
-        function updateUI(account, positions) {
+        function updateUI(account, positions, fundingRates) {
             const tableBody = document.getElementById('position-table-body');
             const summaryContainer = document.getElementById('summary-container');
             summaryContainer.classList.remove('hidden');
 
-            document.getElementById('wallet-balance').innerText = parseFloat(account.totalWalletBalance).toLocaleString(undefined, {minimumFractionDigits: 2}) + " USDT";
+            // Available Balance & Wallet Balance
+            const availableBal = parseFloat(account.availableBalance);
+            const totalWalletBal = parseFloat(account.totalWalletBalance);
             const totalUnrealized = parseFloat(account.totalUnrealizedProfit);
-            document.getElementById('total-pnl').innerText = (totalUnrealized >= 0 ? "+" : "") + totalUnrealized.toLocaleString(undefined, {minimumFractionDigits: 2});
-            document.getElementById('total-pnl').className = `text-2xl font-bold mt-1 ${totalUnrealized >= 0 ? 'profit' : 'loss'}`;
+
+            document.getElementById('available-balance').innerText = availableBal.toLocaleString(undefined, {minimumFractionDigits: 2}) + " USDT";
+            document.getElementById('wallet-balance').innerText = totalWalletBal.toLocaleString(undefined, {minimumFractionDigits: 2}) + " USDT";
+            document.getElementById('total-pnl').innerText = (totalUnrealized >= 0 ? "+" : "") + totalUnrealized.toLocaleString(undefined, {minimumFractionDigits: 2}) + " USDT";
+            document.getElementById('total-pnl').className = `text-xl font-bold mt-1 ${totalUnrealized >= 0 ? 'profit' : 'loss'}`;
 
             const activePositions = positions.filter(p => parseFloat(p.positionAmt) !== 0);
             document.getElementById('position-count').innerText = activePositions.length;
+
+            // Map funding rates for easy access
+            const fundingMap = {};
+            fundingRates.forEach(f => {
+                fundingMap[f.symbol] = (parseFloat(f.lastFundingRate) * 100).toFixed(4);
+            });
 
             tableBody.innerHTML = '';
 
@@ -350,14 +357,17 @@
                     const mark = parseFloat(pos.markPrice);
                     const pnl = parseFloat(pos.unRealizedProfit);
                     const leverage = pos.leverage;
+                    const fundingRate = fundingMap[pos.symbol] || "0.0000";
                     const roe = ((mark - entry) / entry * 100 * (amt > 0 ? 1 : -1) * leverage).toFixed(2);
 
                     const tr = document.createElement('tr');
                     tr.className = "hover:bg-[#2b3139] transition-colors border-b border-binance last:border-0";
                     tr.innerHTML = `
                         <td class="px-6 py-4 font-bold text-white">
-                            ${pos.symbol} 
-                            <span class="text-[10px] ml-1 bg-gray-700 px-1 rounded text-gray-300">${pos.marginType.toUpperCase()} ${leverage}x</span>
+                            <div class="flex flex-col">
+                                <span>${pos.symbol} <span class="text-[10px] ml-1 bg-gray-700 px-1 rounded text-gray-300">${pos.marginType.toUpperCase()} ${leverage}x</span></span>
+                                <span class="text-[10px] font-normal text-gray-500 mt-1">Funding: <span class="${parseFloat(fundingRate) >= 0 ? 'text-blue-400' : 'text-orange-400'}">${fundingRate}%</span></span>
+                            </div>
                         </td>
                         <td class="px-6 py-4 ${amt > 0 ? 'profit' : 'loss'} font-medium">
                             <span class="px-1.5 py-0.5 rounded text-[10px] mr-1 ${amt > 0 ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}">${amt > 0 ? 'LONG' : 'SHORT'}</span>
