@@ -3,300 +3,196 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Binance Futures - Auto Update</title>
+    <title>Crypto Strategy Scanner</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #0b0e11; color: #eaecef; }
-        .binance-yellow { color: #fcd535; }
-        .card { background-color: #1e2329; border-radius: 12px; border: 1px solid #30363d; }
-        input { background-color: #2b3139 !important; border: 1px solid #474d57 !important; color: white !important; }
-        .profit { color: #0ecb81; }
-        .loss { color: #f6465d; }
-        
-        /* Progress Bar Animation */
-        #update-progress {
-            height: 2px;
-            background-color: #fcd535;
-            width: 0%;
-            transition: width 10s linear;
+        body {
+            background-color: #0d1117;
+            color: #c9d1d9;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         }
-        .loading-spinner {
-            border: 2px solid rgba(255, 255, 255, 0.1);
-            border-top: 2px solid #fcd535;
-            border-radius: 50%;
-            width: 16px;
-            height: 16px;
-            animation: spin 1s linear infinite;
+        .card {
+            background-color: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
         }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .accent-green { color: #238636; }
+        .accent-red { color: #da3633; }
+        .bg-green-soft { background-color: rgba(35, 134, 54, 0.1); }
+        .bg-red-soft { background-color: rgba(218, 54, 51, 0.1); }
+        .status-badge {
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body class="p-4 md:p-8">
-    <div class="max-w-6xl mx-auto">
+
+    <!-- Header -->
+    <header class="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+            <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+                <i class="fas fa-chart-line accent-green"></i> 
+                전략 종목 스캐너 & 자산 관리
+            </h1>
+            <p class="text-gray-400 text-sm mt-1">일봉 역배열 탈피 및 30분봉 눌림목 전략 실시간 모니터링</p>
+        </div>
+        <div class="card p-4 flex gap-6 items-center">
+            <div class="text-right">
+                <p class="text-xs text-gray-500 uppercase tracking-wider">총 자산 가치</p>
+                <p id="total-usdt-value" class="text-xl font-mono font-bold text-white">$ 0.00 <span class="text-xs text-gray-400">USDT</span></p>
+            </div>
+            <button onclick="calculateTotalValue()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm transition">
+                <i class="fas fa-sync-alt"></i> 갱신
+            </button>
+        </div>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        <!-- Login Section -->
-        <section id="auth-section" class="max-w-md mx-auto mt-20 card p-8 shadow-2xl">
-            <div class="text-center mb-8">
-                <h1 class="text-3xl font-bold binance-yellow mb-2">Login</h1>
-                <p class="text-gray-400 text-sm">Supabase 계정으로 로그인</p>
-            </div>
-            <div class="space-y-4">
-                <input type="email" id="login-email" class="w-full p-3 rounded-lg" placeholder="Email">
-                <input type="password" id="login-password" class="w-full p-3 rounded-lg" placeholder="Password">
-                <button onclick="handleLogin()" id="login-btn" class="w-full bg-[#fcd535] hover:bg-[#f0c82d] text-black font-bold py-3 rounded-lg transition-all flex justify-center items-center gap-2">
-                    로그인 및 대시보드 시작
-                </button>
-            </div>
-            <p id="auth-error" class="text-red-500 text-xs mt-4 text-center hidden"></p>
-        </section>
-
-        <!-- Dashboard Section -->
-        <section id="main-dashboard" class="hidden">
-            <header class="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 class="text-3xl font-bold binance-yellow">Binance Futures</h1>
-                    <div class="flex items-center gap-2 mt-1">
-                        <span id="user-info" class="text-gray-400 text-sm"></span>
-                        <button onclick="handleLogout()" class="text-xs text-gray-500 hover:text-white underline">로그아웃</button>
-                    </div>
-                </div>
-                <div class="flex flex-col items-end gap-2">
-                    <div class="flex items-center gap-3">
-                        <span id="status-text" class="text-xs font-semibold text-green-400">실시간 연결 중 (10초 자동 갱신)</span>
-                        <div class="loading-spinner" id="global-loader"></div>
-                    </div>
-                    <div class="w-48 bg-gray-800 rounded-full h-1 overflow-hidden">
-                        <div id="update-progress"></div>
-                    </div>
-                </div>
-            </header>
-
-            <!-- Summary -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                <div class="card p-5 border-l-4 border-yellow-500">
-                    <p class="text-xs text-gray-500 uppercase tracking-wider">총 미실현 손익</p>
-                    <p id="total-pnl" class="text-3xl font-bold mt-2">--</p>
-                </div>
-                <div class="card p-5">
-                    <p class="text-xs text-gray-500 uppercase tracking-wider">지갑 잔고</p>
-                    <p id="wallet-balance" class="text-3xl font-bold mt-2">--</p>
-                </div>
-                <div class="card p-5">
-                    <p class="text-xs text-gray-500 uppercase tracking-wider">포지션</p>
-                    <p id="position-count" class="text-3xl font-bold mt-2">--</p>
-                </div>
-            </div>
-
-            <!-- Positions -->
+        <!-- Strategy Scanning List -->
+        <div class="lg:col-span-2 space-y-6">
             <section class="card overflow-hidden">
-                <div class="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-800/30">
-                    <h2 class="font-semibold text-gray-200">내 포지션 정보</h2>
-                    <span id="last-update" class="text-[10px] font-mono text-gray-500"></span>
+                <div class="p-4 border-b border-gray-700 bg-gray-800/50 flex justify-between items-center">
+                    <h2 class="font-semibold text-white">포착된 종목 (스캐닝 조건 일치)</h2>
+                    <span class="status-badge bg-green-soft accent-green border border-green-800">실시간 스캔 중</span>
                 </div>
                 <div class="overflow-x-auto">
-                    <table class="w-full text-left">
-                        <thead class="bg-[#2b3139] text-gray-400 text-[11px] uppercase">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-gray-800/30 text-gray-400">
                             <tr>
-                                <th class="px-6 py-3">Symbol</th>
-                                <th class="px-6 py-3">Size/Side</th>
-                                <th class="px-6 py-3">Entry/Mark</th>
-                                <th class="px-6 py-3 text-right">PNL</th>
-                                <th class="px-6 py-3 text-right">ROE%</th>
+                                <th class="p-4 font-medium">심볼</th>
+                                <th class="p-4 font-medium">현재가</th>
+                                <th class="p-4 font-medium">일봉 거래량</th>
+                                <th class="p-4 font-medium">30분봉 상태</th>
+                                <th class="p-4 font-medium">액션</th>
                             </tr>
                         </thead>
-                        <tbody id="position-table-body" class="divide-y divide-gray-800 text-sm">
-                            <tr><td colspan="5" class="px-6 py-10 text-center text-gray-600">데이터를 불러오는 중...</td></tr>
+                        <tbody id="scanner-tbody">
+                            <!-- Mock Data Based on User Analysis -->
+                            <tr class="border-t border-gray-800 hover:bg-gray-800/20 transition">
+                                <td class="p-4 font-bold text-white">SOON/USDT</td>
+                                <td class="p-4 font-mono">$0.1346</td>
+                                <td class="p-4"><span class="accent-green">↑ 1,200%</span></td>
+                                <td class="p-4"><span class="status-badge bg-yellow-900/30 text-yellow-500 border border-yellow-700">눌림목 (MA30 지지)</span></td>
+                                <td class="p-4"><button class="text-blue-400 hover:underline">상세보기</button></td>
+                            </tr>
+                            <tr class="border-t border-gray-800 hover:bg-gray-800/20 transition">
+                                <td class="p-4 font-bold text-white">FF/USDT</td>
+                                <td class="p-4 font-mono">$0.0986</td>
+                                <td class="p-4"><span class="accent-green">↑ 850%</span></td>
+                                <td class="p-4"><span class="status-badge bg-blue-900/30 text-blue-400 border border-blue-700">횡보 수렴 중</span></td>
+                                <td class="p-4"><button class="text-blue-400 hover:underline">상세보기</button></td>
+                            </tr>
+                            <tr class="border-t border-gray-800 hover:bg-gray-800/20 transition">
+                                <td class="p-4 font-bold text-white">TNSR/USDT</td>
+                                <td class="p-4 font-mono">$0.0425</td>
+                                <td class="p-4"><span class="accent-red">↓ -5% (조정)</span></td>
+                                <td class="p-4"><span class="status-badge bg-red-900/30 text-red-400 border border-red-700">MA99 하단 대기</span></td>
+                                <td class="p-4"><button class="text-blue-400 hover:underline">상세보기</button></td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
             </section>
-        </section>
 
-        <div id="toast" class="fixed bottom-5 right-5 hidden bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg z-50"></div>
+            <!-- Detailed Strategy Logic (Instructional) -->
+            <section class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="card p-5 bg-green-soft/5">
+                    <h3 class="text-green-500 font-bold mb-3"><i class="fas fa-check-circle"></i> 일봉 진입 조건 (Daily)</h3>
+                    <ul class="text-sm space-y-2 text-gray-300">
+                        <li>• 장기 하락/횡보 후 거래량 10배 이상 폭증</li>
+                        <li>• MA 99(하늘색) 라인 강력한 상향 돌파</li>
+                        <li>• 역배열에서 정배열로의 초입 형성</li>
+                    </ul>
+                </div>
+                <div class="card p-5 bg-blue-soft/5">
+                    <h3 class="text-blue-400 font-bold mb-3"><i class="fas fa-clock"></i> 30분봉 진입 타점 (30m)</h3>
+                    <ul class="text-sm space-y-2 text-gray-300">
+                        <li>• 급등 이후 거래량 없이 가격 조정 발생</li>
+                        <li>• MA 30 또는 MA 60 지지 확인 시 분할 매수</li>
+                        <li>• 볼린저 밴드 하단 혹은 이평선 수렴 구간 공략</li>
+                    </ul>
+                </div>
+            </section>
+        </div>
+
+        <!-- Portfolio Management -->
+        <aside class="space-y-6">
+            <section class="card p-6">
+                <h2 class="font-bold text-white mb-4 flex items-center gap-2">
+                    <i class="fas fa-wallet text-yellow-500"></i> 내 보유 자산 (USDT 환산)
+                </h2>
+                <div class="space-y-4">
+                    <div class="space-y-1">
+                        <label class="text-xs text-gray-500 uppercase">SOON 보유량</label>
+                        <div class="flex gap-2">
+                            <input type="number" id="soon-qty" value="0" step="0.01" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white focus:outline-none focus:border-blue-500" oninput="calculateTotalValue()">
+                            <span class="text-xs self-center text-gray-400 w-12 text-right">SOON</span>
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-xs text-gray-500 uppercase">FF 보유량</label>
+                        <div class="flex gap-2">
+                            <input type="number" id="ff-qty" value="0" step="0.01" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white focus:outline-none focus:border-blue-500" oninput="calculateTotalValue()">
+                            <span class="text-xs self-center text-gray-400 w-12 text-right">FF</span>
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-xs text-gray-500 uppercase">TNSR 보유량</label>
+                        <div class="flex gap-2">
+                            <input type="number" id="tnsr-qty" value="0" step="0.01" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white focus:outline-none focus:border-blue-500" oninput="calculateTotalValue()">
+                            <span class="text-xs self-center text-gray-400 w-12 text-right">TNSR</span>
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-xs text-gray-500 uppercase">NEAR 보유량</label>
+                        <div class="flex gap-2">
+                            <input type="number" id="near-qty" value="0" step="0.01" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white focus:outline-none focus:border-blue-500" oninput="calculateTotalValue()">
+                            <span class="text-xs self-center text-gray-400 w-12 text-right">NEAR</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card p-6">
+                <h2 class="font-bold text-white mb-3">전략 메모</h2>
+                <textarea class="w-full bg-gray-900 border border-gray-700 rounded p-3 text-sm text-gray-400 focus:outline-none focus:border-blue-500 h-32" placeholder="현재 시장 상황 및 매수 근거를 기록하세요..."></textarea>
+                <button class="w-full mt-4 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded text-sm transition">메모 저장</button>
+            </section>
+        </aside>
+
     </div>
 
     <script>
-        // --- CONFIG ---
-        const SUPABASE_URL = 'https://your-project.supabase.co';
-        const SUPABASE_ANON_KEY = 'your-anon-key';
-        const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        const BINANCE_BASE = 'https://fapi.binance.com';
+        // 가격 정보 (Mock) - 실제 API 연결 시 해당 부분을 fetch로 대체
+        const prices = {
+            soon: 0.1346,
+            ff: 0.0986,
+            tnsr: 0.0425,
+            near: 1.344
+        };
 
-        let userApiKey = '';
-        let userSecretKey = '';
-        let refreshTimer = null;
-        const REFRESH_INTERVAL = 10000; // 10초
+        function calculateTotalValue() {
+            const soonQty = parseFloat(document.getElementById('soon-qty').value) || 0;
+            const ffQty = parseFloat(document.getElementById('ff-qty').value) || 0;
+            const tnsrQty = parseFloat(document.getElementById('tnsr-qty').value) || 0;
+            const nearQty = parseFloat(document.getElementById('near-qty').value) || 0;
 
-        // --- AUTH ---
-        async function handleLogin() {
-            const email = document.getElementById('login-email').value;
-            const password = document.getElementById('login-password').value;
-            const btn = document.getElementById('login-btn');
-            
-            btn.disabled = true;
-            btn.innerHTML = `<div class="loading-spinner"></div> 확인 중...`;
+            const total = (soonQty * prices.soon) + 
+                          (ffQty * prices.ff) + 
+                          (tnsrQty * prices.tnsr) + 
+                          (nearQty * prices.near);
 
-            const { data, error } = await sb.auth.signInWithPassword({ email, password });
-            if (error) {
-                document.getElementById('auth-error').innerText = error.message;
-                document.getElementById('auth-error').classList.remove('hidden');
-                btn.disabled = false;
-                btn.innerText = "로그인 및 대시보드 시작";
-                return;
-            }
-
-            // user_settings 테이블에서 키 정보 가져오기
-            const { data: settings, error: sError } = await sb
-                .from('user_settings')
-                .select('binance_key, binance_secret')
-                .eq('user_id', data.user.id)
-                .single();
-
-            if (sError || !settings) {
-                alert("API 설정을 찾을 수 없습니다. user_settings 테이블을 확인하세요.");
-                location.reload();
-                return;
-            }
-
-            userApiKey = settings.binance_key;
-            userSecretKey = settings.binance_secret;
-            
-            document.getElementById('user-info').innerText = email;
-            startDashboard();
+            document.getElementById('total-usdt-value').innerHTML = 
+                `$ ${total.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} <span class="text-xs text-gray-400">USDT</span>`;
         }
 
-        function handleLogout() {
-            clearInterval(refreshTimer);
-            sb.auth.signOut();
-            location.reload();
-        }
-
-        // --- CORE LOGIC ---
-        function startDashboard() {
-            document.getElementById('auth-section').classList.add('hidden');
-            document.getElementById('main-dashboard').classList.remove('hidden');
-            
-            // 첫 실행
-            fetchAndRefresh();
-            
-            // 10초 간격 반복
-            refreshTimer = setInterval(fetchAndRefresh, REFRESH_INTERVAL);
-        }
-
-        async function fetchAndRefresh() {
-            // 프로그레스 바 리셋 및 애니메이션 시작
-            const bar = document.getElementById('update-progress');
-            bar.style.transition = 'none';
-            bar.style.width = '0%';
-            
-            // 데이터 호출 애니메이션 표시
-            document.getElementById('global-loader').classList.remove('opacity-0');
-
-            await fetchBinanceData();
-
-            // 데이터 호출 완료 후 프로그레스 바 가동
-            setTimeout(() => {
-                bar.style.transition = `width ${REFRESH_INTERVAL/1000}s linear`;
-                bar.style.width = '100%';
-                document.getElementById('global-loader').classList.add('opacity-0');
-            }, 100);
-        }
-
-        function getSignature(query, secret) {
-            return CryptoJS.HmacSHA256(query, secret).toString();
-        }
-
-        async function fetchBinanceData() {
-            try {
-                const ts = Date.now();
-                const query = `timestamp=${ts}`;
-                const sig = getSignature(query, userSecretKey);
-                const headers = { 'X-MBX-APIKEY': userApiKey };
-
-                const [accRes, posRes] = await Promise.all([
-                    fetch(`${BINANCE_BASE}/fapi/v2/account?${query}&signature=${sig}`, { headers }),
-                    fetch(`${BINANCE_BASE}/fapi/v2/positionRisk?${query}&signature=${sig}`, { headers })
-                ]);
-
-                if (!accRes.ok || !posRes.ok) throw new Error("API Key 권한이나 네트워크를 확인하세요.");
-
-                const accData = await accRes.json();
-                const posData = await posRes.json();
-
-                updateUI(accData, posData);
-            } catch (err) {
-                showToast(err.message);
-                console.error(err);
-            }
-        }
-
-        function updateUI(acc, pos) {
-            // 요약
-            const pnl = parseFloat(acc.totalUnrealizedProfit);
-            const pnlDisplay = document.getElementById('total-pnl');
-            pnlDisplay.innerText = (pnl >= 0 ? '+' : '') + pnl.toLocaleString() + " USDT";
-            pnlDisplay.className = `text-3xl font-bold mt-2 ${pnl >= 0 ? 'profit' : 'loss'}`;
-            
-            document.getElementById('wallet-balance').innerText = parseFloat(acc.totalWalletBalance).toLocaleString() + " USDT";
-
-            // 포지션 테이블
-            const active = pos.filter(p => parseFloat(p.positionAmt) !== 0);
-            document.getElementById('position-count').innerText = active.length + "건";
-
-            const tbody = document.getElementById('position-table-body');
-            tbody.innerHTML = '';
-
-            if (active.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-10 text-center text-gray-600">활성 포지션 없음</td></tr>';
-            } else {
-                active.forEach(p => {
-                    const amt = parseFloat(p.positionAmt);
-                    const entry = parseFloat(p.entryPrice);
-                    const mark = parseFloat(p.markPrice);
-                    const upnl = parseFloat(p.unRealizedProfit);
-                    const leverage = p.leverage;
-                    const margin = (Math.abs(amt) * entry) / leverage;
-                    const roe = ((upnl / margin) * 100).toFixed(2);
-
-                    const tr = document.createElement('tr');
-                    tr.className = "hover:bg-gray-800/40 border-b border-gray-800 last:border-0";
-                    tr.innerHTML = `
-                        <td class="px-6 py-4 font-bold">
-                            ${p.symbol}
-                            <div class="text-[10px] text-gray-500 font-normal uppercase">${p.marginType} ${leverage}x</div>
-                        </td>
-                        <td class="px-6 py-4">
-                            <span class="font-bold ${amt > 0 ? 'profit' : 'loss'}">${amt > 0 ? 'LONG' : 'SHORT'}</span>
-                            <div class="text-xs text-gray-400">${Math.abs(amt)}</div>
-                        </td>
-                        <td class="px-6 py-4 text-xs">
-                            <span class="text-gray-500">E:</span> ${entry.toLocaleString()}<br>
-                            <span class="text-gray-500">M:</span> ${mark.toLocaleString()}
-                        </td>
-                        <td class="px-6 py-4 text-right font-bold ${upnl >= 0 ? 'profit' : 'loss'}">
-                            ${upnl.toLocaleString()}
-                        </td>
-                        <td class="px-6 py-4 text-right">
-                            <span class="px-2 py-1 rounded text-xs font-bold ${roe >= 0 ? 'bg-green-500/10 profit' : 'bg-red-500/10 loss'}">
-                                ${roe >= 0 ? '+' : ''}${roe}%
-                            </span>
-                        </td>
-                    `;
-                    tbody.appendChild(tr);
-                });
-            }
-            document.getElementById('last-update').innerText = `LAST SYNC: ${new Date().toLocaleTimeString()}`;
-        }
-
-        function showToast(msg) {
-            const t = document.getElementById('toast');
-            t.innerText = msg;
-            t.classList.remove('hidden');
-            setTimeout(() => t.classList.add('hidden'), 3000);
-        }
+        // 초기 계산 호출
+        window.onload = calculateTotalValue;
     </script>
 </body>
 </html>
