@@ -19,6 +19,8 @@
         .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
         .pnl-positive { color: #10b981; }
         .pnl-negative { color: #ef4444; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #2d323e; border-radius: 10px; }
     </style>
 </head>
 <body class="min-h-screen p-4 md:p-8 flex flex-col items-center">
@@ -66,7 +68,7 @@
         </div>
         <div class="md:col-span-3 bg-amber-400 rounded-[1.5rem] p-6 flex flex-col justify-center">
             <p class="text-[10px] font-black text-black/40 uppercase">System Pulse</p>
-            <h2 id="pulse-text" class="text-xl font-black text-black uppercase">Ready</h2>
+            <h2 id="pulse-text" class="text-xl font-black text-black uppercase leading-tight">Ready</h2>
         </div>
 
         <!-- Sidebar (Auth/Profile) -->
@@ -83,7 +85,7 @@
                     <input type="email" id="email" class="input-field w-full p-4 rounded-xl text-xs" placeholder="EMAIL ADDRESS" required>
                     <input type="password" id="password" class="input-field w-full p-4 rounded-xl text-xs" placeholder="PASSWORD" required>
                     <div id="api-fields" class="hidden space-y-4 pt-4 border-t border-white/5">
-                        <p class="text-[9px] font-black text-amber-400 uppercase">Binance API Key</p>
+                        <p class="text-[9px] font-black text-amber-400 uppercase">Binance API Key (Futures Enabled)</p>
                         <input type="text" id="api-key" class="input-field w-full p-4 rounded-xl text-xs font-mono" placeholder="API KEY">
                         <input type="password" id="api-secret" class="input-field w-full p-4 rounded-xl text-xs font-mono" placeholder="SECRET KEY">
                     </div>
@@ -102,7 +104,7 @@
                 </div>
                 <div class="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-3">
                     <span class="status-dot bg-emerald-500 animate-pulse"></span>
-                    <span class="text-[9px] font-black text-emerald-500 uppercase">Binance API Connected</span>
+                    <span id="api-status-label" class="text-[9px] font-black text-emerald-500 uppercase tracking-wider">Syncing Data...</span>
                 </div>
             </div>
         </div>
@@ -114,7 +116,6 @@
                     <h3 class="font-black uppercase text-sm italic">Live Profit Tracker</h3>
                 </div>
                 <div id="position-list" class="flex-grow p-4 overflow-y-auto">
-                    <!-- Positions will be injected here -->
                     <div id="no-data" class="h-full flex flex-col items-center justify-center text-gray-600">
                         <i class="fas fa-lock mb-4 text-2xl opacity-20"></i>
                         <p class="text-[10px] font-black uppercase tracking-widest">Authentication Required</p>
@@ -128,11 +129,15 @@
         // --- CONFIGURATION ---
         const SUPABASE_URL = 'https://mgidrwfgcdcxgosotysg.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_FQt1zyzqKOI3LUSZ8DYNAQ_b9fOqhTx';
-        const BINANCE_BASE = 'https://fapi.binance.com'; // 선물(Futures) 엔드포인트
+        
+        // CORS 문제를 해결하기 위한 프록시 서버 활용 (주석: AllOrigins 혹은 직접 구축된 프록시 권장)
+        const PROXY_URL = 'https://api.allorigins.win/raw?url=';
+        const BINANCE_BASE = 'https://fapi.binance.com';
 
         const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         let userKeys = null;
         let syncInterval = null;
+        let isSyncing = false;
 
         // --- AUTH LOGIC ---
         function switchTab(mode) {
@@ -174,7 +179,12 @@
                     const { data, error } = await sb.auth.signUp({ email, password, options: { data: { full_name: fullName } } });
                     if (error) throw error;
                     if (data.user) {
-                        await sb.from('user_configs').insert({ user_id: data.user.id, binance_api_key: apiKey, binance_api_secret: apiSecret });
+                        const { error: dbErr } = await sb.from('user_configs').insert({ 
+                            user_id: data.user.id, 
+                            binance_api_key: apiKey, 
+                            binance_api_secret: apiSecret 
+                        });
+                        if(dbErr) throw dbErr;
                     }
                     msg.innerText = "SIGNUP SUCCESS! CHECK YOUR EMAIL.";
                 } else {
@@ -184,7 +194,7 @@
                 }
             } catch (err) {
                 msg.className = "mt-4 text-[10px] font-bold text-center text-red-500 block";
-                msg.innerText = err.message;
+                msg.innerText = err.message || "Authentication Failed";
             }
         }
 
@@ -195,58 +205,82 @@
 
         // --- BINANCE SYNC LOGIC ---
         async function fetchBinanceData() {
-            if (!userKeys || !userKeys.binance_api_key) return;
+            if (!userKeys || !userKeys.binance_api_key || isSyncing) return;
+            isSyncing = true;
 
             const timestamp = Date.now();
             const query = `timestamp=${timestamp}`;
             const signature = CryptoJS.HmacSHA256(query, userKeys.binance_api_secret).toString();
             
             try {
+                // 바이낸스 API는 CORS를 허용하지 않으므로 PROXY를 통해 우회하거나 브라우저 제약을 감수해야 합니다.
+                // 여기서는 AllOrigins 프록시를 사용하여 요청을 전송합니다.
+                
+                const accountUrl = `${BINANCE_BASE}/fapi/v2/account?${query}&signature=${signature}`;
+                const posUrl = `${BINANCE_BASE}/fapi/v2/positionRisk?${query}&signature=${signature}`;
+
                 // 1. Account Info (Balance)
-                const accountRes = await fetch(`${BINANCE_BASE}/fapi/v2/account?${query}&signature=${signature}`, {
+                const accountRes = await fetch(PROXY_URL + encodeURIComponent(accountUrl), {
                     headers: { 'X-MBX-APIKEY': userKeys.binance_api_key }
                 });
                 const accountData = await accountRes.json();
 
                 // 2. Position Risk
-                const posRes = await fetch(`${BINANCE_BASE}/fapi/v2/positionRisk?${query}&signature=${signature}`, {
+                const posRes = await fetch(PROXY_URL + encodeURIComponent(posUrl), {
                     headers: { 'X-MBX-APIKEY': userKeys.binance_api_key }
                 });
                 const posData = await posRes.json();
 
+                if (accountData.code || posData.code) {
+                    throw new Error(accountData.msg || posData.msg || "API Key Error");
+                }
+
                 renderData(accountData, posData);
+                document.getElementById('api-status-label').innerText = "BINANCE API CONNECTED";
             } catch (err) {
                 console.error("Binance Sync Error:", err);
                 document.getElementById('pulse-text').innerText = "SYNC ERROR";
+                document.getElementById('api-status-label').innerText = "SYNC FAILED (Check API Key)";
+                document.getElementById('api-status-label').classList.replace('text-emerald-500', 'text-red-500');
+            } finally {
+                isSyncing = false;
             }
         }
 
         function renderData(account, positions) {
             // Update Summary
-            document.getElementById('summary-balance').innerText = parseFloat(account.totalMarginBalance).toLocaleString(undefined, {minimumFractionDigits: 2});
-            document.getElementById('summary-pnl').innerText = parseFloat(account.totalUnrealizedProfit).toLocaleString(undefined, {minimumFractionDigits: 2});
+            if (account.totalMarginBalance) {
+                document.getElementById('summary-balance').innerText = parseFloat(account.totalMarginBalance).toLocaleString(undefined, {minimumFractionDigits: 2});
+                document.getElementById('summary-pnl').innerText = parseFloat(account.totalUnrealizedProfit).toLocaleString(undefined, {minimumFractionDigits: 2});
+                const pnl = parseFloat(account.totalUnrealizedProfit);
+                document.getElementById('summary-pnl').className = `text-3xl font-black ${pnl >= 0 ? 'pnl-positive' : 'pnl-negative'}`;
+            }
             
-            const activePos = positions.filter(p => parseFloat(p.positionAmt) !== 0);
+            const activePos = Array.isArray(positions) ? positions.filter(p => parseFloat(p.positionAmt) !== 0) : [];
             document.getElementById('summary-positions').innerText = activePos.length;
 
             const listEl = document.getElementById('position-list');
             if (activePos.length === 0) {
-                listEl.innerHTML = `<div class="h-full flex items-center justify-center text-gray-600 uppercase text-[10px] font-bold italic">No active positions</div>`;
+                listEl.innerHTML = `<div class="h-full flex items-center justify-center text-gray-600 uppercase text-[10px] font-bold italic">No active positions found</div>`;
                 return;
             }
 
             listEl.innerHTML = activePos.map(p => {
                 const pnl = parseFloat(p.unRealizedProfit);
                 const pnlClass = pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
+                const size = Math.abs(parseFloat(p.positionAmt));
                 return `
-                    <div class="bg-black/20 p-5 rounded-2xl border border-white/5 mb-3 flex justify-between items-center">
+                    <div class="bg-black/20 p-5 rounded-2xl border border-white/5 mb-3 flex justify-between items-center hover:bg-black/30 transition-colors">
                         <div>
-                            <p class="text-xs font-black uppercase">${p.symbol}</p>
-                            <p class="text-[9px] text-gray-500 font-bold">${p.positionSide} | ${p.leverage}x</p>
+                            <div class="flex items-center gap-2">
+                                <span class="px-2 py-0.5 rounded bg-white/5 text-[9px] font-black">${parseFloat(p.positionAmt) > 0 ? 'LONG' : 'SHORT'}</span>
+                                <p class="text-xs font-black uppercase tracking-tight">${p.symbol}</p>
+                            </div>
+                            <p class="text-[9px] text-gray-500 font-bold mt-1">SIZE: ${size} | LEV: ${p.leverage}x</p>
                         </div>
                         <div class="text-right">
                             <p class="text-xs font-black ${pnlClass}">${pnl > 0 ? '+' : ''}${pnl.toFixed(2)} USDT</p>
-                            <p class="text-[9px] text-gray-500 font-bold">ENTRY: ${parseFloat(p.entryPrice).toFixed(4)}</p>
+                            <p class="text-[9px] text-gray-500 font-bold">ENTRY: ${parseFloat(p.entryPrice).toLocaleString()}</p>
                         </div>
                     </div>
                 `;
@@ -256,10 +290,20 @@
         }
 
         async function loadUserConfig(userId) {
-            const { data, error } = await sb.from('user_configs').select('*').eq('user_id', userId).single();
-            if (!error && data) {
+            document.getElementById('pulse-text').innerText = "FETCHING KEYS";
+            const { data, error } = await sb.from('user_configs').select('*').eq('user_id', userId).maybeSingle();
+            if (error) {
+                console.error("DB Error:", error);
+                document.getElementById('pulse-text').innerText = "DB ERROR";
+                return;
+            }
+            
+            if (data) {
                 userKeys = data;
                 startSyncLoop();
+            } else {
+                document.getElementById('pulse-text').innerText = "API KEYS MISSING";
+                document.getElementById('api-status-label').innerText = "PLEASE RE-LOGIN WITH API KEYS";
             }
         }
 
@@ -268,6 +312,7 @@
             fetchBinanceData();
             let timer = 10;
             syncInterval = setInterval(() => {
+                if (isSyncing) return;
                 timer -= 0.1;
                 document.getElementById('sync-progress').style.width = (timer * 10) + '%';
                 document.getElementById('sync-timer').innerText = Math.ceil(timer) + 's';
