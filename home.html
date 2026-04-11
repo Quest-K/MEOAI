@@ -56,7 +56,6 @@
                 </h2>
                 
                 <div class="flex items-center gap-4">
-                    <!-- Updated Link to Home.html -->
                     <a href="https://quest-k.github.io/MEOAI/home.html" target="_blank" class="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm transition-colors border border-binance">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -151,9 +150,9 @@
                             <th class="px-6 py-3">심볼 / 펀딩비</th>
                             <th class="px-6 py-3 text-right">사이즈 (QTY / USDT)</th>
                             <th class="px-6 py-3 text-right">진입가 (Entry)</th>
-                            <th class="px-6 py-3 text-right">현재가 (Mark)</th>
-                            <th class="px-6 py-3 text-right">수익금액 (PNL)</th>
                             <th class="px-6 py-3 text-right">수익률 (ROE%)</th>
+                            <th class="px-6 py-3 text-right">수익금액 (PNL)</th>
+                            <th class="px-6 py-3 text-right text-orange-400">예상 펀딩비 (Est. Fee)</th>
                         </tr>
                     </thead>
                     <tbody id="position-table-body" class="divide-y divide-binance text-sm">
@@ -326,7 +325,7 @@
 
             const fundingMap = {};
             fundingRates.forEach(f => {
-                fundingMap[f.symbol] = (parseFloat(f.lastFundingRate) * 100).toFixed(4);
+                fundingMap[f.symbol] = parseFloat(f.lastFundingRate);
             });
 
             tableBody.innerHTML = '';
@@ -339,9 +338,21 @@
                     const mark = parseFloat(pos.markPrice);
                     const pnl = parseFloat(pos.unRealizedProfit);
                     const leverage = pos.leverage;
-                    const fundingRate = fundingMap[pos.symbol] || "0.0000";
+                    
+                    const fundingRateRaw = fundingMap[pos.symbol] || 0;
+                    const fundingRateDisplay = (fundingRateRaw * 100).toFixed(4);
+                    
+                    // 예상 펀딩비 계산: 포지션 사이즈(USDT 가치) * 펀딩비율
+                    // 주의: 펀딩비가 양수일 때 롱은 지불(loss 색상), 숏은 수취(profit 색상)
+                    const usdtValue = Math.abs(amt * mark);
+                    const estFundingFee = usdtValue * fundingRateRaw;
+                    
+                    // 펀딩비 UI 결정 (지불/수취 여부)
+                    // 양수 펀딩비: 롱(+)은 지불(차감), 숏(-)은 수취(추가)
+                    // 음수 펀딩비: 롱(+)은 수취(추가), 숏(-)은 지불(차감)
+                    const isPaying = (amt > 0 && fundingRateRaw > 0) || (amt < 0 && fundingRateRaw < 0);
+                    
                     const roe = ((mark - entry) / entry * 100 * (amt > 0 ? 1 : -1) * leverage).toFixed(2);
-                    const usdtSize = Math.abs(amt * mark);
 
                     const tr = document.createElement('tr');
                     tr.className = "hover:bg-[#2b3139] transition-colors border-b border-binance last:border-0";
@@ -349,7 +360,7 @@
                         <td class="px-6 py-4 font-bold text-white">
                             <div class="flex flex-col">
                                 <span>${pos.symbol} <span class="text-[10px] ml-1 bg-gray-700 px-1 rounded text-gray-300">${pos.marginType.toUpperCase()} ${leverage}x</span></span>
-                                <span class="text-[10px] font-normal text-gray-500 mt-1">Funding: <span class="${parseFloat(fundingRate) >= 0 ? 'text-blue-400' : 'text-orange-400'}">${fundingRate}%</span></span>
+                                <span class="text-[10px] font-normal text-gray-500 mt-1">Next Funding: <span class="${fundingRateRaw >= 0 ? 'text-blue-400' : 'text-orange-400'}">${fundingRateDisplay}%</span></span>
                             </div>
                         </td>
                         <td class="px-6 py-4 text-right">
@@ -358,13 +369,18 @@
                                     <span class="px-1.5 py-0.5 rounded text-[10px] mr-1 ${amt > 0 ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}">${amt > 0 ? 'LONG' : 'SHORT'}</span>
                                     ${Math.abs(amt).toLocaleString()}
                                 </span>
-                                <span class="text-[11px] text-gray-400 mt-1">≈ ${usdtSize.toLocaleString(undefined, {minimumFractionDigits: 2})} USDT</span>
+                                <span class="text-[11px] text-gray-400 mt-1">≈ ${usdtValue.toLocaleString(undefined, {minimumFractionDigits: 2})} USDT</span>
                             </div>
                         </td>
                         <td class="px-6 py-4 text-right text-gray-400 font-mono">${entry.toLocaleString()}</td>
-                        <td class="px-6 py-4 text-right text-white font-medium font-mono">${mark.toLocaleString()}</td>
-                        <td class="px-6 py-4 text-right font-bold ${pnl >= 0 ? 'profit' : 'loss'} font-mono">${pnl.toLocaleString(undefined, {minimumFractionDigits: 2})} USDT</td>
                         <td class="px-6 py-4 text-right font-bold ${roe >= 0 ? 'profit' : 'loss'}">${roe}%</td>
+                        <td class="px-6 py-4 text-right font-bold ${pnl >= 0 ? 'profit' : 'loss'} font-mono">${pnl.toLocaleString(undefined, {minimumFractionDigits: 2})} USDT</td>
+                        <td class="px-6 py-4 text-right font-bold font-mono">
+                            <div class="flex flex-col items-end">
+                                <span class="${isPaying ? 'loss' : 'profit'}">${isPaying ? '-' : '+'}${Math.abs(estFundingFee).toFixed(4)} USDT</span>
+                                <span class="text-[10px] font-normal text-gray-500">${isPaying ? '지불 예정' : '수취 예정'}</span>
+                            </div>
+                        </td>
                     `;
                     tableBody.appendChild(tr);
                 });
