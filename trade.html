@@ -3,415 +3,318 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>REVERSAL MASTER | Robust Binance Sync</title>
+    <title>Binance Futures Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-        body { background-color: #0f1117; color: #e2e8f0; font-family: 'Inter', sans-serif; overflow-x: hidden; }
-        .glass-panel { background: rgba(30, 34, 45, 0.6); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 1.5rem; }
-        .input-field { background: #1a1d26; border: 1px solid #2d323e; color: white; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
-        .input-field:focus { border-color: #fbbf24; outline: none; box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.1); }
-        .btn-primary { background: #fbbf24; color: #000; font-weight: 800; transition: all 0.2s; }
-        .btn-primary:hover { background: #fcd34d; transform: translateY(-1px); }
-        .pnl-positive { color: #10b981; }
-        .pnl-negative { color: #ef4444; }
-        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #0b0e11; color: #eaecef; }
+        .binance-yellow { color: #fcd535; }
+        .bg-binance-gray { background-color: #1e2329; }
+        .border-binance { border-color: #30363d; }
+        .card { background-color: #1e2329; border-radius: 12px; border: 1px solid #30363d; }
+        input { background-color: #2b3139 !important; border: 1px solid #474d57 !important; color: white !important; }
+        input:focus { border-color: #fcd535 !important; outline: none; }
+        .profit { color: #0ecb81; }
+        .loss { color: #f6465d; }
+        .loading-spinner {
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top: 3px solid #fcd535;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
-<body class="min-h-screen p-4 md:p-8 flex flex-col items-center">
-
-    <header class="w-full max-w-7xl flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6">
-        <div class="flex items-center gap-3">
-            <div class="bg-amber-400 p-2.5 rounded-xl"><i class="fas fa-chart-line text-black text-xl"></i></div>
+<body class="p-4 md:p-8">
+    <div class="max-w-6xl mx-auto">
+        <!-- Header -->
+        <header class="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-                <h1 class="text-3xl font-black tracking-tighter uppercase leading-none">REVERSAL <span class="text-amber-400">MASTER</span></h1>
-                <p class="text-[10px] text-gray-500 font-bold tracking-[0.2em] mt-1 uppercase">Institutional Grade Analytics</p>
+                <h1 class="text-3xl font-bold binance-yellow">Binance Futures</h1>
+                <p class="text-gray-400 text-sm mt-1">실시간 선물 포지션 및 수익률 조회</p>
             </div>
-        </div>
-        
-        <div class="flex items-center gap-4 bg-black/30 p-2 rounded-2xl border border-white/5">
-            <div class="flex items-center gap-3 px-3">
-                <span id="sync-label" class="text-[10px] font-black text-gray-500 uppercase">OFFLINE</span>
-                <div class="w-32 h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                    <div id="sync-progress" class="h-full bg-amber-400 transition-all duration-300" style="width: 0%"></div>
-                </div>
-                <span id="sync-timer" class="text-[10px] font-mono text-amber-400/80 w-6 text-right">0s</span>
+            <div id="status-badge" class="hidden px-4 py-1.5 rounded-full text-xs font-semibold bg-gray-800 text-gray-300 flex items-center gap-2">
+                <div id="status-dot" class="w-2 h-2 rounded-full bg-gray-500"></div>
+                <span id="status-text">연결 대기 중</span>
             </div>
-        </div>
-    </header>
+        </header>
 
-    <main class="w-full max-w-7xl grid grid-cols-1 md:grid-cols-12 gap-6">
-        <!-- Summary Cards -->
-        <div class="md:col-span-3 glass-panel p-6">
-            <p class="text-[10px] font-bold text-gray-500 uppercase mb-4">Total Margin Balance</p>
-            <div class="flex items-baseline gap-2">
-                <h2 id="summary-balance" class="text-3xl font-black">0.00</h2>
-                <span class="text-xs text-gray-500 font-bold uppercase">USDT</span>
+        <!-- API Settings Card -->
+        <section class="card p-6 mb-8 shadow-xl">
+            <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 binance-yellow" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                </svg>
+                API 인증 설정
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Binance API Key</label>
+                    <input type="password" id="apiKey" class="w-full p-3 rounded-lg focus:ring-1 focus:ring-yellow-500 transition-all" placeholder="API Key를 입력하세요">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Binance Secret Key</label>
+                    <input type="password" id="secretKey" class="w-full p-3 rounded-lg focus:ring-1 focus:ring-yellow-500 transition-all" placeholder="Secret Key를 입력하세요">
+                </div>
             </div>
-        </div>
-        <div class="md:col-span-3 glass-panel p-6">
-            <p class="text-[10px] font-bold text-gray-500 uppercase mb-4">Unrealized PNL</p>
-            <div class="flex items-baseline gap-2">
-                <h2 id="summary-pnl" class="text-3xl font-black">0.00</h2>
+            <div class="mt-6 flex flex-wrap gap-3">
+                <button onclick="fetchData()" id="fetchBtn" class="bg-[#fcd535] hover:bg-[#f0c82d] text-black font-bold py-3 px-8 rounded-lg transition-all flex items-center gap-2">
+                    <span id="btnText">데이터 조회 시작</span>
+                </button>
+                <button onclick="clearKeys()" class="bg-gray-800 hover:bg-gray-700 text-white py-3 px-6 rounded-lg transition-all">
+                    정보 초기화
+                </button>
             </div>
-        </div>
-        <div class="md:col-span-3 glass-panel p-6">
-            <p class="text-[10px] font-bold text-gray-500 uppercase mb-4">Active Positions</p>
-            <h2 id="summary-positions" class="text-3xl font-black">0</h2>
-        </div>
-        <div class="md:col-span-3 bg-amber-400 rounded-[1.5rem] p-6 flex flex-col justify-center">
-            <p class="text-[10px] font-black text-black/40 uppercase">System Pulse</p>
-            <h2 id="pulse-text" class="text-xl font-black text-black uppercase leading-tight">Ready</h2>
-        </div>
+            <div class="mt-4 p-3 bg-blue-900/20 border border-blue-800/30 rounded-lg">
+                <p class="text-xs text-blue-300 leading-relaxed">
+                    💡 <b>보안 팁:</b> API 키는 브라우저 로컬 스토리지에만 암호화되지 않은 상태로 임시 저장됩니다. 
+                    바이낸스 설정에서 <b>"Enable Futures"</b> 권한만 허용하고 <b>"Withdrawals"</b> 권한은 반드시 해제하세요.
+                </p>
+            </div>
+        </section>
 
-        <!-- Left Sidebar: Auth & Profile -->
-        <div class="md:col-span-4 space-y-6">
-            <div id="auth-section" class="glass-panel p-8">
-                <div class="flex bg-black/40 p-1 rounded-xl mb-6">
-                    <button onclick="switchTab('login')" id="tab-login" class="flex-1 py-2.5 text-[10px] font-black rounded-lg transition-all bg-gray-700">LOGIN</button>
-                    <button onclick="switchTab('signup')" id="tab-signup" class="flex-1 py-2.5 text-[10px] font-black rounded-lg transition-all text-gray-500">SIGN UP</button>
-                    <button onclick="switchTab('guest')" id="tab-guest" class="flex-1 py-2.5 text-[10px] font-black rounded-lg transition-all text-gray-500">GUEST MODE</button>
-                </div>
-                <form id="auth-form" class="space-y-4">
-                    <div id="signup-fields" class="hidden space-y-4">
-                        <input type="text" id="full-name" class="input-field w-full p-4 rounded-xl text-xs" placeholder="FULL NAME">
-                    </div>
-                    <div id="credentials-fields" class="space-y-4">
-                        <input type="email" id="email" class="input-field w-full p-4 rounded-xl text-xs" placeholder="EMAIL ADDRESS">
-                        <input type="password" id="password" class="input-field w-full p-4 rounded-xl text-xs" placeholder="PASSWORD">
-                    </div>
-                    <div id="api-fields" class="hidden space-y-4 pt-4 border-t border-white/5">
-                        <p class="text-[9px] text-amber-400 font-bold uppercase mb-2">Binance API Settings</p>
-                        <input type="text" id="api-key" class="input-field w-full p-4 rounded-xl text-xs font-mono" placeholder="BINANCE API KEY">
-                        <input type="password" id="api-secret" class="input-field w-full p-4 rounded-xl text-xs font-mono" placeholder="BINANCE SECRET KEY">
-                    </div>
-                    <button type="submit" id="submit-btn" class="btn-primary w-full py-4 rounded-xl text-[10px] uppercase tracking-widest">Login</button>
-                </form>
-                <div id="auth-message" class="mt-4 text-[10px] font-bold text-center hidden"></div>
+        <!-- Summary Info -->
+        <div id="summary-container" class="hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+            <div class="card p-5 border-l-4 border-yellow-500">
+                <p class="text-xs font-medium text-gray-500 uppercase tracking-wider">총 미실현 손익 (USDT)</p>
+                <p id="total-pnl" class="text-3xl font-bold mt-2">--</p>
             </div>
-
-            <div id="profile-section" class="glass-panel p-8 hidden">
-                <div class="flex items-center justify-between mb-6">
-                    <div>
-                        <p id="user-name" class="font-black uppercase text-sm italic">User</p>
-                        <p id="user-email" class="text-[10px] text-gray-500 font-bold">email@example.com</p>
-                    </div>
-                    <button onclick="handleLogout()" class="text-gray-500 hover:text-red-500 transition-colors"><i class="fas fa-power-off"></i></button>
-                </div>
-                <div class="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-3">
-                    <span id="api-status-dot" class="status-dot bg-emerald-500 animate-pulse"></span>
-                    <span id="api-status-label" class="text-[9px] font-black text-emerald-500 uppercase tracking-wider">Connected</span>
-                </div>
+            <div class="card p-5">
+                <p class="text-xs font-medium text-gray-500 uppercase tracking-wider">지갑 잔고 (Wallet Balance)</p>
+                <p id="wallet-balance" class="text-3xl font-bold mt-2 text-white">--</p>
+            </div>
+            <div class="card p-5">
+                <p class="text-xs font-medium text-gray-500 uppercase tracking-wider">활성 포지션</p>
+                <p id="position-count" class="text-3xl font-bold mt-2 text-white">--</p>
             </div>
         </div>
 
-        <!-- Right Main: Live List -->
-        <div class="md:col-span-8">
-            <div class="glass-panel h-full min-h-[500px] flex flex-col">
-                <div class="p-6 border-b border-white/5 flex justify-between items-center">
-                    <h3 class="font-black uppercase text-sm italic">Live Profit Tracker</h3>
-                    <div class="flex items-center gap-2">
-                        <button onclick="fetchBinanceData()" class="text-[10px] bg-white/5 hover:bg-white/10 px-3 py-1 rounded-full font-bold transition-all">FORCE REFRESH</button>
-                        <div id="debug-status" class="text-[8px] text-gray-600 font-mono"></div>
-                    </div>
-                </div>
-                <div id="position-list" class="flex-grow p-4 overflow-y-auto">
-                    <div id="no-data" class="h-full flex flex-col items-center justify-center text-gray-600">
-                        <i class="fas fa-circle-notch animate-spin mb-4 text-2xl opacity-20 hidden" id="loading-spinner"></i>
-                        <div id="connection-error" class="hidden text-center max-w-xs">
-                            <i class="fas fa-exclamation-triangle mb-3 text-amber-400 opacity-80"></i>
-                            <p class="text-[10px] font-black uppercase tracking-widest leading-relaxed">Connection Error. <br>Check API Keys or IP permissions.</p>
-                        </div>
-                        <p id="idle-text" class="text-[10px] font-black uppercase tracking-widest">Awaiting Authentication</p>
-                    </div>
-                </div>
+        <!-- Position Table -->
+        <section class="card shadow-2xl overflow-hidden">
+            <div class="p-5 border-b border-binance flex justify-between items-center bg-[#2b3139]/30">
+                <h2 class="text-lg font-semibold flex items-center gap-2">
+                    <span class="w-2 h-5 bg-yellow-500 rounded-full"></span>
+                    보유 포지션 리스트
+                </h2>
+                <span id="last-update" class="text-xs text-gray-500 font-mono"></span>
             </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-[#2b3139] text-gray-400 text-xs uppercase tracking-widest">
+                        <tr>
+                            <th class="px-6 py-4">심볼 / 레버리지</th>
+                            <th class="px-6 py-4">방향 / 사이즈</th>
+                            <th class="px-6 py-4">진입가 / 현재가</th>
+                            <th class="px-6 py-4 text-right">미실현 수익금액</th>
+                            <th class="px-6 py-4 text-right">수익률(ROE)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="position-table-body" class="divide-y divide-binance text-sm">
+                        <tr>
+                            <td colspan="5" class="px-6 py-20 text-center">
+                                <div class="flex flex-col items-center gap-3 text-gray-500">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    <span>조회 버튼을 눌러 데이터를 불러오세요.</span>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Toast Notification -->
+        <div id="toast" class="fixed bottom-8 right-8 hidden flex items-center gap-3 px-6 py-4 rounded-xl shadow-2xl z-50 transition-all duration-300 transform translate-y-0">
+            <span id="toast-icon"></span>
+            <span id="toast-msg" class="font-medium"></span>
         </div>
-    </main>
+    </div>
 
     <script>
-        // Supabase & API Config
-        const SUPABASE_URL = 'https://mgidrwfgcdcxgosotysg.supabase.co';
-        const SUPABASE_KEY = 'sb_publishable_FQt1zyzqKOI3LUSZ8DYNAQ_b9fOqhTx';
-        
-        // Proxy Settings: 다중 프록시 전략 (올오리진 실패 시 7-zip 프록시 사용)
-        let PROXY_URL = 'https://api.allorigins.win/raw?url='; 
-        const BINANCE_BASE = 'https://fapi.binance.com';
+        const BASE_URL = 'https://fapi.binance.com';
 
-        const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-        let userKeys = null;
-        let syncInterval = null;
-        let isSyncing = false;
-        let currentMode = 'login';
-        let lastSyncTime = 0;
+        // HMAC SHA256 서명 생성
+        function getSignature(queryString, secretKey) {
+            return CryptoJS.HmacSHA256(queryString, secretKey).toString();
+        }
 
-        function switchTab(mode) {
-            currentMode = mode;
-            const sFields = document.getElementById('signup-fields');
-            const cFields = document.getElementById('credentials-fields');
-            const aFields = document.getElementById('api-fields');
-            const btn = document.getElementById('submit-btn');
+        function showToast(msg, type = 'error') {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toast-msg');
+            const toastIcon = document.getElementById('toast-icon');
             
-            const tabs = {
-                login: document.getElementById('tab-login'),
-                signup: document.getElementById('tab-signup'),
-                guest: document.getElementById('tab-guest')
-            };
+            toastMsg.innerText = msg;
+            toast.classList.remove('hidden', 'bg-red-600', 'bg-green-600', 'bg-blue-600');
+            
+            if (type === 'error') {
+                toast.classList.add('bg-red-600');
+                toastIcon.innerHTML = '⚠️';
+            } else if (type === 'success') {
+                toast.classList.add('bg-green-600');
+                toastIcon.innerHTML = '✅';
+            }
+            
+            setTimeout(() => toast.classList.add('hidden'), 4000);
+        }
 
-            Object.values(tabs).forEach(t => {
-                t.className = "flex-1 py-2.5 text-[10px] font-black rounded-lg transition-all text-gray-500";
-            });
-            tabs[mode].className = "flex-1 py-2.5 text-[10px] font-black rounded-lg transition-all bg-gray-700 text-white";
-
-            if (mode === 'signup') {
-                sFields.classList.remove('hidden'); cFields.classList.remove('hidden'); aFields.classList.remove('hidden');
-                btn.innerText = 'CREATE ACCOUNT';
-            } else if (mode === 'guest') {
-                sFields.classList.add('hidden'); cFields.classList.add('hidden'); aFields.classList.remove('hidden');
-                btn.innerText = 'START GUEST SESSION';
-            } else {
-                sFields.classList.add('hidden'); cFields.classList.remove('hidden'); aFields.classList.add('hidden');
-                btn.innerText = 'LOGIN';
+        function clearKeys() {
+            if(confirm("저장된 API 키 정보를 삭제하시겠습니까?")) {
+                localStorage.removeItem('bn_api_key');
+                localStorage.removeItem('bn_secret_key');
+                document.getElementById('apiKey').value = '';
+                document.getElementById('secretKey').value = '';
+                location.reload();
             }
         }
 
-        async function handleAuth(e) {
-            e.preventDefault();
-            const msg = document.getElementById('auth-message');
-            msg.className = "mt-4 text-[10px] font-bold text-center text-amber-400 block";
-            msg.innerText = "PROCESSING...";
+        // 초기화 시 로컬 스토리지 확인
+        window.onload = () => {
+            const savedKey = localStorage.getItem('bn_api_key');
+            const savedSecret = localStorage.getItem('bn_secret_key');
+            if (savedKey) document.getElementById('apiKey').value = savedKey;
+            if (savedSecret) document.getElementById('secretKey').value = savedSecret;
+        };
+
+        async function fetchData() {
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const secretKey = document.getElementById('secretKey').value.trim();
+
+            if (!apiKey || !secretKey) {
+                showToast("API Key와 Secret Key를 모두 입력해주세요.");
+                return;
+            }
+
+            localStorage.setItem('bn_api_key', apiKey);
+            localStorage.setItem('bn_secret_key', secretKey);
+
+            const btn = document.getElementById('fetchBtn');
+            const btnText = document.getElementById('btnText');
+            const statusBadge = document.getElementById('status-badge');
+            const statusDot = document.getElementById('status-dot');
+            const statusText = document.getElementById('status-text');
+            
+            btn.disabled = true;
+            btnText.innerHTML = `<div class="loading-spinner"></div> 요청 중...`;
+            statusBadge.classList.remove('hidden');
+            statusText.innerText = "데이터 호출 중...";
 
             try {
-                if (currentMode === 'signup') {
-                    const email = document.getElementById('email').value;
-                    const password = document.getElementById('password').value;
-                    const fullName = document.getElementById('full-name').value;
-                    const apiKey = document.getElementById('api-key').value.trim();
-                    const apiSecret = document.getElementById('api-secret').value.trim();
-                    
-                    const { data, error } = await sb.auth.signUp({ email, password, options: { data: { full_name: fullName } } });
-                    if (error) throw error;
-                    if (data.user) {
-                        await sb.from('user_configs').upsert({ 
-                            user_id: data.user.id, 
-                            binance_api_key: apiKey, 
-                            binance_api_secret: apiSecret 
-                        });
-                    }
-                    msg.innerText = "SUCCESS! PLEASE LOG IN.";
-                    switchTab('login');
-                } else if (currentMode === 'guest') {
-                    const apiKey = document.getElementById('api-key').value.trim();
-                    const apiSecret = document.getElementById('api-secret').value.trim();
-                    if(!apiKey || !apiSecret) throw new Error("API Keys required.");
-                    
-                    userKeys = { binance_api_key: apiKey, binance_api_secret: apiSecret };
-                    msg.innerText = "GUEST SESSION ACTIVE";
-                    
-                    document.getElementById('auth-section').classList.add('hidden');
-                    document.getElementById('profile-section').classList.remove('hidden');
-                    document.getElementById('user-name').innerText = 'GUEST MODE';
-                    document.getElementById('user-email').innerText = 'Temporary API Sync';
-                    startSyncLoop();
-                } else {
-                    const email = document.getElementById('email').value;
-                    const password = document.getElementById('password').value;
-                    const { error } = await sb.auth.signInWithPassword({ email, password });
-                    if (error) throw error;
-                    msg.innerText = "AUTHENTICATED";
+                const timestamp = Date.now();
+                const queryString = `timestamp=${timestamp}`;
+                const signature = getSignature(queryString, secretKey);
+
+                // 1. 계정 정보 가져오기 (총 잔고 및 총 PNL 확인용)
+                const accountResponse = await fetch(`${BASE_URL}/fapi/v2/account?${queryString}&signature=${signature}`, {
+                    headers: { 'X-MBX-APIKEY': apiKey }
+                });
+
+                if (!accountResponse.ok) {
+                    const errData = await accountResponse.json();
+                    throw new Error(errData.msg || "인증 실패: API 키를 확인하세요.");
                 }
-            } catch (err) {
-                msg.className = "mt-4 text-[10px] font-bold text-center text-red-500 block";
-                msg.innerText = err.message.toUpperCase();
-            }
-        }
+                const accountData = await accountResponse.json();
 
-        async function handleLogout() { 
-            await sb.auth.signOut(); 
-            userKeys = null;
-            location.reload(); 
-        }
+                // 2. 포지션 상세 정보 가져오기
+                const posResponse = await fetch(`${BASE_URL}/fapi/v2/positionRisk?${queryString}&signature=${signature}`, {
+                    headers: { 'X-MBX-APIKEY': apiKey }
+                });
 
-        async function fetchBinanceData() {
-            if (!userKeys || isSyncing) return;
-            isSyncing = true;
-            document.getElementById('debug-status').innerText = "SYNCING...";
-            document.getElementById('loading-spinner').classList.remove('hidden');
+                if (!posResponse.ok) throw new Error("포지션 정보를 불러오지 못했습니다.");
+                const posData = await posResponse.json();
 
-            const timestamp = Date.now();
-            const query = `recvWindow=20000&timestamp=${timestamp}`;
-            const signature = CryptoJS.HmacSHA256(query, userKeys.binance_api_secret).toString();
-            
-            try {
-                // v2 Account & Position endpoints
-                const accountUrl = `${BINANCE_BASE}/fapi/v2/account?${query}&signature=${signature}`;
-                const posUrl = `${BINANCE_BASE}/fapi/v2/positionRisk?${query}&signature=${signature}`;
-
-                const callApi = async (url) => {
-                    const finalUrl = PROXY_URL + encodeURIComponent(url);
-                    const res = await fetch(finalUrl, {
-                        headers: { 
-                            'X-MBX-APIKEY': userKeys.binance_api_key,
-                            'Accept': 'application/json'
-                        }
-                    });
-                    
-                    if (!res.ok) {
-                        // 프록시 서버 문제일 경우 다른 프록시 시도 (선택적 로직)
-                        throw new Error(`BINANCE_ERR_${res.status}`);
-                    }
-
-                    const json = await res.json();
-                    if (json.code && json.code < 0) throw new Error(json.msg);
-                    return json;
-                };
-
-                // 병렬 요청으로 속도 향상
-                const [accountData, posData] = await Promise.all([
-                    callApi(accountUrl),
-                    callApi(posUrl)
-                ]);
-
-                renderData(accountData, posData);
-                lastSyncTime = Date.now();
-                document.getElementById('debug-status').innerText = "STABLE";
-                document.getElementById('api-status-label').innerText = "CONNECTED";
-                document.getElementById('api-status-label').className = "text-[9px] font-black text-emerald-500 uppercase tracking-wider";
-                document.getElementById('api-status-dot').className = "status-dot bg-emerald-500 animate-pulse";
-                document.getElementById('connection-error').classList.add('hidden');
-            } catch (err) {
-                console.error("Sync Error:", err);
-                document.getElementById('pulse-text').innerText = "SYNC FAILED";
-                document.getElementById('debug-status').innerText = "ERROR: " + err.message;
+                updateUI(accountData, posData);
                 
-                document.getElementById('connection-error').classList.remove('hidden');
-                document.getElementById('api-status-label').innerText = "API AUTH ERROR";
-                document.getElementById('api-status-label').className = "text-[9px] font-black text-red-500 uppercase tracking-wider";
-                document.getElementById('api-status-dot').className = "status-dot bg-red-500";
+                statusText.innerText = "정상 연결됨";
+                statusDot.className = "w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]";
+                showToast("데이터를 성공적으로 불러왔습니다.", 'success');
+
+            } catch (err) {
+                console.error(err);
+                showToast(err.message, 'error');
+                statusText.innerText = "연결 에러";
+                statusDot.className = "w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]";
             } finally {
-                isSyncing = false;
-                document.getElementById('loading-spinner').classList.add('hidden');
+                btn.disabled = false;
+                btnText.innerText = "새로고침";
             }
         }
 
-        function renderData(account, positions) {
-            document.getElementById('idle-text').classList.add('hidden');
-            
-            // 1. Balance Summary
-            const marginBalance = parseFloat(account.totalMarginBalance || 0);
-            const unrealizedPnl = parseFloat(account.totalUnrealizedProfit || 0);
-            
-            document.getElementById('summary-balance').innerText = marginBalance.toLocaleString(undefined, {minimumFractionDigits: 2});
-            
-            const pnlEl = document.getElementById('summary-pnl');
-            pnlEl.innerText = (unrealizedPnl >= 0 ? '+' : '') + unrealizedPnl.toLocaleString(undefined, {minimumFractionDigits: 2});
-            pnlEl.className = `text-3xl font-black ${unrealizedPnl >= 0 ? 'pnl-positive' : 'pnl-negative'}`;
+        function updateUI(account, positions) {
+            const tableBody = document.getElementById('position-table-body');
+            const summaryContainer = document.getElementById('summary-container');
+            summaryContainer.classList.remove('hidden');
 
-            // 2. Positions Filtering (수량이 0이 아닌 것만)
-            const activePos = Array.isArray(positions) ? positions.filter(p => Math.abs(parseFloat(p.positionAmt)) > 0) : [];
-            document.getElementById('summary-positions').innerText = activePos.length;
+            // 상단 요약 업데이트
+            const totalWallet = parseFloat(account.totalWalletBalance).toFixed(2);
+            const totalUnrealizedPNL = parseFloat(account.totalUnrealizedProfit).toFixed(2);
+            
+            document.getElementById('wallet-balance').innerText = `${parseFloat(totalWallet).toLocaleString()} USDT`;
+            
+            const pnlElem = document.getElementById('total-pnl');
+            pnlElem.innerText = `${totalUnrealizedPNL >= 0 ? '+' : ''}${parseFloat(totalUnrealizedPNL).toLocaleString()} USDT`;
+            pnlElem.className = `text-3xl font-bold mt-2 ${totalUnrealizedPNL >= 0 ? 'profit' : 'loss'}`;
 
-            const listEl = document.getElementById('position-list');
-            if (activePos.length === 0) {
-                listEl.innerHTML = `
-                    <div class="h-full flex flex-col items-center justify-center text-gray-600 uppercase text-[10px] font-bold italic">
-                        <i class="fas fa-box-open mb-2 opacity-20 text-xl"></i>
-                        No active positions
-                    </div>`;
+            // 실제 보유 중인 포지션만 필터링 (수량이 0이 아닌 것)
+            const activePositions = positions.filter(p => Math.abs(parseFloat(p.positionAmt)) > 0);
+            document.getElementById('position-count').innerText = `${activePositions.length}개`;
+
+            tableBody.innerHTML = '';
+
+            if (activePositions.length === 0) {
+                tableBody.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="px-6 py-20 text-center text-gray-500">
+                            현재 활성화된 선물 포지션이 없습니다.
+                        </td>
+                    </tr>`;
             } else {
-                listEl.innerHTML = activePos.map(p => {
-                    const pnl = parseFloat(p.unRealizedProfit);
-                    const amt = parseFloat(p.positionAmt);
+                activePositions.forEach(pos => {
+                    const amt = parseFloat(pos.positionAmt);
                     const side = amt > 0 ? 'LONG' : 'SHORT';
-                    const entry = parseFloat(p.entryPrice);
-                    const mark = parseFloat(p.markPrice);
-                    const lev = p.leverage;
+                    const entry = parseFloat(pos.entryPrice);
+                    const mark = parseFloat(pos.markPrice);
+                    const pnl = parseFloat(pos.unRealizedProfit);
+                    const leverage = pos.leverage;
                     
-                    // ROE 계산
-                    const roe = (side === 'LONG' ? (mark - entry) / entry : (entry - mark) / entry) * lev * 100;
+                    // ROE 계산 (간소화: 미실현수익 / 증거금)
+                    // 실제 바이낸스 ROE는 레버리지가 포함된 증거금 대비 수익률임
+                    const roe = parseFloat(pos.unRealizedProfit) / (Math.abs(amt) * entry / leverage) * 100;
 
-                    return `
-                        <div class="bg-black/20 p-5 rounded-2xl border border-white/5 mb-3 flex justify-between items-center hover:bg-black/30 transition-all group">
-                            <div>
-                                <div class="flex items-center gap-2 mb-1">
-                                    <span class="px-1.5 py-0.5 rounded text-[8px] font-black ${side==='LONG'?'bg-emerald-500/20 text-emerald-500':'bg-red-500/20 text-red-500'}">${side}</span>
-                                    <p class="text-xs font-black uppercase tracking-tight group-hover:text-amber-400 transition-colors">${p.symbol}</p>
-                                </div>
-                                <p class="text-[9px] text-gray-500 font-bold">LEV: ${lev}x | SIZE: ${Math.abs(amt).toFixed(3)}</p>
-                            </div>
-                            <div class="text-right">
-                                <p class="text-xs font-black ${pnl>=0?'pnl-positive':'pnl-negative'}">${pnl>=0?'+':''}${pnl.toFixed(2)} USDT</p>
-                                <p class="text-[9px] ${roe>=0?'text-emerald-500/80':'text-red-500/80'} font-black">${roe.toFixed(2)}% ROE</p>
-                            </div>
-                        </div>
+                    const tr = document.createElement('tr');
+                    tr.className = "hover:bg-[#2b3139]/50 transition-all border-b border-binance last:border-0";
+                    tr.innerHTML = `
+                        <td class="px-6 py-5">
+                            <div class="font-bold text-white text-base">${pos.symbol}</div>
+                            <div class="text-[10px] text-gray-500 mt-1 uppercase">${pos.marginType} ${leverage}x</div>
+                        </td>
+                        <td class="px-6 py-5">
+                            <div class="font-bold ${amt > 0 ? 'profit' : 'loss'}">${side}</div>
+                            <div class="text-xs text-gray-400 mt-1">${Math.abs(amt)} ${pos.symbol.replace('USDT', '')}</div>
+                        </td>
+                        <td class="px-6 py-5">
+                            <div class="text-xs text-gray-500">Entry: <span class="text-gray-300 font-mono">${entry.toLocaleString()}</span></div>
+                            <div class="text-xs text-gray-500 mt-1">Mark: <span class="text-gray-300 font-mono">${mark.toLocaleString()}</span></div>
+                        </td>
+                        <td class="px-6 py-5 text-right font-mono font-bold ${pnl >= 0 ? 'profit' : 'loss'}">
+                            ${pnl >= 0 ? '+' : ''}${pnl.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                        </td>
+                        <td class="px-6 py-5 text-right">
+                            <span class="px-2 py-1 rounded text-xs font-bold ${roe >= 0 ? 'bg-green-500/10 profit' : 'bg-red-500/10 loss'}">
+                                ${roe >= 0 ? '+' : ''}${roe.toFixed(2)}%
+                            </span>
+                        </td>
                     `;
-                }).join('');
+                    tableBody.appendChild(tr);
+                });
             }
-            document.getElementById('pulse-text').innerText = "LIVE SYNCED";
+
+            document.getElementById('last-update').innerText = `Last update: ${new Date().toLocaleTimeString()}`;
         }
-
-        async function loadUserConfig(userId) {
-            const { data, error } = await sb.from('user_configs').select('*').eq('user_id', userId).maybeSingle();
-            if (data && data.binance_api_key) {
-                userKeys = data;
-                startSyncLoop();
-            } else {
-                document.getElementById('pulse-text').innerText = "KEY REQUIRED";
-                document.getElementById('idle-text').innerText = "PLEASE CONFIGURE API KEYS IN SIGNUP/GUEST";
-                document.getElementById('loading-spinner').classList.add('hidden');
-            }
-        }
-
-        function startSyncLoop() {
-            if (syncInterval) clearInterval(syncInterval);
-            fetchBinanceData();
-            let timer = 10;
-            syncInterval = setInterval(() => {
-                if (isSyncing) return;
-                timer -= 0.1;
-                document.getElementById('sync-progress').style.width = (timer * 10) + '%';
-                document.getElementById('sync-timer').innerText = Math.ceil(timer) + 's';
-                if (timer <= 0) { 
-                    timer = 10; 
-                    fetchBinanceData(); 
-                }
-            }, 100);
-            document.getElementById('sync-label').innerText = "ONLINE";
-        }
-
-        function updateUI(user) {
-            // 게스트 모드 유지 확인
-            if(userKeys && currentMode === 'guest') return;
-
-            const aSec = document.getElementById('auth-section');
-            const pSec = document.getElementById('profile-section');
-            const idleText = document.getElementById('idle-text');
-            const spinner = document.getElementById('loading-spinner');
-            
-            if (user) {
-                aSec.classList.add('hidden'); pSec.classList.remove('hidden');
-                document.getElementById('user-name').innerText = (user.user_metadata?.full_name || 'PILOT').toUpperCase();
-                document.getElementById('user-email').innerText = user.email;
-                spinner.classList.remove('hidden');
-                idleText.innerText = "Syncing...";
-                loadUserConfig(user.id);
-            } else {
-                aSec.classList.remove('hidden'); pSec.classList.add('hidden');
-                idleText.classList.remove('hidden'); spinner.classList.add('hidden');
-                idleText.innerText = "Awaiting Authentication";
-                document.getElementById('sync-label').innerText = "OFFLINE";
-                if (syncInterval) clearInterval(syncInterval);
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('auth-form').addEventListener('submit', handleAuth);
-            sb.auth.onAuthStateChange((_event, session) => updateUI(session?.user || null));
-            sb.auth.getSession().then(({data}) => updateUI(data.session?.user || null));
-        });
     </script>
 </body>
 </html>
