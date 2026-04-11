@@ -48,7 +48,7 @@
                 </button>
             </form>
 
-            <!-- Signup Form (Modified: Name removed, API Keys added) -->
+            <!-- Signup Form -->
             <form id="signup-form" class="space-y-4 hidden">
                 <div class="space-y-1">
                     <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">Email Address</label>
@@ -85,9 +85,12 @@
     </div>
 
     <script>
-        // Supabase 초기화 (본인의 정보로 수정)
-        const SUPABASE_URL = "https://your-project.supabase.co";
-        const SUPABASE_KEY = "your-anon-key";
+        /**
+         * 주의: 아래 SUPABASE_URL과 SUPABASE_KEY를 실제 Supabase 프로젝트 정보로 변경해야 합니다.
+         * Project Settings -> API 메뉴에서 확인 가능합니다.
+         */
+        const SUPABASE_URL = "https://your-actual-project-url.supabase.co"; 
+        const SUPABASE_KEY = "your-actual-anon-key";
         const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         const tabLogin = document.getElementById('tab-login');
@@ -121,7 +124,7 @@
             msgBox.classList.remove('hidden');
         }
 
-        // 회원가입 처리 (API Key 동시 저장)
+        // 회원가입 처리
         signupForm.onsubmit = async (e) => {
             e.preventDefault();
             const email = document.getElementById('signup-email').value;
@@ -133,45 +136,44 @@
             btn.disabled = true;
             btn.innerText = "Processing...";
 
-            // 1. Auth 회원가입
-            const { data: authData, error: authError } = await sb.auth.signUp({
-                email,
-                password,
-                options: {
-                    emailRedirectTo: window.location.origin + '/analysis.html'
-                }
-            });
+            try {
+                // 1. Auth 회원가입
+                const { data: authData, error: authError } = await sb.auth.signUp({
+                    email,
+                    password,
+                    options: {
+                        emailRedirectTo: window.location.origin + '/analysis.html'
+                    }
+                });
 
-            if (authError) {
-                showMessage(authError.message, true);
+                if (authError) throw authError;
+
+                // 2. user_settings 테이블에 API 정보 저장
+                if (authData.user) {
+                    const { error: dbError } = await sb
+                        .from('user_settings')
+                        .insert([
+                            { 
+                                user_id: authData.user.id, 
+                                binance_key: apiKey, 
+                                binance_secret: apiSecret 
+                            }
+                        ]);
+
+                    if (dbError) {
+                        console.error("DB Error:", dbError);
+                        showMessage("계정은 생성되었으나 API 설정 저장에 실패했습니다. (RLS 권한 확인 필요)", true);
+                    } else {
+                        showMessage("성공! 이메일 인증 메일을 확인해 주세요.");
+                    }
+                }
+            } catch (err) {
+                console.error("Signup Error:", err);
+                showMessage(err.message || "연결 오류가 발생했습니다. URL 설정을 확인하세요.", true);
+            } finally {
                 btn.disabled = false;
                 btn.innerText = "계정 생성 및 API 등록";
-                return;
             }
-
-            // 2. user_settings 테이블에 API 정보 저장
-            // 주의: signUp 성공 직후 session이 없을 수 있으므로 authData.user.id 사용
-            if (authData.user) {
-                const { error: dbError } = await sb
-                    .from('user_settings')
-                    .insert([
-                        { 
-                            user_id: authData.user.id, 
-                            binance_key: apiKey, 
-                            binance_secret: apiSecret 
-                        }
-                    ]);
-
-                if (dbError) {
-                    console.error("DB Error:", dbError);
-                    showMessage("계정은 생성되었으나 API 저장 중 오류가 발생했습니다. 설정에서 수동 등록해주세요.", true);
-                } else {
-                    showMessage("인증 이메일이 발송되었습니다! 메일 확인 후 로그인해주세요.");
-                }
-            }
-            
-            btn.disabled = false;
-            btn.innerText = "계정 생성 및 API 등록";
         };
 
         // 로그인 처리
@@ -184,28 +186,34 @@
             btn.disabled = true;
             btn.innerText = "Authenticating...";
 
-            const { data, error } = await sb.auth.signInWithPassword({
-                email,
-                password
-            });
+            try {
+                const { data, error } = await sb.auth.signInWithPassword({
+                    email,
+                    password
+                });
 
-            if (error) {
-                showMessage(error.message, true);
-                btn.disabled = false;
-                btn.innerText = "시스템 접속";
-            } else {
-                showMessage("보안 세션 수립 중... 잠시만 기다려주십시오.");
+                if (error) throw error;
+
+                showMessage("보안 세션 수립 중...");
                 setTimeout(() => {
                     window.location.href = 'analysis.html';
                 }, 1000);
+            } catch (err) {
+                showMessage(err.message, true);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "시스템 접속";
             }
         };
 
-        // 이미 로그인된 세션이 있는지 확인
         async function checkSession() {
-            const { data: { session } } = await sb.auth.getSession();
-            if (session) {
-                window.location.href = 'analysis.html';
+            try {
+                const { data: { session } } = await sb.auth.getSession();
+                if (session) {
+                    window.location.href = 'analysis.html';
+                }
+            } catch (e) {
+                console.warn("Session check failed");
             }
         }
         checkSession();
