@@ -17,6 +17,15 @@
         input:focus { border-color: #fcd535 !important; outline: none; }
         .profit { color: #0ecb81; }
         .loss { color: #f6465d; }
+        
+        /* Loading Animation */
+        .refresh-spinner {
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body class="p-4 md:p-8">
@@ -25,7 +34,7 @@
         <header class="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
                 <h1 class="text-3xl font-bold binance-yellow">Binance Futures</h1>
-                <p class="text-gray-400 text-sm mt-1">실시간 선물 포지션 및 수익률 조회</p>
+                <p class="text-gray-400 text-sm mt-1">실시간 선물 포지션 및 수익률 조회 (10초 자동 갱신)</p>
             </div>
             <div id="status-badge" class="hidden px-3 py-1 rounded-full text-xs font-semibold bg-gray-700 text-gray-300">
                 연결 대기 중
@@ -33,7 +42,7 @@
         </header>
 
         <!-- API Settings Card -->
-        <section class="card p-6 mb-8">
+        <section class="card p-6 mb-8 border-l-4 border-[#fcd535]">
             <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
@@ -50,15 +59,18 @@
                     <input type="password" id="secretKey" class="w-full p-2 rounded" placeholder="입력하세요">
                 </div>
             </div>
-            <div class="mt-4 flex gap-2">
-                <button onclick="fetchData()" id="fetchBtn" class="bg-[#fcd535] hover:bg-[#f0c82d] text-black font-bold py-2 px-6 rounded transition-colors">
+            <div class="mt-4 flex flex-wrap gap-2">
+                <button onclick="startFetching()" id="fetchBtn" class="bg-[#fcd535] hover:bg-[#f0c82d] text-black font-bold py-2 px-6 rounded transition-colors flex items-center gap-2">
                     조회 시작
+                </button>
+                <button onclick="stopAutoRefresh()" id="stopBtn" class="hidden bg-red-900 hover:bg-red-800 text-white py-2 px-4 rounded transition-colors">
+                    자동 갱신 중단
                 </button>
                 <button onclick="clearKeys()" class="bg-gray-700 hover:bg-gray-600 text-white py-2 px-4 rounded transition-colors">
                     정보 지우기
                 </button>
             </div>
-            <p class="text-xs text-gray-500 mt-3">* 입력하신 키는 서버에 저장되지 않으며 브라우저 메모리 내에서만 사용됩니다.</p>
+            <p class="text-xs text-gray-500 mt-3">* 보안 안내: API 키는 브라우저 로컬 스토리지에만 저장되며 외부 서버로 전송되지 않습니다.</p>
         </section>
 
         <!-- Summary Info -->
@@ -79,9 +91,16 @@
 
         <!-- Position Table -->
         <section class="card overflow-hidden">
-            <div class="p-4 border-b border-binance flex justify-between items-center">
+            <div class="p-4 border-b border-binance flex justify-between items-center bg-[#1e2329]">
                 <h2 class="text-lg font-semibold">보유 포지션</h2>
-                <span id="last-update" class="text-xs text-gray-500"></span>
+                <div class="flex items-center gap-3">
+                    <span id="refresh-indicator" class="hidden">
+                        <svg class="refresh-spinner h-4 w-4 text-[#fcd535]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                    </span>
+                    <span id="last-update" class="text-xs text-gray-500"></span>
+                </div>
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-left">
@@ -107,13 +126,15 @@
         </section>
 
         <!-- UI Notification -->
-        <div id="toast" class="fixed bottom-5 right-5 hidden bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg z-50">
-            에러가 발생했습니다. 키를 확인해주세요.
+        <div id="toast" class="fixed bottom-5 right-5 hidden bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 transition-opacity duration-300">
+            에러가 발생했습니다.
         </div>
     </div>
 
     <script>
         const BASE_URL = 'https://fapi.binance.com';
+        let refreshTimer = null;
+        let isFetching = false;
 
         // Utility: Sign Request
         function getSignature(queryString, secretKey) {
@@ -123,12 +144,16 @@
         function showToast(msg, isError = true) {
             const toast = document.getElementById('toast');
             toast.innerText = msg;
-            toast.classList.remove('hidden', 'bg-red-600', 'bg-green-600');
+            toast.classList.remove('hidden', 'bg-red-600', 'bg-green-600', 'opacity-0');
             toast.classList.add(isError ? 'bg-red-600' : 'bg-green-600');
-            setTimeout(() => toast.classList.add('hidden'), 3000);
+            setTimeout(() => {
+                toast.classList.add('opacity-0');
+                setTimeout(() => toast.classList.add('hidden'), 300);
+            }, 3000);
         }
 
         function clearKeys() {
+            stopAutoRefresh();
             document.getElementById('apiKey').value = '';
             document.getElementById('secretKey').value = '';
             localStorage.removeItem('bn_api_key');
@@ -136,11 +161,12 @@
             location.reload();
         }
 
-        // Save keys temporarily
+        // Initialize keys from storage
         document.getElementById('apiKey').value = localStorage.getItem('bn_api_key') || '';
         document.getElementById('secretKey').value = localStorage.getItem('bn_secret_key') || '';
 
-        async function fetchData() {
+        // Start Button Handler
+        function startFetching() {
             const apiKey = document.getElementById('apiKey').value.trim();
             const secretKey = document.getElementById('secretKey').value.trim();
 
@@ -149,41 +175,77 @@
                 return;
             }
 
-            // Save for convenience
+            // Save keys
             localStorage.setItem('bn_api_key', apiKey);
             localStorage.setItem('bn_secret_key', secretKey);
 
-            const btn = document.getElementById('fetchBtn');
-            const statusBadge = document.getElementById('status-badge');
+            // UI Reset
+            document.getElementById('stopBtn').classList.remove('hidden');
+            document.getElementById('fetchBtn').innerText = "자동 갱신 중...";
+            document.getElementById('fetchBtn').classList.add('opacity-70');
             
-            btn.disabled = true;
-            btn.innerText = "조회 중...";
+            // Initial Fetch
+            fetchData();
+
+            // Set Interval for 10 seconds
+            if (refreshTimer) clearInterval(refreshTimer);
+            refreshTimer = setInterval(fetchData, 10000);
+        }
+
+        function stopAutoRefresh() {
+            if (refreshTimer) {
+                clearInterval(refreshTimer);
+                refreshTimer = null;
+            }
+            document.getElementById('stopBtn').classList.add('hidden');
+            document.getElementById('fetchBtn').innerText = "조회 재시작";
+            document.getElementById('fetchBtn').classList.remove('opacity-70');
+            
+            const statusBadge = document.getElementById('status-badge');
+            statusBadge.innerText = "자동 갱신 중단됨";
+            statusBadge.className = "px-3 py-1 rounded-full text-xs font-semibold bg-gray-700 text-gray-300";
+            
+            showToast("자동 갱신이 중단되었습니다.", false);
+        }
+
+        async function fetchData() {
+            if (isFetching) return; // Prevent overlapping requests
+            isFetching = true;
+
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const secretKey = document.getElementById('secretKey').value.trim();
+            const statusBadge = document.getElementById('status-badge');
+            const refreshIndicator = document.getElementById('refresh-indicator');
+
             statusBadge.classList.remove('hidden');
-            statusBadge.innerText = "데이터 호출 중...";
+            refreshIndicator.classList.remove('hidden');
 
             try {
                 const timestamp = Date.now();
                 const queryString = `timestamp=${timestamp}`;
                 const signature = getSignature(queryString, secretKey);
 
-                // 1. Account Info (Balance)
-                const accountResponse = await fetch(`${BASE_URL}/fapi/v2/account?${queryString}&signature=${signature}`, {
-                    headers: { 'X-MBX-APIKEY': apiKey }
-                });
+                // API calls in parallel for efficiency
+                const [accountRes, posRes] = await Promise.all([
+                    fetch(`${BASE_URL}/fapi/v2/account?${queryString}&signature=${signature}`, {
+                        headers: { 'X-MBX-APIKEY': apiKey }
+                    }),
+                    fetch(`${BASE_URL}/fapi/v2/positionRisk?${queryString}&signature=${signature}`, {
+                        headers: { 'X-MBX-APIKEY': apiKey }
+                    })
+                ]);
 
-                if (!accountResponse.ok) throw new Error("계정 정보를 가져오지 못했습니다.");
-                const accountData = await accountResponse.json();
+                if (!accountRes.ok || !posRes.ok) {
+                    const errData = await accountRes.json().catch(() => ({}));
+                    throw new Error(errData.msg || "API 호출 실패. 키와 권한을 확인하세요.");
+                }
 
-                // 2. Position Risk (Actual positions)
-                const posResponse = await fetch(`${BASE_URL}/fapi/v2/positionRisk?${queryString}&signature=${signature}`, {
-                    headers: { 'X-MBX-APIKEY': apiKey }
-                });
-
-                if (!posResponse.ok) throw new Error("포지션 정보를 가져오지 못했습니다.");
-                const posData = await posResponse.json();
+                const accountData = await accountRes.json();
+                const posData = await posRes.json();
 
                 updateUI(accountData, posData);
-                statusBadge.innerText = "연결됨";
+                
+                statusBadge.innerText = "실시간 연결 중 (10초 주기)";
                 statusBadge.className = "px-3 py-1 rounded-full text-xs font-semibold bg-green-900 text-green-300";
 
             } catch (err) {
@@ -191,9 +253,10 @@
                 showToast(err.message);
                 statusBadge.innerText = "연결 오류";
                 statusBadge.className = "px-3 py-1 rounded-full text-xs font-semibold bg-red-900 text-red-300";
+                stopAutoRefresh();
             } finally {
-                btn.disabled = false;
-                btn.innerText = "새로고침";
+                isFetching = false;
+                refreshIndicator.classList.add('hidden');
             }
         }
 
@@ -203,11 +266,14 @@
             summaryContainer.classList.remove('hidden');
 
             // Summary Data
-            document.getElementById('wallet-balance').innerText = parseFloat(account.totalWalletBalance).toLocaleString() + " USDT";
-            document.getElementById('total-pnl').innerText = parseFloat(account.totalUnrealizedProfit).toLocaleString();
-            document.getElementById('total-pnl').className = `text-2xl font-bold mt-1 ${parseFloat(account.totalUnrealizedProfit) >= 0 ? 'profit' : 'loss'}`;
+            const walletBal = parseFloat(account.totalWalletBalance);
+            const totalUnrealized = parseFloat(account.totalUnrealizedProfit);
 
-            // Filter active positions (Amt != 0)
+            document.getElementById('wallet-balance').innerText = walletBal.toLocaleString(undefined, {minimumFractionDigits: 2}) + " USDT";
+            document.getElementById('total-pnl').innerText = (totalUnrealized >= 0 ? "+" : "") + totalUnrealized.toLocaleString(undefined, {minimumFractionDigits: 2});
+            document.getElementById('total-pnl').className = `text-2xl font-bold mt-1 ${totalUnrealized >= 0 ? 'profit' : 'loss'}`;
+
+            // Filter active positions
             const activePositions = positions.filter(p => parseFloat(p.positionAmt) !== 0);
             document.getElementById('position-count').innerText = activePositions.length;
 
@@ -221,19 +287,25 @@
                     const entry = parseFloat(pos.entryPrice);
                     const mark = parseFloat(pos.markPrice);
                     const pnl = parseFloat(pos.unRealizedProfit);
+                    const leverage = pos.leverage;
                     
-                    // ROE calculation simplified (not accounting for leverage in this view but typically PNL / (Margin))
-                    // Here we show it based on simple % change vs entry
-                    const roe = ((mark - entry) / entry * 100 * (amt > 0 ? 1 : -1)).toFixed(2);
+                    // ROE calculation
+                    const roe = ((mark - entry) / entry * 100 * (amt > 0 ? 1 : -1) * leverage).toFixed(2);
 
                     const tr = document.createElement('tr');
-                    tr.className = "hover:bg-[#2b3139] transition-colors";
+                    tr.className = "hover:bg-[#2b3139] transition-colors border-b border-binance last:border-0";
                     tr.innerHTML = `
-                        <td class="px-6 py-4 font-bold text-white">${pos.symbol} <span class="text-[10px] ml-1 bg-gray-700 px-1 rounded text-gray-300">${pos.marginType.toUpperCase()} ${pos.leverage}x</span></td>
-                        <td class="px-6 py-4 ${amt > 0 ? 'profit' : 'loss'} font-medium">${amt > 0 ? 'LONG' : 'SHORT'} ${Math.abs(amt)}</td>
-                        <td class="px-6 py-4 text-gray-300">${entry.toLocaleString()}</td>
-                        <td class="px-6 py-4 text-gray-300">${mark.toLocaleString()}</td>
-                        <td class="px-6 py-4 font-bold ${pnl >= 0 ? 'profit' : 'loss'}">${pnl.toLocaleString()} USDT</td>
+                        <td class="px-6 py-4 font-bold text-white">
+                            ${pos.symbol} 
+                            <span class="text-[10px] ml-1 bg-gray-700 px-1 rounded text-gray-300">${pos.marginType.toUpperCase()} ${leverage}x</span>
+                        </td>
+                        <td class="px-6 py-4 ${amt > 0 ? 'profit' : 'loss'} font-medium">
+                            <span class="px-1.5 py-0.5 rounded text-[10px] mr-1 ${amt > 0 ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}">${amt > 0 ? 'LONG' : 'SHORT'}</span>
+                            ${Math.abs(amt)}
+                        </td>
+                        <td class="px-6 py-4 text-gray-400">${entry.toLocaleString()}</td>
+                        <td class="px-6 py-4 text-white font-medium">${mark.toLocaleString()}</td>
+                        <td class="px-6 py-4 font-bold ${pnl >= 0 ? 'profit' : 'loss'}">${pnl.toLocaleString(undefined, {minimumFractionDigits: 2})} USDT</td>
                         <td class="px-6 py-4 font-bold ${roe >= 0 ? 'profit' : 'loss'}">${roe}%</td>
                     `;
                     tableBody.appendChild(tr);
