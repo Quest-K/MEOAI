@@ -43,17 +43,13 @@
                     <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">Password</label>
                     <input type="password" id="login-password" required class="input-field w-full px-4 py-3 rounded-xl text-sm" placeholder="••••••••">
                 </div>
-                <button type="submit" class="w-full bg-binance-gold text-black font-bold py-4 rounded-2xl mt-4 hover:brightness-110 transition-all shadow-lg shadow-yellow-500/10">
+                <button type="submit" id="login-submit-btn" class="w-full bg-binance-gold text-black font-bold py-4 rounded-2xl mt-4 hover:brightness-110 transition-all shadow-lg shadow-yellow-500/10">
                     시스템 접속
                 </button>
             </form>
 
-            <!-- Signup Form (Hidden) -->
+            <!-- Signup Form (Modified: Name removed, API Keys added) -->
             <form id="signup-form" class="space-y-4 hidden">
-                <div class="space-y-1">
-                    <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">Full Name</label>
-                    <input type="text" id="signup-name" required class="input-field w-full px-4 py-3 rounded-xl text-sm" placeholder="홍길동">
-                </div>
                 <div class="space-y-1">
                     <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">Email Address</label>
                     <input type="email" id="signup-email" required class="input-field w-full px-4 py-3 rounded-xl text-sm" placeholder="name@company.com">
@@ -62,12 +58,25 @@
                     <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">Password</label>
                     <input type="password" id="signup-password" required class="input-field w-full px-4 py-3 rounded-xl text-sm" placeholder="최소 6자리 이상">
                 </div>
-                <button type="submit" class="w-full bg-white text-black font-bold py-4 rounded-2xl mt-4 hover:bg-slate-200 transition-all">
-                    계정 생성 및 인증 메일 발송
+                <div class="pt-2 border-t border-white/5 mt-2">
+                    <p class="text-[9px] font-black text-binance-gold uppercase mb-3 tracking-widest">Binance API Configuration</p>
+                    <div class="space-y-3">
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">API Key</label>
+                            <input type="password" id="signup-api-key" required class="input-field w-full px-4 py-3 rounded-xl text-sm font-mono" placeholder="Paste your API Key">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">Secret Key</label>
+                            <input type="password" id="signup-api-secret" required class="input-field w-full px-4 py-3 rounded-xl text-sm font-mono" placeholder="Paste your Secret Key">
+                        </div>
+                    </div>
+                </div>
+                <button type="submit" id="signup-submit-btn" class="w-full bg-white text-black font-bold py-4 rounded-2xl mt-4 hover:bg-slate-200 transition-all">
+                    계정 생성 및 API 등록
                 </button>
             </form>
 
-            <div id="message" class="mt-6 text-center text-xs font-medium hidden"></div>
+            <div id="message" class="mt-6 text-center text-xs font-medium hidden leading-relaxed"></div>
         </div>
 
         <p class="text-center text-slate-600 text-[10px] mt-8 uppercase tracking-widest">
@@ -76,7 +85,7 @@
     </div>
 
     <script>
-        // Supabase 초기화
+        // Supabase 초기화 (본인의 정보로 수정)
         const SUPABASE_URL = "https://your-project.supabase.co";
         const SUPABASE_KEY = "your-anon-key";
         const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -112,27 +121,57 @@
             msgBox.classList.remove('hidden');
         }
 
-        // 회원가입 처리
+        // 회원가입 처리 (API Key 동시 저장)
         signupForm.onsubmit = async (e) => {
             e.preventDefault();
             const email = document.getElementById('signup-email').value;
             const password = document.getElementById('signup-password').value;
-            const fullName = document.getElementById('signup-name').value;
+            const apiKey = document.getElementById('signup-api-key').value;
+            const apiSecret = document.getElementById('signup-api-secret').value;
+            const btn = document.getElementById('signup-submit-btn');
 
-            const { data, error } = await sb.auth.signUp({
+            btn.disabled = true;
+            btn.innerText = "Processing...";
+
+            // 1. Auth 회원가입
+            const { data: authData, error: authError } = await sb.auth.signUp({
                 email,
                 password,
                 options: {
-                    data: { full_name: fullName },
                     emailRedirectTo: window.location.origin + '/analysis.html'
                 }
             });
 
-            if (error) {
-                showMessage(error.message, true);
-            } else {
-                showMessage("인증 이메일이 발송되었습니다. 메일함을 확인해주세요!");
+            if (authError) {
+                showMessage(authError.message, true);
+                btn.disabled = false;
+                btn.innerText = "계정 생성 및 API 등록";
+                return;
             }
+
+            // 2. user_settings 테이블에 API 정보 저장
+            // 주의: signUp 성공 직후 session이 없을 수 있으므로 authData.user.id 사용
+            if (authData.user) {
+                const { error: dbError } = await sb
+                    .from('user_settings')
+                    .insert([
+                        { 
+                            user_id: authData.user.id, 
+                            binance_key: apiKey, 
+                            binance_secret: apiSecret 
+                        }
+                    ]);
+
+                if (dbError) {
+                    console.error("DB Error:", dbError);
+                    showMessage("계정은 생성되었으나 API 저장 중 오류가 발생했습니다. 설정에서 수동 등록해주세요.", true);
+                } else {
+                    showMessage("인증 이메일이 발송되었습니다! 메일 확인 후 로그인해주세요.");
+                }
+            }
+            
+            btn.disabled = false;
+            btn.innerText = "계정 생성 및 API 등록";
         };
 
         // 로그인 처리
@@ -140,6 +179,10 @@
             e.preventDefault();
             const email = document.getElementById('login-email').value;
             const password = document.getElementById('login-password').value;
+            const btn = document.getElementById('login-submit-btn');
+
+            btn.disabled = true;
+            btn.innerText = "Authenticating...";
 
             const { data, error } = await sb.auth.signInWithPassword({
                 email,
@@ -148,8 +191,10 @@
 
             if (error) {
                 showMessage(error.message, true);
+                btn.disabled = false;
+                btn.innerText = "시스템 접속";
             } else {
-                showMessage("로그인 성공! 대시보드로 이동합니다.");
+                showMessage("보안 세션 수립 중... 잠시만 기다려주십시오.");
                 setTimeout(() => {
                     window.location.href = 'analysis.html';
                 }, 1000);
