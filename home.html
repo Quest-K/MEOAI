@@ -57,7 +57,6 @@
                     설정
                 </h2>
                 
-                <!-- Refresh Interval Setting -->
                 <div class="flex items-center gap-3 bg-[#2b3139] p-2 px-4 rounded-lg border border-binance">
                     <label class="text-sm text-gray-300">갱신 주기:</label>
                     <select id="refreshInterval" class="p-1 rounded text-sm bg-transparent border-none focus:ring-0">
@@ -93,7 +92,6 @@
                 </button>
             </div>
 
-            <!-- Visual Timer Bar -->
             <div id="timer-ui" class="mt-6 hidden">
                 <div class="flex justify-between items-center mb-1 text-xs">
                     <span class="text-gray-400">다음 업데이트까지: <span id="countdown-text" class="text-white font-bold">--</span>초</span>
@@ -143,11 +141,11 @@
                     <thead class="bg-[#2b3139] text-gray-400 text-xs uppercase">
                         <tr>
                             <th class="px-6 py-3">심볼 / 펀딩비</th>
-                            <th class="px-6 py-3">사이즈 (Size)</th>
-                            <th class="px-6 py-3">진입가 (Entry)</th>
-                            <th class="px-6 py-3">현재가 (Mark)</th>
-                            <th class="px-6 py-3">수익금액 (PNL)</th>
-                            <th class="px-6 py-3">수익률 (ROE%)</th>
+                            <th class="px-6 py-3 text-right">사이즈 (QTY / USDT)</th>
+                            <th class="px-6 py-3 text-right">진입가 (Entry)</th>
+                            <th class="px-6 py-3 text-right">현재가 (Mark)</th>
+                            <th class="px-6 py-3 text-right">수익금액 (PNL)</th>
+                            <th class="px-6 py-3 text-right">수익률 (ROE%)</th>
                         </tr>
                     </thead>
                     <tbody id="position-table-body" class="divide-y divide-binance text-sm">
@@ -161,7 +159,6 @@
             </div>
         </section>
 
-        <!-- UI Notification -->
         <div id="toast" class="fixed bottom-5 right-5 hidden bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 transition-all duration-300 transform">
             에러가 발생했습니다.
         </div>
@@ -174,7 +171,6 @@
         let isFetching = false;
         let remainingSeconds = 0;
 
-        // Utility: Sign Request
         function getSignature(queryString, secretKey) {
             return CryptoJS.HmacSHA256(queryString, secretKey).toString();
         }
@@ -199,28 +195,23 @@
             location.reload();
         }
 
-        // Initialize from storage
         document.getElementById('apiKey').value = localStorage.getItem('bn_api_key') || '';
         document.getElementById('secretKey').value = localStorage.getItem('bn_secret_key') || '';
 
         function startFetching() {
             const apiKey = document.getElementById('apiKey').value.trim();
             const secretKey = document.getElementById('secretKey').value.trim();
-
             if (!apiKey || !secretKey) {
                 showToast("API Key와 Secret Key를 모두 입력해주세요.");
                 return;
             }
-
             localStorage.setItem('bn_api_key', apiKey);
             localStorage.setItem('bn_secret_key', secretKey);
-
             document.getElementById('stopBtn').classList.remove('hidden');
             document.getElementById('fetchBtn').innerText = "조회 가동 중";
             document.getElementById('fetchBtn').disabled = true;
             document.getElementById('fetchBtn').classList.add('opacity-50', 'cursor-not-allowed');
             document.getElementById('timer-ui').classList.remove('hidden');
-            
             runCycle();
         }
 
@@ -229,7 +220,6 @@
             const interval = parseInt(document.getElementById('refreshInterval').value);
             remainingSeconds = interval;
             updateCountdownUI();
-
             if (countdownTimer) clearInterval(countdownTimer);
             countdownTimer = setInterval(() => {
                 remainingSeconds--;
@@ -267,23 +257,18 @@
         async function fetchData() {
             if (isFetching) return;
             isFetching = true;
-
             const apiKey = document.getElementById('apiKey').value.trim();
             const secretKey = document.getElementById('secretKey').value.trim();
             const statusBadge = document.getElementById('status-badge');
             const refreshIndicator = document.getElementById('refresh-indicator');
             const refreshStatus = document.getElementById('refresh-status');
-
             statusBadge.classList.remove('hidden');
             refreshIndicator.classList.remove('hidden');
             refreshStatus.innerText = "데이터 요청 중...";
-
             try {
                 const timestamp = Date.now();
                 const queryString = `timestamp=${timestamp}`;
                 const signature = getSignature(queryString, secretKey);
-
-                // Fetch account, positions, and funding rates
                 const [accountRes, posRes, fundingRes] = await Promise.all([
                     fetch(`${BASE_URL}/fapi/v2/account?${queryString}&signature=${signature}`, {
                         headers: { 'X-MBX-APIKEY': apiKey }
@@ -293,22 +278,14 @@
                     }),
                     fetch(`${BASE_URL}/fapi/v1/premiumIndex`)
                 ]);
-
-                if (!accountRes.ok || !posRes.ok) {
-                    const errData = await accountRes.json().catch(() => ({}));
-                    throw new Error(errData.msg || "API 호출 실패");
-                }
-
+                if (!accountRes.ok || !posRes.ok) throw new Error("API 호출 실패");
                 const accountData = await accountRes.json();
                 const posData = await posRes.json();
                 const fundingData = await fundingRes.json();
-
                 updateUI(accountData, posData, fundingData);
-                
                 statusBadge.innerText = "정상 작동 중";
                 statusBadge.className = "px-3 py-1 rounded-full text-xs font-semibold bg-green-900 text-green-300";
                 refreshStatus.innerText = "연결됨";
-
             } catch (err) {
                 console.error(err);
                 showToast(err.message);
@@ -327,7 +304,6 @@
             const summaryContainer = document.getElementById('summary-container');
             summaryContainer.classList.remove('hidden');
 
-            // Available Balance & Wallet Balance
             const availableBal = parseFloat(account.availableBalance);
             const totalWalletBal = parseFloat(account.totalWalletBalance);
             const totalUnrealized = parseFloat(account.totalUnrealizedProfit);
@@ -340,14 +316,12 @@
             const activePositions = positions.filter(p => parseFloat(p.positionAmt) !== 0);
             document.getElementById('position-count').innerText = activePositions.length;
 
-            // Map funding rates for easy access
             const fundingMap = {};
             fundingRates.forEach(f => {
                 fundingMap[f.symbol] = (parseFloat(f.lastFundingRate) * 100).toFixed(4);
             });
 
             tableBody.innerHTML = '';
-
             if (activePositions.length === 0) {
                 tableBody.innerHTML = '<tr><td colspan="6" class="px-6 py-10 text-center text-gray-500">현재 오픈된 포지션이 없습니다.</td></tr>';
             } else {
@@ -359,6 +333,9 @@
                     const leverage = pos.leverage;
                     const fundingRate = fundingMap[pos.symbol] || "0.0000";
                     const roe = ((mark - entry) / entry * 100 * (amt > 0 ? 1 : -1) * leverage).toFixed(2);
+                    
+                    // Notional Value (USDT Size) calculation
+                    const usdtSize = Math.abs(amt * mark);
 
                     const tr = document.createElement('tr');
                     tr.className = "hover:bg-[#2b3139] transition-colors border-b border-binance last:border-0";
@@ -369,14 +346,19 @@
                                 <span class="text-[10px] font-normal text-gray-500 mt-1">Funding: <span class="${parseFloat(fundingRate) >= 0 ? 'text-blue-400' : 'text-orange-400'}">${fundingRate}%</span></span>
                             </div>
                         </td>
-                        <td class="px-6 py-4 ${amt > 0 ? 'profit' : 'loss'} font-medium">
-                            <span class="px-1.5 py-0.5 rounded text-[10px] mr-1 ${amt > 0 ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}">${amt > 0 ? 'LONG' : 'SHORT'}</span>
-                            ${Math.abs(amt)}
+                        <td class="px-6 py-4 text-right">
+                            <div class="flex flex-col">
+                                <span class="${amt > 0 ? 'profit' : 'loss'} font-medium">
+                                    <span class="px-1.5 py-0.5 rounded text-[10px] mr-1 ${amt > 0 ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}">${amt > 0 ? 'LONG' : 'SHORT'}</span>
+                                    ${Math.abs(amt).toLocaleString()}
+                                </span>
+                                <span class="text-[11px] text-gray-400 mt-1">≈ ${usdtSize.toLocaleString(undefined, {minimumFractionDigits: 2})} USDT</span>
+                            </div>
                         </td>
-                        <td class="px-6 py-4 text-gray-400">${entry.toLocaleString()}</td>
-                        <td class="px-6 py-4 text-white font-medium">${mark.toLocaleString()}</td>
-                        <td class="px-6 py-4 font-bold ${pnl >= 0 ? 'profit' : 'loss'}">${pnl.toLocaleString(undefined, {minimumFractionDigits: 2})} USDT</td>
-                        <td class="px-6 py-4 font-bold ${roe >= 0 ? 'profit' : 'loss'}">${roe}%</td>
+                        <td class="px-6 py-4 text-right text-gray-400 font-mono">${entry.toLocaleString()}</td>
+                        <td class="px-6 py-4 text-right text-white font-medium font-mono">${mark.toLocaleString()}</td>
+                        <td class="px-6 py-4 text-right font-bold ${pnl >= 0 ? 'profit' : 'loss'} font-mono">${pnl.toLocaleString(undefined, {minimumFractionDigits: 2})} USDT</td>
+                        <td class="px-6 py-4 text-right font-bold ${roe >= 0 ? 'profit' : 'loss'}">${roe}%</td>
                     `;
                     tableBody.appendChild(tr);
                 });
