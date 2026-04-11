@@ -13,8 +13,8 @@
         .bg-binance-gray { background-color: #1e2329; }
         .border-binance { border-color: #30363d; }
         .card { background-color: #1e2329; border-radius: 12px; border: 1px solid #30363d; }
-        input { background-color: #2b3139 !important; border: 1px solid #474d57 !important; color: white !important; }
-        input:focus { border-color: #fcd535 !important; outline: none; }
+        input, select { background-color: #2b3139 !important; border: 1px solid #474d57 !important; color: white !important; }
+        input:focus, select:focus { border-color: #fcd535 !important; outline: none; }
         .profit { color: #0ecb81; }
         .loss { color: #f6465d; }
         
@@ -26,6 +26,11 @@
             from { transform: rotate(0deg); }
             to { transform: rotate(360deg); }
         }
+
+        /* Progress Bar Smooth Transition */
+        #timer-progress {
+            transition: width 1s linear;
+        }
     </style>
 </head>
 <body class="p-4 md:p-8">
@@ -34,21 +39,37 @@
         <header class="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
                 <h1 class="text-3xl font-bold binance-yellow">Binance Futures</h1>
-                <p class="text-gray-400 text-sm mt-1">실시간 선물 포지션 및 수익률 조회 (10초 자동 갱신)</p>
+                <p class="text-gray-400 text-sm mt-1">실시간 선물 포지션 대시보드</p>
             </div>
             <div id="status-badge" class="hidden px-3 py-1 rounded-full text-xs font-semibold bg-gray-700 text-gray-300">
                 연결 대기 중
             </div>
         </header>
 
-        <!-- API Settings Card -->
+        <!-- API & Settings Card -->
         <section class="card p-6 mb-8 border-l-4 border-[#fcd535]">
-            <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                </svg>
-                API 설정
-            </h2>
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                <h2 class="text-xl font-semibold flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-[#fcd535]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    설정
+                </h2>
+                
+                <!-- Refresh Interval Setting -->
+                <div class="flex items-center gap-3 bg-[#2b3139] p-2 px-4 rounded-lg border border-binance">
+                    <label class="text-sm text-gray-300">갱신 주기:</label>
+                    <select id="refreshInterval" class="p-1 rounded text-sm bg-transparent border-none focus:ring-0">
+                        <option value="5">5초</option>
+                        <option value="10" selected>10초</option>
+                        <option value="30">30초</option>
+                        <option value="60">1분</option>
+                        <option value="300">5분</option>
+                    </select>
+                </div>
+            </div>
+
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label class="block text-sm text-gray-400 mb-1">API Key</label>
@@ -59,7 +80,8 @@
                     <input type="password" id="secretKey" class="w-full p-2 rounded" placeholder="입력하세요">
                 </div>
             </div>
-            <div class="mt-4 flex flex-wrap gap-2">
+            
+            <div class="mt-6 flex flex-wrap gap-2">
                 <button onclick="startFetching()" id="fetchBtn" class="bg-[#fcd535] hover:bg-[#f0c82d] text-black font-bold py-2 px-6 rounded transition-colors flex items-center gap-2">
                     조회 시작
                 </button>
@@ -70,7 +92,17 @@
                     정보 지우기
                 </button>
             </div>
-            <p class="text-xs text-gray-500 mt-3">* 보안 안내: API 키는 브라우저 로컬 스토리지에만 저장되며 외부 서버로 전송되지 않습니다.</p>
+
+            <!-- Visual Timer Bar -->
+            <div id="timer-ui" class="mt-6 hidden">
+                <div class="flex justify-between items-center mb-1 text-xs">
+                    <span class="text-gray-400">다음 업데이트까지: <span id="countdown-text" class="text-white font-bold">--</span>초</span>
+                    <span id="refresh-status" class="text-binance-yellow">대기 중</span>
+                </div>
+                <div class="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">
+                    <div id="timer-progress" class="bg-[#fcd535] h-full w-0"></div>
+                </div>
+            </div>
         </section>
 
         <!-- Summary Info -->
@@ -99,7 +131,7 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                         </svg>
                     </span>
-                    <span id="last-update" class="text-xs text-gray-500"></span>
+                    <span id="last-update" class="text-xs text-gray-500">조회되지 않음</span>
                 </div>
             </div>
             <div class="overflow-x-auto">
@@ -126,7 +158,7 @@
         </section>
 
         <!-- UI Notification -->
-        <div id="toast" class="fixed bottom-5 right-5 hidden bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 transition-opacity duration-300">
+        <div id="toast" class="fixed bottom-5 right-5 hidden bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 transition-all duration-300 transform">
             에러가 발생했습니다.
         </div>
     </div>
@@ -134,7 +166,9 @@
     <script>
         const BASE_URL = 'https://fapi.binance.com';
         let refreshTimer = null;
+        let countdownTimer = null;
         let isFetching = false;
+        let remainingSeconds = 0;
 
         // Utility: Sign Request
         function getSignature(queryString, secretKey) {
@@ -144,10 +178,10 @@
         function showToast(msg, isError = true) {
             const toast = document.getElementById('toast');
             toast.innerText = msg;
-            toast.classList.remove('hidden', 'bg-red-600', 'bg-green-600', 'opacity-0');
+            toast.classList.remove('hidden', 'bg-red-600', 'bg-green-600', 'opacity-0', 'translate-y-10');
             toast.classList.add(isError ? 'bg-red-600' : 'bg-green-600');
             setTimeout(() => {
-                toast.classList.add('opacity-0');
+                toast.classList.add('opacity-0', 'translate-y-10');
                 setTimeout(() => toast.classList.add('hidden'), 300);
             }, 3000);
         }
@@ -161,11 +195,10 @@
             location.reload();
         }
 
-        // Initialize keys from storage
+        // Initialize from storage
         document.getElementById('apiKey').value = localStorage.getItem('bn_api_key') || '';
         document.getElementById('secretKey').value = localStorage.getItem('bn_secret_key') || '';
 
-        // Start Button Handler
         function startFetching() {
             const apiKey = document.getElementById('apiKey').value.trim();
             const secretKey = document.getElementById('secretKey').value.trim();
@@ -175,57 +208,88 @@
                 return;
             }
 
-            // Save keys
             localStorage.setItem('bn_api_key', apiKey);
             localStorage.setItem('bn_secret_key', secretKey);
 
-            // UI Reset
             document.getElementById('stopBtn').classList.remove('hidden');
-            document.getElementById('fetchBtn').innerText = "자동 갱신 중...";
-            document.getElementById('fetchBtn').classList.add('opacity-70');
+            document.getElementById('fetchBtn').innerText = "조회 가동 중";
+            document.getElementById('fetchBtn').disabled = true;
+            document.getElementById('fetchBtn').classList.add('opacity-50', 'cursor-not-allowed');
+            document.getElementById('timer-ui').classList.remove('hidden');
             
-            // Initial Fetch
-            fetchData();
+            // Start First Fetch
+            runCycle();
+        }
 
-            // Set Interval for 10 seconds
-            if (refreshTimer) clearInterval(refreshTimer);
-            refreshTimer = setInterval(fetchData, 10000);
+        function runCycle() {
+            // Fetch Data
+            fetchData();
+            
+            // Reset Countdown based on selected interval
+            const interval = parseInt(document.getElementById('refreshInterval').value);
+            remainingSeconds = interval;
+            updateCountdownUI();
+
+            // Set Countdown Timer (per 1 second)
+            if (countdownTimer) clearInterval(countdownTimer);
+            countdownTimer = setInterval(() => {
+                remainingSeconds--;
+                if (remainingSeconds <= 0) {
+                    runCycle(); // Re-fetch when zero
+                } else {
+                    updateCountdownUI();
+                }
+            }, 1000);
+        }
+
+        function updateCountdownUI() {
+            const interval = parseInt(document.getElementById('refreshInterval').value);
+            const progressBar = document.getElementById('timer-progress');
+            const countdownText = document.getElementById('countdown-text');
+            
+            countdownText.innerText = remainingSeconds;
+            
+            // Calculate progress percentage
+            const percentage = ((interval - remainingSeconds) / interval) * 100;
+            progressBar.style.width = `${percentage}%`;
         }
 
         function stopAutoRefresh() {
-            if (refreshTimer) {
-                clearInterval(refreshTimer);
-                refreshTimer = null;
-            }
+            if (countdownTimer) clearInterval(countdownTimer);
+            countdownTimer = null;
+            
             document.getElementById('stopBtn').classList.add('hidden');
-            document.getElementById('fetchBtn').innerText = "조회 재시작";
-            document.getElementById('fetchBtn').classList.remove('opacity-70');
+            document.getElementById('fetchBtn').innerText = "조회 시작";
+            document.getElementById('fetchBtn').disabled = false;
+            document.getElementById('fetchBtn').classList.remove('opacity-50', 'cursor-not-allowed');
+            document.getElementById('timer-ui').classList.add('hidden');
             
             const statusBadge = document.getElementById('status-badge');
-            statusBadge.innerText = "자동 갱신 중단됨";
+            statusBadge.innerText = "조회 중단됨";
             statusBadge.className = "px-3 py-1 rounded-full text-xs font-semibold bg-gray-700 text-gray-300";
             
             showToast("자동 갱신이 중단되었습니다.", false);
         }
 
         async function fetchData() {
-            if (isFetching) return; // Prevent overlapping requests
+            if (isFetching) return;
             isFetching = true;
 
             const apiKey = document.getElementById('apiKey').value.trim();
             const secretKey = document.getElementById('secretKey').value.trim();
             const statusBadge = document.getElementById('status-badge');
             const refreshIndicator = document.getElementById('refresh-indicator');
+            const refreshStatus = document.getElementById('refresh-status');
 
             statusBadge.classList.remove('hidden');
             refreshIndicator.classList.remove('hidden');
+            refreshStatus.innerText = "데이터 요청 중...";
 
             try {
                 const timestamp = Date.now();
                 const queryString = `timestamp=${timestamp}`;
                 const signature = getSignature(queryString, secretKey);
 
-                // API calls in parallel for efficiency
                 const [accountRes, posRes] = await Promise.all([
                     fetch(`${BASE_URL}/fapi/v2/account?${queryString}&signature=${signature}`, {
                         headers: { 'X-MBX-APIKEY': apiKey }
@@ -237,7 +301,7 @@
 
                 if (!accountRes.ok || !posRes.ok) {
                     const errData = await accountRes.json().catch(() => ({}));
-                    throw new Error(errData.msg || "API 호출 실패. 키와 권한을 확인하세요.");
+                    throw new Error(errData.msg || "API 호출 실패");
                 }
 
                 const accountData = await accountRes.json();
@@ -245,14 +309,16 @@
 
                 updateUI(accountData, posData);
                 
-                statusBadge.innerText = "실시간 연결 중 (10초 주기)";
+                statusBadge.innerText = "정상 작동 중";
                 statusBadge.className = "px-3 py-1 rounded-full text-xs font-semibold bg-green-900 text-green-300";
+                refreshStatus.innerText = "연결됨";
 
             } catch (err) {
                 console.error(err);
                 showToast(err.message);
                 statusBadge.innerText = "연결 오류";
                 statusBadge.className = "px-3 py-1 rounded-full text-xs font-semibold bg-red-900 text-red-300";
+                refreshStatus.innerText = "오류 발생";
                 stopAutoRefresh();
             } finally {
                 isFetching = false;
@@ -265,15 +331,11 @@
             const summaryContainer = document.getElementById('summary-container');
             summaryContainer.classList.remove('hidden');
 
-            // Summary Data
-            const walletBal = parseFloat(account.totalWalletBalance);
+            document.getElementById('wallet-balance').innerText = parseFloat(account.totalWalletBalance).toLocaleString(undefined, {minimumFractionDigits: 2}) + " USDT";
             const totalUnrealized = parseFloat(account.totalUnrealizedProfit);
-
-            document.getElementById('wallet-balance').innerText = walletBal.toLocaleString(undefined, {minimumFractionDigits: 2}) + " USDT";
             document.getElementById('total-pnl').innerText = (totalUnrealized >= 0 ? "+" : "") + totalUnrealized.toLocaleString(undefined, {minimumFractionDigits: 2});
             document.getElementById('total-pnl').className = `text-2xl font-bold mt-1 ${totalUnrealized >= 0 ? 'profit' : 'loss'}`;
 
-            // Filter active positions
             const activePositions = positions.filter(p => parseFloat(p.positionAmt) !== 0);
             document.getElementById('position-count').innerText = activePositions.length;
 
@@ -288,8 +350,6 @@
                     const mark = parseFloat(pos.markPrice);
                     const pnl = parseFloat(pos.unRealizedProfit);
                     const leverage = pos.leverage;
-                    
-                    // ROE calculation
                     const roe = ((mark - entry) / entry * 100 * (amt > 0 ? 1 : -1) * leverage).toFixed(2);
 
                     const tr = document.createElement('tr');
@@ -311,7 +371,6 @@
                     tableBody.appendChild(tr);
                 });
             }
-
             document.getElementById('last-update').innerText = `최종 업데이트: ${new Date().toLocaleTimeString()}`;
         }
     </script>
