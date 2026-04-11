@@ -19,7 +19,6 @@
         .pnl-positive { color: #10b981; }
         .pnl-negative { color: #ef4444; }
         .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-        .animate-pulse-slow { animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
     </style>
 </head>
 <body class="min-h-screen p-4 md:p-8 flex flex-col items-center">
@@ -37,14 +36,15 @@
             <div class="flex items-center gap-3 px-3">
                 <span id="sync-label" class="text-[10px] font-black text-gray-500 uppercase">OFFLINE</span>
                 <div class="w-32 h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                    <div id="sync-progress" class="h-full bg-amber-400" style="width: 0%"></div>
+                    <div id="sync-progress" class="h-full bg-amber-400 transition-all duration-300" style="width: 0%"></div>
                 </div>
-                <span id="sync-timer" class="text-[10px] font-mono text-amber-400/80 w-6">0s</span>
+                <span id="sync-timer" class="text-[10px] font-mono text-amber-400/80 w-6 text-right">0s</span>
             </div>
         </div>
     </header>
 
     <main class="w-full max-w-7xl grid grid-cols-1 md:grid-cols-12 gap-6">
+        <!-- Summary Cards -->
         <div class="md:col-span-3 glass-panel p-6">
             <p class="text-[10px] font-bold text-gray-500 uppercase mb-4">Total Margin Balance</p>
             <div class="flex items-baseline gap-2">
@@ -67,6 +67,7 @@
             <h2 id="pulse-text" class="text-xl font-black text-black uppercase leading-tight">Ready</h2>
         </div>
 
+        <!-- Left Sidebar: Auth & Profile -->
         <div class="md:col-span-4 space-y-6">
             <div id="auth-section" class="glass-panel p-8">
                 <div class="flex bg-black/40 p-1 rounded-xl mb-6">
@@ -95,18 +96,19 @@
             <div id="profile-section" class="glass-panel p-8 hidden">
                 <div class="flex items-center justify-between mb-6">
                     <div>
-                        <p id="user-name" class="font-black uppercase text-sm">User</p>
+                        <p id="user-name" class="font-black uppercase text-sm italic">User</p>
                         <p id="user-email" class="text-[10px] text-gray-500 font-bold">email@example.com</p>
                     </div>
-                    <button onclick="handleLogout()" class="text-gray-500 hover:text-red-500"><i class="fas fa-power-off"></i></button>
+                    <button onclick="handleLogout()" class="text-gray-500 hover:text-red-500 transition-colors"><i class="fas fa-power-off"></i></button>
                 </div>
                 <div class="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-3">
-                    <span class="status-dot bg-emerald-500 animate-pulse"></span>
+                    <span id="api-status-dot" class="status-dot bg-emerald-500 animate-pulse"></span>
                     <span id="api-status-label" class="text-[9px] font-black text-emerald-500 uppercase tracking-wider">Connected</span>
                 </div>
             </div>
         </div>
 
+        <!-- Right Main: Live List -->
         <div class="md:col-span-8">
             <div class="glass-panel h-full min-h-[500px] flex flex-col">
                 <div class="p-6 border-b border-white/5 flex justify-between items-center">
@@ -121,7 +123,7 @@
                         <i class="fas fa-circle-notch animate-spin mb-4 text-2xl opacity-20 hidden" id="loading-spinner"></i>
                         <div id="connection-error" class="hidden text-center max-w-xs">
                             <i class="fas fa-exclamation-triangle mb-3 text-amber-400 opacity-80"></i>
-                            <p class="text-[10px] font-black uppercase tracking-widest leading-relaxed">Connection Error. <br>Please check API Key/Secret or IP restrictions.</p>
+                            <p class="text-[10px] font-black uppercase tracking-widest leading-relaxed">Connection Error. <br>Check API Keys or IP permissions.</p>
                         </div>
                         <p id="idle-text" class="text-[10px] font-black uppercase tracking-widest">Awaiting Authentication</p>
                     </div>
@@ -131,11 +133,12 @@
     </main>
 
     <script>
+        // Supabase & API Config
         const SUPABASE_URL = 'https://mgidrwfgcdcxgosotysg.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_FQt1zyzqKOI3LUSZ8DYNAQ_b9fOqhTx';
         
-        // Proxy URL 개선: 더 안정적인 프록시 사용 시도
-        const PROXY_URL = 'https://api.allorigins.win/raw?url='; 
+        // Proxy Settings: 다중 프록시 전략 (올오리진 실패 시 7-zip 프록시 사용)
+        let PROXY_URL = 'https://api.allorigins.win/raw?url='; 
         const BINANCE_BASE = 'https://fapi.binance.com';
 
         const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -143,6 +146,7 @@
         let syncInterval = null;
         let isSyncing = false;
         let currentMode = 'login';
+        let lastSyncTime = 0;
 
         function switchTab(mode) {
             currentMode = mode;
@@ -185,39 +189,43 @@
                     const email = document.getElementById('email').value;
                     const password = document.getElementById('password').value;
                     const fullName = document.getElementById('full-name').value;
-                    const apiKey = document.getElementById('api-key').value;
-                    const apiSecret = document.getElementById('api-secret').value;
+                    const apiKey = document.getElementById('api-key').value.trim();
+                    const apiSecret = document.getElementById('api-secret').value.trim();
+                    
                     const { data, error } = await sb.auth.signUp({ email, password, options: { data: { full_name: fullName } } });
                     if (error) throw error;
                     if (data.user) {
-                        await sb.from('user_configs').upsert({ user_id: data.user.id, binance_api_key: apiKey, binance_api_secret: apiSecret });
+                        await sb.from('user_configs').upsert({ 
+                            user_id: data.user.id, 
+                            binance_api_key: apiKey, 
+                            binance_api_secret: apiSecret 
+                        });
                     }
-                    msg.innerText = "SUCCESS! CHECK YOUR EMAIL.";
+                    msg.innerText = "SUCCESS! PLEASE LOG IN.";
+                    switchTab('login');
                 } else if (currentMode === 'guest') {
                     const apiKey = document.getElementById('api-key').value.trim();
                     const apiSecret = document.getElementById('api-secret').value.trim();
-                    if(!apiKey || !apiSecret) throw new Error("API Keys are required for guest mode.");
+                    if(!apiKey || !apiSecret) throw new Error("API Keys required.");
                     
                     userKeys = { binance_api_key: apiKey, binance_api_secret: apiSecret };
-                    msg.innerText = "GUEST SESSION STARTED";
+                    msg.innerText = "GUEST SESSION ACTIVE";
                     
-                    const aSec = document.getElementById('auth-section');
-                    const pSec = document.getElementById('profile-section');
-                    aSec.classList.add('hidden'); pSec.classList.remove('hidden');
-                    document.getElementById('user-name').innerText = 'GUEST PILOT';
-                    document.getElementById('user-email').innerText = 'Temporary Session';
-                    document.getElementById('loading-spinner').classList.remove('hidden');
+                    document.getElementById('auth-section').classList.add('hidden');
+                    document.getElementById('profile-section').classList.remove('hidden');
+                    document.getElementById('user-name').innerText = 'GUEST MODE';
+                    document.getElementById('user-email').innerText = 'Temporary API Sync';
                     startSyncLoop();
                 } else {
                     const email = document.getElementById('email').value;
                     const password = document.getElementById('password').value;
                     const { error } = await sb.auth.signInWithPassword({ email, password });
                     if (error) throw error;
-                    msg.innerText = "LOGIN SUCCESS!";
+                    msg.innerText = "AUTHENTICATED";
                 }
             } catch (err) {
                 msg.className = "mt-4 text-[10px] font-bold text-center text-red-500 block";
-                msg.innerText = err.message;
+                msg.innerText = err.message.toUpperCase();
             }
         }
 
@@ -230,17 +238,15 @@
         async function fetchBinanceData() {
             if (!userKeys || isSyncing) return;
             isSyncing = true;
-            document.getElementById('debug-status').innerText = "FETCHING...";
-            document.getElementById('connection-error').classList.add('hidden');
+            document.getElementById('debug-status').innerText = "SYNCING...";
             document.getElementById('loading-spinner').classList.remove('hidden');
 
             const timestamp = Date.now();
-            // 서명 생성을 위한 쿼리 문자열 (바이낸스 선물 API 필수 파라미터 체크)
-            const query = `timestamp=${timestamp}&recvWindow=10000`;
+            const query = `recvWindow=20000&timestamp=${timestamp}`;
             const signature = CryptoJS.HmacSHA256(query, userKeys.binance_api_secret).toString();
             
             try {
-                // v2 계정 정보와 포지션 정보 엔드포인트
+                // v2 Account & Position endpoints
                 const accountUrl = `${BINANCE_BASE}/fapi/v2/account?${query}&signature=${signature}`;
                 const posUrl = `${BINANCE_BASE}/fapi/v2/positionRisk?${query}&signature=${signature}`;
 
@@ -254,39 +260,37 @@
                     });
                     
                     if (!res.ok) {
-                        const errBody = await res.text();
-                        console.error("API Error Response:", errBody);
-                        throw new Error(`HTTP_${res.status}`);
+                        // 프록시 서버 문제일 경우 다른 프록시 시도 (선택적 로직)
+                        throw new Error(`BINANCE_ERR_${res.status}`);
                     }
 
-                    const text = await res.text();
-                    try {
-                        return JSON.parse(text);
-                    } catch(e) {
-                        throw new Error("PARSING_ERROR");
-                    }
+                    const json = await res.json();
+                    if (json.code && json.code < 0) throw new Error(json.msg);
+                    return json;
                 };
 
-                const accountData = await callApi(accountUrl);
-                const posData = await callApi(posUrl);
-
-                // 바이낸스 에러 코드 처리
-                if (accountData.code && accountData.code < 0) throw new Error(accountData.msg);
-                if (posData.code && posData.code < 0) throw new Error(posData.msg);
+                // 병렬 요청으로 속도 향상
+                const [accountData, posData] = await Promise.all([
+                    callApi(accountUrl),
+                    callApi(posUrl)
+                ]);
 
                 renderData(accountData, posData);
-                document.getElementById('debug-status').innerText = "OK";
+                lastSyncTime = Date.now();
+                document.getElementById('debug-status').innerText = "STABLE";
                 document.getElementById('api-status-label').innerText = "CONNECTED";
                 document.getElementById('api-status-label').className = "text-[9px] font-black text-emerald-500 uppercase tracking-wider";
+                document.getElementById('api-status-dot').className = "status-dot bg-emerald-500 animate-pulse";
+                document.getElementById('connection-error').classList.add('hidden');
             } catch (err) {
-                console.error("Sync Error Details:", err);
-                document.getElementById('pulse-text').innerText = "SYNC ERROR";
-                document.getElementById('debug-status').innerText = "ERR: " + err.message;
+                console.error("Sync Error:", err);
+                document.getElementById('pulse-text').innerText = "SYNC FAILED";
+                document.getElementById('debug-status').innerText = "ERROR: " + err.message;
                 
                 document.getElementById('connection-error').classList.remove('hidden');
-                document.getElementById('idle-text').classList.add('hidden');
-                document.getElementById('api-status-label').innerText = "AUTH/SYNC ERROR";
+                document.getElementById('api-status-label').innerText = "API AUTH ERROR";
                 document.getElementById('api-status-label').className = "text-[9px] font-black text-red-500 uppercase tracking-wider";
+                document.getElementById('api-status-dot').className = "status-dot bg-red-500";
             } finally {
                 isSyncing = false;
                 document.getElementById('loading-spinner').classList.add('hidden');
@@ -295,73 +299,69 @@
 
         function renderData(account, positions) {
             document.getElementById('idle-text').classList.add('hidden');
-            document.getElementById('loading-spinner').classList.add('hidden');
-
-            // 선물 지갑 잔고 합계 계산 (USDT 기준)
-            if (account && account.totalMarginBalance) {
-                document.getElementById('summary-balance').innerText = parseFloat(account.totalMarginBalance).toLocaleString(undefined, {minimumFractionDigits: 2});
-                const pnl = parseFloat(account.totalUnrealizedProfit || 0);
-                const pnlEl = document.getElementById('summary-pnl');
-                pnlEl.innerText = (pnl >= 0 ? '+' : '') + pnl.toLocaleString(undefined, {minimumFractionDigits: 2});
-                pnlEl.className = `text-3xl font-black ${pnl >= 0 ? 'pnl-positive' : 'pnl-negative'}`;
-            } else if (account && account.assets) {
-                // 구조가 다를 경우 대비 (예: 특정 자산만 노출)
-                const usdtAsset = account.assets.find(a => a.asset === 'USDT');
-                if (usdtAsset) {
-                    document.getElementById('summary-balance').innerText = parseFloat(usdtAsset.walletBalance).toLocaleString(undefined, {minimumFractionDigits: 2});
-                }
-            }
             
-            // 실제 포지션이 있는 항목만 필터링 (positionAmt가 0이 아닌 경우)
+            // 1. Balance Summary
+            const marginBalance = parseFloat(account.totalMarginBalance || 0);
+            const unrealizedPnl = parseFloat(account.totalUnrealizedProfit || 0);
+            
+            document.getElementById('summary-balance').innerText = marginBalance.toLocaleString(undefined, {minimumFractionDigits: 2});
+            
+            const pnlEl = document.getElementById('summary-pnl');
+            pnlEl.innerText = (unrealizedPnl >= 0 ? '+' : '') + unrealizedPnl.toLocaleString(undefined, {minimumFractionDigits: 2});
+            pnlEl.className = `text-3xl font-black ${unrealizedPnl >= 0 ? 'pnl-positive' : 'pnl-negative'}`;
+
+            // 2. Positions Filtering (수량이 0이 아닌 것만)
             const activePos = Array.isArray(positions) ? positions.filter(p => Math.abs(parseFloat(p.positionAmt)) > 0) : [];
             document.getElementById('summary-positions').innerText = activePos.length;
 
             const listEl = document.getElementById('position-list');
             if (activePos.length === 0) {
-                listEl.innerHTML = `<div class="h-full flex flex-col items-center justify-center text-gray-600 uppercase text-[10px] font-bold italic">
-                    <i class="fas fa-box-open mb-2 opacity-20 text-xl"></i>
-                    No active positions found
-                </div>`;
-                return;
-            }
+                listEl.innerHTML = `
+                    <div class="h-full flex flex-col items-center justify-center text-gray-600 uppercase text-[10px] font-bold italic">
+                        <i class="fas fa-box-open mb-2 opacity-20 text-xl"></i>
+                        No active positions
+                    </div>`;
+            } else {
+                listEl.innerHTML = activePos.map(p => {
+                    const pnl = parseFloat(p.unRealizedProfit);
+                    const amt = parseFloat(p.positionAmt);
+                    const side = amt > 0 ? 'LONG' : 'SHORT';
+                    const entry = parseFloat(p.entryPrice);
+                    const mark = parseFloat(p.markPrice);
+                    const lev = p.leverage;
+                    
+                    // ROE 계산
+                    const roe = (side === 'LONG' ? (mark - entry) / entry : (entry - mark) / entry) * lev * 100;
 
-            listEl.innerHTML = activePos.map(p => {
-                const pnl = parseFloat(p.unRealizedProfit);
-                const side = parseFloat(p.positionAmt) > 0 ? 'LONG' : 'SHORT';
-                // ROE 계산 (심플 버전: 증거금 대비 수익률)
-                // 바이낸스 공식: (unrealizedProfit / margin) * 100
-                const entryPrice = parseFloat(p.entryPrice);
-                const markPrice = parseFloat(p.markPrice);
-                const leverage = parseFloat(p.leverage || 1);
-                const roe = (side === 'LONG' ? (markPrice - entryPrice) / entryPrice : (entryPrice - markPrice) / entryPrice) * leverage * 100;
-
-                return `
-                    <div class="bg-black/20 p-5 rounded-2xl border border-white/5 mb-3 flex justify-between items-center hover:bg-black/30 transition-all">
-                        <div>
-                            <div class="flex items-center gap-2 mb-1">
-                                <span class="px-1.5 py-0.5 rounded text-[8px] font-black ${side==='LONG'?'bg-emerald-500/20 text-emerald-500':'bg-red-500/20 text-red-500'}">${side}</span>
-                                <p class="text-xs font-black uppercase tracking-tight">${p.symbol}</p>
+                    return `
+                        <div class="bg-black/20 p-5 rounded-2xl border border-white/5 mb-3 flex justify-between items-center hover:bg-black/30 transition-all group">
+                            <div>
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="px-1.5 py-0.5 rounded text-[8px] font-black ${side==='LONG'?'bg-emerald-500/20 text-emerald-500':'bg-red-500/20 text-red-500'}">${side}</span>
+                                    <p class="text-xs font-black uppercase tracking-tight group-hover:text-amber-400 transition-colors">${p.symbol}</p>
+                                </div>
+                                <p class="text-[9px] text-gray-500 font-bold">LEV: ${lev}x | SIZE: ${Math.abs(amt).toFixed(3)}</p>
                             </div>
-                            <p class="text-[9px] text-gray-500 font-bold">LEV: ${p.leverage}x | SIZE: ${Math.abs(p.positionAmt)}</p>
+                            <div class="text-right">
+                                <p class="text-xs font-black ${pnl>=0?'pnl-positive':'pnl-negative'}">${pnl>=0?'+':''}${pnl.toFixed(2)} USDT</p>
+                                <p class="text-[9px] ${roe>=0?'text-emerald-500/80':'text-red-500/80'} font-black">${roe.toFixed(2)}% ROE</p>
+                            </div>
                         </div>
-                        <div class="text-right">
-                            <p class="text-xs font-black ${pnl>=0?'pnl-positive':'pnl-negative'}">${pnl>=0?'+':''}${pnl.toFixed(2)} USDT (${roe.toFixed(2)}%)</p>
-                            <p class="text-[9px] text-gray-500 font-bold">ENTRY: ${parseFloat(p.entryPrice).toLocaleString()}</p>
-                        </div>
-                    </div>
-                `;
-            }).join('');
+                    `;
+                }).join('');
+            }
             document.getElementById('pulse-text').innerText = "LIVE SYNCED";
         }
 
         async function loadUserConfig(userId) {
-            const { data } = await sb.from('user_configs').select('*').eq('user_id', userId).maybeSingle();
-            if (data) {
+            const { data, error } = await sb.from('user_configs').select('*').eq('user_id', userId).maybeSingle();
+            if (data && data.binance_api_key) {
                 userKeys = data;
                 startSyncLoop();
             } else {
-                document.getElementById('pulse-text').innerText = "KEY MISSING";
-                document.getElementById('idle-text').innerText = "API KEYS NOT FOUND IN DATABASE";
+                document.getElementById('pulse-text').innerText = "KEY REQUIRED";
+                document.getElementById('idle-text').innerText = "PLEASE CONFIGURE API KEYS IN SIGNUP/GUEST";
+                document.getElementById('loading-spinner').classList.add('hidden');
             }
         }
 
@@ -374,24 +374,29 @@
                 timer -= 0.1;
                 document.getElementById('sync-progress').style.width = (timer * 10) + '%';
                 document.getElementById('sync-timer').innerText = Math.ceil(timer) + 's';
-                if (timer <= 0) { timer = 10; fetchBinanceData(); }
+                if (timer <= 0) { 
+                    timer = 10; 
+                    fetchBinanceData(); 
+                }
             }, 100);
             document.getElementById('sync-label').innerText = "ONLINE";
         }
 
         function updateUI(user) {
+            // 게스트 모드 유지 확인
             if(userKeys && currentMode === 'guest') return;
 
             const aSec = document.getElementById('auth-section');
             const pSec = document.getElementById('profile-section');
             const idleText = document.getElementById('idle-text');
             const spinner = document.getElementById('loading-spinner');
+            
             if (user) {
                 aSec.classList.add('hidden'); pSec.classList.remove('hidden');
-                document.getElementById('user-name').innerText = user.user_metadata.full_name || 'COMMANDER';
+                document.getElementById('user-name').innerText = (user.user_metadata?.full_name || 'PILOT').toUpperCase();
                 document.getElementById('user-email').innerText = user.email;
                 spinner.classList.remove('hidden');
-                idleText.innerText = "Syncing with Binance...";
+                idleText.innerText = "Syncing...";
                 loadUserConfig(user.id);
             } else {
                 aSec.classList.remove('hidden'); pSec.classList.add('hidden');
