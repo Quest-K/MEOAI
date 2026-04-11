@@ -88,6 +88,7 @@
 
             <!-- Filter Panel -->
             <div id="filter-settings" class="hidden grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6 p-5 bg-black/40 rounded-2xl border border-white/10">
+                <!-- 생략된 필터 섹션 (이전과 동일) -->
                 <div class="space-y-3">
                     <h3 class="text-[11px] font-bold text-orange-400 uppercase tracking-wider flex items-center gap-2">
                         <span class="w-1.5 h-1.5 rounded-full bg-orange-400"></span> 일봉(1D) 조건
@@ -224,7 +225,6 @@
 
         let currentUser = null;
         let updateTimer = null;
-        let autoScanTimer = null;
         const REFRESH_INTERVAL = 10; 
         let countdownValue = REFRESH_INTERVAL;
         let autoScanCountdown = 0;
@@ -299,13 +299,11 @@
         function startAutoUpdate() {
             if (updateTimer) clearInterval(updateTimer);
             updateTimer = setInterval(() => {
-                // 자산 및 포지션 새로고침 타이머
                 countdownValue--;
                 document.getElementById('update-progress').style.width = `${((REFRESH_INTERVAL - countdownValue) / REFRESH_INTERVAL) * 100}%`;
                 document.getElementById('refresh-timer').innerText = `(${countdownValue})`;
                 if (countdownValue <= 0) { fetchFuturesData(); countdownValue = REFRESH_INTERVAL; }
 
-                // 자동 스캐너 타이머
                 if (autoScanCountdown > 0) {
                     autoScanCountdown--;
                     updateAutoScanDisplay();
@@ -367,27 +365,48 @@
             }
         }
 
+        /**
+         * 데이터 렌더링 함수 - NaN 오류 수정 적용됨
+         */
         function renderDashboard(data, openOrders) {
-            document.getElementById('total-balance').innerText = parseFloat(data.totalWalletBalance).toLocaleString(undefined, {minimumFractionDigits: 2});
-            document.getElementById('total-pnl').innerText = parseFloat(data.totalUnrealizedProfit).toLocaleString(undefined, {minimumFractionDigits: 2});
-            document.getElementById('available-balance').innerText = parseFloat(data.availableBalance).toLocaleString(undefined, {minimumFractionDigits: 2});
+            document.getElementById('total-balance').innerText = parseFloat(data.totalWalletBalance || 0).toLocaleString(undefined, {minimumFractionDigits: 2});
+            document.getElementById('total-pnl').innerText = parseFloat(data.totalUnrealizedProfit || 0).toLocaleString(undefined, {minimumFractionDigits: 2});
+            document.getElementById('available-balance').innerText = parseFloat(data.availableBalance || 0).toLocaleString(undefined, {minimumFractionDigits: 2});
+            
+            // 실제 수량이 있는 포지션만 필터링
             const activePos = data.positions.filter(p => parseFloat(p.positionAmt) !== 0);
             document.getElementById('active-positions').innerText = activePos.length;
             document.getElementById('last-update').innerText = new Date().toLocaleTimeString();
 
             const list = document.getElementById('position-list');
-            list.innerHTML = activePos.length ? activePos.map(pos => {
+            if (activePos.length === 0) {
+                list.innerHTML = '<tr><td colspan="5" class="px-6 py-10 text-center text-slate-600">활성 포지션 없음</td></tr>';
+                return;
+            }
+
+            list.innerHTML = activePos.map(pos => {
                 const amt = parseFloat(pos.positionAmt);
                 const side = amt > 0 ? 'LONG' : 'SHORT';
-                const entryPrice = parseFloat(pos.entryPrice).toFixed(4);
-                const markPrice = parseFloat(pos.markPrice).toFixed(4);
+                const entryPrice = parseFloat(pos.entryPrice || 0);
+                
+                // 바이낸스 API 응답 필드 확인 (markPrice 또는 askPrice/bidPrice 등 상황에 맞게 처리)
+                // fapi/v2/account 응답에는 markPrice 필드가 포함되어 있습니다.
+                const markPriceVal = parseFloat(pos.markPrice || 0);
+                
                 const absAmt = Math.abs(amt);
-                const valueUsdt = (absAmt * parseFloat(pos.markPrice)).toLocaleString(undefined, {minimumFractionDigits: 2});
-                const roe = (parseFloat(pos.unrealizedProfit) / (parseFloat(pos.initialMargin) || 1) * 100).toFixed(2);
-                const pnl = parseFloat(pos.unrealizedProfit).toFixed(2);
-                const symOrders = openOrders.filter(o => o.symbol === pos.symbol);
+                
+                // Value 계산 시 Mark Price가 0이면 NaN이 나올 수 있으므로 방어 코드 추가
+                const valueUsdtNum = absAmt * markPriceVal;
+                const valueUsdtStr = isNaN(valueUsdtNum) ? "0.00" : valueUsdtNum.toLocaleString(undefined, {minimumFractionDigits: 2});
+                
+                const pnlNum = parseFloat(pos.unrealizedProfit || 0);
+                const marginNum = parseFloat(pos.initialMargin || 1);
+                const roe = ((pnlNum / marginNum) * 100).toFixed(2);
+                
+                const symOrders = Array.isArray(openOrders) ? openOrders.filter(o => o.symbol === pos.symbol) : [];
                 const tpOrder = symOrders.find(o => o.type === 'TAKE_PROFIT_MARKET');
                 const slOrder = symOrders.find(o => o.type === 'STOP_MARKET');
+                
                 const tpText = tpOrder ? parseFloat(tpOrder.stopPrice).toFixed(4) : '<span class="text-slate-600">-</span>';
                 const slText = slOrder ? parseFloat(slOrder.stopPrice).toFixed(4) : '<span class="text-slate-600">-</span>';
 
@@ -398,25 +417,25 @@
                     </td>
                     <td class="px-6 py-4">
                         <div class="text-slate-200">${absAmt} <span class="text-[9px] text-slate-500 font-normal">QTY</span></div>
-                        <div class="text-binance-gold font-bold font-mono">${valueUsdt} <span class="text-[9px] font-normal">USDT</span></div>
+                        <div class="text-binance-gold font-bold font-mono">${valueUsdtStr} <span class="text-[9px] font-normal">USDT</span></div>
                     </td>
                     <td class="px-6 py-4">
-                        <div class="text-slate-400 text-[10px]">Entry: ${entryPrice}</div>
-                        <div class="text-white">Mark: ${markPrice}</div>
+                        <div class="text-slate-400 text-[10px]">Entry: ${entryPrice.toFixed(4)}</div>
+                        <div class="text-white">Mark: ${markPriceVal > 0 ? markPriceVal.toFixed(4) : 'Loading...'}</div>
                     </td>
                     <td class="px-6 py-4">
                         <div class="text-emerald-500">TP: ${tpText}</div>
                         <div class="text-red-500">SL: ${slText}</div>
                     </td>
                     <td class="px-6 py-4 text-right">
-                        <div class="font-bold ${roe>=0?'profit-up':'profit-down'}">${roe}%</div>
-                        <div class="text-[10px] ${roe>=0?'profit-up':'profit-down'} opacity-80">${pnl} USDT</div>
+                        <div class="font-bold ${pnlNum>=0?'profit-up':'profit-down'}">${roe}%</div>
+                        <div class="text-[10px] ${pnlNum>=0?'profit-up':'profit-down'} opacity-80">${pnlNum.toFixed(2)} USDT</div>
                     </td>
                 </tr>`;
-            }).join('') : '<tr><td colspan="5" class="px-6 py-10 text-center text-slate-600">활성 포지션 없음</td></tr>';
+            }).join('');
         }
 
-        // --- Technical Utils ---
+        // --- 스캐너 및 기타 유틸리티 (이전과 동일) ---
         const getMA = (prices, period) => {
             if (prices.length < period) return null;
             return prices.slice(-period).reduce((a, b) => a + b, 0) / period;
