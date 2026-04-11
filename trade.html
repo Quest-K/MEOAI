@@ -3,20 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Binance Futures - Supabase Login</title>
+    <title>Binance Futures - Auto Update</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
-    <!-- Supabase JS Library -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; background-color: #0b0e11; color: #eaecef; }
         .binance-yellow { color: #fcd535; }
-        .bg-binance-gray { background-color: #1e2329; }
         .card { background-color: #1e2329; border-radius: 12px; border: 1px solid #30363d; }
         input { background-color: #2b3139 !important; border: 1px solid #474d57 !important; color: white !important; }
         .profit { color: #0ecb81; }
         .loss { color: #f6465d; }
+        
+        /* Progress Bar Animation */
+        #update-progress {
+            height: 2px;
+            background-color: #fcd535;
+            width: 0%;
+            transition: width 10s linear;
+        }
         .loading-spinner {
             border: 2px solid rgba(255, 255, 255, 0.1);
             border-top: 2px solid #fcd535;
@@ -31,257 +37,247 @@
 <body class="p-4 md:p-8">
     <div class="max-w-6xl mx-auto">
         
-        <!-- Auth Section (Login) -->
+        <!-- Login Section -->
         <section id="auth-section" class="max-w-md mx-auto mt-20 card p-8 shadow-2xl">
             <div class="text-center mb-8">
                 <h1 class="text-3xl font-bold binance-yellow mb-2">Login</h1>
-                <p class="text-gray-400 text-sm">Supabase 계정으로 로그인하세요</p>
+                <p class="text-gray-400 text-sm">Supabase 계정으로 로그인</p>
             </div>
             <div class="space-y-4">
-                <div>
-                    <label class="block text-xs text-gray-500 mb-2 uppercase">Email</label>
-                    <input type="email" id="login-email" class="w-full p-3 rounded-lg" placeholder="example@mail.com">
-                </div>
-                <div>
-                    <label class="block text-xs text-gray-500 mb-2 uppercase">Password</label>
-                    <input type="password" id="login-password" class="w-full p-3 rounded-lg" placeholder="••••••••">
-                </div>
+                <input type="email" id="login-email" class="w-full p-3 rounded-lg" placeholder="Email">
+                <input type="password" id="login-password" class="w-full p-3 rounded-lg" placeholder="Password">
                 <button onclick="handleLogin()" id="login-btn" class="w-full bg-[#fcd535] hover:bg-[#f0c82d] text-black font-bold py-3 rounded-lg transition-all flex justify-center items-center gap-2">
-                    로그인
+                    로그인 및 대시보드 시작
                 </button>
             </div>
             <p id="auth-error" class="text-red-500 text-xs mt-4 text-center hidden"></p>
         </section>
 
-        <!-- Main Dashboard Section (Hidden by default) -->
+        <!-- Dashboard Section -->
         <section id="main-dashboard" class="hidden">
             <header class="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h1 class="text-3xl font-bold binance-yellow">Binance Futures</h1>
-                    <p id="user-display" class="text-gray-400 text-sm mt-1">로그인 정보 불러오는 중...</p>
-                </div>
-                <div class="flex items-center gap-3">
-                    <div id="status-badge" class="px-4 py-1.5 rounded-full text-xs font-semibold bg-green-900 text-green-300 flex items-center gap-2">
-                        <span id="status-text">연결됨</span>
+                    <div class="flex items-center gap-2 mt-1">
+                        <span id="user-info" class="text-gray-400 text-sm"></span>
+                        <button onclick="handleLogout()" class="text-xs text-gray-500 hover:text-white underline">로그아웃</button>
                     </div>
-                    <button onclick="handleLogout()" class="text-xs text-gray-400 hover:text-white underline">로그아웃</button>
+                </div>
+                <div class="flex flex-col items-end gap-2">
+                    <div class="flex items-center gap-3">
+                        <span id="status-text" class="text-xs font-semibold text-green-400">실시간 연결 중 (10초 자동 갱신)</span>
+                        <div class="loading-spinner" id="global-loader"></div>
+                    </div>
+                    <div class="w-48 bg-gray-800 rounded-full h-1 overflow-hidden">
+                        <div id="update-progress"></div>
+                    </div>
                 </div>
             </header>
 
-            <!-- Summary Cards -->
-            <div id="summary-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+            <!-- Summary -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
                 <div class="card p-5 border-l-4 border-yellow-500">
-                    <p class="text-xs text-gray-500 uppercase tracking-wider">총 미실현 손익 (USDT)</p>
+                    <p class="text-xs text-gray-500 uppercase tracking-wider">총 미실현 손익</p>
                     <p id="total-pnl" class="text-3xl font-bold mt-2">--</p>
                 </div>
                 <div class="card p-5">
                     <p class="text-xs text-gray-500 uppercase tracking-wider">지갑 잔고</p>
-                    <p id="wallet-balance" class="text-3xl font-bold mt-2 text-white">--</p>
+                    <p id="wallet-balance" class="text-3xl font-bold mt-2">--</p>
                 </div>
                 <div class="card p-5">
-                    <p class="text-xs text-gray-500 uppercase tracking-wider">활성 포지션</p>
-                    <p id="position-count" class="text-3xl font-bold mt-2 text-white">--</p>
+                    <p class="text-xs text-gray-500 uppercase tracking-wider">포지션</p>
+                    <p id="position-count" class="text-3xl font-bold mt-2">--</p>
                 </div>
             </div>
 
-            <!-- Position Table -->
-            <section class="card overflow-hidden shadow-2xl">
-                <div class="p-5 border-b border-gray-700 flex justify-between items-center bg-[#2b3139]/20">
-                    <h2 class="text-lg font-semibold flex items-center gap-2">실시간 포지션</h2>
-                    <span id="last-update" class="text-xs text-gray-500 font-mono"></span>
+            <!-- Positions -->
+            <section class="card overflow-hidden">
+                <div class="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-800/30">
+                    <h2 class="font-semibold text-gray-200">내 포지션 정보</h2>
+                    <span id="last-update" class="text-[10px] font-mono text-gray-500"></span>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left">
-                        <thead class="bg-[#2b3139] text-gray-400 text-xs uppercase">
+                        <thead class="bg-[#2b3139] text-gray-400 text-[11px] uppercase">
                             <tr>
-                                <th class="px-6 py-4">Symbol</th>
-                                <th class="px-6 py-4">Size</th>
-                                <th class="px-6 py-4">Entry / Mark</th>
-                                <th class="px-6 py-4 text-right">PNL (USDT)</th>
-                                <th class="px-6 py-4 text-right">ROE%</th>
+                                <th class="px-6 py-3">Symbol</th>
+                                <th class="px-6 py-3">Size/Side</th>
+                                <th class="px-6 py-3">Entry/Mark</th>
+                                <th class="px-6 py-3 text-right">PNL</th>
+                                <th class="px-6 py-3 text-right">ROE%</th>
                             </tr>
                         </thead>
                         <tbody id="position-table-body" class="divide-y divide-gray-800 text-sm">
-                            <!-- 데이터가 여기에 주입됩니다 -->
+                            <tr><td colspan="5" class="px-6 py-10 text-center text-gray-600">데이터를 불러오는 중...</td></tr>
                         </tbody>
                     </table>
                 </div>
             </section>
         </section>
 
-        <!-- Toast -->
-        <div id="toast" class="fixed bottom-8 right-8 hidden bg-red-600 text-white px-6 py-4 rounded-xl shadow-2xl z-50"></div>
+        <div id="toast" class="fixed bottom-5 right-5 hidden bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg z-50"></div>
     </div>
 
     <script>
-        // --- CONFIGURATION ---
-        // 사용자의 Supabase URL과 Anon Key를 입력하세요.
-        const SUPABASE_URL = 'https://your-project-url.supabase.co';
+        // --- CONFIG ---
+        const SUPABASE_URL = 'https://your-project.supabase.co';
         const SUPABASE_ANON_KEY = 'your-anon-key';
-        
-        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        const BINANCE_BASE_URL = 'https://fapi.binance.com';
+        const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const BINANCE_BASE = 'https://fapi.binance.com';
 
         let userApiKey = '';
         let userSecretKey = '';
-        let updateInterval = null;
+        let refreshTimer = null;
+        const REFRESH_INTERVAL = 10000; // 10초
 
-        // --- AUTH LOGIC ---
+        // --- AUTH ---
         async function handleLogin() {
             const email = document.getElementById('login-email').value;
             const password = document.getElementById('login-password').value;
             const btn = document.getElementById('login-btn');
-            const errorLabel = document.getElementById('auth-error');
-
-            if (!email || !password) {
-                errorLabel.innerText = "이메일과 비밀번호를 입력해주세요.";
-                errorLabel.classList.remove('hidden');
-                return;
-            }
-
+            
             btn.disabled = true;
-            btn.innerHTML = `<div class="loading-spinner"></div> 로그인 중...`;
-            errorLabel.classList.add('hidden');
+            btn.innerHTML = `<div class="loading-spinner"></div> 확인 중...`;
 
-            const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-
+            const { data, error } = await sb.auth.signInWithPassword({ email, password });
             if (error) {
-                errorLabel.innerText = "로그인 실패: " + error.message;
-                errorLabel.classList.remove('hidden');
+                document.getElementById('auth-error').innerText = error.message;
+                document.getElementById('auth-error').classList.remove('hidden');
                 btn.disabled = false;
-                btn.innerText = "로그인";
+                btn.innerText = "로그인 및 대시보드 시작";
                 return;
             }
 
-            // 로그인 성공 시 유저 설정 정보에서 API 키 가져오기
-            await fetchUserApiKeys(data.user.id);
-        }
-
-        async function fetchUserApiKeys(userId) {
-            // 이미지 정보에 따라 테이블 이름은 'user_settings'
-            // 컬럼 이름은 'binance_key', 'binance_secret'
-            const { data, error } = await supabase
-                .from('user_settings') 
+            // user_settings 테이블에서 키 정보 가져오기
+            const { data: settings, error: sError } = await sb
+                .from('user_settings')
                 .select('binance_key, binance_secret')
-                .eq('user_id', userId) // auth.users.id와 연결된 user_id 컬럼 사용
+                .eq('user_id', data.user.id)
                 .single();
 
-            if (error || !data) {
-                showToast("DB에서 API 설정을 찾을 수 없습니다. (user_settings 테이블 확인)");
-                console.error("Supabase Error:", error);
-                handleLogout();
+            if (sError || !settings) {
+                alert("API 설정을 찾을 수 없습니다. user_settings 테이블을 확인하세요.");
+                location.reload();
                 return;
             }
 
-            userApiKey = data.binance_key;
-            userSecretKey = data.binance_secret;
-
-            if (!userApiKey || !userSecretKey) {
-                showToast("설정된 Binance API Key가 없습니다.");
-                handleLogout();
-                return;
-            }
-
-            showDashboard();
-        }
-
-        function showDashboard() {
-            document.getElementById('auth-section').classList.add('hidden');
-            document.getElementById('main-dashboard').classList.remove('hidden');
-            document.getElementById('user-display').innerText = `접속 계정: ${document.getElementById('login-email').value}`;
+            userApiKey = settings.binance_key;
+            userSecretKey = settings.binance_secret;
             
-            // 바이낸스 데이터 초기 호출 및 인터벌 설정
-            fetchBinanceData();
-            if (updateInterval) clearInterval(updateInterval);
-            updateInterval = setInterval(fetchBinanceData, 5000); 
+            document.getElementById('user-info').innerText = email;
+            startDashboard();
         }
 
-        async function handleLogout() {
-            if(updateInterval) clearInterval(updateInterval);
-            await supabase.auth.signOut();
+        function handleLogout() {
+            clearInterval(refreshTimer);
+            sb.auth.signOut();
             location.reload();
         }
 
-        // --- BINANCE LOGIC ---
-        function getSignature(queryString, secretKey) {
-            return CryptoJS.HmacSHA256(queryString, secretKey).toString();
+        // --- CORE LOGIC ---
+        function startDashboard() {
+            document.getElementById('auth-section').classList.add('hidden');
+            document.getElementById('main-dashboard').classList.remove('hidden');
+            
+            // 첫 실행
+            fetchAndRefresh();
+            
+            // 10초 간격 반복
+            refreshTimer = setInterval(fetchAndRefresh, REFRESH_INTERVAL);
+        }
+
+        async function fetchAndRefresh() {
+            // 프로그레스 바 리셋 및 애니메이션 시작
+            const bar = document.getElementById('update-progress');
+            bar.style.transition = 'none';
+            bar.style.width = '0%';
+            
+            // 데이터 호출 애니메이션 표시
+            document.getElementById('global-loader').classList.remove('opacity-0');
+
+            await fetchBinanceData();
+
+            // 데이터 호출 완료 후 프로그레스 바 가동
+            setTimeout(() => {
+                bar.style.transition = `width ${REFRESH_INTERVAL/1000}s linear`;
+                bar.style.width = '100%';
+                document.getElementById('global-loader').classList.add('opacity-0');
+            }, 100);
+        }
+
+        function getSignature(query, secret) {
+            return CryptoJS.HmacSHA256(query, secret).toString();
         }
 
         async function fetchBinanceData() {
             try {
-                const timestamp = Date.now();
-                const queryString = `timestamp=${timestamp}`;
-                const signature = getSignature(queryString, userSecretKey);
+                const ts = Date.now();
+                const query = `timestamp=${ts}`;
+                const sig = getSignature(query, userSecretKey);
+                const headers = { 'X-MBX-APIKEY': userApiKey };
 
-                // 1. Account Info
-                const accRes = await fetch(`${BINANCE_BASE_URL}/fapi/v2/account?${queryString}&signature=${signature}`, {
-                    headers: { 'X-MBX-APIKEY': userApiKey }
-                });
+                const [accRes, posRes] = await Promise.all([
+                    fetch(`${BINANCE_BASE}/fapi/v2/account?${query}&signature=${sig}`, { headers }),
+                    fetch(`${BINANCE_BASE}/fapi/v2/positionRisk?${query}&signature=${sig}`, { headers })
+                ]);
+
+                if (!accRes.ok || !posRes.ok) throw new Error("API Key 권한이나 네트워크를 확인하세요.");
+
                 const accData = await accRes.json();
-
-                // 2. Position Risk
-                const posRes = await fetch(`${BINANCE_BASE_URL}/fapi/v2/positionRisk?${queryString}&signature=${signature}`, {
-                    headers: { 'X-MBX-APIKEY': userApiKey }
-                });
                 const posData = await posRes.json();
 
-                if (accRes.ok && posRes.ok) {
-                    updateUI(accData, posData);
-                } else {
-                    console.error("Binance API Error:", accData.msg || posData.msg);
-                    showToast("바이낸스 API 호출 중 오류가 발생했습니다.");
-                }
+                updateUI(accData, posData);
             } catch (err) {
-                console.error("Fetch Error:", err);
+                showToast(err.message);
+                console.error(err);
             }
         }
 
-        function updateUI(account, positions) {
-            // 요약 정보
-            document.getElementById('wallet-balance').innerText = parseFloat(account.totalWalletBalance).toLocaleString() + " USDT";
-            const pnl = parseFloat(account.totalUnrealizedProfit);
-            const pnlElem = document.getElementById('total-pnl');
-            pnlElem.innerText = (pnl >= 0 ? '+' : '') + pnl.toLocaleString() + " USDT";
-            pnlElem.className = `text-3xl font-bold mt-2 ${pnl >= 0 ? 'profit' : 'loss'}`;
-
-            // 테이블 정보
-            const activePos = positions.filter(p => Math.abs(parseFloat(p.positionAmt)) > 0);
-            document.getElementById('position-count').innerText = activePos.length + "개";
+        function updateUI(acc, pos) {
+            // 요약
+            const pnl = parseFloat(acc.totalUnrealizedProfit);
+            const pnlDisplay = document.getElementById('total-pnl');
+            pnlDisplay.innerText = (pnl >= 0 ? '+' : '') + pnl.toLocaleString() + " USDT";
+            pnlDisplay.className = `text-3xl font-bold mt-2 ${pnl >= 0 ? 'profit' : 'loss'}`;
             
+            document.getElementById('wallet-balance').innerText = parseFloat(acc.totalWalletBalance).toLocaleString() + " USDT";
+
+            // 포지션 테이블
+            const active = pos.filter(p => parseFloat(p.positionAmt) !== 0);
+            document.getElementById('position-count').innerText = active.length + "건";
+
             const tbody = document.getElementById('position-table-body');
             tbody.innerHTML = '';
 
-            if (activePos.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-10 text-center text-gray-500">현재 오픈된 포지션이 없습니다.</td></tr>`;
+            if (active.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-10 text-center text-gray-600">활성 포지션 없음</td></tr>';
             } else {
-                activePos.forEach(pos => {
-                    const amt = parseFloat(pos.positionAmt);
-                    const entry = parseFloat(pos.entryPrice);
-                    const mark = parseFloat(pos.markPrice);
-                    const upnl = parseFloat(pos.unRealizedProfit);
-                    const leverage = pos.leverage;
-                    
-                    // ROE 계산 (PNL / Margin)
+                active.forEach(p => {
+                    const amt = parseFloat(p.positionAmt);
+                    const entry = parseFloat(p.entryPrice);
+                    const mark = parseFloat(p.markPrice);
+                    const upnl = parseFloat(p.unRealizedProfit);
+                    const leverage = p.leverage;
                     const margin = (Math.abs(amt) * entry) / leverage;
                     const roe = ((upnl / margin) * 100).toFixed(2);
 
                     const tr = document.createElement('tr');
-                    tr.className = "hover:bg-gray-800/50 transition-colors border-b border-gray-800 last:border-0";
+                    tr.className = "hover:bg-gray-800/40 border-b border-gray-800 last:border-0";
                     tr.innerHTML = `
-                        <td class="px-6 py-4 font-bold text-white">
-                            ${pos.symbol}
-                            <div class="text-[10px] text-gray-500 font-normal mt-1">${pos.marginType.toUpperCase()} ${leverage}x</div>
+                        <td class="px-6 py-4 font-bold">
+                            ${p.symbol}
+                            <div class="text-[10px] text-gray-500 font-normal uppercase">${p.marginType} ${leverage}x</div>
                         </td>
                         <td class="px-6 py-4">
-                            <span class="${amt > 0 ? 'profit' : 'loss'} font-bold">${amt > 0 ? 'LONG' : 'SHORT'}</span>
-                            <div class="text-xs text-gray-400 mt-1">${Math.abs(amt)}</div>
+                            <span class="font-bold ${amt > 0 ? 'profit' : 'loss'}">${amt > 0 ? 'LONG' : 'SHORT'}</span>
+                            <div class="text-xs text-gray-400">${Math.abs(amt)}</div>
                         </td>
-                        <td class="px-6 py-4 text-xs text-gray-300">
-                            Entry: ${entry.toLocaleString()}<br>
-                            Mark: ${mark.toLocaleString()}
+                        <td class="px-6 py-4 text-xs">
+                            <span class="text-gray-500">E:</span> ${entry.toLocaleString()}<br>
+                            <span class="text-gray-500">M:</span> ${mark.toLocaleString()}
                         </td>
                         <td class="px-6 py-4 text-right font-bold ${upnl >= 0 ? 'profit' : 'loss'}">
-                            ${(upnl >= 0 ? '+' : '')}${upnl.toLocaleString()}
+                            ${upnl.toLocaleString()}
                         </td>
                         <td class="px-6 py-4 text-right">
                             <span class="px-2 py-1 rounded text-xs font-bold ${roe >= 0 ? 'bg-green-500/10 profit' : 'bg-red-500/10 loss'}">
@@ -292,14 +288,14 @@
                     tbody.appendChild(tr);
                 });
             }
-            document.getElementById('last-update').innerText = `Update: ${new Date().toLocaleTimeString()}`;
+            document.getElementById('last-update').innerText = `LAST SYNC: ${new Date().toLocaleTimeString()}`;
         }
 
         function showToast(msg) {
-            const toast = document.getElementById('toast');
-            toast.innerText = msg;
-            toast.classList.remove('hidden');
-            setTimeout(() => toast.classList.add('hidden'), 3000);
+            const t = document.getElementById('toast');
+            t.innerText = msg;
+            t.classList.remove('hidden');
+            setTimeout(() => t.classList.add('hidden'), 3000);
         }
     </script>
 </body>
