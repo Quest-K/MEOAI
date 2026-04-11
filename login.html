@@ -90,9 +90,9 @@
     </div>
 
     <script>
-        // 사용자가 제공한 Supabase 정보 적용
-        const SUPABASE_URL = "https://pcmrpxcpjynmayactgan.supabase.co";
-        const SUPABASE_KEY = "sb_publishable_endfjcxVBfda-lzjOpPbrQ_DTdF3MHZ";
+        // 새로운 Supabase 프로젝트 정보 적용
+        const SUPABASE_URL = "https://mgidrwfgcdcxgosotysg.supabase.co";
+        const SUPABASE_KEY = "sb_publishable_FQt1zyzqKOI3LUSZ8DYNAQ_b9fOqhTx";
         const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         const nodes = {
@@ -153,6 +153,7 @@
                 const { data, error } = await sb.auth.signInWithPassword({ email, password });
                 if (error) throw error;
                 showMsg("보안 세션 수립 중... 잠시 후 이동합니다.");
+                // 성공 시 trade.html로 이동 (파일이 준비되어 있어야 함)
                 setTimeout(() => window.location.href = 'trade.html', 1000);
             } catch (err) {
                 showMsg(err.message || "이메일 또는 비밀번호를 확인하세요.", true);
@@ -179,7 +180,8 @@
                     password,
                     options: { 
                         data: { full_name: fullName },
-                        emailRedirectTo: window.location.origin + window.location.pathname.replace('index.html', 'trade.html')
+                        // 인증 메일 내 링크 클릭 시 돌아올 주소
+                        emailRedirectTo: window.location.origin + window.location.pathname
                     }
                 });
 
@@ -187,6 +189,7 @@
 
                 if (authData.user) {
                     // 2. 바이낸스 API 키를 user_settings 테이블에 저장
+                    // SQL의 RLS 정책에 따라 본인의 user_id로만 insert 가능
                     const { error: dbError } = await sb.from('user_settings').insert([{
                         user_id: authData.user.id,
                         binance_key: apiKey,
@@ -196,9 +199,9 @@
 
                     if (dbError) {
                         console.error("DB 저장 오류:", dbError);
-                        showMsg("가입은 완료되었으나 API 설정 저장에 실패했습니다. 관리자에게 문의하세요.", true);
+                        showMsg("가입은 완료되었으나 API 설정 저장에 실패했습니다. 관리자 페이지에서 확인하세요.", true);
                     } else {
-                        showMsg("계정 생성 완료! 이메일 인증 후 '시스템 접속'이 가능합니다.");
+                        showMsg("계정 생성 성공! 가입하신 이메일에서 인증 링크를 확인해 주세요.");
                     }
                 }
             } catch (err) {
@@ -208,10 +211,13 @@
             }
         };
 
-        // 초기 세션 체크
+        // 초기 세션 체크 (이미 로그인된 경우 자동 이동)
         (async function init() {
             const { data: { session } } = await sb.auth.getSession();
-            if (session) window.location.href = 'trade.html';
+            if (session) {
+                // 이미 세션이 있다면 trade.html로 바로 보낼 수 있습니다.
+                // window.location.href = 'trade.html';
+            }
         })();
     </script>
 </body>
