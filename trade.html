@@ -1,41 +1,82 @@
-```html
 <!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>C-Suite | Futures Trading Terminal</title>
+    <title>C-Suite | Reversal Strategy Terminal</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #050810; color: #e2e8f0; overflow-x: hidden; }
-        .glass-card { background: rgba(30, 41, 59, 0.4); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.05); }
-        .binance-gold { color: #F3BA2F; }
-        .bg-binance-gold { background-color: #F3BA2F; }
-        .input-field { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); transition: all 0.3s ease; }
-        .input-field:focus { border-color: #F3BA2F; outline: none; }
-        .profit-up { color: #0ecb81; }
-        .profit-down { color: #f6465d; }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: rgba(243, 186, 47, 0.2); border-radius: 10px; }
-        .scan-anim { animation: scan 2s infinite linear; }
-        @keyframes scan { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
-        .modal-overlay { background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(8px); }
-        #update-progress { height: 2px; transition: width 1s linear; background-color: #F3BA2F; }
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Pretendard:wght@400;600;800&display=swap');
+        
+        :root {
+            --binance-gold: #F3BA2F;
+            --up-color: #0ecb81;
+            --down-color: #f6465d;
+            --bg-deep: #0b0e11;
+            --card-bg: #1e2329;
+        }
+
+        body { 
+            font-family: 'Pretendard', sans-serif; 
+            background-color: var(--bg-deep); 
+            color: #eaecef; 
+            overflow-x: hidden; 
+        }
+
+        .mono { font-family: 'JetBrains Mono', monospace; }
+
+        .glass-card { 
+            background: var(--card-bg); 
+            border: 1px solid rgba(255, 255, 255, 0.05); 
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+        .glass-card:hover { border-color: rgba(243, 186, 47, 0.2); }
+
+        .binance-gold { color: var(--binance-gold); }
+        .bg-binance-gold { background-color: var(--binance-gold); }
+        
+        .input-field { 
+            background: #2b3139; 
+            border: 1px solid transparent; 
+            color: white;
+            transition: all 0.2s ease;
+        }
+        .input-field:focus { 
+            border-color: var(--binance-gold); 
+            background: #363c44;
+            outline: none; 
+        }
+
+        @keyframes pulse-gold {
+            0% { box-shadow: 0 0 0 0 rgba(243, 186, 47, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(243, 186, 47, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(243, 186, 47, 0); }
+        }
+        .active-scan { animation: pulse-gold 2s infinite; }
+
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: var(--bg-deep); }
+        ::-webkit-scrollbar-thumb { background: #474d57; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--binance-gold); }
+
+        .modal-overlay { background: rgba(0, 0, 0, 0.9); backdrop-filter: blur(10px); }
     </style>
 </head>
-<body class="min-h-screen pb-20">
+<body class="min-h-screen pb-24">
 
     <!-- Chart Modal -->
     <div id="chart-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 modal-overlay">
-        <div class="glass-card w-full max-w-5xl h-[80vh] rounded-3xl overflow-hidden flex flex-col relative">
-            <div class="p-4 border-b border-white/10 flex justify-between items-center bg-black/40">
-                <h3 id="modal-symbol-title" class="font-bold binance-gold text-sm">SYMBOL CHART</h3>
-                <button onclick="closeChart()" class="text-slate-400 hover:text-white p-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div class="glass-card w-full max-w-6xl h-[85vh] rounded-2xl overflow-hidden flex flex-col relative border border-white/10">
+            <div class="p-4 border-b border-white/10 flex justify-between items-center bg-[#1e2329]">
+                <div class="flex items-center gap-3">
+                    <div class="w-2 h-2 rounded-full bg-binance-gold animate-pulse"></div>
+                    <h3 id="modal-symbol-title" class="font-bold text-sm tracking-widest uppercase mono">REVERSAL_ANALYSIS_CHART</h3>
+                </div>
+                <button onclick="closeChart()" class="text-slate-400 hover:text-white transition-colors bg-white/5 p-2 rounded-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                     </svg>
                 </button>
@@ -44,372 +85,418 @@
         </div>
     </div>
 
-    <nav class="p-6 flex justify-between items-center max-w-7xl mx-auto">
-        <div>
-            <h1 class="text-xl font-bold tracking-tighter">C-SUITE <span class="binance-gold">TRADE</span></h1>
-            <p class="text-[10px] text-slate-500 uppercase tracking-widest">Futures Intelligence</p>
-        </div>
-        <div class="flex items-center gap-4">
-            <div id="auth-status-area" class="text-right">
-                <span id="user-email" class="text-xs text-slate-400 block">Guest Mode</span>
-                <span id="auto-refresh-status" class="text-[9px] text-slate-600 font-mono italic">Sync disabled (Login required)</span>
+    <!-- Navigation -->
+    <nav class="sticky top-0 z-40 bg-[#0b0e11]/80 backdrop-blur-md border-b border-white/5">
+        <div class="max-w-[1600px] mx-auto px-6 py-4 flex justify-between items-center">
+            <div class="flex items-center gap-4">
+                <div class="p-2 bg-binance-gold rounded-lg shadow-[0_0_15px_rgba(243,186,47,0.3)]">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L4.5 20.29L5.21 21L12 18L18.79 21L19.5 20.29L12 2Z" fill="black"/></svg>
+                </div>
+                <div>
+                    <h1 class="text-xl font-black tracking-tighter leading-none uppercase">C-SUITE <span class="binance-gold italic">REVERSAL</span></h1>
+                    <p class="text-[9px] text-slate-500 uppercase tracking-[0.2em] font-bold mt-1">Advanced Reversal Detection Engine</p>
+                </div>
             </div>
-            <div id="nav-buttons">
-                <button id="auth-btn" onclick="handleAuthAction()" class="text-xs font-bold text-slate-500 hover:text-white transition-all">로그인</button>
+            <div class="flex items-center gap-8">
+                <div id="auth-status-area" class="hidden md:flex items-center gap-4 border-r border-white/10 pr-8">
+                    <div class="text-right">
+                        <span id="user-email" class="text-xs font-bold block">Guest Mode</span>
+                        <div class="flex items-center justify-end gap-1.5 mt-0.5">
+                            <span id="auto-refresh-status-dot" class="w-1.5 h-1.5 rounded-full bg-slate-600"></span>
+                            <span id="auto-refresh-status" class="text-[10px] text-slate-500 mono">REFRESH: 5s</span>
+                        </div>
+                    </div>
+                </div>
+                <button id="auth-btn" onclick="handleAuthAction()" class="px-6 py-2.5 bg-binance-gold text-black text-xs font-black rounded-xl hover:brightness-110 transition-all uppercase tracking-wider shadow-lg shadow-yellow-500/10">로그인</button>
             </div>
         </div>
     </nav>
 
-    <main class="max-w-7xl mx-auto px-6 space-y-6">
+    <main class="max-w-[1600px] mx-auto px-6 mt-8 space-y-6">
         
-        <!-- Scanner Section -->
-        <section class="glass-card rounded-3xl p-6 border border-binance-gold/20">
-            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-                <div>
-                    <h2 class="text-sm font-bold mb-1">인텔리전트 심볼 스캐너</h2>
-                    <p class="text-[10px] text-slate-500">실시간 기술 분석 (바이낸스 선물 데이터 기반)</p>
-                </div>
-                <div class="flex gap-2">
-                    <button onclick="toggleFilterSettings()" class="px-3 py-2 bg-white/5 hover:bg-white/10 text-white text-[10px] rounded-xl border border-white/10 transition-all">필터 설정</button>
-                    <button onclick="startScanning('down')" class="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-bold rounded-xl border border-red-500/20 transition-all">하락 스캔</button>
-                    <button onclick="startScanning('reversal')" class="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-bold rounded-xl border border-emerald-500/20 transition-all">상승 반전</button>
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <!-- Left Sidebar -->
+            <div class="lg:col-span-4 space-y-6">
+                <!-- Reversal KPI Section -->
+                <section class="glass-card rounded-3xl p-6 relative overflow-hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-sm font-black uppercase tracking-widest flex items-center gap-2">
+                            <svg class="w-4 h-4 binance-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+                            Reversal KPI Focus
+                        </h2>
+                    </div>
+                    
+                    <div id="comparison-container" class="space-y-3">
+                        <!-- KPI Items with labels from User's Logic -->
+                    </div>
+                </section>
+
+                <!-- Private Mini Dashboard -->
+                <div id="private-stats-grid" class="grid grid-cols-2 gap-4 opacity-50 pointer-events-none">
+                    <div class="glass-card rounded-2xl p-5 border-l-4 border-binance-gold">
+                        <p class="text-[9px] text-slate-500 font-bold uppercase mb-1">Total Equity</p>
+                        <h3 id="total-balance" class="text-lg font-black mono tracking-tighter">0.00 $</h3>
+                    </div>
+                    <div class="glass-card rounded-2xl p-5 border-l-4 border-emerald-500">
+                        <p class="text-[9px] text-slate-500 font-bold uppercase mb-1">Open PNL</p>
+                        <h3 id="total-pnl" class="text-lg font-black mono tracking-tighter">0.00</h3>
+                    </div>
                 </div>
             </div>
 
-            <!-- Filter Panel -->
-            <div id="filter-settings" class="hidden grid grid-cols-1 md:grid-cols-3 gap-6 mb-6 p-4 bg-black/20 rounded-2xl border border-white/5">
-                <div class="space-y-3">
-                    <h3 class="text-[11px] font-bold text-red-400 uppercase tracking-wider">하락 조건</h3>
-                    <div class="grid grid-cols-2 gap-2">
-                        <div>
-                            <label class="text-[9px] text-slate-500 block mb-1">최고가 이후(분)</label>
-                            <input type="number" id="f-down-mins" value="120" class="w-full input-field px-3 py-1.5 rounded-lg text-xs">
-                        </div>
-                        <div>
-                            <label class="text-[9px] text-slate-500 block mb-1">이평 저항(MA)</label>
-                            <input type="text" id="f-down-ma" value="30,60" class="w-full input-field px-3 py-1.5 rounded-lg text-xs">
-                        </div>
-                        <div class="col-span-2">
-                            <label class="text-[9px] text-slate-500 block mb-1">이평 근접도(%)</label>
-                            <input type="number" step="0.1" id="f-down-tight" value="1.0" class="w-full input-field px-3 py-1.5 rounded-lg text-xs">
-                        </div>
-                    </div>
-                </div>
+            <!-- Right Main Area -->
+            <div class="lg:col-span-8 space-y-6">
                 
-                <div class="space-y-3 border-l border-white/5 pl-6">
-                    <h3 class="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">상승 반전 (BB/MA)</h3>
-                    <div class="grid grid-cols-1 gap-2">
-                        <div class="p-2 bg-emerald-500/5 rounded-lg border border-emerald-500/10">
-                            <p class="text-[10px] text-emerald-300 leading-relaxed italic">
-                                * 현재가 < BB 중앙선(20MA)<br>
-                                * 5MA < 현재가 < 30MA<br>
-                                * 추세 역배열 확인 필터
-                            </p>
+                <!-- Advanced Intelligence Scanner -->
+                <section class="glass-card rounded-3xl p-8">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
+                        <div>
+                            <div class="flex items-center gap-3 mb-1">
+                                <h2 class="text-xl font-black uppercase tracking-tight italic">Pattern Scanner</h2>
+                                <span class="px-2 py-0.5 bg-binance-gold/10 text-binance-gold text-[9px] rounded-md font-black border border-binance-gold/20">IMAGE-MATCHING v2</span>
+                            </div>
+                            <p class="text-[11px] text-slate-500 font-medium">하락 추세 후 바닥 지지 및 볼린저밴드 중심 돌파 종목 정밀 스캔 중...</p>
                         </div>
-                        <div class="grid grid-cols-2 gap-2">
-                            <div><label class="text-[9px] text-slate-500 block mb-1">중기 이평(기준)</label><input type="number" id="f-rev-ma-mid" value="30" class="w-full input-field px-3 py-1.5 rounded-lg text-xs"></div>
-                            <div><label class="text-[9px] text-slate-500 block mb-1">단기 이평</label><input type="number" id="f-rev-ma-short" value="5" class="w-full input-field px-3 py-1.5 rounded-lg text-xs"></div>
+                        <div class="flex gap-2">
+                            <button onclick="toggleFilterSettings()" class="p-2.5 bg-[#2b3139] hover:bg-[#363c44] text-white rounded-xl border border-white/5 transition-all">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+                            </button>
+                            <button onclick="startScanning('reversal')" class="px-8 py-2.5 bg-emerald-500 text-black text-xs font-black rounded-xl hover:brightness-110 transition-all uppercase tracking-widest shadow-lg shadow-emerald-500/20">Run Reversal Scan</button>
                         </div>
                     </div>
-                </div>
 
-                <div class="space-y-3 border-l border-white/5 pl-6">
-                    <h3 class="text-[11px] font-bold text-binance-gold uppercase tracking-wider">공통</h3>
-                    <div>
-                        <label class="text-[9px] text-slate-500 block mb-1">캔들 주기</label>
-                        <select id="f-interval" class="w-full input-field px-3 py-1.5 rounded-lg text-xs bg-slate-800">
-                            <option value="15m">15분</option>
-                            <option value="30m" selected>30분</option>
-                            <option value="1h">1시간</option>
-                        </select>
+                    <!-- Filter Config -->
+                    <div id="filter-settings" class="hidden mb-8 p-6 bg-black/40 rounded-2xl border border-white/5 grid grid-cols-1 md:grid-cols-3 gap-6 animate-in fade-in zoom-in duration-200">
+                        <div class="space-y-4">
+                            <h4 class="text-[10px] font-black text-slate-400 tracking-widest uppercase">Trend Definition (30m)</h4>
+                            <div class="grid grid-cols-1 gap-2">
+                                <label class="text-[9px] text-slate-500 font-bold uppercase">MA Condition</label>
+                                <input type="text" id="f-down-ma" value="30,60" class="input-field px-4 py-2 rounded-lg text-xs mono">
+                            </div>
+                        </div>
+                        <div class="space-y-4">
+                            <h4 class="text-[10px] font-black text-emerald-400 tracking-widest uppercase">Entry Conditions</h4>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div class="space-y-1">
+                                    <label class="text-[9px] text-slate-500 font-bold uppercase">BB Center %</label>
+                                    <input type="number" step="0.1" id="f-bb-gap" value="0.5" class="input-field px-4 py-2 rounded-lg text-xs mono">
+                                </div>
+                                <div class="space-y-1">
+                                    <label class="text-[9px] text-slate-500 font-bold uppercase">MA Tight %</label>
+                                    <input type="number" step="0.1" id="f-tight-gap" value="0.8" class="input-field px-4 py-2 rounded-lg text-xs mono">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="space-y-4">
+                            <h4 class="text-[10px] font-black text-binance-gold tracking-widest uppercase">Volume & Scope</h4>
+                            <div class="grid grid-cols-2 gap-3">
+                                <select id="f-interval" class="input-field px-4 py-2 rounded-lg text-xs font-bold bg-[#2b3139]">
+                                    <option value="30m" selected>30M (Reversal)</option>
+                                    <option value="1h">1H (Strong)</option>
+                                    <option value="15m">15M (Aggressive)</option>
+                                </select>
+                                <input type="number" id="f-limit-symbols" value="150" class="input-field px-4 py-2 rounded-lg text-xs mono">
+                            </div>
+                        </div>
                     </div>
-                    <div><label class="text-[9px] text-slate-500 block mb-1">종목 제한</label><input type="number" id="f-limit-symbols" value="150" class="w-full input-field px-3 py-1.5 rounded-lg text-xs"></div>
-                </div>
-            </div>
-            
-            <div id="scan-results-container" class="mt-4 hidden border-t border-white/5 pt-4">
-                <div class="flex items-center justify-between mb-4">
-                    <div class="flex items-center gap-2">
-                        <div id="scan-status-icon" class="w-2 h-2 rounded-full bg-binance-gold"></div>
-                        <span id="scan-status-text" class="text-[10px] text-slate-400 uppercase font-bold tracking-wider italic">SCAN READY</span>
+
+                    <!-- Results Display -->
+                    <div id="scan-results-container" class="hidden min-h-[120px]">
+                        <div class="flex items-center justify-between mb-4 px-2">
+                            <div class="flex items-center gap-3">
+                                <div id="scan-status-icon" class="w-2 h-2 rounded-full bg-binance-gold"></div>
+                                <span id="scan-status-text" class="text-[10px] text-slate-500 font-bold uppercase mono tracking-tighter italic">Engine Standby</span>
+                            </div>
+                            <button onclick="clearResults()" class="text-[9px] text-slate-600 hover:text-white uppercase font-bold">Reset</button>
+                        </div>
+                        <div id="scan-results" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
+                            <!-- Items -->
+                        </div>
                     </div>
-                    <button onclick="clearResults()" class="text-[9px] text-slate-600 hover:text-slate-400">결과 초기화</button>
-                </div>
-                <div id="scan-results" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2"></div>
+                </section>
+
+                <!-- Positions Table -->
+                <section id="positions-section" class="glass-card rounded-3xl overflow-hidden opacity-30 pointer-events-none">
+                    <div class="p-6 border-b border-white/5 bg-white/2 flex justify-between items-center">
+                        <div class="flex items-center gap-3">
+                            <h2 class="text-sm font-black uppercase tracking-widest">Live Positions</h2>
+                            <span id="active-positions-count" class="bg-binance-gold text-black px-1.5 py-0.5 rounded text-[10px] font-black">0</span>
+                        </div>
+                        <div id="last-update" class="text-[9px] text-slate-600 mono font-bold uppercase">Syncing...</div>
+                    </div>
+                    <div id="update-progress-bar" class="h-1 bg-binance-gold w-0 transition-all duration-100 ease-linear"></div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead class="bg-black/20 text-[10px] uppercase text-slate-500 font-black tracking-widest">
+                                <tr>
+                                    <th class="px-6 py-4">Symbol</th>
+                                    <th class="px-6 py-4">Side</th>
+                                    <th class="px-6 py-4 text-right">ROE% / Profit</th>
+                                </tr>
+                            </thead>
+                            <tbody id="position-list" class="divide-y divide-white/5 text-xs font-medium mono">
+                                <tr><td colspan="3" class="px-6 py-12 text-center text-slate-600 italic">연동 후 5초 주기로 업데이트 됩니다.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- API Connectivity -->
+                <section class="p-8 border border-dashed border-white/10 rounded-3xl">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Connectivity Hub</h3>
+                        <div id="api-status-badge" class="px-2 py-0.5 bg-slate-800 text-slate-500 text-[9px] font-black rounded uppercase">No Connection</div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
+                        <input type="password" id="api-key" class="md:col-span-5 input-field px-5 py-3 rounded-xl text-xs mono" placeholder="Binance API Key">
+                        <input type="password" id="api-secret" class="md:col-span-5 input-field px-5 py-3 rounded-xl text-xs mono" placeholder="Binance API Secret">
+                        <button onclick="saveAndFetch()" class="md:col-span-2 bg-white text-black font-black text-xs py-3 rounded-xl hover:bg-binance-gold transition-all">CONNECT</button>
+                    </div>
+                </section>
             </div>
-        </section>
-
-        <!-- Private Data Section -->
-        <div id="private-data-area" class="space-y-6 opacity-40 pointer-events-none transition-all">
-            <section class="glass-card rounded-3xl p-6">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-sm font-bold flex items-center gap-2">
-                        <span id="api-status-dot" class="w-2 h-2 rounded-full bg-slate-600"></span>
-                        바이낸스 API 연결 (보관함)
-                    </h2>
-                    <button onclick="toggleAPISection()" class="text-[10px] text-slate-500 underline">접기/펴기</button>
-                </div>
-                <div id="api-section" class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <input type="password" id="api-key" class="input-field px-4 py-2 rounded-xl text-xs" placeholder="API Key">
-                    <input type="password" id="api-secret" class="input-field px-4 py-2 rounded-xl text-xs" placeholder="Secret Key">
-                    <button onclick="saveAndFetch()" class="bg-binance-gold text-black font-bold text-xs py-2 rounded-xl hover:brightness-110">저장 및 조회</button>
-                    <button onclick="manualRefresh()" class="border border-white/10 text-white font-bold text-xs py-2 rounded-xl flex items-center justify-center gap-2">
-                        <span>새로고침</span> <span id="refresh-timer" class="text-[10px] opacity-60">(20)</span>
-                    </button>
-                </div>
-            </section>
-
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div class="glass-card rounded-3xl p-6">
-                    <p class="text-[10px] text-slate-500 uppercase font-bold mb-1">총 증거금</p>
-                    <h3 id="total-balance" class="text-xl font-bold">0.00</h3>
-                </div>
-                <div class="glass-card rounded-3xl p-6">
-                    <p class="text-[10px] text-slate-500 uppercase font-bold mb-1">미실현 손익</p>
-                    <h3 id="total-pnl" class="text-xl font-bold">0.00</h3>
-                </div>
-                <div class="glass-card rounded-3xl p-6">
-                    <p class="text-[10px] text-slate-500 uppercase font-bold mb-1">사용 가능</p>
-                    <h3 id="available-balance" class="text-xl font-bold">0.00</h3>
-                </div>
-                <div class="glass-card rounded-3xl p-6 border-l-4 border-binance-gold">
-                    <p class="text-[10px] text-slate-500 uppercase font-bold mb-1">포지션</p>
-                    <h3 id="active-positions" class="text-xl font-bold">0</h3>
-                </div>
-            </div>
-
-            <section class="glass-card rounded-[2rem] overflow-hidden">
-                <div id="update-progress" style="width: 0%"></div>
-                <div class="p-6 border-b border-white/5 flex justify-between items-center">
-                    <h2 class="font-bold text-sm">보유 포지션</h2>
-                    <div id="last-update" class="text-[10px] text-slate-600">--:--:--</div>
-                </div>
-                <div class="overflow-x-auto min-h-[100px]">
-                    <table class="w-full text-left">
-                        <thead class="bg-black/20 text-[10px] uppercase text-slate-500">
-                            <tr>
-                                <th class="px-6 py-4">Symbol</th>
-                                <th class="px-6 py-4">Position</th>
-                                <th class="px-6 py-4">Price</th>
-                                <th class="px-6 py-4 text-right">ROE%</th>
-                            </tr>
-                        </thead>
-                        <tbody id="position-list" class="divide-y divide-white/5 text-xs">
-                            <tr><td colspan="4" class="px-6 py-10 text-center text-slate-600 italic">로그인 시 실시간 포지션 조회가 가능합니다.</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
         </div>
     </main>
 
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
-
     <script>
         const SUPABASE_URL = "https://pcmrpxcpjynmayactgan.supabase.co";
         const SUPABASE_KEY = "sb_publishable_endfjcxVBfda-lzjOpPbrQ_DTdF3MHZ";
-        const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const sb = (typeof supabase !== 'undefined') ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+
+        // Custom Logic Labels based on User Image analysis
+        const reversalLabels = [
+            "MA 30/60 Down-Trend", // 하락 중이던 심볼 확인
+            "Support Base (5/10 Tight)", // 이격도 지지 확인
+            "BB Center Break (>0.5%)", // 볼린저밴드 중심 돌파
+            "Volume Accumulation", // 거래량 매집 확인
+            "MA 5 Golden-Proximity" // 5선 고개 듦 확인
+        ];
 
         let currentUser = null;
-        let updateTimer = null;
-        let countdownValue = 20;
+        let countdown = 5; // Updated to 5 seconds
+        const MAX_COUNTDOWN = 5;
 
-        async function init() {
+        function init() {
+            renderKPI();
+            if (sb) checkAuth();
+        }
+
+        async function checkAuth() {
             const { data: { session } } = await sb.auth.getSession();
             if (session) {
                 currentUser = session.user;
                 updateAuthUI(true);
-                await loadSavedApiSettings();
-                startAutoUpdate();
-            } else {
-                updateAuthUI(false);
+                startHeartbeat();
             }
+        }
+
+        function renderKPI() {
+            const container = document.getElementById('comparison-container');
+            container.innerHTML = reversalLabels.map((label, i) => `
+                <div class="bg-white/2 p-4 rounded-2xl border border-white/5 transition-all hover:bg-white/[0.04]">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-[9px] font-black text-slate-600 uppercase tracking-widest">Logic_${i+1}</span>
+                        <span class="text-[10px] font-bold text-slate-300 uppercase">${label}</span>
+                    </div>
+                    <div class="grid grid-cols-[1fr_20px_1fr] gap-3 items-center mb-2">
+                        <input type="number" id="c-left-${i}" oninput="updateKPI(${i})" placeholder="Val" class="input-field px-3 py-1.5 rounded-lg text-xs mono text-center">
+                        <span class="text-[10px] font-black text-slate-700 text-center">/</span>
+                        <input type="number" id="c-right-${i}" oninput="updateKPI(${i})" placeholder="Thr" class="input-field px-3 py-1.5 rounded-lg text-xs mono text-center">
+                    </div>
+                    <div class="h-1 bg-white/5 rounded-full flex overflow-hidden">
+                        <div id="c-bar-l-${i}" class="h-full bg-emerald-500/40 transition-all duration-700" style="width: 50%"></div>
+                        <div id="c-bar-r-${i}" class="h-full bg-white/20 transition-all duration-700" style="width: 50%"></div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateKPI(i) {
+            const vA = parseFloat(document.getElementById(`c-left-${i}`).value) || 0;
+            const vB = parseFloat(document.getElementById(`c-right-${i}`).value) || 1;
+            const pA = Math.min((vA / vB) * 100, 100);
+            document.getElementById(`c-bar-l-${i}`).style.width = pA + '%';
         }
 
         function updateAuthUI(isLoggedIn) {
-            const emailElem = document.getElementById('user-email');
-            const authBtn = document.getElementById('auth-btn');
-            const refreshStatus = document.getElementById('auto-refresh-status');
-            const privateArea = document.getElementById('private-data-area');
-
-            if (isLoggedIn) {
-                emailElem.innerText = currentUser.email;
-                authBtn.innerText = "로그아웃";
-                refreshStatus.innerText = "Auto-sync: 20s";
-                refreshStatus.classList.replace('text-slate-600', 'text-emerald-500');
-                privateArea.classList.remove('opacity-40', 'pointer-events-none');
-            } else {
-                emailElem.innerText = "Guest Mode";
-                authBtn.innerText = "로그인";
-                refreshStatus.innerText = "Sync disabled (Login required)";
-                refreshStatus.classList.replace('text-emerald-500', 'text-slate-600');
-                privateArea.classList.add('opacity-40', 'pointer-events-none');
-            }
+            if (!isLoggedIn) return;
+            document.getElementById('user-email').innerText = currentUser.email;
+            document.getElementById('auth-btn').innerText = "LOGOUT";
+            document.getElementById('auto-refresh-status').innerText = "LIVE: 5s";
+            document.getElementById('auto-refresh-status').classList.replace('text-slate-500', 'text-emerald-500');
+            document.getElementById('auto-refresh-status-dot').classList.replace('bg-slate-600', 'bg-emerald-500');
+            document.getElementById('private-stats-grid').classList.remove('opacity-50', 'pointer-events-none');
+            document.getElementById('positions-section').classList.remove('opacity-30', 'pointer-events-none');
         }
 
-        function handleAuthAction() {
-            if (currentUser) {
-                sb.auth.signOut().then(() => window.location.reload());
-            } else {
-                window.location.href = 'index.html';
-            }
-        }
-
-        async function loadSavedApiSettings() {
-            if (!currentUser) return;
-            try {
-                const { data } = await sb.from('user_settings').select('binance_key, binance_secret').eq('user_id', currentUser.id).single();
-                if (data?.binance_key) {
-                    document.getElementById('api-key').value = data.binance_key;
-                    document.getElementById('api-secret').value = data.binance_secret;
-                    document.getElementById('api-status-dot').classList.replace('bg-slate-600', 'bg-emerald-500');
-                    fetchFuturesData();
+        function startHeartbeat() {
+            setInterval(() => {
+                countdown -= 0.1; // Smooth countdown
+                const progress = ((MAX_COUNTDOWN - countdown) / MAX_COUNTDOWN) * 100;
+                document.getElementById('update-progress-bar').style.width = progress + '%';
+                if (countdown <= 0) {
+                    fetchAccountData();
+                    countdown = MAX_COUNTDOWN;
                 }
-            } catch (err) {}
+            }, 100);
         }
 
-        function startAutoUpdate() {
-            if (updateTimer) clearInterval(updateTimer);
-            updateTimer = setInterval(() => {
-                countdownValue--;
-                document.getElementById('update-progress').style.width = `${((20 - countdownValue) / 20) * 100}%`;
-                document.getElementById('refresh-timer').innerText = `(${countdownValue})`;
-                if (countdownValue <= 0) { fetchFuturesData(); countdownValue = 20; }
-            }, 1000);
-        }
-
-        function manualRefresh() { if(currentUser) { fetchFuturesData(); countdownValue = 20; } }
-
-        async function fetchFuturesData() {
-            const apiKey = document.getElementById('api-key').value;
-            const apiSecret = document.getElementById('api-secret').value;
-            if (!apiKey || !apiSecret) return;
+        async function fetchAccountData() {
+            const key = document.getElementById('api-key').value;
+            const secret = document.getElementById('api-secret').value;
+            if (!key || !secret) return;
+            
             try {
-                const query = `timestamp=${Date.now()}`;
-                const signature = CryptoJS.HmacSHA256(query, apiSecret).toString();
-                const res = await fetch(`https://fapi.binance.com/fapi/v2/account?${query}&signature=${signature}`, { headers: { 'X-MBX-APIKEY': apiKey } });
+                const ts = Date.now();
+                const sig = CryptoJS.HmacSHA256(`timestamp=${ts}`, secret).toString();
+                const res = await fetch(`https://fapi.binance.com/fapi/v2/account?timestamp=${ts}&signature=${sig}`, {
+                    headers: { 'X-MBX-APIKEY': key }
+                });
                 const data = await res.json();
-                if (data.positions) renderDashboard(data);
-            } catch (err) {}
+                renderUI(data);
+                document.getElementById('api-status-badge').innerText = "Active Sync";
+                document.getElementById('api-status-badge').className = "px-2 py-0.5 bg-emerald-500/20 text-emerald-400 text-[9px] font-black rounded uppercase";
+            } catch (e) { console.error("Sync Error"); }
         }
 
-        function renderDashboard(data) {
-            document.getElementById('total-balance').innerText = parseFloat(data.totalWalletBalance).toFixed(2);
-            document.getElementById('total-pnl').innerText = parseFloat(data.totalUnrealizedProfit).toFixed(2);
-            document.getElementById('available-balance').innerText = parseFloat(data.availableBalance).toFixed(2);
-            const activePos = data.positions.filter(p => parseFloat(p.positionAmt) !== 0);
-            document.getElementById('active-positions').innerText = activePos.length;
-            document.getElementById('last-update').innerText = new Date().toLocaleTimeString();
+        function renderUI(data) {
+            document.getElementById('total-balance').innerText = parseFloat(data.totalWalletBalance).toFixed(2) + " $";
+            const pnl = parseFloat(data.totalUnrealizedProfit);
+            document.getElementById('total-pnl').innerText = (pnl >= 0 ? '+' : '') + pnl.toFixed(2);
+            document.getElementById('total-pnl').className = `text-lg font-black mono tracking-tighter ${pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`;
+            
+            const active = data.positions.filter(p => parseFloat(p.positionAmt) !== 0);
+            document.getElementById('active-positions-count').innerText = active.length;
+            document.getElementById('last-update').innerText = "Sync: " + new Date().toLocaleTimeString();
 
             const list = document.getElementById('position-list');
-            list.innerHTML = activePos.length ? activePos.map(pos => {
-                const side = parseFloat(pos.positionAmt) > 0 ? 'LONG' : 'SHORT';
-                const roe = (parseFloat(pos.unrealizedProfit) / (parseFloat(pos.initialMargin) || 1) * 100).toFixed(2);
-                return `<tr class="hover:bg-white/5 cursor-pointer" onclick="openChart('${pos.symbol}')">
-                    <td class="px-6 py-3 font-bold">${pos.symbol}</td>
-                    <td class="px-6 py-3"><span class="${side==='LONG'?'text-emerald-400':'text-red-400'}">${side}</span></td>
-                    <td class="px-6 py-3">${parseFloat(pos.markPrice).toFixed(4)}</td>
-                    <td class="px-6 py-3 text-right ${roe>=0?'profit-up':'profit-down'} font-bold">${roe}%</td>
-                </tr>`;
-            }).join('') : '<tr><td colspan="4" class="px-6 py-10 text-center text-slate-600">활성 포지션 없음</td></tr>';
+            list.innerHTML = active.length ? active.map(p => {
+                const side = parseFloat(p.positionAmt) > 0 ? 'LONG' : 'SHORT';
+                const roe = (parseFloat(p.unrealizedProfit) / (parseFloat(p.initialMargin) || 1) * 100).toFixed(2);
+                return `
+                    <tr class="hover:bg-white/[0.03] cursor-pointer group transition-all" onclick="openChart('${p.symbol}')">
+                        <td class="px-6 py-4 font-black">${p.symbol}</td>
+                        <td class="px-6 py-4">
+                            <span class="px-2 py-0.5 rounded text-[10px] font-black ${side==='LONG'?'bg-emerald-500/10 text-emerald-400':'bg-red-500/10 text-red-400'}">${side}</span>
+                        </td>
+                        <td class="px-6 py-4 text-right">
+                            <div class="font-black ${roe >= 0 ? 'text-emerald-400' : 'text-red-400'}">${roe}%</div>
+                            <div class="text-[10px] text-slate-500">${parseFloat(p.unrealizedProfit).toFixed(2)} USDT</div>
+                        </td>
+                    </tr>
+                `;
+            }).join('') : '<tr><td colspan="3" class="px-6 py-12 text-center text-slate-600 italic">No Active Positions.</td></tr>';
         }
 
-        // --- Scanner Functions ---
-        let isScanning = false;
+        // --- Pattern Scanner Engine (Customized for User Request) ---
+        let scanning = false;
         async function startScanning(mode) {
-            if (isScanning) return;
-            isScanning = true;
-            const resultsBox = document.getElementById('scan-results');
-            const statusText = document.getElementById('scan-status-text');
+            if (scanning) { scanning = false; return; }
+            scanning = true;
+            
+            const grid = document.getElementById('scan-results');
             const statusIcon = document.getElementById('scan-status-icon');
-            const interval = document.getElementById('f-interval').value;
-            const limit = parseInt(document.getElementById('f-limit-symbols').value);
-
+            const statusText = document.getElementById('scan-status-text');
+            
             document.getElementById('scan-results-container').classList.remove('hidden');
-            resultsBox.innerHTML = '';
-            statusIcon.classList.add('scan-anim');
+            grid.innerHTML = '';
+            statusIcon.classList.add('active-scan');
 
             try {
-                const tickerData = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr').then(r => r.json());
-                const symbols = tickerData.filter(t => t.symbol.endsWith('USDT'))
-                    .sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume))
+                const limit = document.getElementById('f-limit-symbols').value;
+                const tickers = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr').then(r => r.json());
+                const symbols = tickers.filter(t => t.symbol.endsWith('USDT'))
+                    .sort((a,b) => b.quoteVolume - a.quoteVolume)
                     .slice(0, limit).map(t => t.symbol);
-                
-                let found = 0;
+
                 for (let symbol of symbols) {
-                    if (!isScanning) break;
-                    statusText.innerText = `분석 중: ${symbol}`;
-                    if (await analyzeSymbol(symbol, mode, interval)) {
-                        renderScanResult(symbol, mode);
-                        found++;
+                    if (!scanning) break;
+                    statusText.innerText = `Analyzing ${symbol}...`;
+                    const match = await runReversalAlgo(symbol);
+                    if (match) {
+                        grid.insertAdjacentHTML('beforeend', `
+                            <div onclick="openChart('${symbol}')" class="p-3 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black text-center cursor-pointer hover:border-emerald-500/50 transition-all hover:-translate-y-1 active:scale-95 animate-in fade-in slide-in-from-bottom-2">
+                                <div class="text-emerald-400 mb-1">REVERSAL</div>
+                                ${symbol}
+                            </div>
+                        `);
                     }
-                    await new Promise(r => setTimeout(r, 40));
+                    await new Promise(r => setTimeout(r, 10)); // Faster iteration
                 }
-                statusText.innerText = `스캔 완료: ${found}개 발견 (${interval})`;
-            } catch (e) { statusText.innerText = "오류 발생"; }
-            finally { isScanning = false; statusIcon.classList.remove('scan-anim'); }
+                statusText.innerText = "Scan Complete: Patterns Found";
+            } finally {
+                scanning = false;
+                statusIcon.classList.remove('active-scan');
+            }
         }
 
-        async function analyzeSymbol(symbol, mode, interval) {
+        async function runReversalAlgo(symbol) {
             try {
+                const interval = document.getElementById('f-interval').value;
                 const klines = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=100`).then(r => r.json());
-                const prices = klines.map(k => parseFloat(k[4]));
-                const current = prices[prices.length - 1];
-                const getMA = (d, p) => d.slice(-p).reduce((a, b) => a + b, 0) / p;
+                
+                const prices = klines.map(k => parseFloat(k[4])); // 종가
+                const volumes = klines.map(k => parseFloat(k[5])); // 거래량
+                const lastPrice = prices[prices.length - 1];
+                
+                const sma = (data, n) => data.slice(-n).reduce((a, b) => a + b, 0) / n;
+                const stdDev = (data, n) => {
+                    const avg = sma(data, n);
+                    return Math.sqrt(data.slice(-n).map(x => Math.pow(x - avg, 2)).reduce((a, b) => a + b) / n);
+                };
 
-                if (mode === 'down') {
-                    // 기존 하락 조건 유지
-                    const maP = document.getElementById('f-down-ma').value.split(',').map(Number);
-                    for(let p of maP) if(current >= getMA(prices, p)) return false;
-                    return true;
-                } else if (mode === 'reversal') {
-                    // 새 상승 반전 필터 조건
-                    const ma5 = getMA(prices, 5);
-                    const ma20 = getMA(prices, 20); // BB 중앙선
-                    const ma30 = getMA(prices, 30);
+                // 1) 하향 중이던 심볼 (30분 차트 기준 30선, 60선 하향 중)
+                const ma30 = sma(prices, 30);
+                const ma60 = sma(prices, 60);
+                const prevMa30 = sma(prices.slice(0, -1), 30);
+                const prevMa60 = sma(prices.slice(0, -1), 60);
+                const isDownTrending = (ma30 < prevMa30) && (ma60 < prevMa60);
+                if (!isDownTrending) return false;
 
-                    // 1. 볼린저밴드 중앙선(20MA)보다 현재가가 낮아야 함
-                    if (current >= ma20) return false;
+                // 2) 하향을 멈추고 지지 중 (현재가와 5선, 10선의 이격도가 작을 것)
+                const ma5 = sma(prices, 5);
+                const ma10 = sma(prices, 10);
+                const tightThreshold = parseFloat(document.getElementById('f-tight-gap').value) / 100;
+                const isSupported = (Math.abs(lastPrice - ma5) / ma5 < tightThreshold) && (Math.abs(lastPrice - ma10) / ma10 < tightThreshold);
+                if (!isSupported) return false;
 
-                    // 2. 현재가보다 5선이 밑에 있어야 함 (현재가 > 5MA)
-                    if (current <= ma5) return false;
+                // 3) 상승 전환 현재가가 볼린저밴드 중앙값보다 0.5% 이상 위에 있을 것
+                const bbCenter = ma30; // 보통 20선이나 30선 사용
+                const bbGapThreshold = parseFloat(document.getElementById('f-bb-gap').value) / 100;
+                const isAboveBBCenter = lastPrice > bbCenter * (1 + bbGapThreshold);
+                if (!isAboveBBCenter) return false;
 
-                    // 3. 현재가보다 30선이 위에 있어야 함 (현재가 < 30MA)
-                    if (current >= ma30) return false;
+                // 4) [추가 조건] 거래량 매집 (최근 5봉 평균 거래량이 이전 20봉 평균보다 1.2배 이상)
+                const volRecent = sma(volumes, 5);
+                const volBase = sma(volumes.slice(0, -5), 20);
+                const isVolSpiking = volRecent > volBase * 1.2;
+                if (!isVolSpiking) return false;
 
-                    return true;
-                }
-            } catch(e) { return false; }
-        }
+                // 5) [추가 조건] MA5 기울기 반전 (5일선이 고개를 들고 있을 것)
+                const ma5Prev = sma(prices.slice(0, -1), 5);
+                const isMA5Turning = ma5 > ma5Prev;
+                if (!isMA5Turning) return false;
 
-        function renderScanResult(symbol, mode) {
-            const color = mode === 'down' ? 'text-red-400 border-red-500/30' : 'text-emerald-400 border-emerald-500/30';
-            document.getElementById('scan-results').insertAdjacentHTML('beforeend', `
-                <div onclick="openChart('${symbol}')" class="px-3 py-2 rounded-xl border ${color} text-[10px] font-bold text-center transition-all hover:scale-105 cursor-pointer bg-white/5">
-                    ${symbol}
-                </div>
-            `);
+                return true; 
+            } catch (e) { return false; }
         }
 
         function openChart(symbol) {
-            const interval = document.getElementById('f-interval').value;
-            let tvInterval = interval.replace('m', '').replace('h', '60');
+            const intv = document.getElementById('f-interval').value.replace('m','').replace('h','60');
             document.getElementById('chart-modal').classList.remove('hidden');
-            document.getElementById('tradingview-container').innerHTML = `<div id="tv_widget" class="w-full h-full"></div>`;
+            document.getElementById('tradingview-container').innerHTML = `<div id="tv_node" class="w-full h-full"></div>`;
             new TradingView.widget({
-                "autosize": true, "symbol": `BINANCE:${symbol}.P`, "interval": tvInterval,
-                "timezone": "Asia/Seoul", "theme": "dark", "style": "1", "locale": "kr", "container_id": "tv_widget"
+                "autosize": true, "symbol": `BINANCE:${symbol}.P`, "interval": intv,
+                "timezone": "Asia/Seoul", "theme": "dark", "style": "1", "container_id": "tv_node",
+                "studies": ["MASimple@tv-basicstudies", "BB@tv-basicstudies"]
             });
         }
 
         function closeChart() { document.getElementById('chart-modal').classList.add('hidden'); }
         function toggleFilterSettings() { document.getElementById('filter-settings').classList.toggle('hidden'); }
-        function toggleAPISection() { document.getElementById('api-section').classList.toggle('hidden'); }
-        function clearResults() { document.getElementById('scan-results').innerHTML = ''; isScanning = false; }
+        function clearResults() { document.getElementById('scan-results').innerHTML = ''; scanning = false; }
 
-        init();
+        window.onload = init;
     </script>
 </body>
 </html>
-
-```
