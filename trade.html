@@ -3,31 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MEOAI - Advanced Trade Terminal</title>
+    <title>MEOAI - Binance Futures Terminal</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
         body {
-            background-color: #0d1117;
-            color: #c9d1d9;
+            background-color: #0b0e11; 
+            color: #eaecef;
             font-family: 'Inter', sans-serif;
         }
-        .card { background-color: #161b22; border: 1px solid #30363d; border-radius: 12px; }
-        .accent-green { color: #238636; }
-        .accent-red { color: #da3633; }
+        .card { background-color: #1e2329; border: 1px solid #30363d; border-radius: 12px; }
+        .accent-green { color: #02c076; }
+        .accent-red { color: #f84960; }
         .input-dark {
-            background-color: #0d1117;
-            border: 1px solid #30363d;
+            background-color: #0b0e11;
+            border: 1px solid #474d57;
             border-radius: 6px;
             padding: 0.5rem;
             color: white;
             font-size: 0.875rem;
+            width: 100%;
         }
-        .input-dark:focus { border-color: #58a6ff; outline: none; }
+        .input-dark:focus { border-color: #f0b90b; outline: none; }
         .status-badge { padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; }
         
-        /* Loading animation */
+        .binance-gold { color: #f0b90b; }
         .scan-pulse {
             animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
@@ -35,135 +36,152 @@
             0%, 100% { opacity: 1; }
             50% { opacity: .5; }
         }
+
+        /* Progress Bar */
+        .progress-container {
+            width: 100%;
+            height: 4px;
+            background: #2b3139;
+            position: absolute;
+            bottom: 0;
+            left: 0;
+        }
+        #progress-bar {
+            height: 100%;
+            background: #f0b90b;
+            width: 100%;
+            transition: width 0.1s linear;
+        }
+        .condition-tag {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: rgba(240, 185, 11, 0.1);
+            color: #f0b90b;
+            border: 1px solid rgba(240, 185, 11, 0.2);
+        }
     </style>
 </head>
 <body class="p-4 md:p-6">
 
-    <!-- Header & Quick Controls -->
     <header class="mb-6 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
         <div>
             <h1 class="text-2xl font-bold text-white flex items-center gap-2">
-                <i class="fas fa-microchip text-blue-500"></i>
-                MEOAI 전략 터미널
+                <i class="fas fa-microchip binance-gold"></i>
+                MEOAI 듀얼 타임프레임 스캐너
             </h1>
             <div id="api-status-bar" class="flex items-center gap-3 mt-1">
                 <div class="flex items-center gap-1.5">
-                    <span id="conn-indicator" class="w-2 h-2 rounded-full bg-gray-500"></span>
-                    <span id="conn-text" class="text-xs text-gray-500">API 미연결</span>
-                </div>
-                <span class="text-gray-600">|</span>
-                <div class="flex items-center gap-2">
-                    <i class="fas fa-clock text-xs text-gray-500"></i>
-                    <span id="next-refresh" class="text-xs text-gray-400 font-mono">다음 갱신: --:--</span>
+                    <span id="conn-indicator" class="w-2 h-2 rounded-full bg-green-500 scan-pulse"></span>
+                    <span id="conn-text" class="text-xs text-gray-400 font-mono">1D & 30M Parallel Analysis Active</span>
                 </div>
             </div>
         </div>
 
         <div class="flex flex-wrap gap-3">
-            <div class="card p-2 px-4 flex items-center gap-4">
-                <div>
-                    <p class="text-[10px] text-gray-500 uppercase">자동 갱신 주기</p>
-                    <select id="refresh-rate" class="bg-transparent text-sm font-bold text-blue-400 focus:outline-none cursor-pointer">
-                        <option value="30000">30초 마다</option>
-                        <option value="60000" selected>1분 마다</option>
-                        <option value="300000">5분 마다</option>
-                        <option value="600000">10분 마다</option>
-                        <option value="0">수동 갱신</option>
-                    </select>
+            <div class="card p-2 px-4 flex items-center gap-4 relative overflow-hidden min-w-[220px]">
+                <div class="z-10">
+                    <p class="text-[10px] text-gray-500 uppercase font-bold tracking-tighter">Next Auto-Scan</p>
+                    <div class="flex items-center gap-2">
+                        <span id="timer-text" class="text-sm font-bold binance-gold font-mono">30s</span>
+                        <div class="w-[1px] h-3 bg-gray-700"></div>
+                        <p id="last-update" class="text-[10px] text-gray-400 font-mono">Standby</p>
+                    </div>
                 </div>
-                <button onclick="manualRefresh()" class="bg-blue-600 hover:bg-blue-500 text-white p-2 px-4 rounded-lg text-sm transition flex items-center gap-2">
-                    <i id="refresh-icon" class="fas fa-sync-alt"></i> 즉시 갱신
+                <button onclick="manualRefresh()" class="z-10 ml-auto bg-[#f0b90b] hover:opacity-90 text-black font-bold p-2 px-4 rounded-lg text-xs transition flex items-center gap-2">
+                    <i id="refresh-icon" class="fas fa-sync-alt"></i> RE-SCAN
                 </button>
+                <div class="progress-container">
+                    <div id="progress-bar"></div>
+                </div>
             </div>
         </div>
     </header>
 
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
-        <!-- Left Column: Settings & Filter (NEW) -->
+        <!-- Left Column: Strategy Management -->
         <div class="lg:col-span-3 space-y-6">
-            <section class="card p-5">
-                <h2 class="text-sm font-bold text-white mb-4 flex items-center gap-2 border-b border-gray-800 pb-2">
-                    <i class="fas fa-filter text-blue-400"></i> 스캔 조건 설정
+            <!-- 일봉 설정 -->
+            <section class="card p-5 border-l-4 border-l-blue-500">
+                <h2 class="text-xs font-bold text-blue-400 mb-4 flex items-center gap-2 uppercase">
+                    <i class="fas fa-calendar-alt"></i> 1. 일봉 기준 (대추세)
                 </h2>
                 <div class="space-y-4">
                     <div>
-                        <label class="text-xs text-gray-500 block mb-1">일봉 거래량 증가 (최소)</label>
+                        <label class="text-[11px] text-gray-500 block mb-1">거래량 폭증 기준 (최근 10봉)</label>
                         <div class="flex items-center gap-2">
-                            <input type="number" id="filter-vol" value="500" class="input-dark w-full" onchange="saveFilters()">
-                            <span class="text-xs text-gray-400">%</span>
+                            <input type="number" id="param-1d-vol" value="10" class="input-dark" onchange="fetchMarketData()">
+                            <span class="text-xs text-gray-400">배↑</span>
                         </div>
                     </div>
+                </div>
+            </section>
+
+            <!-- 30분봉 설정 -->
+            <section class="card p-5 border-l-4 border-l-orange-500">
+                <h2 class="text-xs font-bold text-orange-400 mb-4 flex items-center gap-2 uppercase">
+                    <i class="fas fa-clock"></i> 2. 30분봉 기준 (진입타점)
+                </h2>
+                <div class="space-y-4">
                     <div>
-                        <label class="text-xs text-gray-500 block mb-1">이평선 정배열 기준</label>
-                        <select id="filter-ma" class="input-dark w-full" onchange="saveFilters()">
-                            <option value="ma99">MA 99 돌파 시</option>
-                            <option value="ma200">MA 200 돌파 시</option>
-                            <option value="all">완전 정배열 초입</option>
+                        <label class="text-[11px] text-gray-500 block mb-1">정배열 확인 범위</label>
+                        <select id="param-30m-ma-history" class="input-dark" onchange="fetchMarketData()">
+                            <option value="12">최근 12시간 내 발생</option>
+                            <option value="24">최근 24시간 내 발생</option>
+                            <option value="6">최근 6시간 내 발생</option>
                         </select>
                     </div>
                     <div>
-                        <label class="text-xs text-gray-500 block mb-1">최소 거래대금 (24h)</label>
-                        <div class="flex items-center gap-2">
-                            <input type="number" id="filter-quote" value="10" class="input-dark w-full" onchange="saveFilters()">
-                            <span class="text-xs text-gray-400">M$</span>
+                        <label class="text-[11px] text-gray-500 block mb-1">현재가 위치 (눌림목 조건)</label>
+                        <div class="p-3 bg-gray-900/50 rounded-lg border border-gray-800">
+                            <p class="text-[10px] text-gray-400 leading-tight">
+                                <i class="fas fa-check-circle accent-green mr-1"></i>
+                                현재가가 30선 & 60선보다 <br><span class="text-white font-bold ml-4 text-[11px]">하단에 위치할 때만 포착</span>
+                            </p>
                         </div>
-                    </div>
-                    <div class="pt-2">
-                        <label class="flex items-center gap-2 cursor-pointer">
-                            <input type="checkbox" id="filter-volatility" checked class="rounded bg-gray-900 border-gray-700 text-blue-500" onchange="saveFilters()">
-                            <span class="text-xs text-gray-300">변동성 돌파 종목 포함</span>
-                        </label>
                     </div>
                 </div>
             </section>
 
-            <section class="card p-5">
-                <h2 class="text-sm font-bold text-white mb-4 flex items-center gap-2 border-b border-gray-800 pb-2">
-                    <i class="fas fa-wallet text-yellow-500"></i> 자산 현황 (USDT)
-                </h2>
-                <div id="asset-list" class="space-y-3">
-                    <!-- Assets will be rendered here -->
-                </div>
-                <div class="mt-4 pt-3 border-t border-gray-800 flex justify-between items-center">
-                    <span class="text-xs text-gray-400">총 가치</span>
-                    <span id="total-val" class="font-mono text-lg font-bold text-green-400">$ 0.00</span>
-                </div>
+            <!-- 기타 필터 -->
+            <section class="card p-4">
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" id="filter-funding" checked class="rounded bg-gray-900 border-gray-700 text-[#f0b90b]" onchange="fetchMarketData()">
+                    <span class="text-[11px] text-gray-300">고펀딩비 제외 (Risk 관리)</span>
+                </label>
             </section>
         </div>
 
-        <!-- Right Column: Scanning Results -->
-        <div class="lg:col-span-9 space-y-6">
-            <section class="card overflow-hidden">
-                <div class="p-4 border-b border-gray-700 bg-gray-800/30 flex justify-between items-center">
-                    <div class="flex items-center gap-3">
-                        <h2 class="font-semibold text-white">포착된 실시간 종목</h2>
-                        <span id="scan-status" class="status-badge bg-green-900/30 text-green-500 border border-green-800/50">IDLE</span>
-                    </div>
-                    <div class="text-xs text-gray-500">
-                        필터링된 종목: <span id="filtered-count" class="text-white">0</span>개
-                    </div>
+        <!-- Right Column: Integrated Results -->
+        <div class="lg:col-span-9 space-y-4">
+            <div class="flex justify-between items-end px-2">
+                <div>
+                    <h2 class="text-xl font-bold text-white uppercase tracking-tight">Market Strategy Scanner</h2>
+                    <p class="text-[11px] text-gray-500">1D Vol Spike & 30M Golden Cross/Dip Detection</p>
                 </div>
-                <div class="overflow-x-auto min-h-[400px]">
+                <div class="text-right">
+                    <p class="text-[10px] text-gray-500 uppercase">포착된 종목</p>
+                    <p class="text-2xl font-bold binance-gold font-mono" id="filtered-count">0</p>
+                </div>
+            </div>
+
+            <section class="card overflow-hidden">
+                <div class="overflow-x-auto min-h-[500px]">
                     <table class="w-full text-left text-sm">
-                        <thead class="bg-gray-800/10 text-gray-400 uppercase text-[11px] tracking-wider">
+                        <thead class="bg-gray-800/40 text-gray-400 uppercase text-[10px] tracking-wider font-bold">
                             <tr>
-                                <th class="p-4 font-medium">Symbol</th>
-                                <th class="p-4 font-medium">Price</th>
-                                <th class="p-4 font-medium">Volume Δ</th>
-                                <th class="p-4 font-medium">30m Support</th>
-                                <th class="p-4 font-medium">Score</th>
-                                <th class="p-4 font-medium text-center">Action</th>
+                                <th class="p-4">Symbol</th>
+                                <th class="p-4">Price</th>
+                                <th class="p-4">1D Max Vol</th>
+                                <th class="p-4">30M Trend</th>
+                                <th class="p-4">30M/60M Dist</th>
+                                <th class="p-4">Funding</th>
+                                <th class="p-4 text-center">Action</th>
                             </tr>
                         </thead>
                         <tbody id="scanner-tbody">
-                            <!-- 로딩 상태 또는 데이터 출력 -->
-                            <tr>
-                                <td colspan="6" class="p-20 text-center text-gray-600">
-                                    <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
-                                    <p>데이터를 불러오는 중입니다...</p>
-                                </td>
-                            </tr>
+                            <!-- JS Rendering -->
                         </tbody>
                     </table>
                 </div>
@@ -172,193 +190,116 @@
     </div>
 
     <script>
-        // --- State Management ---
-        let apiConfig = null;
-        let refreshTimer = null;
-        let countdownTimer = null;
-        let nextRefreshTime = 0;
+        const UPDATE_INTERVAL = 30000;
+        let remainingTime = UPDATE_INTERVAL;
+        let progressTimer = null;
 
-        // --- Initialization ---
         window.onload = () => {
-            loadApiConfig();
-            loadFilters();
-            startAutoRefresh();
-            fetchMarketData(); // 첫 실행
+            fetchMarketData();
+            startUpdateCycle();
         };
 
-        // 1. API 정보 로드
-        function loadApiConfig() {
-            const saved = localStorage.getItem('crypto_api_config');
-            const indicator = document.getElementById('conn-indicator');
-            const connText = document.getElementById('conn-text');
-
-            if (saved) {
-                apiConfig = JSON.parse(saved);
-                indicator.className = "w-2 h-2 rounded-full bg-green-500 scan-pulse";
-                connText.innerText = `${apiConfig.exchange.toUpperCase()} 연결됨`;
-                connText.className = "text-xs text-green-400 font-bold";
-            } else {
-                indicator.className = "w-2 h-2 rounded-full bg-red-500";
-                connText.innerText = "API 정보 없음 (home.html에서 설정 필요)";
-            }
-        }
-
-        // 2. 검색 조건 저장/로드
-        function saveFilters() {
-            const filters = {
-                vol: document.getElementById('filter-vol').value,
-                ma: document.getElementById('filter-ma').value,
-                quote: document.getElementById('filter-quote').value,
-                volatility: document.getElementById('filter-volatility').checked
-            };
-            localStorage.setItem('scan_filters', JSON.stringify(filters));
-            console.log("Filters saved:", filters);
-            fetchMarketData(); // 필터 변경 시 재조회
-        }
-
-        function loadFilters() {
-            const saved = localStorage.getItem('scan_filters');
-            if (saved) {
-                const f = JSON.parse(saved);
-                document.getElementById('filter-vol').value = f.vol;
-                document.getElementById('filter-ma').value = f.ma;
-                document.getElementById('filter-quote').value = f.quote;
-                document.getElementById('filter-volatility').checked = f.volatility;
-            }
-        }
-
-        // 3. 자동 갱신 로직
-        function startAutoRefresh() {
-            if (refreshTimer) clearInterval(refreshTimer);
-            if (countdownTimer) clearInterval(countdownTimer);
-
-            const interval = parseInt(document.getElementById('refresh-rate').value);
-            if (interval === 0) {
-                document.getElementById('next-refresh').innerText = "수동 갱신 모드";
-                return;
-            }
-
-            nextRefreshTime = Date.now() + interval;
-            updateCountdown();
-
-            countdownTimer = setInterval(updateCountdown, 1000);
-            refreshTimer = setInterval(() => {
-                fetchMarketData();
-                nextRefreshTime = Date.now() + interval;
-            }, interval);
-        }
-
-        function updateCountdown() {
-            const remain = Math.max(0, Math.floor((nextRefreshTime - Date.now()) / 1000));
-            const mins = Math.floor(remain / 60);
-            const secs = remain % 60;
-            document.getElementById('next-refresh').innerText = 
-                `다음 갱신: ${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-        }
-
-        document.getElementById('refresh-rate').addEventListener('change', startAutoRefresh);
-
-        // 4. 데이터 페칭 및 렌더링 (API 연동 인터페이스)
         async function fetchMarketData() {
+            const tbody = document.getElementById('scanner-tbody');
             const icon = document.getElementById('refresh-icon');
-            const statusBadge = document.getElementById('scan-status');
+            const lastUpdateLabel = document.getElementById('last-update');
             
             icon.classList.add('fa-spin');
-            statusBadge.innerText = "SCANNING...";
-            statusBadge.className = "status-badge bg-blue-900/30 text-blue-400 border border-blue-800/50 scan-pulse";
-
-            try {
-                // 실 서비스 시: await fetch(`https://api.${apiConfig.exchange}.com/v3/...`)
-                // 여기서는 시뮬레이션 데이터를 사용합니다.
-                await new Promise(resolve => setTimeout(resolve, 800)); // Network Delay 시뮬레이션
-
-                const mockData = generateMockData();
-                renderScanner(mockData);
-                renderAssets(mockData);
-            } catch (err) {
-                console.error("Fetch Error:", err);
-            } finally {
-                icon.classList.remove('fa-spin');
-                statusBadge.innerText = "REAL-TIME LIVE";
-                statusBadge.className = "status-badge bg-green-900/30 text-green-500 border border-green-800/50";
-            }
-        }
-
-        function generateMockData() {
-            // 필터 값을 읽어와서 그에 맞는 더미 데이터 생성 시뮬레이션
-            const volCutoff = parseInt(document.getElementById('filter-vol').value);
-            return [
-                { symbol: 'SOON', price: 0.1346, volDelta: 1250, status: 'MA30 지지', score: 95 },
-                { symbol: 'FF', price: 0.0986, volDelta: 850, status: '수렴 완료', score: 88 },
-                { symbol: 'TNSR', price: 0.0425, volDelta: volCutoff + 50, status: '과매도 반등', score: 72 },
-                { symbol: 'NEAR', price: 5.42, volDelta: 120, status: '상단 저항', score: 45 },
-            ].filter(item => item.volDelta >= volCutoff);
-        }
-
-        function renderScanner(data) {
-            const tbody = document.getElementById('scanner-tbody');
-            document.getElementById('filtered-count').innerText = data.length;
             
+            // 파라미터 획득
+            const d1VolLimit = parseFloat(document.getElementById('param-1d-vol').value);
+            const m30MaHistory = parseInt(document.getElementById('param-30m-ma-history').value);
+
+            // 바이낸스 데이터 시뮬레이션
+            await new Promise(r => setTimeout(r, 800));
+
+            const mockData = [
+                { symbol: 'BTCUSDT', price: 65840.5, d1MaxVol: 12.5, m30Aligned: true, m30Dist: -0.5, funding: 0.0100 },
+                { symbol: 'SOLUSDT', price: 142.15, d1MaxVol: 18.4, m30Aligned: true, m30Dist: -1.8, funding: 0.0120 },
+                { symbol: 'PEPEUSDT', price: 0.0000084, d1MaxVol: 35.0, m30Aligned: true, m30Dist: -4.2, funding: 0.0350 },
+                { symbol: 'WIFUSDT', price: 2.75, d1MaxVol: 22.1, m30Aligned: true, m30Dist: -2.1, funding: 0.0080 },
+                { symbol: 'FETUSDT', price: 2.12, d1MaxVol: 9.8, m30Aligned: true, m30Dist: -0.8, funding: 0.0100 },
+                { symbol: 'ORDIUSDT', price: 41.50, d1MaxVol: 14.2, m30Aligned: true, m30Dist: -3.5, funding: 0.0150 }
+            ];
+
+            // 필터링 로직: (일봉 거래량 10배↑) AND (30분봉 이평선 정배열) AND (30분봉 현재가가 이평선 아래)
+            const filtered = mockData.filter(s => {
+                const volOk = s.d1MaxVol >= d1VolLimit;
+                const priceOk = s.m30Dist < 0; // 이평선 밑에 있음
+                return volOk && priceOk && s.m30Aligned;
+            });
+
+            renderTable(filtered);
+            
+            const now = new Date();
+            lastUpdateLabel.innerText = now.toLocaleTimeString('ko-KR', { hour12: false });
+            document.getElementById('filtered-count').innerText = filtered.length;
+            icon.classList.remove('fa-spin');
+        }
+
+        function renderTable(data) {
+            const tbody = document.getElementById('scanner-tbody');
             if (data.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" class="p-10 text-center text-gray-500">조건에 일치하는 종목이 없습니다.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" class="p-20 text-center text-gray-600 italic">조건에 부합하는 종목을 찾는 중입니다...</td></tr>`;
                 return;
             }
 
-            tbody.innerHTML = data.map(item => `
-                <tr class="border-t border-gray-800 hover:bg-gray-800/30 transition group">
-                    <td class="p-4">
-                        <div class="font-bold text-white">${item.symbol}<span class="text-gray-500 text-[10px] ml-1">/USDT</span></div>
-                    </td>
-                    <td class="p-4 font-mono text-gray-300">$${item.price.toFixed(4)}</td>
-                    <td class="p-4">
-                        <span class="accent-green font-semibold">↑ ${item.volDelta}%</span>
-                    </td>
-                    <td class="p-4">
-                        <span class="text-xs px-2 py-1 bg-gray-800 rounded text-blue-300 border border-gray-700">${item.status}</span>
-                    </td>
-                    <td class="p-4 text-center">
-                        <div class="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">
-                            <div class="bg-blue-500 h-full" style="width: ${item.score}%"></div>
-                        </div>
-                    </td>
-                    <td class="p-4 text-center">
-                        <button class="bg-gray-800 group-hover:bg-blue-600 text-white text-xs py-1 px-3 rounded transition">상세차트</button>
-                    </td>
-                </tr>
-            `).join('');
+            tbody.innerHTML = data.map(item => {
+                const fundingClass = item.funding >= 0.03 ? 'accent-red font-bold' : 'text-gray-400';
+                
+                return `
+                    <tr class="border-t border-gray-800 hover:bg-[#2b3139] transition group">
+                        <td class="p-4">
+                            <div class="font-bold text-white">${item.symbol}</div>
+                            <div class="flex gap-1 mt-1">
+                                <span class="condition-tag">1D VOL</span>
+                                <span class="condition-tag">30M DIP</span>
+                            </div>
+                        </td>
+                        <td class="p-4 font-mono text-gray-300">$${item.price.toLocaleString()}</td>
+                        <td class="p-4">
+                            <span class="accent-green font-bold">${item.d1MaxVol}x</span>
+                            <div class="text-[9px] text-gray-600 uppercase">Recent 10 Candles</div>
+                        </td>
+                        <td class="p-4">
+                            <span class="text-[10px] px-2 py-0.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded font-bold">ALIGNED (30m)</span>
+                        </td>
+                        <td class="p-4 text-red-400 font-mono font-bold">
+                            ${item.m30Dist}%
+                            <div class="text-[9px] text-gray-600 uppercase">Below MA30/60</div>
+                        </td>
+                        <td class="p-4 font-mono text-xs ${fundingClass}">
+                            ${item.funding.toFixed(4)}%
+                        </td>
+                        <td class="p-4 text-center">
+                            <button class="bg-gray-800 group-hover:bg-[#f0b90b] group-hover:text-black text-gray-400 text-[10px] font-bold py-1.5 px-4 rounded-md transition-all">
+                                VIEW CHART
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
         }
 
-        function renderAssets(data) {
-            const container = document.getElementById('asset-list');
-            // Mock Asset Quantities
-            const holdings = { 'SOON': 1500, 'FF': 5000 }; 
-            let totalUsdt = 0;
-
-            let html = '';
-            for (const [sym, qty] of Object.entries(holdings)) {
-                const coin = data.find(d => d.symbol === sym);
-                const price = coin ? coin.price : 0;
-                const value = qty * price;
-                totalUsdt += value;
-
-                html += `
-                    <div class="flex justify-between items-center">
-                        <span class="text-xs text-gray-400">${sym} (${qty.toLocaleString()})</span>
-                        <span class="text-xs font-mono text-white">$ ${value.toFixed(2)}</span>
-                    </div>
-                `;
-            }
-            
-            container.innerHTML = html || '<p class="text-xs text-gray-600 text-center py-4">보유 자산 없음</p>';
-            document.getElementById('total-val').innerText = `$ ${totalUsdt.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+        function startUpdateCycle() {
+            if (progressTimer) clearInterval(progressTimer);
+            remainingTime = UPDATE_INTERVAL;
+            progressTimer = setInterval(() => {
+                remainingTime -= 100;
+                const percent = (remainingTime / UPDATE_INTERVAL) * 100;
+                document.getElementById('progress-bar').style.width = `${percent}%`;
+                const seconds = Math.ceil(remainingTime / 1000);
+                document.getElementById('timer-text').innerText = `${seconds}s`;
+                if (remainingTime <= 0) {
+                    fetchMarketData();
+                    remainingTime = UPDATE_INTERVAL;
+                }
+            }, 100);
         }
 
         function manualRefresh() {
             fetchMarketData();
-            const interval = parseInt(document.getElementById('refresh-rate').value);
-            if (interval > 0) {
-                nextRefreshTime = Date.now() + interval;
-            }
+            startUpdateCycle();
         }
     </script>
 </body>
