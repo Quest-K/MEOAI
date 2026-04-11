@@ -24,6 +24,7 @@
         @keyframes scan { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
         .modal-overlay { background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(8px); }
         #update-progress { height: 2px; transition: width 1s linear; background-color: #F3BA2F; }
+        .auto-scan-badge { background: rgba(243, 186, 47, 0.1); border: 1px solid rgba(243, 186, 47, 0.3); color: #F3BA2F; }
     </style>
 </head>
 <body class="min-h-screen pb-20">
@@ -66,11 +67,22 @@
             <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                 <div>
                     <h2 class="text-sm font-bold mb-1">복합 기술 지표 스캐너</h2>
-                    <p class="text-[10px] text-slate-500">일봉 및 30분봉 실시간 교차 분석</p>
+                    <div class="flex items-center gap-2">
+                        <p class="text-[10px] text-slate-500">일봉 및 30분봉 실시간 교차 분석</p>
+                        <div id="auto-scan-timer-display" class="hidden px-2 py-0.5 rounded text-[9px] auto-scan-badge font-bold">NEXT SCAN: --:--</div>
+                    </div>
                 </div>
-                <div class="flex gap-2">
+                <div class="flex flex-wrap gap-2 items-center">
+                    <div class="flex items-center gap-2 bg-black/20 px-3 py-1.5 rounded-xl border border-white/5">
+                        <label class="text-[10px] text-slate-400 font-bold">자동 스캔(분)</label>
+                        <input type="number" id="auto-scan-interval" value="30" min="1" class="w-12 bg-transparent text-binance-gold text-xs font-bold text-center outline-none">
+                        <div class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="auto-scan-toggle" class="sr-only peer" onchange="toggleAutoScanner()">
+                            <div class="w-8 h-4 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-binance-gold"></div>
+                        </div>
+                    </div>
                     <button onclick="toggleFilterSettings()" class="px-3 py-2 bg-white/5 hover:bg-white/10 text-white text-[10px] rounded-xl border border-white/10 transition-all">필터 상세 설정</button>
-                    <button id="scan-start-btn" onclick="startAdvancedScanning()" class="px-6 py-2 bg-binance-gold text-black text-xs font-extrabold rounded-xl transition-all hover:scale-105 active:scale-95">복합 스캔 시작</button>
+                    <button id="scan-start-btn" onclick="startAdvancedScanning()" class="px-6 py-2 bg-binance-gold text-black text-xs font-extrabold rounded-xl transition-all hover:scale-105 active:scale-95">즉시 스캔</button>
                 </div>
             </div>
 
@@ -212,8 +224,10 @@
 
         let currentUser = null;
         let updateTimer = null;
+        let autoScanTimer = null;
         const REFRESH_INTERVAL = 10; 
         let countdownValue = REFRESH_INTERVAL;
+        let autoScanCountdown = 0;
         let isScanning = false;
 
         async function init() {
@@ -285,11 +299,47 @@
         function startAutoUpdate() {
             if (updateTimer) clearInterval(updateTimer);
             updateTimer = setInterval(() => {
+                // 자산 및 포지션 새로고침 타이머
                 countdownValue--;
                 document.getElementById('update-progress').style.width = `${((REFRESH_INTERVAL - countdownValue) / REFRESH_INTERVAL) * 100}%`;
                 document.getElementById('refresh-timer').innerText = `(${countdownValue})`;
                 if (countdownValue <= 0) { fetchFuturesData(); countdownValue = REFRESH_INTERVAL; }
+
+                // 자동 스캐너 타이머
+                if (autoScanCountdown > 0) {
+                    autoScanCountdown--;
+                    updateAutoScanDisplay();
+                    if (autoScanCountdown <= 0) {
+                        startAdvancedScanning();
+                        resetAutoScanTimer();
+                    }
+                }
             }, 1000);
+        }
+
+        function toggleAutoScanner() {
+            const isEnabled = document.getElementById('auto-scan-toggle').checked;
+            const display = document.getElementById('auto-scan-timer-display');
+            if (isEnabled) {
+                display.classList.remove('hidden');
+                resetAutoScanTimer();
+            } else {
+                display.classList.add('hidden');
+                autoScanCountdown = 0;
+            }
+        }
+
+        function resetAutoScanTimer() {
+            const minutes = parseInt(document.getElementById('auto-scan-interval').value) || 30;
+            autoScanCountdown = minutes * 60;
+            updateAutoScanDisplay();
+        }
+
+        function updateAutoScanDisplay() {
+            const display = document.getElementById('auto-scan-timer-display');
+            const m = Math.floor(autoScanCountdown / 60);
+            const s = autoScanCountdown % 60;
+            display.innerText = `NEXT SCAN: ${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
         }
 
         function manualRefresh() { if(currentUser) { fetchFuturesData(); countdownValue = REFRESH_INTERVAL; } }
@@ -331,18 +381,13 @@
                 const side = amt > 0 ? 'LONG' : 'SHORT';
                 const entryPrice = parseFloat(pos.entryPrice).toFixed(4);
                 const markPrice = parseFloat(pos.markPrice).toFixed(4);
-                
-                // 수량(개수)과 가치(USDT) 계산
                 const absAmt = Math.abs(amt);
                 const valueUsdt = (absAmt * parseFloat(pos.markPrice)).toLocaleString(undefined, {minimumFractionDigits: 2});
-                
                 const roe = (parseFloat(pos.unrealizedProfit) / (parseFloat(pos.initialMargin) || 1) * 100).toFixed(2);
                 const pnl = parseFloat(pos.unrealizedProfit).toFixed(2);
-
                 const symOrders = openOrders.filter(o => o.symbol === pos.symbol);
                 const tpOrder = symOrders.find(o => o.type === 'TAKE_PROFIT_MARKET');
                 const slOrder = symOrders.find(o => o.type === 'STOP_MARKET');
-                
                 const tpText = tpOrder ? parseFloat(tpOrder.stopPrice).toFixed(4) : '<span class="text-slate-600">-</span>';
                 const slText = slOrder ? parseFloat(slOrder.stopPrice).toFixed(4) : '<span class="text-slate-600">-</span>';
 
@@ -421,12 +466,12 @@
                     if (passed) { renderScanResult(symbol); found++; }
                     await new Promise(r => setTimeout(r, 40));
                 }
-                statusText.innerText = `분석 완료: ${found}개 발견`;
+                statusText.innerText = `분석 완료: ${found}개 발견 (${new Date().toLocaleTimeString()})`;
             } catch (e) { statusText.innerText = "분석 중 오류"; }
             finally { 
                 isScanning = false; 
                 statusIcon.classList.remove('scan-anim');
-                btn.innerText = "복합 스캔 시작";
+                btn.innerText = "즉시 스캔";
                 btn.classList.remove('opacity-50');
             }
         }
