@@ -3,353 +3,310 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>REVERSAL MASTER | Institutional Grade Security</title>
+    <title>REVERSAL MASTER | Integrated Binance Sync</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-        body {
-            background-color: #0f1117;
-            color: #e2e8f0;
-            font-family: 'Inter', sans-serif;
-            overflow-x: hidden;
-        }
-        .glass-panel {
-            background: rgba(30, 34, 45, 0.6);
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            border-radius: 1.5rem;
-        }
-        .input-field {
-            background: #1a1d26;
-            border: 1px solid #2d323e;
-            color: white;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        .input-field:focus {
-            border-color: #fbbf24;
-            outline: none;
-            box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.1);
-            background: #232835;
-        }
-        .btn-primary {
-            background: #fbbf24;
-            color: #000;
-            font-weight: 800;
-            transition: all 0.2s;
-        }
-        .btn-primary:hover {
-            background: #fcd34d;
-            transform: translateY(-1px);
-        }
-        .btn-primary:active {
-            transform: translateY(1px);
-        }
+        body { background-color: #0f1117; color: #e2e8f0; font-family: 'Inter', sans-serif; overflow-x: hidden; }
+        .glass-panel { background: rgba(30, 34, 45, 0.6); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 1.5rem; }
+        .input-field { background: #1a1d26; border: 1px solid #2d323e; color: white; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .input-field:focus { border-color: #fbbf24; outline: none; box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.1); }
+        .btn-primary { background: #fbbf24; color: #000; font-weight: 800; transition: all 0.2s; }
+        .btn-primary:hover { background: #fcd34d; transform: translateY(-1px); }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+        .pnl-positive { color: #10b981; }
+        .pnl-negative { color: #ef4444; }
     </style>
 </head>
 <body class="min-h-screen p-4 md:p-8 flex flex-col items-center">
 
-    <!-- Header Section -->
+    <!-- Header -->
     <header class="w-full max-w-7xl flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6">
-        <div>
-            <div class="flex items-center gap-3">
-                <div class="bg-amber-400 p-2.5 rounded-xl shadow-lg shadow-amber-400/20">
-                    <i class="fas fa-chart-line text-black text-xl"></i>
-                </div>
-                <div>
-                    <h1 class="text-3xl font-black tracking-tighter uppercase leading-none">REVERSAL <span class="text-amber-400">MASTER</span></h1>
-                    <p class="text-[10px] text-gray-500 font-bold tracking-[0.2em] mt-1 uppercase">Real-Time Market Analytics</p>
-                </div>
+        <div class="flex items-center gap-3">
+            <div class="bg-amber-400 p-2.5 rounded-xl"><i class="fas fa-chart-line text-black text-xl"></i></div>
+            <div>
+                <h1 class="text-3xl font-black tracking-tighter uppercase leading-none">REVERSAL <span class="text-amber-400">MASTER</span></h1>
+                <p class="text-[10px] text-gray-500 font-bold tracking-[0.2em] mt-1 uppercase">Institutional Grade Analytics</p>
             </div>
         </div>
         
         <div class="flex items-center gap-4 bg-black/30 p-2 rounded-2xl border border-white/5">
             <div class="flex items-center gap-3 px-3">
-                <span class="text-[10px] font-black text-gray-500 uppercase">Auto Sync</span>
+                <span id="sync-label" class="text-[10px] font-black text-gray-500 uppercase">OFFLINE</span>
                 <div class="w-32 h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                    <div id="sync-progress" class="h-full bg-amber-400 shadow-[0_0_8px_#fbbf24]" style="width: 100%"></div>
+                    <div id="sync-progress" class="h-full bg-amber-400" style="width: 0%"></div>
                 </div>
-                <span id="sync-timer" class="text-[10px] font-mono text-amber-400/80 w-6">10s</span>
+                <span id="sync-timer" class="text-[10px] font-mono text-amber-400/80 w-6">0s</span>
             </div>
-            <button class="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-gray-400 hover:text-white transition-colors">
-                <i class="fas fa-cog"></i>
-            </button>
         </div>
     </header>
 
-    <!-- Dashboard Content -->
     <main class="w-full max-w-7xl grid grid-cols-1 md:grid-cols-12 gap-6">
-        
-        <!-- Summary Cards -->
-        <div class="md:col-span-3 glass-panel p-6 border-b-4 border-b-gray-700">
-            <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-4">Total Wallet Balance</p>
+        <!-- Top Summary Cards -->
+        <div class="md:col-span-3 glass-panel p-6">
+            <p class="text-[10px] font-bold text-gray-500 uppercase mb-4">Total Margin Balance</p>
             <div class="flex items-baseline gap-2">
-                <h2 class="text-3xl font-black">0.00</h2>
-                <span class="text-xs text-gray-500 font-bold">USDT</span>
+                <h2 id="summary-balance" class="text-3xl font-black">0.00</h2>
+                <span class="text-xs text-gray-500 font-bold uppercase">USDT</span>
             </div>
         </div>
-
-        <div class="md:col-span-3 glass-panel p-6 border-b-4 border-b-emerald-500">
-            <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-4">Current Total PNL</p>
+        <div class="md:col-span-3 glass-panel p-6">
+            <p class="text-[10px] font-bold text-gray-500 uppercase mb-4">Unrealized PNL</p>
             <div class="flex items-baseline gap-2">
-                <h2 class="text-3xl font-black text-emerald-500">0.00</h2>
-                <span class="text-[10px] bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded font-bold">ROE 0.00%</span>
+                <h2 id="summary-pnl" class="text-3xl font-black">0.00</h2>
+                <span id="summary-roe" class="text-[10px] bg-white/5 px-2 py-0.5 rounded font-bold">0.00%</span>
             </div>
         </div>
-
-        <div class="md:col-span-3 glass-panel p-6 border-b-4 border-b-gray-700">
-            <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-4">Active Positions</p>
-            <div class="flex items-baseline gap-2">
-                <h2 class="text-3xl font-black">0</h2>
-                <span class="text-xs text-gray-500 font-bold uppercase">Open Trades</span>
-            </div>
+        <div class="md:col-span-3 glass-panel p-6">
+            <p class="text-[10px] font-bold text-gray-500 uppercase mb-4">Active Positions</p>
+            <h2 id="summary-positions" class="text-3xl font-black">0</h2>
+        </div>
+        <div class="md:col-span-3 bg-amber-400 rounded-[1.5rem] p-6 flex flex-col justify-center">
+            <p class="text-[10px] font-black text-black/40 uppercase">System Pulse</p>
+            <h2 id="pulse-text" class="text-xl font-black text-black uppercase">Ready</h2>
         </div>
 
-        <div class="md:col-span-3 bg-amber-400 rounded-[1.5rem] p-6 flex flex-col justify-center relative overflow-hidden group">
-            <div class="relative z-10">
-                <p class="text-[10px] font-black text-black/40 uppercase tracking-widest">Market Pulse</p>
-                <h2 id="pulse-text" class="text-xl font-black text-black uppercase mt-1">Ready to Start</h2>
-            </div>
-            <i class="fas fa-sync-alt absolute right-6 text-4xl text-black/10 group-hover:rotate-180 transition-transform duration-700"></i>
-        </div>
-
-        <!-- Auth Sidebar -->
+        <!-- Sidebar (Auth/Profile) -->
         <div class="md:col-span-4 space-y-6">
-            <div class="glass-panel p-8" id="auth-section">
-                <div class="flex items-center gap-3 mb-8">
-                    <i class="fas fa-shield-alt text-amber-400 text-2xl"></i>
-                    <h3 class="font-black italic uppercase text-xl tracking-tighter">Cloud Login</h3>
+            <div id="auth-section" class="glass-panel p-8">
+                <div class="flex bg-black/40 p-1 rounded-xl mb-6">
+                    <button onclick="switchTab('login')" id="tab-login" class="flex-1 py-2.5 text-[10px] font-black rounded-lg transition-all bg-gray-700">LOGIN</button>
+                    <button onclick="switchTab('signup')" id="tab-signup" class="flex-1 py-2.5 text-[10px] font-black rounded-lg transition-all text-gray-500">SIGN UP</button>
                 </div>
-
-                <div class="flex bg-black/40 p-1.5 rounded-2xl mb-8">
-                    <button onclick="switchTab('login')" id="tab-login" class="flex-1 py-3 text-xs font-black rounded-xl transition-all bg-gray-700 text-white shadow-lg">LOGIN</button>
-                    <button onclick="switchTab('signup')" id="tab-signup" class="flex-1 py-3 text-xs font-black rounded-xl transition-all text-gray-500 hover:text-white uppercase">Sign Up</button>
-                </div>
-
-                <form id="auth-form" class="space-y-5">
-                    <div id="signup-fields" class="hidden space-y-5">
-                        <div class="space-y-2">
-                            <label class="text-[10px] font-black text-gray-500 uppercase ml-1">Full Name</label>
-                            <input type="text" id="full-name" class="input-field w-full p-4 rounded-xl text-sm" placeholder="이름을 입력하세요">
-                        </div>
+                <form id="auth-form" class="space-y-4">
+                    <div id="signup-fields" class="hidden space-y-4">
+                        <input type="text" id="full-name" class="input-field w-full p-4 rounded-xl text-xs" placeholder="FULL NAME">
                     </div>
-
-                    <div class="space-y-2">
-                        <label class="text-[10px] font-black text-gray-500 uppercase ml-1">Email Address</label>
-                        <input type="email" id="email" class="input-field w-full p-4 rounded-xl text-sm" placeholder="meo0623@naver.com" required>
+                    <input type="email" id="email" class="input-field w-full p-4 rounded-xl text-xs" placeholder="EMAIL ADDRESS" required>
+                    <input type="password" id="password" class="input-field w-full p-4 rounded-xl text-xs" placeholder="PASSWORD" required>
+                    <div id="api-fields" class="hidden space-y-4 pt-4 border-t border-white/5">
+                        <p class="text-[9px] font-black text-amber-400 uppercase">Binance API Key</p>
+                        <input type="text" id="api-key" class="input-field w-full p-4 rounded-xl text-xs font-mono" placeholder="API KEY">
+                        <input type="password" id="api-secret" class="input-field w-full p-4 rounded-xl text-xs font-mono" placeholder="SECRET KEY">
                     </div>
-
-                    <div class="space-y-2">
-                        <label class="text-[10px] font-black text-gray-500 uppercase ml-1">Secure Password</label>
-                        <input type="password" id="password" class="input-field w-full p-4 rounded-xl text-sm" placeholder="••••••••" required>
-                    </div>
-
-                    <div id="api-fields" class="hidden space-y-5 pt-6 mt-6 border-t border-white/5">
-                        <p class="text-[10px] font-black text-amber-400 uppercase tracking-widest">Binance API Configuration</p>
-                        <div class="space-y-4">
-                            <input type="text" id="api-key" class="input-field w-full p-4 rounded-xl text-sm font-mono" placeholder="API KEY">
-                            <input type="password" id="api-secret" class="input-field w-full p-4 rounded-xl text-sm font-mono" placeholder="SECRET KEY">
-                        </div>
-                    </div>
-
-                    <button type="submit" id="submit-btn" class="btn-primary w-full py-5 rounded-2xl text-xs uppercase tracking-[0.2em] shadow-xl shadow-amber-400/10">
-                        Login
-                    </button>
+                    <button type="submit" id="submit-btn" class="btn-primary w-full py-4 rounded-xl text-[10px] uppercase tracking-widest">Login</button>
                 </form>
-
-                <div id="auth-message" class="mt-6 p-4 rounded-2xl text-[11px] font-bold text-center leading-relaxed hidden"></div>
+                <div id="auth-message" class="mt-4 text-[10px] font-bold text-center hidden"></div>
             </div>
 
-            <!-- Profile Info (Logged In) -->
-            <div class="glass-panel p-8 hidden" id="profile-section">
+            <div id="profile-section" class="glass-panel p-8 hidden">
                 <div class="flex items-center justify-between mb-6">
-                    <div class="flex items-center gap-4">
-                        <div class="w-12 h-12 rounded-2xl bg-amber-400/10 flex items-center justify-center border border-amber-400/20">
-                            <i class="fas fa-user-astronaut text-amber-400 text-xl"></i>
-                        </div>
-                        <div>
-                            <p id="user-display-name" class="text-base font-black">Commander</p>
-                            <p id="user-display-email" class="text-[10px] text-gray-500 font-bold uppercase">email@example.com</p>
-                        </div>
+                    <div>
+                        <p id="user-name" class="font-black uppercase text-sm">User</p>
+                        <p id="user-email" class="text-[10px] text-gray-500 font-bold">email@example.com</p>
                     </div>
-                    <button onclick="handleLogout()" class="w-10 h-10 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all">
-                        <i class="fas fa-power-off"></i>
-                    </button>
+                    <button onclick="handleLogout()" class="text-gray-500 hover:text-red-500"><i class="fas fa-power-off"></i></button>
                 </div>
-                <div class="bg-emerald-500/5 border border-emerald-500/10 p-4 rounded-2xl flex items-center gap-4">
-                    <div class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                    <p class="text-[10px] text-emerald-500 font-black uppercase tracking-wider">Vault Secure & API Synced</p>
+                <div class="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-3">
+                    <span class="status-dot bg-emerald-500 animate-pulse"></span>
+                    <span class="text-[9px] font-black text-emerald-500 uppercase">Binance API Connected</span>
                 </div>
             </div>
         </div>
 
-        <!-- Profit Tracker Section -->
+        <!-- Position Tracker -->
         <div class="md:col-span-8">
-            <div class="glass-panel h-full flex flex-col min-h-[600px]">
-                <div class="p-8 border-b border-white/5 flex justify-between items-center">
-                    <div>
-                        <h3 class="font-black italic uppercase text-xl tracking-tighter">Live Profit Tracker</h3>
-                        <div class="flex items-center gap-2 mt-2">
-                            <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
-                            <p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Real-time Data Stream</p>
-                        </div>
+            <div class="glass-panel h-full min-h-[500px] flex flex-col">
+                <div class="p-6 border-b border-white/5">
+                    <h3 class="font-black uppercase text-sm italic">Live Profit Tracker</h3>
+                </div>
+                <div id="position-list" class="flex-grow p-4 overflow-y-auto">
+                    <!-- Positions will be injected here -->
+                    <div id="no-data" class="h-full flex flex-col items-center justify-center text-gray-600">
+                        <i class="fas fa-lock mb-4 text-2xl opacity-20"></i>
+                        <p class="text-[10px] font-black uppercase tracking-widest">Authentication Required</p>
                     </div>
-                </div>
-
-                <div id="tracker-locked" class="flex-grow flex flex-col items-center justify-center p-12 text-center">
-                    <div class="relative mb-8">
-                        <div class="w-24 h-24 bg-white/5 rounded-[2rem] flex items-center justify-center text-3xl border border-white/5">
-                            <i class="fas fa-lock text-gray-600"></i>
-                        </div>
-                        <div class="absolute -bottom-2 -right-2 w-10 h-10 bg-amber-400 rounded-xl flex items-center justify-center text-black">
-                            <i class="fas fa-key text-xs"></i>
-                        </div>
-                    </div>
-                    <h4 class="text-sm font-black uppercase tracking-widest text-gray-400 mb-3">Authentication Required</h4>
-                    <p class="text-[11px] text-gray-600 max-w-sm leading-relaxed uppercase font-bold">로그인 후 실시간 포지션 데이터를 확인하세요.</p>
-                </div>
-
-                <div id="tracker-content" class="hidden flex-grow flex items-center justify-center">
-                    <p class="text-sm text-gray-600 italic uppercase">No active positions found.</p>
-                </div>
-
-                <div class="px-8 py-5 grid grid-cols-4 text-[10px] font-black text-gray-600 uppercase tracking-[0.2em] border-t border-white/5 bg-black/20">
-                    <div>Asset Pair</div>
-                    <div>Position</div>
-                    <div>Market</div>
-                    <div class="text-right">Unrealized PNL</div>
                 </div>
             </div>
         </div>
     </main>
 
     <script>
-        // --- 반영된 실제 Supabase 설정 ---
+        // --- CONFIGURATION ---
         const SUPABASE_URL = 'https://mgidrwfgcdcxgosotysg.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_FQt1zyzqKOI3LUSZ8DYNAQ_b9fOqhTx';
-        
-        let sb;
-        try {
-            sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-        } catch (e) {
-            console.error("Supabase 초기화 실패:", e);
-        }
+        const BINANCE_BASE = 'https://fapi.binance.com'; // 선물(Futures) 엔드포인트
 
-        let mode = 'login';
+        const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        let userKeys = null;
+        let syncInterval = null;
 
-        function switchTab(newMode) {
-            mode = newMode;
-            const lTab = document.getElementById('tab-login');
-            const sTab = document.getElementById('tab-signup');
+        // --- AUTH LOGIC ---
+        function switchTab(mode) {
             const sFields = document.getElementById('signup-fields');
             const aFields = document.getElementById('api-fields');
             const btn = document.getElementById('submit-btn');
+            const tLogin = document.getElementById('tab-login');
+            const tSignup = document.getElementById('tab-signup');
 
             if (mode === 'signup') {
-                lTab.className = "flex-1 py-3 text-xs font-black rounded-xl transition-all text-gray-500 hover:text-white uppercase";
-                sTab.className = "flex-1 py-3 text-xs font-black rounded-xl transition-all bg-gray-700 text-white shadow-lg";
                 sFields.classList.remove('hidden');
                 aFields.classList.remove('hidden');
-                btn.innerText = '계정 생성 및 자산 연결';
+                btn.innerText = 'CREATE ACCOUNT';
+                tSignup.classList.add('bg-gray-700'); tSignup.classList.remove('text-gray-500');
+                tLogin.classList.remove('bg-gray-700'); tLogin.classList.add('text-gray-500');
             } else {
-                sTab.className = "flex-1 py-3 text-xs font-black rounded-xl transition-all text-gray-500 hover:text-white uppercase";
-                lTab.className = "flex-1 py-3 text-xs font-black rounded-xl transition-all bg-gray-700 text-white shadow-lg";
                 sFields.classList.add('hidden');
                 aFields.classList.add('hidden');
                 btn.innerText = 'LOGIN';
+                tLogin.classList.add('bg-gray-700'); tLogin.classList.remove('text-gray-500');
+                tSignup.classList.remove('bg-gray-700'); tSignup.classList.add('text-gray-500');
             }
         }
 
         async function handleAuth(e) {
             e.preventDefault();
-            const msgEl = document.getElementById('auth-message');
+            const msg = document.getElementById('auth-message');
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
             const fullName = document.getElementById('full-name').value;
             const apiKey = document.getElementById('api-key').value;
             const apiSecret = document.getElementById('api-secret').value;
 
-            msgEl.className = "mt-6 p-4 rounded-2xl text-[11px] font-bold text-center bg-amber-400/10 text-amber-400 block border border-amber-400/20";
-            msgEl.innerText = "처리 중...";
+            msg.className = "mt-4 text-[10px] font-bold text-center text-amber-400 block";
+            msg.innerText = "PROCESSING...";
 
             try {
-                if (mode === 'signup') {
-                    const { data: authData, error: authErr } = await sb.auth.signUp({
-                        email,
-                        password,
-                        options: { data: { full_name: fullName } }
-                    });
-                    if (authErr) throw authErr;
-
-                    if (authData.user) {
-                        const { error: dbErr } = await sb.from('user_configs').insert({
-                            user_id: authData.user.id,
-                            binance_api_key: apiKey,
-                            binance_api_secret: apiSecret
-                        });
-                        if (dbErr) console.error("API 저장 실패:", dbErr);
+                if (document.getElementById('submit-btn').innerText.includes('CREATE')) {
+                    const { data, error } = await sb.auth.signUp({ email, password, options: { data: { full_name: fullName } } });
+                    if (error) throw error;
+                    if (data.user) {
+                        await sb.from('user_configs').insert({ user_id: data.user.id, binance_api_key: apiKey, binance_api_secret: apiSecret });
                     }
-                    msgEl.className = "mt-6 p-4 rounded-2xl text-[11px] font-bold text-center bg-emerald-500/10 text-emerald-500 block border border-emerald-500/20";
-                    msgEl.innerText = "가입 완료! 메일함에서 인증 링크를 눌러주세요.";
+                    msg.innerText = "SIGNUP SUCCESS! CHECK YOUR EMAIL.";
                 } else {
                     const { error } = await sb.auth.signInWithPassword({ email, password });
                     if (error) throw error;
-                    msgEl.innerText = "로그인 성공! 동기화 중...";
+                    msg.innerText = "LOGIN SUCCESS!";
                 }
             } catch (err) {
-                msgEl.className = "mt-6 p-4 rounded-2xl text-[11px] font-bold text-center bg-red-500/10 text-red-500 block border border-red-500/20";
-                msgEl.innerText = "오류: " + (err.message === "Invalid login credentials" ? "이메일 또는 비밀번호가 틀렸습니다." : err.message);
+                msg.className = "mt-4 text-[10px] font-bold text-center text-red-500 block";
+                msg.innerText = err.message;
             }
         }
 
         async function handleLogout() {
-            if (sb) await sb.auth.signOut();
+            await sb.auth.signOut();
+            location.reload();
+        }
+
+        // --- BINANCE SYNC LOGIC ---
+        async function fetchBinanceData() {
+            if (!userKeys || !userKeys.binance_api_key) return;
+
+            const timestamp = Date.now();
+            const query = `timestamp=${timestamp}`;
+            const signature = CryptoJS.HmacSHA256(query, userKeys.binance_api_secret).toString();
+            
+            try {
+                // 1. Account Info (Balance)
+                const accountRes = await fetch(`${BINANCE_BASE}/fapi/v2/account?${query}&signature=${signature}`, {
+                    headers: { 'X-MBX-APIKEY': userKeys.binance_api_key }
+                });
+                const accountData = await accountRes.json();
+
+                // 2. Position Risk
+                const posRes = await fetch(`${BINANCE_BASE}/fapi/v2/positionRisk?${query}&signature=${signature}`, {
+                    headers: { 'X-MBX-APIKEY': userKeys.binance_api_key }
+                });
+                const posData = await posRes.json();
+
+                renderData(accountData, posData);
+            } catch (err) {
+                console.error("Binance Sync Error:", err);
+                document.getElementById('pulse-text').innerText = "SYNC ERROR";
+            }
+        }
+
+        function renderData(account, positions) {
+            // Update Summary
+            document.getElementById('summary-balance').innerText = parseFloat(account.totalMarginBalance).toLocaleString(undefined, {minimumFractionDigits: 2});
+            document.getElementById('summary-pnl').innerText = parseFloat(account.totalUnrealizedProfit).toLocaleString(undefined, {minimumFractionDigits: 2});
+            
+            const activePos = positions.filter(p => parseFloat(p.positionAmt) !== 0);
+            document.getElementById('summary-positions').innerText = activePos.length;
+
+            const listEl = document.getElementById('position-list');
+            if (activePos.length === 0) {
+                listEl.innerHTML = `<div class="h-full flex items-center justify-center text-gray-600 uppercase text-[10px] font-bold italic">No active positions</div>`;
+                return;
+            }
+
+            listEl.innerHTML = activePos.map(p => {
+                const pnl = parseFloat(p.unRealizedProfit);
+                const pnlClass = pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
+                return `
+                    <div class="bg-black/20 p-5 rounded-2xl border border-white/5 mb-3 flex justify-between items-center">
+                        <div>
+                            <p class="text-xs font-black uppercase">${p.symbol}</p>
+                            <p class="text-[9px] text-gray-500 font-bold">${p.positionSide} | ${p.leverage}x</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-xs font-black ${pnlClass}">${pnl > 0 ? '+' : ''}${pnl.toFixed(2)} USDT</p>
+                            <p class="text-[9px] text-gray-500 font-bold">ENTRY: ${parseFloat(p.entryPrice).toFixed(4)}</p>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            document.getElementById('pulse-text').innerText = "LIVE SYNCED";
+        }
+
+        async function loadUserConfig(userId) {
+            const { data, error } = await sb.from('user_configs').select('*').eq('user_id', userId).single();
+            if (!error && data) {
+                userKeys = data;
+                startSyncLoop();
+            }
+        }
+
+        function startSyncLoop() {
+            if (syncInterval) clearInterval(syncInterval);
+            fetchBinanceData();
+            let timer = 10;
+            syncInterval = setInterval(() => {
+                timer -= 0.1;
+                document.getElementById('sync-progress').style.width = (timer * 10) + '%';
+                document.getElementById('sync-timer').innerText = Math.ceil(timer) + 's';
+                if (timer <= 0) {
+                    timer = 10;
+                    fetchBinanceData();
+                }
+            }, 100);
+            document.getElementById('sync-label').innerText = "ONLINE";
         }
 
         function updateUI(user) {
-            const authSec = document.getElementById('auth-section');
-            const profSec = document.getElementById('profile-section');
-            const locked = document.getElementById('tracker-locked');
-            const content = document.getElementById('tracker-content');
-            const pulseText = document.getElementById('pulse-text');
-
             if (user) {
-                authSec.classList.add('hidden');
-                profSec.classList.remove('hidden');
-                locked.classList.add('hidden');
-                content.classList.remove('hidden');
-                pulseText.innerText = "SYNCING DATA";
-                document.getElementById('user-display-name').innerText = user.user_metadata.full_name || 'Commander';
-                document.getElementById('user-display-email').innerText = user.email;
+                document.getElementById('auth-section').classList.add('hidden');
+                document.getElementById('profile-section').classList.remove('hidden');
+                document.getElementById('user-name').innerText = user.user_metadata.full_name || 'COMMANDER';
+                document.getElementById('user-email').innerText = user.email;
+                document.getElementById('no-data').classList.add('hidden');
+                loadUserConfig(user.id);
             } else {
-                authSec.classList.remove('hidden');
-                profSec.classList.add('hidden');
-                locked.classList.remove('hidden');
-                content.classList.add('hidden');
-                pulseText.innerText = "READY TO START";
+                document.getElementById('auth-section').classList.remove('hidden');
+                document.getElementById('profile-section').classList.add('hidden');
+                document.getElementById('no-data').classList.remove('hidden');
+                document.getElementById('sync-label').innerText = "OFFLINE";
+                if (syncInterval) clearInterval(syncInterval);
             }
         }
 
+        // --- INIT ---
         document.addEventListener('DOMContentLoaded', () => {
-            const form = document.getElementById('auth-form');
-            if (form) form.addEventListener('submit', handleAuth);
+            document.getElementById('auth-form').addEventListener('submit', handleAuth);
+            
+            sb.auth.onAuthStateChange((event, session) => {
+                updateUI(session?.user || null);
+            });
 
-            if (sb) {
-                sb.auth.getSession().then(({ data: { session } }) => updateUI(session?.user || null));
-                sb.auth.onAuthStateChange((_event, session) => updateUI(session?.user || null));
-            }
-
-            let time = 10;
-            setInterval(() => {
-                const bar = document.getElementById('sync-progress');
-                const timer = document.getElementById('sync-timer');
-                if (!bar) return;
-                time -= 0.1;
-                if (time <= 0) time = 10;
-                bar.style.width = (time * 10) + '%';
-                timer.innerText = Math.ceil(time) + 's';
-            }, 100);
+            sb.auth.getSession().then(({data}) => {
+                updateUI(data.session?.user || null);
+            });
         });
     </script>
 </body>
