@@ -19,6 +19,7 @@
         .pnl-positive { color: #10b981; }
         .pnl-negative { color: #ef4444; }
         .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+        .animate-pulse-slow { animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
     </style>
 </head>
 <body class="min-h-screen p-4 md:p-8 flex flex-col items-center">
@@ -106,12 +107,19 @@
             <div class="glass-panel h-full min-h-[500px] flex flex-col">
                 <div class="p-6 border-b border-white/5 flex justify-between items-center">
                     <h3 class="font-black uppercase text-sm italic">Live Profit Tracker</h3>
-                    <div id="debug-status" class="text-[8px] text-gray-600 font-mono"></div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="fetchBinanceData()" class="text-[10px] bg-white/5 hover:bg-white/10 px-3 py-1 rounded-full font-bold transition-all">FORCE REFRESH</button>
+                        <div id="debug-status" class="text-[8px] text-gray-600 font-mono"></div>
+                    </div>
                 </div>
                 <div id="position-list" class="flex-grow p-4 overflow-y-auto">
                     <div id="no-data" class="h-full flex flex-col items-center justify-center text-gray-600">
                         <i class="fas fa-circle-notch animate-spin mb-4 text-2xl opacity-20 hidden" id="loading-spinner"></i>
-                        <p class="text-[10px] font-black uppercase tracking-widest">Awaiting Authentication</p>
+                        <div id="connection-error" class="hidden text-center max-w-xs">
+                            <i class="fas fa-exclamation-triangle mb-3 text-amber-400 opacity-80"></i>
+                            <p class="text-[10px] font-black uppercase tracking-widest leading-relaxed">Connection Blocked by Proxy. <br>Please check API settings or try again.</p>
+                        </div>
+                        <p id="idle-text" class="text-[10px] font-black uppercase tracking-widest">Awaiting Authentication</p>
                     </div>
                 </div>
             </div>
@@ -122,8 +130,9 @@
         const SUPABASE_URL = 'https://mgidrwfgcdcxgosotysg.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_FQt1zyzqKOI3LUSZ8DYNAQ_b9fOqhTx';
         
-        // 더 안정적인 프록시 서비스로 변경
-        const PROXY_URL = 'https://api.corsproxy.io/?url=';
+        // 여러 프록시 후보 (순차적으로 시도하거나 가장 안정적인 것 사용)
+        // 403 에러가 났던 corsproxy.io 대신 AllOrigins의 raw 모드 재시도 또는 대안 적용
+        const PROXY_URL = 'https://api.allorigins.win/raw?url='; 
         const BINANCE_BASE = 'https://fapi.binance.com';
 
         const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -186,6 +195,7 @@
             if (!userKeys || isSyncing) return;
             isSyncing = true;
             document.getElementById('debug-status').innerText = "FETCHING...";
+            document.getElementById('connection-error').classList.add('hidden');
 
             const timestamp = Date.now();
             const query = `timestamp=${timestamp}`;
@@ -195,17 +205,23 @@
                 const accountUrl = `${BINANCE_BASE}/fapi/v2/account?${query}&signature=${signature}`;
                 const posUrl = `${BINANCE_BASE}/fapi/v2/positionRisk?${query}&signature=${signature}`;
 
-                // 프록시 요청 및 에러 핸들링 강화
                 const callApi = async (url) => {
-                    const res = await fetch(PROXY_URL + encodeURIComponent(url), {
+                    // Cache buster 추가하여 프록시 캐싱 방지
+                    const finalUrl = PROXY_URL + encodeURIComponent(url + "&cb=" + Date.now());
+                    const res = await fetch(finalUrl, {
                         headers: { 'X-MBX-APIKEY': userKeys.binance_api_key }
                     });
+                    
+                    if (!res.ok) {
+                        if(res.status === 403) throw new Error("PROXY_403");
+                        throw new Error(`HTTP_${res.status}`);
+                    }
+
                     const text = await res.text();
                     try {
                         return JSON.parse(text);
                     } catch(e) {
-                        console.error("Parse Error Content:", text);
-                        throw new Error("Proxy returned non-JSON response. Retrying...");
+                        throw new Error("INVALID_JSON");
                     }
                 };
 
@@ -216,16 +232,28 @@
 
                 renderData(accountData, posData);
                 document.getElementById('debug-status').innerText = "OK";
+                document.getElementById('api-status-label').innerText = "CONNECTED";
+                document.getElementById('api-status-label').className = "text-[9px] font-black text-emerald-500 uppercase tracking-wider";
             } catch (err) {
-                console.error(err);
-                document.getElementById('pulse-text').innerText = "SYNC DELAY";
-                document.getElementById('debug-status').innerText = "ERR: " + err.message.substring(0, 20);
+                console.error("Sync Error Details:", err);
+                document.getElementById('pulse-text').innerText = "SYNC ERROR";
+                document.getElementById('debug-status').innerText = "ERR: " + err.message;
+                
+                if (err.message.includes("PROXY") || err.message.includes("HTTP")) {
+                    document.getElementById('connection-error').classList.remove('hidden');
+                    document.getElementById('idle-text').classList.add('hidden');
+                    document.getElementById('api-status-label').innerText = "PROXY ERROR";
+                    document.getElementById('api-status-label').className = "text-[9px] font-black text-amber-500 uppercase tracking-wider";
+                }
             } finally {
                 isSyncing = false;
             }
         }
 
         function renderData(account, positions) {
+            document.getElementById('idle-text').classList.add('hidden');
+            document.getElementById('loading-spinner').classList.add('hidden');
+
             if (account.totalMarginBalance) {
                 document.getElementById('summary-balance').innerText = parseFloat(account.totalMarginBalance).toLocaleString(undefined, {minimumFractionDigits: 2});
                 const pnl = parseFloat(account.totalUnrealizedProfit);
@@ -239,13 +267,17 @@
 
             const listEl = document.getElementById('position-list');
             if (activePos.length === 0) {
-                listEl.innerHTML = `<div class="h-full flex items-center justify-center text-gray-600 uppercase text-[10px] font-bold italic">No active positions</div>`;
+                listEl.innerHTML = `<div class="h-full flex flex-col items-center justify-center text-gray-600 uppercase text-[10px] font-bold italic">
+                    <i class="fas fa-box-open mb-2 opacity-20 text-xl"></i>
+                    No active positions
+                </div>`;
                 return;
             }
 
             listEl.innerHTML = activePos.map(p => {
                 const pnl = parseFloat(p.unRealizedProfit);
                 const side = parseFloat(p.positionAmt) > 0 ? 'LONG' : 'SHORT';
+                const roe = p.leverage ? ((pnl / (Math.abs(p.positionAmt) * p.entryPrice / p.leverage)) * 100).toFixed(2) : '0.00';
                 return `
                     <div class="bg-black/20 p-5 rounded-2xl border border-white/5 mb-3 flex justify-between items-center hover:bg-black/30 transition-all">
                         <div>
@@ -256,7 +288,7 @@
                             <p class="text-[9px] text-gray-500 font-bold">LEV: ${p.leverage}x | SIZE: ${Math.abs(p.positionAmt)}</p>
                         </div>
                         <div class="text-right">
-                            <p class="text-xs font-black ${pnl>=0?'pnl-positive':'pnl-negative'}">${pnl>=0?'+':''}${pnl.toFixed(2)} USDT</p>
+                            <p class="text-xs font-black ${pnl>=0?'pnl-positive':'pnl-negative'}">${pnl>=0?'+':''}${pnl.toFixed(2)} USDT (${roe}%)</p>
                             <p class="text-[9px] text-gray-500 font-bold">ENTRY: ${parseFloat(p.entryPrice).toLocaleString()}</p>
                         </div>
                     </div>
@@ -272,6 +304,7 @@
                 startSyncLoop();
             } else {
                 document.getElementById('pulse-text').innerText = "KEY MISSING";
+                document.getElementById('idle-text').innerText = "API KEYS NOT FOUND IN DATABASE";
             }
         }
 
@@ -292,17 +325,19 @@
         function updateUI(user) {
             const aSec = document.getElementById('auth-section');
             const pSec = document.getElementById('profile-section');
-            const noData = document.getElementById('no-data');
+            const idleText = document.getElementById('idle-text');
             const spinner = document.getElementById('loading-spinner');
             if (user) {
                 aSec.classList.add('hidden'); pSec.classList.remove('hidden');
                 document.getElementById('user-name').innerText = user.user_metadata.full_name || 'COMMANDER';
                 document.getElementById('user-email').innerText = user.email;
                 spinner.classList.remove('hidden');
+                idleText.innerText = "Syncing with Binance...";
                 loadUserConfig(user.id);
             } else {
                 aSec.classList.remove('hidden'); pSec.classList.add('hidden');
-                noData.classList.remove('hidden'); spinner.classList.add('hidden');
+                idleText.classList.remove('hidden'); spinner.classList.add('hidden');
+                idleText.innerText = "Awaiting Authentication";
                 document.getElementById('sync-label').innerText = "OFFLINE";
                 if (syncInterval) clearInterval(syncInterval);
             }
