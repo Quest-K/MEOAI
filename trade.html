@@ -76,7 +76,6 @@
 
             <!-- Filter Panel -->
             <div id="filter-settings" class="hidden grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6 p-5 bg-black/40 rounded-2xl border border-white/10">
-                <!-- 일봉 조건 -->
                 <div class="space-y-3">
                     <h3 class="text-[11px] font-bold text-orange-400 uppercase tracking-wider flex items-center gap-2">
                         <span class="w-1.5 h-1.5 rounded-full bg-orange-400"></span> 일봉(1D) 조건
@@ -93,7 +92,6 @@
                     </div>
                 </div>
 
-                <!-- 30분봉 조건 -->
                 <div class="space-y-3 border-l border-white/5 pl-6">
                     <h3 class="text-[11px] font-bold text-sky-400 uppercase tracking-wider flex items-center gap-2">
                         <span class="w-1.5 h-1.5 rounded-full bg-sky-400"></span> 30분봉(30m) 조건
@@ -110,7 +108,6 @@
                     </div>
                 </div>
 
-                <!-- 볼린저 밴드 조건 -->
                 <div class="space-y-3 border-l border-white/5 pl-6">
                     <h3 class="text-[11px] font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
                         <span class="w-1.5 h-1.5 rounded-full bg-purple-400"></span> 볼린저 밴드(BB) 조건
@@ -155,7 +152,7 @@
                     <input type="password" id="api-secret" class="input-field px-4 py-2 rounded-xl text-xs" placeholder="Secret Key">
                     <button onclick="saveAndFetch()" class="bg-binance-gold text-black font-bold text-xs py-2 rounded-xl hover:brightness-110">저장 및 조회</button>
                     <button onclick="manualRefresh()" class="border border-white/10 text-white font-bold text-xs py-2 rounded-xl flex items-center justify-center gap-2">
-                        <span>새로고침</span> <span id="refresh-timer" class="text-[10px] opacity-60">(20)</span>
+                        <span>새로고침</span> <span id="refresh-timer" class="text-[10px] opacity-60">(10)</span>
                     </button>
                 </div>
             </section>
@@ -183,7 +180,7 @@
             <section class="glass-card rounded-[2rem] overflow-hidden">
                 <div id="update-progress" style="width: 0%"></div>
                 <div class="p-6 border-b border-white/5 flex justify-between items-center">
-                    <h2 class="font-bold text-sm">보유 포지션</h2>
+                    <h2 class="font-bold text-sm">보유 포지션 상세</h2>
                     <div id="last-update" class="text-[10px] text-slate-600">--:--:--</div>
                 </div>
                 <div class="overflow-x-auto min-h-[100px]">
@@ -191,13 +188,14 @@
                         <thead class="bg-black/20 text-[10px] uppercase text-slate-500">
                             <tr>
                                 <th class="px-6 py-4">Symbol</th>
-                                <th class="px-6 py-4">Position</th>
-                                <th class="px-6 py-4">Price</th>
-                                <th class="px-6 py-4 text-right">ROE%</th>
+                                <th class="px-6 py-4">Qty / Value</th>
+                                <th class="px-6 py-4">Entry / Mark</th>
+                                <th class="px-6 py-4">TP / SL</th>
+                                <th class="px-6 py-4 text-right">ROE% / PnL</th>
                             </tr>
                         </thead>
-                        <tbody id="position-list" class="divide-y divide-white/5 text-xs">
-                            <tr><td colspan="4" class="px-6 py-10 text-center text-slate-600 italic">로그인 시 조회가 가능합니다.</td></tr>
+                        <tbody id="position-list" class="divide-y divide-white/5 text-[11px]">
+                            <tr><td colspan="5" class="px-6 py-10 text-center text-slate-600 italic">로그인 시 조회가 가능합니다.</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -208,14 +206,14 @@
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
 
     <script>
-        // Supabase & State Init
         const SUPABASE_URL = "https://pcmrpxcpjynmayactgan.supabase.co";
         const SUPABASE_KEY = "sb_publishable_endfjcxVBfda-lzjOpPbrQ_DTdF3MHZ";
         const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         let currentUser = null;
         let updateTimer = null;
-        let countdownValue = 20;
+        const REFRESH_INTERVAL = 10; // 1) 새로고침 주기 10초로 수정
+        let countdownValue = REFRESH_INTERVAL;
         let isScanning = false;
 
         async function init() {
@@ -238,7 +236,7 @@
             if (isLoggedIn) {
                 emailElem.innerText = currentUser.email;
                 authBtn.innerText = "로그아웃";
-                refreshStatus.innerText = "Auto-sync: 20s";
+                refreshStatus.innerText = `Auto-sync: ${REFRESH_INTERVAL}s`;
                 refreshStatus.classList.replace('text-slate-600', 'text-emerald-500');
                 privateArea.classList.remove('opacity-40', 'pointer-events-none');
             } else {
@@ -288,48 +286,90 @@
             if (updateTimer) clearInterval(updateTimer);
             updateTimer = setInterval(() => {
                 countdownValue--;
-                document.getElementById('update-progress').style.width = `${((20 - countdownValue) / 20) * 100}%`;
+                document.getElementById('update-progress').style.width = `${((REFRESH_INTERVAL - countdownValue) / REFRESH_INTERVAL) * 100}%`;
                 document.getElementById('refresh-timer').innerText = `(${countdownValue})`;
-                if (countdownValue <= 0) { fetchFuturesData(); countdownValue = 20; }
+                if (countdownValue <= 0) { fetchFuturesData(); countdownValue = REFRESH_INTERVAL; }
             }, 1000);
         }
 
-        function manualRefresh() { if(currentUser) { fetchFuturesData(); countdownValue = 20; } }
+        function manualRefresh() { if(currentUser) { fetchFuturesData(); countdownValue = REFRESH_INTERVAL; } }
 
         async function fetchFuturesData() {
             const apiKey = document.getElementById('api-key').value;
             const apiSecret = document.getElementById('api-secret').value;
             if (!apiKey || !apiSecret) return;
             try {
-                const query = `timestamp=${Date.now()}`;
-                const signature = CryptoJS.HmacSHA256(query, apiSecret).toString();
-                const res = await fetch(`https://fapi.binance.com/fapi/v2/account?${query}&signature=${signature}`, { headers: { 'X-MBX-APIKEY': apiKey } });
-                const data = await res.json();
-                if (data.positions) renderDashboard(data);
-            } catch (err) {}
+                const ts = Date.now();
+                const queryStr = `timestamp=${ts}`;
+                const signature = CryptoJS.HmacSHA256(queryStr, apiSecret).toString();
+                
+                // 계정 정보와 미체결 주문(TP/SL 확인용) 동시 조회
+                const [accRes, ordersRes] = await Promise.all([
+                    fetch(`https://fapi.binance.com/fapi/v2/account?${queryStr}&signature=${signature}`, { headers: { 'X-MBX-APIKEY': apiKey } }),
+                    fetch(`https://fapi.binance.com/fapi/v1/openOrders?${queryStr}&signature=${signature}`, { headers: { 'X-MBX-APIKEY': apiKey } })
+                ]);
+
+                const accData = await accRes.json();
+                const ordersData = await ordersRes.json();
+
+                if (accData.positions) renderDashboard(accData, ordersData);
+            } catch (err) {
+                console.error("Data Fetch Error:", err);
+            }
         }
 
-        function renderDashboard(data) {
+        function renderDashboard(data, openOrders) {
             document.getElementById('total-balance').innerText = parseFloat(data.totalWalletBalance).toFixed(2);
             document.getElementById('total-pnl').innerText = parseFloat(data.totalUnrealizedProfit).toFixed(2);
             document.getElementById('available-balance').innerText = parseFloat(data.availableBalance).toFixed(2);
             const activePos = data.positions.filter(p => parseFloat(p.positionAmt) !== 0);
             document.getElementById('active-positions').innerText = activePos.length;
             document.getElementById('last-update').innerText = new Date().toLocaleTimeString();
+
             const list = document.getElementById('position-list');
             list.innerHTML = activePos.length ? activePos.map(pos => {
-                const side = parseFloat(pos.positionAmt) > 0 ? 'LONG' : 'SHORT';
+                const amt = parseFloat(pos.positionAmt);
+                const side = amt > 0 ? 'LONG' : 'SHORT';
+                const entryPrice = parseFloat(pos.entryPrice).toFixed(4);
+                const markPrice = parseFloat(pos.markPrice).toFixed(4);
+                const valueUsdt = (Math.abs(amt) * parseFloat(pos.markPrice)).toFixed(2);
                 const roe = (parseFloat(pos.unrealizedProfit) / (parseFloat(pos.initialMargin) || 1) * 100).toFixed(2);
+                const pnl = parseFloat(pos.unrealizedProfit).toFixed(2);
+
+                // TP/SL 찾기 (해당 심볼의 주문 중 STOP_MARKET 또는 TAKE_PROFIT_MARKET 필터링)
+                const symOrders = openOrders.filter(o => o.symbol === pos.symbol);
+                const tpOrder = symOrders.find(o => o.type === 'TAKE_PROFIT_MARKET');
+                const slOrder = symOrders.find(o => o.type === 'STOP_MARKET');
+                
+                const tpText = tpOrder ? parseFloat(tpOrder.stopPrice).toFixed(4) : '<span class="text-slate-600">-</span>';
+                const slText = slOrder ? parseFloat(slOrder.stopPrice).toFixed(4) : '<span class="text-slate-600">-</span>';
+
                 return `<tr class="hover:bg-white/5 cursor-pointer" onclick="openChart('${pos.symbol}')">
-                    <td class="px-6 py-3 font-bold">${pos.symbol}</td>
-                    <td class="px-6 py-3"><span class="${side==='LONG'?'text-emerald-400':'text-red-400'}">${side}</span></td>
-                    <td class="px-6 py-3">${parseFloat(pos.markPrice).toFixed(4)}</td>
-                    <td class="px-6 py-3 text-right ${roe>=0?'profit-up':'profit-down'} font-bold">${roe}%</td>
+                    <td class="px-6 py-4">
+                        <div class="font-bold text-white">${pos.symbol}</div>
+                        <div class="text-[9px] ${side==='LONG'?'text-emerald-400':'text-red-400'} font-bold">${side}</div>
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="text-slate-200">${amt}</div>
+                        <div class="text-slate-500 font-mono">${valueUsdt} USDT</div>
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="text-slate-400">E: ${entryPrice}</div>
+                        <div class="text-white">M: ${markPrice}</div>
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="text-emerald-500">TP: ${tpText}</div>
+                        <div class="text-red-500">SL: ${slText}</div>
+                    </td>
+                    <td class="px-6 py-4 text-right">
+                        <div class="font-bold ${roe>=0?'profit-up':'profit-down'}">${roe}%</div>
+                        <div class="text-[10px] ${roe>=0?'profit-up':'profit-down'} opacity-80">${pnl} USDT</div>
+                    </td>
                 </tr>`;
-            }).join('') : '<tr><td colspan="4" class="px-6 py-10 text-center text-slate-600">활성 포지션 없음</td></tr>';
+            }).join('') : '<tr><td colspan="5" class="px-6 py-10 text-center text-slate-600">활성 포지션 없음</td></tr>';
         }
 
-        // --- Core Algorithm: Technical Analysis ---
+        // --- Technical Utils ---
         const getMA = (prices, period) => {
             if (prices.length < period) return null;
             return prices.slice(-period).reduce((a, b) => a + b, 0) / period;
@@ -344,7 +384,6 @@
             return { middle: mean, upper: mean + (sd * stdDev), lower: mean - (sd * stdDev) };
         };
 
-        // --- Scanner Logic ---
         async function startAdvancedScanning() {
             if (isScanning) return;
             isScanning = true;
@@ -359,7 +398,6 @@
             resultsBox.innerHTML = '';
             statusIcon.classList.add('scan-anim');
 
-            // Get Settings
             const dLookback = parseInt(document.getElementById('f-1d-lookback').value);
             const dMaTarget = parseInt(document.getElementById('f-1d-ma-target').value);
             const mMaDowns = document.getElementById('f-30m-ma-down').value.split(',').map(v => parseInt(v.trim()));
@@ -377,19 +415,12 @@
                 for (let symbol of symbols) {
                     if (!isScanning) break;
                     statusText.innerText = `분석 중: ${symbol}`;
-                    
-                    const passed = await analyzeComplex(symbol, {
-                        dLookback, dMaTarget, mMaDowns, mDisparityLimit, bbLookback, bbProxLimit
-                    });
-
-                    if (passed) {
-                        renderScanResult(symbol);
-                        found++;
-                    }
-                    await new Promise(r => setTimeout(r, 50)); // Rate limit protection
+                    const passed = await analyzeComplex(symbol, { dLookback, dMaTarget, mMaDowns, mDisparityLimit, bbLookback, bbProxLimit });
+                    if (passed) { renderScanResult(symbol); found++; }
+                    await new Promise(r => setTimeout(r, 40));
                 }
                 statusText.innerText = `분석 완료: ${found}개 발견`;
-            } catch (e) { statusText.innerText = "분석 중 오류"; console.error(e); }
+            } catch (e) { statusText.innerText = "분석 중 오류"; }
             finally { 
                 isScanning = false; 
                 statusIcon.classList.remove('scan-anim');
@@ -400,11 +431,8 @@
 
         async function analyzeComplex(symbol, cfg) {
             try {
-                // 1. 일봉 데이터 조회 (상승 돌파 확인용)
                 const dKlines = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=1d&limit=200`).then(r => r.json());
                 const dPrices = dKlines.map(k => parseFloat(k[4]));
-                
-                // 조건 1: 최근 10일(dLookback) 이내에 120선(dMaTarget) 상승 돌파 이력
                 let dPassed = false;
                 for (let i = 0; i < cfg.dLookback; i++) {
                     const idx = dPrices.length - 1 - i;
@@ -412,33 +440,24 @@
                     const pricePrev = dPrices[idx - 1];
                     const maAt = getMA(dPrices.slice(0, idx + 1), cfg.dMaTarget);
                     const maPrev = getMA(dPrices.slice(0, idx), cfg.dMaTarget);
-                    
-                    if (pricePrev < maPrev && priceAt > maAt) {
-                        dPassed = true; break;
-                    }
+                    if (pricePrev < maPrev && priceAt > maAt) { dPassed = true; break; }
                 }
                 if (!dPassed) return false;
 
-                // 2. 30분봉 데이터 조회
                 const mKlines = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=30m&limit=150`).then(r => r.json());
                 const mPrices = mKlines.map(k => parseFloat(k[4]));
                 const current = mPrices[mPrices.length - 1];
 
-                // 조건 2: 30분봉 기준 지정된 이평선들(30, 60 등)이 하향 중일 것
                 for (let maPeriod of cfg.mMaDowns) {
                     const maNow = getMA(mPrices, maPeriod);
                     const maPrev = getMA(mPrices.slice(0, -1), maPeriod);
-                    if (maNow >= maPrev) return false; // 하향이 아니면 탈락
+                    if (maNow >= maPrev) return false;
                 }
 
-                // 조건 3: 5선, 10선과 현재가의 이격도가 작을 것 (cfg.mDisparityLimit)
                 const ma5 = getMA(mPrices, 5);
                 const ma10 = getMA(mPrices, 10);
-                const disp5 = Math.abs(current - ma5) / ma5;
-                const disp10 = Math.abs(current - ma10) / ma10;
-                if (disp5 > cfg.mDisparityLimit || disp10 > cfg.mDisparityLimit) return false;
+                if (Math.abs(current - ma5)/ma5 > cfg.mDisparityLimit || Math.abs(current - ma10)/ma10 > cfg.mDisparityLimit) return false;
 
-                // 조건 4: BB 중앙값을 최근 30개(bbLookback) 내에서 상승 돌파한 이력
                 let bbBroken = false;
                 for (let j = 0; j < cfg.bbLookback; j++) {
                     const idx = mPrices.length - 1 - j;
@@ -446,16 +465,12 @@
                     const pPrev = mPrices[idx - 1];
                     const bbAt = calculateBB(mPrices.slice(0, idx + 1));
                     const bbPrev = calculateBB(mPrices.slice(0, idx));
-                    if (pPrev < bbPrev.middle && pAt > bbAt.middle) {
-                        bbBroken = true; break;
-                    }
+                    if (pPrev < bbPrev.middle && pAt > bbAt.middle) { bbBroken = true; break; }
                 }
                 if (!bbBroken) return false;
 
-                // 조건 5: 현재가가 BB 중앙값 근처에 있을 것 (cfg.bbProxLimit)
                 const currentBB = calculateBB(mPrices);
-                const bbProx = Math.abs(current - currentBB.middle) / currentBB.middle;
-                if (bbProx > cfg.bbProxLimit) return false;
+                if (Math.abs(current - currentBB.middle)/currentBB.middle > cfg.bbProxLimit) return false;
 
                 return true;
             } catch (e) { return false; }
