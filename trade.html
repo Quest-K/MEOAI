@@ -3,161 +3,172 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>REVERSAL LONG SCANNER</title>
+    <title>PREMIUM REVERSAL LONG SCANNER</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #0b0e11; color: #eaecef; }
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@100;400;700;900&display=swap');
+        body { font-family: 'Pretendard', sans-serif; background: radial-gradient(circle at top right, #1e2329, #0b0e11); color: #eaecef; min-height: 100vh; }
+        .glass { background: rgba(30, 35, 41, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
         .binance-gold { color: #f3ba2f; }
         .bg-binance-gold { background-color: #f3ba2f; }
-        .profit-up { color: #02c076; }
-        .profit-down { color: #f84960; }
-        .scan-anim { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+        .pnl-up { color: #02c076; text-shadow: 0 0 10px rgba(2, 192, 118, 0.3); }
+        .pnl-down { color: #f84960; text-shadow: 0 0 10px rgba(248, 73, 96, 0.3); }
+        .scan-pulse { animation: scan-line 2s linear infinite; }
+        @keyframes scan-line { 0% { opacity: 0.5; transform: scale(0.98); } 50% { opacity: 1; transform: scale(1); } 100% { opacity: 0.5; transform: scale(0.98); } }
+        .pnl-highlight { font-size: 1.25rem; font-weight: 900; }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+        .card-hover:hover { border-color: #f3ba2f66; transform: translateY(-2px); transition: all 0.3s ease; }
     </style>
 </head>
-<body class="overflow-x-hidden">
-    <div class="max-w-[1400px] mx-auto p-4 lg:p-8">
-        <!-- HEADER -->
-        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-            <div>
-                <h1 class="text-3xl font-extrabold tracking-tighter flex items-center gap-2">
-                    <span class="binance-gold">REVERSAL</span> SCANNER <span class="text-[10px] bg-white/10 px-2 py-0.5 rounded text-white font-normal align-middle">PRO v2.0</span>
-                </h1>
-                <p class="text-slate-500 text-xs mt-1 font-medium uppercase tracking-widest">하락 후 횡보 → 상승 전환 포착 (Target: 30m~6h)</p>
+<body class="p-4 md:p-8">
+    <div class="max-w-[1600px] mx-auto">
+        <!-- TOP NAV -->
+        <nav class="flex justify-between items-center mb-10">
+            <div class="flex items-center gap-4">
+                <div class="bg-binance-gold p-2 rounded-xl">
+                    <i data-lucide="trending-up" class="text-black w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-black tracking-tighter">REVERSAL <span class="binance-gold uppercase">Master</span></h1>
+                    <div class="flex items-center gap-2 text-[10px] text-slate-500 font-bold tracking-widest uppercase">
+                        <span class="flex h-1.5 w-1.5 rounded-full bg-green-500 animate-ping"></span>
+                        Real-time Market Analytics
+                    </div>
+                </div>
             </div>
             
-            <div class="flex items-center gap-3">
-                <div id="auto-scan-timer-display" class="hidden text-[11px] font-mono font-bold bg-white/5 px-3 py-2 rounded-lg border border-white/10 text-slate-400">
-                    NEXT SCAN: 00:00
+            <div class="flex items-center gap-4">
+                <div id="sync-badge" class="glass px-4 py-2 rounded-full flex items-center gap-3">
+                    <span class="text-[11px] font-bold text-slate-400">AUTO SYNC</span>
+                    <div class="w-24 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                        <div id="sync-progress" class="h-full bg-binance-gold transition-all duration-1000" style="width: 100%"></div>
+                    </div>
+                    <span id="sync-timer" class="text-[11px] font-mono font-bold binance-gold">10s</span>
                 </div>
-                <button onclick="toggleAPISection()" class="p-2 hover:bg-white/5 rounded-full transition-colors"><i data-lucide="settings" class="w-5 h-5 text-slate-400"></i></button>
+                <button onclick="toggleAPISection()" class="glass p-2.5 rounded-xl hover:bg-white/5 transition-all">
+                    <i data-lucide="settings-2" class="w-5 h-5 text-slate-400"></i>
+                </button>
+            </div>
+        </nav>
+
+        <!-- DASHBOARD STATS -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
+            <div class="glass p-6 rounded-3xl relative overflow-hidden group">
+                <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><i data-lucide="wallet" class="w-12 h-12"></i></div>
+                <p class="text-slate-500 text-xs font-bold mb-2 uppercase">Total Wallet Balance</p>
+                <h2 class="text-2xl font-black font-mono tracking-tighter"><span id="total-balance">0.00</span> <span class="text-xs text-slate-500">USDT</span></h2>
+            </div>
+            <div class="glass p-6 rounded-3xl border-l-4 border-l-emerald-500/50">
+                <p class="text-slate-500 text-xs font-bold mb-2 uppercase">Current Total PNL</p>
+                <h2 id="total-pnl" class="text-3xl font-black font-mono tracking-tighter pnl-up">0.00</h2>
+                <p id="total-roe" class="text-[10px] font-bold text-slate-400 mt-1 italic">ROE 0.00%</p>
+            </div>
+            <div class="glass p-6 rounded-3xl">
+                <p class="text-slate-500 text-xs font-bold mb-2 uppercase">Active Positions</p>
+                <div class="flex items-end gap-2">
+                    <h2 id="active-positions" class="text-3xl font-black font-mono tracking-tighter">0</h2>
+                    <span class="text-[10px] text-slate-500 font-bold mb-1.5">OPEN TRADES</span>
+                </div>
+            </div>
+            <div class="bg-binance-gold p-6 rounded-3xl cursor-pointer hover:shadow-[0_0_30px_rgba(243,186,47,0.2)] transition-all flex justify-between items-center" onclick="manualRefresh()">
+                <div>
+                    <p class="text-black/60 text-xs font-bold mb-1 uppercase tracking-tighter">Market Pulse</p>
+                    <h2 id="last-update" class="text-black font-black text-sm uppercase">Ready to Start</h2>
+                </div>
+                <i data-lucide="refresh-cw" id="refresh-icon" class="text-black w-6 h-6"></i>
             </div>
         </div>
 
-        <!-- TOP STATS -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <div class="bg-[#1e2329] p-5 rounded-2xl border border-white/5">
-                <div class="text-slate-500 text-[10px] font-bold uppercase mb-1">Total Wallet</div>
-                <div class="text-xl font-black font-mono"><span id="total-balance">0.00</span> <span class="text-xs text-slate-500">USDT</span></div>
-            </div>
-            <div class="bg-[#1e2329] p-5 rounded-2xl border border-white/5">
-                <div class="text-slate-500 text-[10px] font-bold uppercase mb-1">Unrealized PNL</div>
-                <div id="total-pnl" class="text-xl font-black font-mono">0.00</div>
-            </div>
-            <div class="bg-[#1e2329] p-5 rounded-2xl border border-white/5">
-                <div class="text-slate-500 text-[10px] font-bold uppercase mb-1">Active Positions</div>
-                <div id="active-positions" class="text-xl font-black font-mono">0</div>
-            </div>
-            <div class="bg-binance-gold p-5 rounded-2xl shadow-lg shadow-yellow-500/10 cursor-pointer hover:brightness-110 transition-all" onclick="manualRefresh()">
-                <div class="text-black/60 text-[10px] font-bold uppercase mb-1">Status</div>
-                <div id="last-update" class="text-black font-black text-xs">READY TO SYNC</div>
-            </div>
-        </div>
-
-        <!-- MAIN LAYOUT -->
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            <!-- LEFT: CONTROLS & SCAN RESULTS -->
+            <!-- LEFT: SMART SCANNER -->
             <div class="lg:col-span-4 space-y-6">
-                <!-- SCAN CONTROL -->
-                <div class="bg-[#1e2329] rounded-3xl p-6 border border-white/5 overflow-hidden relative">
-                    <div class="flex justify-between items-center mb-6">
-                        <h3 class="font-bold text-sm tracking-tight flex items-center gap-2">
-                            <i data-lucide="zap" class="w-4 h-4 binance-gold"></i>
-                            STRATEGY SCANNER
-                        </h3>
-                        <button onclick="toggleFilterSettings()" class="text-[10px] font-bold text-slate-500 hover:text-white transition-colors">CONFIG</button>
+                <div class="glass rounded-[32px] p-8 relative overflow-hidden">
+                    <div class="flex justify-between items-center mb-8">
+                        <div class="flex items-center gap-3">
+                            <div class="w-2 h-6 bg-binance-gold rounded-full"></div>
+                            <h3 class="font-black text-lg tracking-tight italic uppercase">Reversal Radar</h3>
+                        </div>
+                        <span id="scan-count" class="text-[10px] font-black px-2 py-1 bg-white/5 rounded text-slate-400">100 SYMBOLS</span>
                     </div>
 
-                    <div id="filter-settings" class="hidden space-y-4 mb-6 p-4 bg-black/20 rounded-xl border border-white/5">
-                        <div>
-                            <label class="text-[10px] font-bold text-slate-500 block mb-1">BB 변동성 제한 (Squeeze)</label>
-                            <input type="number" id="f-bb-width" value="0.05" step="0.01" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs font-mono">
+                    <div class="space-y-5">
+                        <div class="grid grid-cols-2 gap-4">
+                            <button id="scan-start-btn" onclick="startScanning()" class="col-span-2 py-4 bg-white hover:bg-slate-100 text-black rounded-2xl font-black text-xs tracking-widest transition-all transform active:scale-95 shadow-xl">
+                                즉시 스캐닝 실행
+                            </button>
                         </div>
-                        <div>
-                            <label class="text-[10px] font-bold text-slate-500 block mb-1">단기 이평선 (Fast/Slow)</label>
-                            <div class="grid grid-cols-2 gap-2">
-                                <input type="number" id="f-ma-fast" value="5" class="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs font-mono">
-                                <input type="number" id="f-ma-slow" value="20" class="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs font-mono">
-                            </div>
-                        </div>
-                        <div>
-                            <label class="text-[10px] font-bold text-slate-500 block mb-1">거래량 증폭비율 (vs Avg)</label>
-                            <input type="number" id="f-vol-mult" value="1.2" step="0.1" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs font-mono">
-                        </div>
-                    </div>
-
-                    <div class="space-y-4">
-                        <button id="scan-start-btn" onclick="startAdvancedScanning()" class="w-full py-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl font-black text-xs tracking-widest transition-all">
-                            즉시 스캔 시작
-                        </button>
                         
-                        <div class="flex items-center justify-between px-2">
-                            <div class="flex items-center gap-2">
-                                <input type="checkbox" id="auto-scan-toggle" onchange="toggleAutoScanner()" class="w-4 h-4 accent-yellow-500">
-                                <label for="auto-scan-toggle" class="text-[11px] font-bold text-slate-400">자동 반복 스캔</label>
+                        <div class="flex items-center justify-between p-4 bg-black/20 rounded-2xl border border-white/5">
+                            <div class="flex items-center gap-3">
+                                <div class="relative flex items-center cursor-pointer">
+                                    <input type="checkbox" id="auto-scan-toggle" onchange="toggleAutoScanner()" class="sr-only peer">
+                                    <div class="w-10 h-5 bg-slate-700 rounded-full peer peer-checked:bg-yellow-500 transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-5"></div>
+                                </div>
+                                <label for="auto-scan-toggle" class="text-[11px] font-bold text-slate-300">AUTO REPEAT</label>
                             </div>
-                            <select id="auto-scan-interval" class="bg-transparent text-[11px] font-bold text-slate-400 outline-none">
-                                <option value="5">5분 간격</option>
-                                <option value="15">15분 간격</option>
-                                <option value="30" selected>30분 간격</option>
+                            <select id="auto-scan-interval" class="bg-transparent text-[11px] font-black text-binance-gold outline-none">
+                                <option value="5" class="bg-[#1e2329]">5 MIN</option>
+                                <option value="15" class="bg-[#1e2329]">15 MIN</option>
+                                <option value="30" selected class="bg-[#1e2329]">30 MIN</option>
                             </select>
                         </div>
                     </div>
 
-                    <!-- SCAN STATUS BOX -->
-                    <div id="scan-results-container" class="mt-8 hidden">
-                        <div class="flex items-center justify-between mb-4 px-2">
+                    <!-- RESULTS AREA -->
+                    <div id="scan-results-container" class="mt-8 hidden animate-in fade-in duration-500">
+                        <div class="flex items-center justify-between mb-4 px-1">
                             <div class="flex items-center gap-2">
-                                <div id="scan-status-icon" class="w-2 h-2 rounded-full bg-emerald-500"></div>
-                                <span id="scan-status-text" class="text-[10px] font-black tracking-tighter text-slate-400 uppercase italic">Waiting...</span>
+                                <div id="scan-dot" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                                <span id="scan-status-text" class="text-[10px] font-black tracking-widest text-slate-400 uppercase italic">Awaiting...</span>
                             </div>
-                            <button onclick="clearResults()" class="text-[9px] font-bold text-slate-600 hover:text-white uppercase">Clear</button>
                         </div>
-                        <div id="scan-results" class="grid grid-cols-2 gap-2 max-h-[400px] overflow-y-auto pr-2">
-                            <!-- Results inject here -->
+                        <div id="scan-results" class="grid grid-cols-2 gap-3 max-h-[380px] overflow-y-auto pr-2">
+                            <!-- JS Results -->
                         </div>
                     </div>
                 </div>
 
-                <!-- API CONFIG -->
-                <div id="api-section" class="hidden bg-[#1e2329] rounded-3xl p-6 border border-white/5 space-y-4">
-                    <h3 class="font-bold text-sm flex items-center gap-2"><i data-lucide="key" class="w-4 h-4"></i> API CONFIG</h3>
-                    <input type="password" id="api-key" placeholder="BINANCE API KEY" class="w-full bg-black/20 border border-white/5 rounded-xl px-4 py-3 text-xs font-mono outline-none focus:border-binance-gold/50">
-                    <input type="password" id="api-secret" placeholder="BINANCE SECRET" class="w-full bg-black/20 border border-white/5 rounded-xl px-4 py-3 text-xs font-mono outline-none focus:border-binance-gold/50">
+                <!-- API CONFIG (HIDDEN BY DEFAULT) -->
+                <div id="api-section" class="hidden glass rounded-[32px] p-8 space-y-4 border-dashed border-binance-gold/20">
+                    <h3 class="font-bold text-sm flex items-center gap-2"><i data-lucide="shield-check" class="w-4 h-4 binance-gold"></i> SECURITY CONFIG</h3>
+                    <input type="password" id="api-key" placeholder="BINANCE API KEY" class="w-full bg-black/40 border border-white/10 rounded-2xl px-5 py-4 text-xs font-mono focus:border-binance-gold transition-all outline-none">
+                    <input type="password" id="api-secret" placeholder="BINANCE SECRET" class="w-full bg-black/40 border border-white/10 rounded-2xl px-5 py-4 text-xs font-mono focus:border-binance-gold transition-all outline-none">
                 </div>
             </div>
 
-            <!-- RIGHT: DASHBOARD -->
+            <!-- RIGHT: POSITION TRACKER -->
             <div class="lg:col-span-8 space-y-6">
-                <div class="bg-[#1e2329] rounded-3xl border border-white/5 overflow-hidden">
-                    <div class="px-8 py-6 border-b border-white/5 flex justify-between items-center">
-                        <h3 class="font-bold text-sm tracking-tight flex items-center gap-2 uppercase">
-                            <i data-lucide="bar-chart-3" class="w-4 h-4 binance-gold"></i>
-                            Live Positions
-                        </h3>
+                <div class="glass rounded-[40px] overflow-hidden border-none shadow-2xl">
+                    <div class="px-10 py-8 border-b border-white/5 flex justify-between items-end">
+                        <div>
+                            <h3 class="font-black text-xl tracking-tighter uppercase italic mb-1">Live Profit Tracker</h3>
+                            <p class="text-slate-500 text-[10px] font-bold tracking-widest uppercase italic">Updated every 10 seconds</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <span class="text-[9px] font-bold text-slate-500 px-3 py-1 bg-white/5 rounded-full border border-white/5">BINANCE FUTURES</span>
+                        </div>
                     </div>
                     <div class="overflow-x-auto">
                         <table class="w-full text-left">
                             <thead>
-                                <tr class="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-white/5">
-                                    <th class="px-8 py-4">Symbol / Side</th>
-                                    <th class="px-8 py-4">Size / Value</th>
-                                    <th class="px-8 py-4">Price / Mark</th>
-                                    <th class="px-8 py-4">TP / SL</th>
-                                    <th class="px-8 py-4 text-right">ROE / PNL</th>
+                                <tr class="text-[10px] font-bold text-slate-500 uppercase tracking-widest border-b border-white/5">
+                                    <th class="px-10 py-5">Pair</th>
+                                    <th class="px-10 py-5">Position Info</th>
+                                    <th class="px-10 py-5">Target / Safety</th>
+                                    <th class="px-10 py-5 text-right">Profit & Loss</th>
                                 </tr>
                             </thead>
-                            <tbody id="position-list" class="divide-y divide-white/[0.02]">
-                                <!-- Positions inject here -->
+                            <tbody id="position-list" class="divide-y divide-white/[0.03]">
                                 <tr>
-                                    <td colspan="5" class="px-8 py-20 text-center text-slate-600 font-bold uppercase tracking-widest text-xs">
-                                        연결된 데이터가 없습니다
+                                    <td colspan="4" class="px-10 py-32 text-center">
+                                        <div class="flex flex-col items-center gap-4 opacity-30">
+                                            <i data-lucide="layers" class="w-12 h-12"></i>
+                                            <span class="text-xs font-black uppercase tracking-widest">No Active Positions</span>
+                                        </div>
                                     </td>
                                 </tr>
                             </tbody>
@@ -169,11 +180,14 @@
     </div>
 
     <!-- CHART MODAL -->
-    <div id="chart-modal" class="fixed inset-0 bg-black/90 z-50 hidden backdrop-blur-sm flex items-center justify-center p-4">
-        <div class="bg-[#161a1e] w-full max-w-6xl h-[85vh] rounded-3xl overflow-hidden flex flex-col border border-white/10 shadow-2xl">
-            <div class="p-4 border-b border-white/5 flex justify-between items-center">
-                <h4 id="modal-symbol-title" class="font-black text-sm tracking-tighter italic">CHART TERMINAL</h4>
-                <button onclick="closeChart()" class="p-2 hover:bg-white/5 rounded-full"><i data-lucide="x" class="w-5 h-5 text-slate-400"></i></button>
+    <div id="chart-modal" class="fixed inset-0 bg-black/95 z-50 hidden backdrop-blur-xl flex items-center justify-center p-6">
+        <div class="bg-[#1e2329] w-full max-w-7xl h-[90vh] rounded-[48px] overflow-hidden flex flex-col border border-white/10 shadow-3xl">
+            <div class="px-8 py-6 border-b border-white/5 flex justify-between items-center">
+                <div class="flex items-center gap-4">
+                    <div class="w-2 h-6 bg-binance-gold rounded-full"></div>
+                    <h4 id="modal-symbol-title" class="font-black text-lg tracking-tighter italic uppercase">Market Terminal</h4>
+                </div>
+                <button onclick="closeChart()" class="bg-white/5 p-3 rounded-full hover:bg-white/10 transition-all"><i data-lucide="x" class="w-6 h-6 text-slate-400"></i></button>
             </div>
             <div id="tradingview-container" class="flex-grow"></div>
         </div>
@@ -183,302 +197,250 @@
         lucide.createIcons();
 
         let isScanning = false;
-        let currentUser = null;
+        let syncCountdown = 10;
         let autoScanCountdown = 0;
-        let timerInterval;
+        let mainLoop;
+        let autoScanLoop;
 
         // --- 초기화 ---
         function init() {
-            // UI 복구 등의 로직
-            startTimerLoop();
+            startMainLoop();
+            startAutoScanLoop();
         }
 
-        function startTimerLoop() {
-            if (timerInterval) clearInterval(timerInterval);
-            timerInterval = setInterval(() => {
+        // 10초 주기 메인 루프 (API 연동 정보 업데이트)
+        function startMainLoop() {
+            if (mainLoop) clearInterval(mainLoop);
+            
+            mainLoop = setInterval(async () => {
+                syncCountdown--;
+                updateSyncUI();
+
+                if (syncCountdown <= 0) {
+                    await fetchFuturesData();
+                    syncCountdown = 10;
+                }
+            }, 1000);
+        }
+
+        function updateSyncUI() {
+            const timer = document.getElementById('sync-timer');
+            const progress = document.getElementById('sync-progress');
+            timer.innerText = `${syncCountdown}s`;
+            progress.style.width = `${(syncCountdown / 10) * 100}%`;
+        }
+
+        // 스캔 주기 루프
+        function startAutoScanLoop() {
+            if (autoScanLoop) clearInterval(autoScanLoop);
+            autoScanLoop = setInterval(() => {
                 if (autoScanCountdown > 0) {
                     autoScanCountdown--;
-                    updateAutoScanDisplay();
                     if (autoScanCountdown === 0) {
-                        startAdvancedScanning();
+                        startScanning();
                         resetAutoScanTimer();
                     }
                 }
             }, 1000);
         }
 
-        // --- 스캐너 제어 ---
         function toggleAutoScanner() {
             const isEnabled = document.getElementById('auto-scan-toggle').checked;
-            const display = document.getElementById('auto-scan-timer-display');
-            if (isEnabled) {
-                display.classList.remove('hidden');
-                resetAutoScanTimer();
-            } else {
-                display.classList.add('hidden');
-                autoScanCountdown = 0;
-            }
+            if (isEnabled) resetAutoScanTimer();
+            else autoScanCountdown = 0;
         }
 
         function resetAutoScanTimer() {
-            const minutes = parseInt(document.getElementById('auto-scan-interval').value) || 30;
-            autoScanCountdown = minutes * 60;
-            updateAutoScanDisplay();
-        }
-
-        function updateAutoScanDisplay() {
-            const display = document.getElementById('auto-scan-timer-display');
-            const m = Math.floor(autoScanCountdown / 60);
-            const s = autoScanCountdown % 60;
-            display.innerText = `NEXT SCAN: ${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-        }
-
-        function toggleFilterSettings() {
-            const panel = document.getElementById('filter-settings');
-            panel.classList.toggle('hidden');
+            const min = parseInt(document.getElementById('auto-scan-interval').value) || 30;
+            autoScanCountdown = min * 60;
         }
 
         function toggleAPISection() {
-            const section = document.getElementById('api-section');
-            section.classList.toggle('hidden');
+            const el = document.getElementById('api-section');
+            el.classList.toggle('hidden');
         }
 
-        function clearResults() {
-            document.getElementById('scan-results').innerHTML = '';
-            document.getElementById('scan-status-text').innerText = "CLEARED";
+        async function manualRefresh() {
+            const icon = document.getElementById('refresh-icon');
+            icon.classList.add('animate-spin');
+            syncCountdown = 10;
+            await fetchFuturesData();
+            setTimeout(() => icon.classList.remove('animate-spin'), 1000);
         }
 
-        function manualRefresh() { 
-            fetchFuturesData(); 
-        }
-
-        // --- 바이낸스 데이터 통신 (포지션 조회) ---
+        // --- API DATA FETCHING ---
         async function fetchFuturesData() {
             const apiKey = document.getElementById('api-key').value;
             const apiSecret = document.getElementById('api-secret').value;
+            
             if (!apiKey || !apiSecret) {
-                document.getElementById('last-update').innerText = "API KEY REQUIRED";
+                document.getElementById('last-update').innerText = "SETUP API KEY";
                 return;
             }
+
             try {
                 const ts = Date.now();
                 const queryStr = `timestamp=${ts}`;
                 const signature = CryptoJS.HmacSHA256(queryStr, apiSecret).toString();
                 
-                const [accRes, ordersRes] = await Promise.all([
-                    fetch(`https://fapi.binance.com/fapi/v2/account?${queryStr}&signature=${signature}`, { headers: { 'X-MBX-APIKEY': apiKey } }),
-                    fetch(`https://fapi.binance.com/fapi/v1/openOrders?${queryStr}&signature=${signature}`, { headers: { 'X-MBX-APIKEY': apiKey } })
-                ]);
+                const response = await fetch(`https://fapi.binance.com/fapi/v2/account?${queryStr}&signature=${signature}`, {
+                    headers: { 'X-MBX-APIKEY': apiKey }
+                });
+                const data = await response.json();
 
-                const accData = await accRes.json();
-                const ordersData = await ordersRes.json();
-
-                if (accData.positions) renderDashboard(accData, ordersData);
+                if (data.positions) renderDashboard(data);
             } catch (err) {
-                console.error("Data Fetch Error:", err);
+                console.error(err);
+                document.getElementById('last-update').innerText = "SYNC FAILED";
             }
         }
 
-        function renderDashboard(data, openOrders) {
+        function renderDashboard(data) {
             document.getElementById('total-balance').innerText = parseFloat(data.totalWalletBalance || 0).toLocaleString(undefined, {minimumFractionDigits: 2});
+            
             const pnl = parseFloat(data.totalUnrealizedProfit || 0);
             const pnlEl = document.getElementById('total-pnl');
-            pnlEl.innerText = pnl.toLocaleString(undefined, {minimumFractionDigits: 2});
-            pnlEl.className = `text-xl font-black font-mono ${pnl >= 0 ? 'profit-up' : 'profit-down'}`;
+            pnlEl.innerText = (pnl >= 0 ? '+' : '') + pnl.toLocaleString(undefined, {minimumFractionDigits: 2}) + ' USDT';
+            pnlEl.className = `text-3xl font-black font-mono tracking-tighter ${pnl >= 0 ? 'pnl-up' : 'pnl-down'}`;
+            
+            const totalMargin = parseFloat(data.totalInitialMargin || 1);
+            const roe = ((pnl / totalMargin) * 100).toFixed(2);
+            document.getElementById('total-roe').innerText = `TOTAL ROE: ${roe}%`;
 
             const activePos = data.positions.filter(p => parseFloat(p.positionAmt) !== 0);
             document.getElementById('active-positions').innerText = activePos.length;
-            document.getElementById('last-update').innerText = `SYNCED: ${new Date().toLocaleTimeString()}`;
+            document.getElementById('last-update').innerText = `LIVE: ${new Date().toLocaleTimeString()}`;
 
             const list = document.getElementById('position-list');
             if (activePos.length === 0) {
-                list.innerHTML = '<tr><td colspan="5" class="px-8 py-20 text-center text-slate-600 font-bold uppercase tracking-widest text-xs">No Active Positions Found</td></tr>';
+                list.innerHTML = '<tr><td colspan="4" class="px-10 py-32 text-center opacity-30 text-xs font-black uppercase">No Active Positions</td></tr>';
                 return;
             }
 
             list.innerHTML = activePos.map(pos => {
                 const amt = parseFloat(pos.positionAmt);
                 const side = amt > 0 ? 'LONG' : 'SHORT';
-                const entryPrice = parseFloat(pos.entryPrice || 0);
-                const markPriceVal = parseFloat(pos.markPrice || 0);
-                const absAmt = Math.abs(amt);
-                const valueUsdtNum = absAmt * markPriceVal;
-                const valueUsdtStr = isNaN(valueUsdtNum) ? "0.00" : valueUsdtNum.toLocaleString(undefined, {minimumFractionDigits: 2});
-                
-                const pnlNum = parseFloat(pos.unrealizedProfit || 0);
-                const marginNum = parseFloat(pos.initialMargin || 1);
-                const roe = ((pnlNum / marginNum) * 100).toFixed(2);
-                
-                const symOrders = Array.isArray(openOrders) ? openOrders.filter(o => o.symbol === pos.symbol) : [];
-                const tpOrder = symOrders.find(o => o.type === 'TAKE_PROFIT_MARKET');
-                const slOrder = symOrders.find(o => o.type === 'STOP_MARKET');
-                
-                const tpText = tpOrder ? parseFloat(tpOrder.stopPrice).toFixed(4) : 'NONE';
-                const slText = slOrder ? parseFloat(slOrder.stopPrice).toFixed(4) : 'NONE';
+                const pnlValue = parseFloat(pos.unrealizedProfit || 0);
+                const roeValue = ((pnlValue / parseFloat(pos.initialMargin || 1)) * 100).toFixed(2);
 
-                return `<tr class="hover:bg-white/5 cursor-pointer border-b border-white/[0.02] transition-colors" onclick="openChart('${pos.symbol}')">
-                    <td class="px-8 py-6">
-                        <div class="font-bold text-white text-sm tracking-tight">${pos.symbol}</div>
-                        <div class="text-[9px] ${side==='LONG'?'text-emerald-400 bg-emerald-400/10':'text-red-400 bg-red-400/10'} font-black px-1.5 py-0.5 rounded inline-block mt-1 tracking-tighter">${side}</div>
+                return `<tr class="hover:bg-white/[0.02] cursor-pointer transition-all" onclick="openChart('${pos.symbol}')">
+                    <td class="px-10 py-8">
+                        <div class="flex flex-col">
+                            <span class="font-black text-white text-lg tracking-tighter italic uppercase">${pos.symbol}</span>
+                            <span class="text-[9px] font-black ${side==='LONG'?'bg-emerald-500/10 text-emerald-400':'bg-red-500/10 text-red-400'} px-2 py-0.5 rounded mt-1 self-start">${side}</span>
+                        </div>
                     </td>
-                    <td class="px-8 py-6">
-                        <div class="text-slate-200 font-mono text-sm">${absAmt} <span class="text-[9px] text-slate-500 font-bold uppercase">Qty</span></div>
-                        <div class="text-binance-gold font-bold font-mono text-[13px]">${valueUsdtStr} <span class="text-[9px] font-bold text-slate-500 uppercase">USDT</span></div>
+                    <td class="px-10 py-8">
+                        <div class="text-[10px] text-slate-500 font-bold mb-1 uppercase tracking-tighter">Size: ${Math.abs(amt)} Qty</div>
+                        <div class="text-slate-300 font-mono text-sm">Entry: ${parseFloat(pos.entryPrice).toFixed(4)}</div>
                     </td>
-                    <td class="px-8 py-6">
-                        <div class="text-slate-500 text-[10px] font-mono mb-1 uppercase">Entry: ${entryPrice.toFixed(4)}</div>
-                        <div class="text-white font-mono font-bold">MARK: ${markPriceVal.toFixed(4)}</div>
+                    <td class="px-10 py-8">
+                        <div class="text-[10px] text-slate-500 font-bold mb-1 uppercase tracking-tighter">Current Price</div>
+                        <div class="text-white font-mono font-black">${parseFloat(pos.markPrice).toFixed(4)}</div>
                     </td>
-                    <td class="px-8 py-6">
-                        <div class="text-emerald-500 font-mono text-[10px] font-bold">TP: ${tpText}</div>
-                        <div class="text-red-500 font-mono text-[10px] font-bold mt-1">SL: ${slText}</div>
-                    </td>
-                    <td class="px-8 py-6 text-right">
-                        <div class="font-black font-mono text-base ${pnlNum>=0?'profit-up':'profit-down'}">${roe}%</div>
-                        <div class="text-[10px] font-mono font-bold ${pnlNum>=0?'profit-up':'profit-down'} opacity-80">${pnlNum.toFixed(2)} USDT</div>
+                    <td class="px-10 py-8 text-right">
+                        <div class="pnl-highlight ${pnlValue >= 0 ? 'pnl-up' : 'pnl-down'}">${(pnlValue >= 0 ? '+' : '') + pnlValue.toFixed(2)} <span class="text-xs">USDT</span></div>
+                        <div class="text-[10px] font-bold ${pnlValue >= 0 ? 'text-emerald-500/60' : 'text-red-500/60'} uppercase mt-1">ROE ${roeValue}%</div>
                     </td>
                 </tr>`;
             }).join('');
         }
 
-        // --- 분석 엔진 (수정된 Reversal 전략) ---
-        const getMA = (prices, period) => {
-            if (prices.length < period) return null;
-            return prices.slice(-period).reduce((a, b) => a + b, 0) / period;
-        };
-
-        const calculateBB = (prices, period = 20, stdDev = 2) => {
-            if (prices.length < period) return null;
-            const slice = prices.slice(-period);
-            const mean = slice.reduce((a, b) => a + b, 0) / period;
-            const variance = slice.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / period;
-            const sd = Math.sqrt(variance);
-            return { middle: mean, upper: mean + (sd * stdDev), lower: mean - (sd * stdDev) };
-        };
-
-        // RSI 계산 함수 추가
-        const calculateRSI = (prices, period = 14) => {
-            if (prices.length <= period) return 50;
-            let gains = 0, losses = 0;
-            for (let i = prices.length - period; i < prices.length; i++) {
-                const diff = prices[i] - prices[i - 1];
-                if (diff >= 0) gains += diff;
-                else losses -= diff;
-            }
-            if (losses === 0) return 100;
-            const rs = (gains / period) / (losses / period);
-            return 100 - (100 / (1 + rs));
-        };
-
-        async function startAdvancedScanning() {
+        // --- REVERSAL SCAN ENGINE ---
+        async function startScanning() {
             if (isScanning) return;
             isScanning = true;
+            
             const btn = document.getElementById('scan-start-btn');
             const resultsBox = document.getElementById('scan-results');
             const statusText = document.getElementById('scan-status-text');
-            const statusIcon = document.getElementById('scan-status-icon');
+            const container = document.getElementById('scan-results-container');
 
-            btn.innerText = "SCANNING...";
-            btn.classList.add('opacity-50', 'pointer-events-none');
-            document.getElementById('scan-results-container').classList.remove('hidden');
-            statusIcon.classList.add('scan-anim');
-
-            // 설정값 읽기
-            const bbWidthLimit = parseFloat(document.getElementById('f-bb-width').value);
-            const maFastPeriod = parseInt(document.getElementById('f-ma-fast').value);
-            const maSlowPeriod = parseInt(document.getElementById('f-ma-slow').value);
-            const volMult = parseFloat(document.getElementById('f-vol-mult').value);
+            btn.innerText = "RADAR SCANNING...";
+            btn.classList.add('opacity-40', 'pointer-events-none');
+            container.classList.remove('hidden');
 
             try {
-                // 24시간 티커 데이터로 유동성 상위 100개 필터링
                 const tickerData = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr').then(r => r.json());
                 const symbols = tickerData.filter(t => t.symbol.endsWith('USDT'))
                     .sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume))
                     .slice(0, 100).map(t => t.symbol);
                 
                 let found = 0;
+                resultsBox.innerHTML = '';
+
                 for (let symbol of symbols) {
                     if (!isScanning) break;
-                    statusText.innerText = `CHECKING: ${symbol}`;
+                    statusText.innerText = `SCANNING: ${symbol}`;
                     
-                    const passed = await analyzeReversal(symbol, { bbWidthLimit, maFastPeriod, maSlowPeriod, volMult });
-                    
-                    if (passed) { 
-                        renderScanResult(symbol); 
-                        found++; 
+                    const score = await analyzeSymbol(symbol);
+                    if (score) {
+                        renderScanResult(symbol, score);
+                        found++;
                     }
-                    // Rate Limit 방지를 위한 미세 지연
-                    await new Promise(r => setTimeout(r, 50));
+                    await new Promise(r => setTimeout(r, 40));
                 }
-                statusText.innerText = `DONE: ${found} REVERSAL ASSETS`;
-            } catch (e) { 
-                statusText.innerText = "SCANNER ERROR"; 
-                console.error(e);
-            } finally { 
-                isScanning = false; 
-                statusIcon.classList.remove('scan-anim');
-                btn.innerText = "즉시 스캔";
-                btn.classList.remove('opacity-50', 'pointer-events-none');
+                statusText.innerText = `RADAR FOUND: ${found} OPPORTUNITIES`;
+            } catch (e) {
+                statusText.innerText = "SCANNER ERROR";
+            } finally {
+                isScanning = false;
+                btn.innerText = "즉시 스캐닝 실행";
+                btn.classList.remove('opacity-40', 'pointer-events-none');
             }
         }
 
-        async function analyzeReversal(symbol, cfg) {
+        async function analyzeSymbol(symbol) {
             try {
-                // 30분봉 데이터 100개 요청
-                const klines = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=30m&limit=100`).then(r => r.json());
+                const klines = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=30m&limit=50`).then(r => r.json());
                 const prices = klines.map(k => parseFloat(k[4]));
-                const volumes = klines.map(k => parseFloat(k[5]));
                 const currentPrice = prices[prices.length - 1];
 
-                // 1. 변동성 수축 확인 (Squeeze)
-                // 볼린저 밴드 폭이 좁아야 함 = 횡보 중
-                const bb = calculateBB(prices, 20);
-                const bandWidth = (bb.upper - bb.lower) / bb.middle;
-                if (bandWidth > cfg.bbWidthLimit) return false;
+                // 1. BB Squeeze (횡보 감지)
+                const slice = prices.slice(-20);
+                const avg = slice.reduce((a,b)=>a+b,0)/20;
+                const sd = Math.sqrt(slice.reduce((a,b)=>a+Math.pow(b-avg,2),0)/20);
+                const bw = (sd * 4) / avg;
+                if (bw > 0.04) return null; // 4% 이상의 변동성은 횡보가 아님
 
-                // 2. 단기 상승 전환 신호 (이평선 정배열 또는 교차)
-                const fastMA = getMA(prices, cfg.maFastPeriod);
-                const slowMA = getMA(prices, cfg.maSlowPeriod);
-                const prevFastMA = getMA(prices.slice(0, -1), cfg.maFastPeriod);
-                const prevSlowMA = getMA(prices.slice(0, -1), cfg.maSlowPeriod);
+                // 2. MA 반전 (5선 > 20선)
+                const ma5 = prices.slice(-5).reduce((a,b)=>a+b,0)/5;
+                const ma20 = prices.slice(-20).reduce((a,b)=>a+b,0)/20;
+                if (currentPrice < ma20 || ma5 < ma20) return null;
 
-                // 현재가가 20선(BB중단) 위에 있거나 5선이 20선을 방금 상향 돌파했는지 확인
-                const isCrossed = prevFastMA <= prevSlowMA && fastMA > slowMA;
-                const isSupported = currentPrice > slowMA && fastMA > slowMA;
-                if (!isCrossed && !isSupported) return false;
+                // 3. RSI 바닥 반등
+                let gains = 0, losses = 0;
+                for (let i = prices.length - 14; i < prices.length; i++) {
+                    const diff = prices[i] - prices[i - 1];
+                    if (diff >= 0) gains += diff; else losses -= diff;
+                }
+                const rsi = 100 - (100 / (1 + (gains / losses)));
+                if (rsi < 40 || rsi > 60) return null;
 
-                // 3. RSI 과매도 탈출 (강력한 반전 신호 보정)
-                const rsi = calculateRSI(prices);
-                // RSI가 너무 높으면(추격매수) 제외, 너무 낮으면 아직 하락 중이므로 35~60 사이 선호
-                if (rsi < 35 || rsi > 65) return false;
-
-                // 4. 거래량 실린 돌파 확인
-                const avgVol = volumes.slice(-10, -1).reduce((a,b)=>a+b, 0) / 9;
-                const lastVol = volumes[volumes.length - 1];
-                if (lastVol < avgVol * cfg.volMult) return false;
-
-                return true;
-            } catch (e) { return false; }
+                return { rsi: rsi.toFixed(0), bw: (bw*100).toFixed(1) };
+            } catch (e) { return null; }
         }
 
-        function renderScanResult(symbol) {
+        function renderScanResult(symbol, data) {
             const resultsBox = document.getElementById('scan-results');
-            // 중복 방지
-            if ([...resultsBox.children].some(el => el.innerText.includes(symbol))) return;
-
             resultsBox.insertAdjacentHTML('afterbegin', `
-                <div onclick="openChart('${symbol}')" class="group px-3 py-4 rounded-2xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.08] hover:border-binance-gold/50 cursor-pointer transition-all flex flex-col items-center gap-1">
-                    <span class="text-xs font-black text-white group-hover:binance-gold">${symbol}</span>
-                    <span class="text-[9px] font-bold text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded tracking-tighter uppercase">Signal Det.</span>
+                <div onclick="openChart('${symbol}')" class="glass p-4 rounded-2xl card-hover cursor-pointer group">
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="font-black text-sm group-hover:binance-gold transition-colors italic tracking-tighter">${symbol}</span>
+                        <span class="text-[8px] font-black bg-emerald-500/10 text-emerald-500 px-1.5 py-0.5 rounded uppercase">Reversal</span>
+                    </div>
+                    <div class="flex gap-2">
+                        <div class="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">RSI: <span class="text-slate-300 font-mono">${data.rsi}</span></div>
+                        <div class="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">SQZ: <span class="text-slate-300 font-mono">${data.bw}%</span></div>
+                    </div>
                 </div>
             `);
         }
 
-        // --- 차트 기능 ---
+        // --- CHART CONTROL ---
         function openChart(symbol) {
             document.getElementById('chart-modal').classList.remove('hidden');
-            document.getElementById('modal-symbol-title').innerText = `${symbol} TERMINAL`;
-            document.getElementById('tradingview-container').innerHTML = `<div id="tv_widget" class="w-full h-full"></div>`;
+            document.getElementById('modal-symbol-title').innerText = `${symbol} Real-time Chart`;
             
             new TradingView.widget({
                 "autosize": true,
@@ -492,7 +454,7 @@
                 "enable_publishing": false,
                 "hide_side_toolbar": false,
                 "allow_symbol_change": true,
-                "container_id": "tv_widget",
+                "container_id": "tradingview-container",
                 "studies": [
                     "MASimple@tv-basicstudies",
                     "BollingerBands@tv-basicstudies",
@@ -501,7 +463,7 @@
             });
         }
 
-        function closeChart() { 
+        function closeChart() {
             document.getElementById('chart-modal').classList.add('hidden');
             document.getElementById('tradingview-container').innerHTML = '';
         }
