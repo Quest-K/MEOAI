@@ -1,0 +1,320 @@
+react
+import React, { useState, useEffect, useCallback } from 'react';
+import { createClient } from '@supabase/supabase-js';
+import { TrendingUp, Shield, Activity, Clock, Settings, Play, StopCircle, RefreshCw, ExternalLink } from 'lucide-react';
+
+// --- CONFIGURATION ---
+const SUPABASE_URL = "https://mgidrwfgcdcxgosotysg.supabase.co";
+const SUPABASE_KEY = "sb_publishable_FQt1zyzqKOI3LUSZ8DYNAQ_b9fOqhTx";
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const API_BASE = "https://fapi.binance.com";
+
+export default function App() {
+  const [totalSeed, setTotalSeed] = useState(500);
+  const [maxSymbols, setMaxSymbols] = useState(5);
+  const [marketData, setMarketData] = useState([]);
+  const [activeTrades, setActiveTrades] = useState([]);
+  const [history, setHistory] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // 1. Supabase 데이터 불러오기
+  const fetchData = useCallback(async () => {
+    const { data: logs, error } = await supabase
+      .from('trading_logs')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (!error && logs) {
+      const open = logs.filter(l => l.status === 'OPEN');
+      const closed = logs.filter(l => l.status === 'CLOSED');
+      setActiveTrades(open);
+      setHistory(closed);
+    }
+  }, []);
+
+  // 2. 바이낸스 시장 데이터 스캔
+  const scanMarket = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/fapi/v1/ticker/24hr`);
+      const tickers = await res.json();
+      
+      const candidates = tickers
+        .filter(t => t.symbol.endsWith('USDT') && parseFloat(t.priceChangePercent) >= 20)
+        .sort((a, b) => parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent))
+        .slice(0, 10);
+      
+      setMarketData(candidates);
+      setIsLoading(false);
+    } catch (err) {
+      console.error("Market scan failed", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    scanMarket();
+    const interval = setInterval(() => {
+      scanMarket();
+      fetchData();
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [fetchData, scanMarket]);
+
+  // 3. 신규 진입 실행 (v6 전략 적용)
+  const startTrade = async (symbol, currentPrice) => {
+    if (activeTrades.length >= maxSymbols) {
+      alert("최대 종목 수에 도달했습니다.");
+      return;
+    }
+
+    const seedPerSymbol = totalSeed / maxSymbols;
+    const e1 = currentPrice * 1.03;
+    const e1_usdt = seedPerSymbol * 0.05;
+    const e2 = e1 * 1.05;
+    const e2_usdt = seedPerSymbol * 0.10;
+    const e3 = e2 * 1.10;
+    const e3_usdt = seedPerSymbol * 0.20;
+
+    const { error } = await supabase.from('trading_logs').insert([{
+      symbol,
+      status: 'OPEN',
+      total_usdt_allocated: seedPerSymbol,
+      entry_1_price: e1,
+      entry_2_price: e2,
+      entry_3_price: e3,
+      entry_1_usdt: e1_usdt,
+      entry_2_usdt: e2_usdt,
+      entry_3_usdt: e3_usdt,
+      avg_price: e1, // 초기값
+    }]);
+
+    if (!error) fetchData();
+  };
+
+  // 4. 수익 실현/종료 처리
+  const closeTrade = async (id, avgPrice) => {
+    const exitPrice = avgPrice * 0.98; // 2% 수익 실현 가정
+    const profitRate = 2.0;
+    
+    const { error } = await supabase
+      .from('trading_logs')
+      .update({
+        status: 'CLOSED',
+        exit_at: new Date().toISOString(),
+        exit_price: exitPrice,
+        profit_rate: profitRate,
+        profit_amount: (totalSeed / maxSymbols) * 0.02
+      })
+      .eq('id', id);
+
+    if (!error) fetchData();
+  };
+
+  return (
+    <div className="min-h-screen bg-[#0b0e11] text-[#eaecef] p-4 md:p-8 font-sans">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-yellow-500 rounded-lg">
+                <Activity size={24} className="text-black" />
+              </div>
+              <h1 className="text-2xl font-black italic tracking-tighter uppercase">V6 Sniper Dashboard</h1>
+            </div>
+            <p className="text-[10px] text-gray-500 font-bold mt-2 tracking-[0.2em]">CONNECTED TO SUPABASE CLOUD</p>
+          </div>
+
+          <div className="flex gap-4 bg-[#1e2329] p-4 rounded-2xl border border-white/5">
+            <div className="px-4 border-r border-white/10">
+              <p className="text-[10px] text-gray-500 font-bold uppercase mb-1">Total Seed</p>
+              <input 
+                type="number" 
+                value={totalSeed} 
+                onChange={(e) => setTotalSeed(Number(e.target.value))}
+                className="bg-transparent text-lg font-black text-yellow-500 outline-none w-24"
+              />
+            </div>
+            <div className="px-4">
+              <p className="text-[10px] text-gray-500 font-bold uppercase mb-1">Max Pairs</p>
+              <input 
+                type="number" 
+                value={maxSymbols} 
+                onChange={(e) => setMaxSymbols(Number(e.target.value))}
+                className="bg-transparent text-lg font-black text-yellow-500 outline-none w-12"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Market Scanner */}
+          <div className="lg:col-span-8 space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-black text-gray-400 uppercase flex items-center gap-2">
+                <TrendingUp size={16} /> Market Opportunities
+              </h2>
+              {isLoading && <RefreshCw size={14} className="animate-spin text-yellow-500" />}
+            </div>
+            
+            <div className="bg-[#181a20] rounded-2xl border border-white/5 overflow-hidden shadow-2xl">
+              <table className="w-full text-left">
+                <thead className="bg-white/[0.02] text-[10px] text-gray-500 font-black uppercase tracking-widest">
+                  <tr>
+                    <th className="px-6 py-4">Symbol</th>
+                    <th className="px-6 py-4 text-right">Price / Change</th>
+                    <th className="px-6 py-4">V6 Ladder Plan</th>
+                    <th className="px-6 py-4 text-center">Execution</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {marketData.map((coin) => {
+                    const price = parseFloat(coin.lastPrice);
+                    const isTrading = activeTrades.some(t => t.symbol === coin.symbol);
+                    return (
+                      <tr key={coin.symbol} className="hover:bg-white/[0.01] transition-colors">
+                        <td className="px-6 py-5">
+                          <span className="text-sm font-black text-white">{coin.symbol}</span>
+                          <span className="block text-[10px] text-gray-500">Vol: {(parseFloat(coin.volume)/1000000).toFixed(1)}M</span>
+                        </td>
+                        <td className="px-6 py-5 text-right font-mono">
+                          <div className={`text-sm font-bold ${parseFloat(coin.priceChangePercent) > 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>
+                            +{parseFloat(coin.priceChangePercent).toFixed(2)}%
+                          </div>
+                          <div className="text-[10px] text-gray-400">$ {price.toLocaleString()}</div>
+                        </td>
+                        <td className="px-6 py-5">
+                          <div className="flex gap-2 text-[10px] font-mono">
+                            <span className="bg-red-500/10 text-red-400 px-2 py-1 rounded border border-red-500/20">
+                              E1: {(price * 1.03).toFixed(price < 1 ? 4 : 2)}
+                            </span>
+                            <span className="bg-white/5 text-gray-500 px-2 py-1 rounded">
+                              E2: {(price * 1.03 * 1.05).toFixed(price < 1 ? 4 : 2)}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-5 text-center">
+                          {isTrading ? (
+                            <span className="text-[10px] font-black text-yellow-500 px-3 py-1 bg-yellow-500/10 rounded-full">TRADING</span>
+                          ) : (
+                            <button 
+                              onClick={() => startTrade(coin.symbol, price)}
+                              className="bg-white hover:bg-yellow-500 text-black px-4 py-2 rounded-xl text-[10px] font-black transition-all flex items-center gap-2 mx-auto shadow-lg"
+                            >
+                              <Play size={10} fill="currentColor" /> SNIPE
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* History Table */}
+            <div className="mt-12 space-y-6">
+              <h2 className="text-sm font-black text-gray-400 uppercase flex items-center gap-2">
+                <Clock size={16} /> Closed Trades (Supabase Logs)
+              </h2>
+              <div className="bg-[#181a20] rounded-2xl border border-white/5 overflow-hidden">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="bg-white/5 text-[9px] text-gray-500 font-bold uppercase border-b border-white/5">
+                      <th className="px-6 py-4">Symbol</th>
+                      <th className="px-6 py-4">Allocated (USDT)</th>
+                      <th className="px-6 py-4">Avg / Exit</th>
+                      <th className="px-6 py-4 text-right">Profit (%)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {history.map(log => (
+                      <tr key={log.id} className="text-gray-400">
+                        <td className="px-6 py-4">
+                          <b className="text-white">{log.symbol}</b>
+                          <div className="text-[9px] opacity-50">{new Date(log.exit_at).toLocaleString()}</div>
+                        </td>
+                        <td className="px-6 py-4 font-mono">$ {parseFloat(log.total_usdt_allocated).toFixed(1)}</td>
+                        <td className="px-6 py-4 font-mono">
+                          <span className="text-red-400">{parseFloat(log.avg_price).toFixed(3)}</span> → <span className="text-green-400">{parseFloat(log.exit_price).toFixed(3)}</span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="font-black text-green-500">+{log.profit_rate}%</div>
+                          <div className="text-[9px] font-bold text-gray-600">$ {log.profit_amount?.toFixed(2)}</div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          {/* Active Positions */}
+          <div className="lg:col-span-4 space-y-6">
+            <h2 className="text-sm font-black text-gray-400 uppercase flex items-center gap-2">
+              <Shield size={16} /> Active Positions ({activeTrades.length}/{maxSymbols})
+            </h2>
+            <div className="space-y-4">
+              {activeTrades.length === 0 && (
+                <div className="p-12 text-center bg-[#181a20] rounded-2xl border border-dashed border-white/10 text-gray-600 italic text-sm">
+                  No active trades. Scanning...
+                </div>
+              )}
+              {activeTrades.map((t) => (
+                <div key={t.id} className="bg-[#181a20] rounded-2xl border-l-4 border-l-yellow-500 border border-white/5 p-6 shadow-xl group">
+                  <div className="flex justify-between items-start mb-6">
+                    <div>
+                      <h3 className="text-lg font-black text-white">{t.symbol}</h3>
+                      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">{new Date(t.entry_at).toLocaleTimeString()}</p>
+                    </div>
+                    <button 
+                      onClick={() => closeTrade(t.id, t.avg_price)}
+                      className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all"
+                    >
+                      <StopCircle size={20} />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 mb-6">
+                    <div className="bg-white/5 p-3 rounded-xl border border-white/5">
+                      <p className="text-[9px] text-gray-500 font-black uppercase mb-1 tracking-widest">Total Seed</p>
+                      <p className="font-mono text-sm font-bold text-white">$ {parseFloat(t.total_usdt_allocated).toFixed(1)}</p>
+                    </div>
+                    <div className="bg-white/5 p-3 rounded-xl border border-white/5">
+                      <p className="text-[9px] text-gray-500 font-black uppercase mb-1 tracking-widest">Avg Price</p>
+                      <p className="font-mono text-sm font-bold text-red-400">{parseFloat(t.avg_price).toFixed(4)}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    {[
+                      { l: '1st (5%)', v: t.entry_1_price, u: t.entry_1_usdt, active: true },
+                      { l: '2nd (10%)', v: t.entry_2_price, u: t.entry_2_usdt, active: false },
+                      { l: '3rd (20%)', v: t.entry_3_price, u: t.entry_3_usdt, active: false },
+                    ].map((step, idx) => (
+                      <div key={idx} className="flex justify-between items-center px-2">
+                        <span className="text-[10px] font-bold text-gray-500 italic">{step.l}</span>
+                        <div className="text-right">
+                          <span className={`text-xs font-mono font-black ${step.active ? 'text-yellow-500' : 'text-gray-700'}`}>$ {parseFloat(step.v).toFixed(4)}</span>
+                          <span className="block text-[8px] text-gray-600 font-bold">$ {parseFloat(step.u).toFixed(1)} USDT</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <div className="mt-6 pt-4 border-t border-white/5 flex justify-between items-center">
+                    <span className="text-[10px] font-black text-green-500 uppercase tracking-widest italic">Exit Goal (2%)</span>
+                    <span className="text-xs font-mono font-black text-green-500">$ {(t.avg_price * 0.98).toFixed(4)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
