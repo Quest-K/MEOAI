@@ -1,427 +1,231 @@
-react
-import React, { useState, useEffect, useCallback } from 'react';
-import { createClient } from '@supabase/supabase-js';
-import { 
-  TrendingUp, Shield, Activity, Clock, Settings, Play, 
-  StopCircle, RefreshCw, LogOut, Key, AlertCircle, TrendingDown 
-} from 'lucide-react';
+html
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>V6 Sniper Premium Dashboard</title>
+    <!-- React & Babel -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #0b0e11; color: #eaecef; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #2b3139; border-radius: 10px; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
 
-// --- CONFIGURATION ---
-// 대표님의 Supabase 프로젝트 정보입니다.
-const SUPABASE_URL = "https://mgidrwfgcdcxgosotysg.supabase.co";
-const SUPABASE_KEY = "sb_publishable_FQt1zyzqKOI3LUSZ8DYNAQ_b9fOqhTx";
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-const API_BASE = "https://fapi.binance.com";
+    <script type="text/babel">
+        const { useState, useEffect, useCallback } = React;
+        const { createClient } = supabase;
 
-/**
- * V6 Sniper Premium Dashboard
- * 핵심 기능:
- * 1. Supabase Auth: 로그인 유지 및 보안 세션 관리
- * 2. Real-time Scanner: 바이낸스 선물 시장 24시간 변동성 실시간 추적
- * 3. V6 Strategy: 급등 후 숏 포지션 분할 진입 전략(Ladder Plan) 시각화
- * 4. Cloud Logging: 모든 거래 내역 및 API 키를 Supabase 클라우드에 안전하게 저장
- */
-export default function App() {
-  // --- Auth State ---
-  const [user, setUser] = useState(null);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [authLoading, setAuthLoading] = useState(true);
+        // --- CONFIGURATION ---
+        const SUPABASE_URL = "https://mgidrwfgcdcxgosotysg.supabase.co";
+        const SUPABASE_KEY = "sb_publishable_FQt1zyzqKOI3LUSZ8DYNAQ_b9fOqhTx";
+        const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+        const API_BASE = "https://fapi.binance.com";
 
-  // --- Trading State ---
-  const [totalSeed, setTotalSeed] = useState(500);
-  const [maxSymbols, setMaxSymbols] = useState(5);
-  const [marketData, setMarketData] = useState([]);
-  const [activeTrades, setActiveTrades] = useState([]);
-  const [history, setHistory] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [apiKeys, setApiKeys] = useState({ key: '', secret: '' });
+        function App() {
+            // --- States ---
+            const [user, setUser] = useState(null);
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [authLoading, setAuthLoading] = useState(true);
+            const [totalSeed, setTotalSeed] = useState(500);
+            const [maxSymbols, setMaxSymbols] = useState(5);
+            const [marketData, setMarketData] = useState([]);
+            const [activeTrades, setActiveTrades] = useState([]);
+            const [history, setHistory] = useState([]);
+            const [isLoading, setIsLoading] = useState(true);
 
-  // 1. 세션 체크 및 로그인 상태 리스너 (새로고침 시 로그인 유지의 핵심)
-  useEffect(() => {
-    const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
-      setAuthLoading(false);
-    };
-    checkUser();
+            // --- Auth Logic ---
+            useEffect(() => {
+                const checkUser = async () => {
+                    const { data: { session } } = await sb.auth.getSession();
+                    setUser(session?.user ?? null);
+                    setAuthLoading(false);
+                };
+                checkUser();
+                const { data: authListener } = sb.auth.onAuthStateChanged((_event, session) => {
+                    setUser(session?.user ?? null);
+                });
+                return () => authListener.subscription.unsubscribe();
+            }, []);
 
-    // 상태 변화 감지 (로그인/로그아웃)
-    const { data: authListener } = supabase.auth.onAuthStateChanged((_event, session) => {
-      setUser(session?.user ?? null);
-    });
+            // --- Data Fetching ---
+            const fetchData = useCallback(async () => {
+                if (!user) return;
+                const { data: logs } = await sb.from('trading_logs').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
+                if (logs) {
+                    setActiveTrades(logs.filter(l => l.status === 'OPEN'));
+                    setHistory(logs.filter(l => l.status === 'CLOSED'));
+                }
+            }, [user]);
 
-    return () => authListener.subscription.unsubscribe();
-  }, []);
+            const scanMarket = useCallback(async () => {
+                try {
+                    const res = await fetch(`${API_BASE}/fapi/v1/ticker/24hr`);
+                    const tickers = await res.json();
+                    const candidates = tickers
+                        .filter(t => t.symbol.endsWith('USDT') && parseFloat(t.priceChangePercent) >= 15)
+                        .sort((a, b) => parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent))
+                        .slice(0, 10);
+                    setMarketData(candidates);
+                    setIsLoading(false);
+                } catch (err) { console.error("Market data error", err); }
+            }, []);
 
-  // 2. 데이터 페칭 (사용자가 로그인된 상태일 때만 클라우드에서 데이터 로드)
-  const fetchData = useCallback(async () => {
-    if (!user) return;
-    
-    // 진행 중인 거래와 과거 내역 불러오기
-    const { data: logs } = await supabase
-      .from('trading_logs')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
+            useEffect(() => {
+                if (user) {
+                    fetchData();
+                    scanMarket();
+                    const interval = setInterval(() => { fetchData(); scanMarket(); }, 15000);
+                    return () => clearInterval(interval);
+                }
+            }, [user, fetchData, scanMarket]);
 
-    if (logs) {
-      setActiveTrades(logs.filter(l => l.status === 'OPEN'));
-      setHistory(logs.filter(l => l.status === 'CLOSED'));
-    }
+            const handleLogin = async (e) => {
+                e.preventDefault();
+                const { error } = await sb.auth.signInWithPassword({ email, password });
+                if (error) alert("Login Error: " + error.message);
+            };
 
-    // 저장된 API 키 불러오기
-    const { data: keys } = await supabase
-      .from('user_api_keys')
-      .select('*')
-      .eq('user_id', user.id)
-      .single();
-    
-    if (keys) setApiKeys({ key: keys.binance_key, secret: keys.binance_secret });
-  }, [user]);
+            const handleLogout = () => sb.auth.signOut();
 
-  // 3. 바이낸스 시장 데이터 스캔 (변동성 15% 이상 종목 필터링)
-  const scanMarket = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_BASE}/fapi/v1/ticker/24hr`);
-      const tickers = await res.json();
-      
-      const candidates = tickers
-        .filter(t => t.symbol.endsWith('USDT') && parseFloat(t.priceChangePercent) >= 15)
-        .sort((a, b) => parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent))
-        .slice(0, 10);
-      
-      setMarketData(candidates);
-      setIsLoading(false);
-    } catch (err) {
-      console.error("시장 데이터 연결 실패", err);
-    }
-  }, []);
+            const startTrade = async (symbol, currentPrice) => {
+                if (activeTrades.length >= maxSymbols) return alert("All slots filled.");
+                const seed = totalSeed / maxSymbols;
+                const { error } = await sb.from('trading_logs').insert([{
+                    user_id: user.id, symbol, status: 'OPEN', total_usdt_allocated: seed,
+                    entry_1_price: currentPrice * 1.03, avg_price: currentPrice, entry_at: new Date().toISOString()
+                }]);
+                if (!error) fetchData();
+            };
 
-  // 실시간 갱신 루프 (15초 주기)
-  useEffect(() => {
-    if (user) {
-      fetchData();
-      scanMarket();
-      const interval = setInterval(() => {
-        scanMarket();
-        fetchData();
-      }, 15000);
-      return () => clearInterval(interval);
-    }
-  }, [user, fetchData, scanMarket]);
+            // --- Icon Wrapper ---
+            const Icon = ({ name, size = 20, className = "" }) => {
+                useEffect(() => { lucide.createIcons(); }, []);
+                return <i data-lucide={name} style={{width: size, height: size}} className={className}></i>;
+            };
 
-  // --- 인증 핸들러 ---
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) alert("로그인 실패: " + error.message);
-  };
+            if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-[#0b0e11]"><Icon name="refresh-cw" className="animate-spin text-yellow-500" /></div>;
 
-  const handleLogout = () => supabase.auth.signOut();
-
-  // --- V6 Sniper 진입 실행 ---
-  const startTrade = async (symbol, currentPrice) => {
-    if (activeTrades.length >= maxSymbols) return alert("최대 할당 슬롯이 가득 찼습니다.");
-    
-    const seed = totalSeed / maxSymbols;
-    const { error } = await supabase.from('trading_logs').insert([{
-      user_id: user.id,
-      symbol,
-      status: 'OPEN',
-      total_usdt_allocated: seed,
-      entry_1_price: currentPrice * 1.03, // 1차 거미줄: 현재가 +3%
-      avg_price: currentPrice,
-      entry_at: new Date().toISOString()
-    }]);
-
-    if (!error) fetchData();
-    else alert("기록 저장 중 오류가 발생했습니다.");
-  };
-
-  // 로딩 화면
-  if (authLoading) return (
-    <div className="min-h-screen bg-[#0b0e11] flex items-center justify-center">
-      <RefreshCw className="animate-spin text-yellow-500" />
-    </div>
-  );
-
-  // 로그인 화면 (비인증 사용자)
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-[#0b0e11] flex items-center justify-center p-4">
-        <form onSubmit={handleLogin} className="bg-[#1e2329] p-10 rounded-[2.5rem] border border-white/5 w-full max-w-md shadow-2xl">
-          <div className="flex items-center gap-4 mb-10 justify-center">
-            <div className="p-3 bg-yellow-500 rounded-2xl shadow-lg shadow-yellow-500/20">
-              <Activity size={28} className="text-black" />
-            </div>
-            <h1 className="text-3xl font-black uppercase tracking-tighter italic text-white">V6 SNIPER</h1>
-          </div>
-          <div className="space-y-5">
-            <div>
-              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1 mb-2 block">Identity</label>
-              <input 
-                type="email" 
-                placeholder="Email Address" 
-                className="w-full bg-[#2b3139] border border-white/5 p-4 rounded-2xl outline-none focus:border-yellow-500/50 text-sm transition-all" 
-                value={email} 
-                onChange={e => setEmail(e.target.value)} 
-                required 
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1 mb-2 block">Security Code</label>
-              <input 
-                type="password" 
-                placeholder="Password" 
-                className="w-full bg-[#2b3139] border border-white/5 p-4 rounded-2xl outline-none focus:border-yellow-500/50 text-sm transition-all" 
-                value={password} 
-                onChange={e => setPassword(e.target.value)} 
-                required 
-              />
-            </div>
-            <button type="submit" className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-black py-5 rounded-2xl transition-all uppercase tracking-[0.2em] text-[11px] mt-4 shadow-xl shadow-yellow-500/10 active:scale-95">
-              Access Terminal
-            </button>
-          </div>
-          <p className="text-center text-[9px] text-gray-600 mt-8 font-bold uppercase tracking-widest">Authorized Personnel Only</p>
-        </form>
-      </div>
-    );
-  }
-
-  // 메인 대시보드 화면
-  return (
-    <div className="min-h-screen bg-[#0b0e11] text-[#eaecef] p-4 md:p-8 font-sans selection:bg-yellow-500/30">
-      <div className="max-w-7xl mx-auto">
-        {/* 상단 헤더 섹션 */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-6">
-          <div>
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-yellow-500 rounded-xl shadow-lg shadow-yellow-500/20">
-                <Activity size={24} className="text-black" />
-              </div>
-              <h1 className="text-2xl font-black italic tracking-tighter uppercase">V6 Sniper Premium</h1>
-            </div>
-            <div className="flex items-center gap-3 mt-3">
-              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-green-500/10 border border-green-500/20 rounded-full">
-                <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
-                <p className="text-[9px] text-green-500 font-black tracking-widest uppercase">System Online</p>
-              </div>
-              <p className="text-[10px] text-gray-600 font-bold uppercase tracking-tighter">{user.email}</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4">
-             {/* 트레이딩 설정 패널 */}
-             <div className="flex gap-4 bg-[#1e2329] p-3.5 rounded-2xl border border-white/5 shadow-xl">
-                <div className="px-4 border-r border-white/10">
-                  <p className="text-[9px] text-gray-500 font-black uppercase mb-1 tracking-widest">Seed (USDT)</p>
-                  <input type="number" value={totalSeed} onChange={(e) => setTotalSeed(Number(e.target.value))} className="bg-transparent text-base font-black text-yellow-500 outline-none w-20" />
+            if (!user) return (
+                <div className="min-h-screen bg-[#0b0e11] flex items-center justify-center p-4">
+                    <form onSubmit={handleLogin} className="bg-[#1e2329] p-10 rounded-[2.5rem] border border-white/5 w-full max-w-md shadow-2xl">
+                        <div className="flex items-center gap-4 mb-10 justify-center">
+                            <div className="p-3 bg-yellow-500 rounded-2xl"><Icon name="activity" size={28} className="text-black" /></div>
+                            <h1 className="text-3xl font-black uppercase tracking-tighter italic text-white">V6 SNIPER</h1>
+                        </div>
+                        <input type="email" placeholder="Email" className="w-full bg-[#2b3139] border border-white/5 p-4 rounded-2xl mb-4 outline-none focus:border-yellow-500 text-sm" value={email} onChange={e => setEmail(e.target.value)} required />
+                        <input type="password" placeholder="Password" className="w-full bg-[#2b3139] border border-white/5 p-4 rounded-2xl mb-6 outline-none focus:border-yellow-500 text-sm" value={password} onChange={e => setPassword(e.target.value)} required />
+                        <button type="submit" className="w-full bg-yellow-500 text-black font-black py-5 rounded-2xl uppercase text-[11px] tracking-[0.2em] shadow-xl hover:bg-yellow-400 active:scale-95 transition-all">Access Terminal</button>
+                    </form>
                 </div>
-                <div className="px-4">
-                  <p className="text-[9px] text-gray-500 font-black uppercase mb-1 tracking-widest">Max Bots</p>
-                  <input type="number" value={maxSymbols} onChange={(e) => setMaxSymbols(Number(e.target.value))} className="bg-transparent text-base font-black text-yellow-500 outline-none w-10" />
-                </div>
-              </div>
-              <button onClick={handleLogout} className="p-4 bg-[#1e2329] hover:bg-red-500/10 rounded-2xl transition-all text-gray-500 hover:text-red-500 border border-white/5 group shadow-xl">
-                <LogOut size={20} className="group-hover:-translate-x-0.5 transition-transform" />
-              </button>
-          </div>
-        </div>
+            );
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* 메인 스캐너 테이블 */}
-          <div className="lg:col-span-8 space-y-8">
-            <div className="bg-[#181a20] rounded-[2rem] border border-white/5 overflow-hidden shadow-2xl relative">
-              <div className="p-7 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
-                <h2 className="text-xs font-black text-gray-400 uppercase tracking-[0.2em] flex items-center gap-3">
-                  <TrendingUp size={16} className="text-yellow-500" /> Market Intelligence
-                </h2>
-                <div className="flex items-center gap-3">
-                  {isLoading && <RefreshCw size={12} className="animate-spin text-yellow-500" />}
-                  <span className="text-[10px] font-black text-gray-600 uppercase">Binance Futures v1</span>
-                </div>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead className="text-[9px] text-gray-500 font-black uppercase tracking-[0.2em] border-b border-white/5 bg-black/5">
-                    <tr>
-                      <th className="px-8 py-5">Pair</th>
-                      <th className="px-8 py-5 text-right">24h Performance</th>
-                      <th className="px-8 py-5">V6 Short Entry</th>
-                      <th className="px-8 py-5 text-center">Execution</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5">
-                    {marketData.map((coin) => {
-                      const price = parseFloat(coin.lastPrice);
-                      const isTrading = activeTrades.some(t => t.symbol === coin.symbol);
-                      const change = parseFloat(coin.priceChangePercent);
-                      return (
-                        <tr key={coin.symbol} className="hover:bg-white/[0.02] transition-colors group">
-                          <td className="px-8 py-7">
-                            <span className="text-base font-black text-white group-hover:text-yellow-500 transition-colors">{coin.symbol}</span>
-                            <span className="block text-[10px] text-gray-600 font-bold mt-1">VOL: {(parseFloat(coin.quoteVolume)/1000000).toFixed(1)}M</span>
-                          </td>
-                          <td className="px-8 py-7 text-right font-mono">
-                            <div className={`text-base font-black ${change > 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>
-                              +{change.toFixed(2)}%
-                            </div>
-                            <div className="text-[11px] text-gray-500 tracking-tighter mt-1">${price.toLocaleString()}</div>
-                          </td>
-                          <td className="px-8 py-7">
-                            <div className="flex flex-col gap-2">
-                                <div className="text-[10px] text-gray-400 font-bold uppercase tracking-tight">E1 Target: <span className="text-red-400 ml-1">${(price * 1.03).toFixed(4)}</span></div>
-                                <div className="w-40 h-1.5 bg-white/5 rounded-full overflow-hidden border border-white/5">
-                                  <div className="h-full bg-gradient-to-r from-yellow-600 to-yellow-400" style={{width: '70%'}}></div>
+            return (
+                <div className="min-h-screen bg-[#0b0e11] text-[#eaecef] p-4 md:p-8">
+                    <div className="max-w-7xl mx-auto">
+                        <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-6">
+                            <div>
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2.5 bg-yellow-500 rounded-xl"><Icon name="activity" className="text-black" /></div>
+                                    <h1 className="text-2xl font-black italic tracking-tighter uppercase">V6 Sniper Premium</h1>
                                 </div>
+                                <p className="text-[10px] text-gray-500 font-bold mt-2 uppercase">{user.email}</p>
                             </div>
-                          </td>
-                          <td className="px-8 py-7 text-center">
-                            {isTrading ? (
-                              <div className="inline-flex items-center justify-center gap-2 text-[10px] font-black text-yellow-500 bg-yellow-500/10 px-5 py-2.5 rounded-2xl border border-yellow-500/20">
-                                <Activity size={12} className="animate-pulse" /> IN POSITION
-                              </div>
-                            ) : (
-                              <button 
-                                onClick={() => startTrade(coin.symbol, price)} 
-                                className="bg-white hover:bg-yellow-500 text-black px-7 py-3 rounded-2xl text-[10px] font-black transition-all flex items-center gap-2 mx-auto shadow-xl hover:scale-105 active:scale-95"
-                              >
-                                <Play size={12} fill="currentColor" /> SNIPE SHORT
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                            <div className="flex items-center gap-4">
+                                <div className="flex gap-4 bg-[#1e2329] p-3.5 rounded-2xl border border-white/5 shadow-xl">
+                                    <div className="px-4 border-r border-white/10">
+                                        <p className="text-[9px] text-gray-500 font-black uppercase mb-1">Seed (USDT)</p>
+                                        <input type="number" value={totalSeed} onChange={e => setTotalSeed(Number(e.target.value))} className="bg-transparent font-black text-yellow-500 outline-none w-20" />
+                                    </div>
+                                    <div className="px-4">
+                                        <p className="text-[9px] text-gray-500 font-black uppercase mb-1">Bots</p>
+                                        <input type="number" value={maxSymbols} onChange={e => setMaxSymbols(Number(e.target.value))} className="bg-transparent font-black text-yellow-500 outline-none w-10" />
+                                    </div>
+                                </div>
+                                <button onClick={handleLogout} className="p-4 bg-[#1e2329] hover:bg-red-500/10 rounded-2xl text-gray-500 hover:text-red-500 border border-white/5 transition-all"><Icon name="log-out" /></button>
+                            </div>
+                        </header>
 
-            {/* 과거 거래 내역 */}
-            <div className="bg-[#181a20] rounded-[2rem] border border-white/5 overflow-hidden shadow-xl">
-                <div className="p-7 border-b border-white/5 bg-white/[0.01] flex justify-between items-center">
-                    <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-3">
-                        <Clock size={16} className="text-gray-500" /> Operational History
-                    </h2>
-                </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                        <thead>
-                            <tr className="text-[9px] text-gray-600 font-bold uppercase border-b border-white/5 bg-black/10">
-                                <th className="px-8 py-5">Symbol</th>
-                                <th className="px-8 py-5">Allocation</th>
-                                <th className="px-8 py-5">Performance</th>
-                                <th className="px-8 py-5 text-right">Profit / Loss</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/5">
-                            {history.length === 0 && (
-                              <tr>
-                                <td colSpan="4" className="p-16 text-center text-gray-700 text-[11px] uppercase font-black tracking-[0.3em] italic">No archived intelligence</td>
-                              </tr>
-                            )}
-                            {history.map(log => (
-                                <tr key={log.id} className="text-gray-400 hover:bg-white/[0.01] transition-colors">
-                                    <td className="px-8 py-6">
-                                        <b className="text-white text-sm tracking-tight">{log.symbol}</b>
-                                        <div className="text-[10px] font-mono opacity-40 mt-1">{new Date(log.exit_at).toLocaleDateString()}</div>
-                                    </td>
-                                    <td className="px-8 py-6 font-mono text-gray-300">$ {log.total_usdt_allocated}</td>
-                                    <td className="px-8 py-6 font-mono text-[11px]">
-                                        <span className="text-red-400/80">{parseFloat(log.avg_price).toFixed(3)}</span> 
-                                        <span className="mx-2 text-gray-700">→</span> 
-                                        <span className="text-green-400/80">{parseFloat(log.exit_price).toFixed(3)}</span>
-                                    </td>
-                                    <td className="px-8 py-6 text-right">
-                                        <div className="font-black text-[#0ecb81] text-sm">+{log.profit_rate}%</div>
-                                        <div className="text-[10px] text-gray-600 font-bold tracking-tighter mt-1">$ {log.profit_amount?.toFixed(2)} USDT</div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-          </div>
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                            <main className="lg:col-span-8 space-y-8">
+                                <section className="bg-[#181a20] rounded-[2rem] border border-white/5 overflow-hidden shadow-2xl">
+                                    <div className="p-7 border-b border-white/5 bg-white/[0.01] flex justify-between items-center">
+                                        <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-3"><Icon name="trending-up" className="text-yellow-500" /> Market Scanner</h2>
+                                        {isLoading && <Icon name="refresh-cw" size={14} className="animate-spin text-yellow-500" />}
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left">
+                                            <thead className="text-[9px] text-gray-500 font-black uppercase tracking-widest border-b border-white/5 bg-black/5">
+                                                <tr><th className="px-8 py-5">Pair</th><th className="px-8 py-5 text-right">24h Change</th><th className="px-8 py-5">Target</th><th className="px-8 py-5 text-center">Action</th></tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-white/5">
+                                                {marketData.map(coin => {
+                                                    const price = parseFloat(coin.lastPrice);
+                                                    const change = parseFloat(coin.priceChangePercent);
+                                                    const isTrading = activeTrades.some(t => t.symbol === coin.symbol);
+                                                    return (
+                                                        <tr key={coin.symbol} className="hover:bg-white/[0.02] transition-colors">
+                                                            <td className="px-8 py-7"><span className="text-base font-black text-white">{coin.symbol}</span></td>
+                                                            <td className="px-8 py-7 text-right font-mono">
+                                                                <div className={`font-black ${change > 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>+{change}%</div>
+                                                                <div className="text-[10px] text-gray-500">${price}</div>
+                                                            </td>
+                                                            <td className="px-8 py-7"><span className="text-[10px] text-red-400 font-bold uppercase">Short @ ${(price*1.03).toFixed(4)}</span></td>
+                                                            <td className="px-8 py-7 text-center">
+                                                                {isTrading ? <div className="text-yellow-500 font-black text-[10px] tracking-widest animate-pulse">POSITION OPEN</div> :
+                                                                <button onClick={() => startTrade(coin.symbol, price)} className="bg-white text-black px-6 py-2.5 rounded-xl text-[10px] font-black hover:bg-yellow-500 transition-all">SNIPE</button>}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </section>
+                            </main>
 
-          {/* 우측 패널: 활성화된 봇 관리 */}
-          <div className="lg:col-span-4 space-y-6">
-            <div className="flex items-center justify-between px-3">
-                <h2 className="text-sm font-black text-gray-400 uppercase tracking-widest flex items-center gap-3">
-                    <Shield size={18} className="text-yellow-500" /> Active Bots
-                </h2>
-                <div className="flex gap-2">
-                  <div className="px-2 py-1 bg-white/5 rounded-lg text-[10px] font-black text-gray-500">{activeTrades.length}/{maxSymbols}</div>
-                </div>
-            </div>
-
-            <div className="space-y-5">
-              {activeTrades.length === 0 && (
-                <div className="p-20 text-center bg-[#181a20] rounded-[2.5rem] border-2 border-dashed border-white/5">
-                  <TrendingDown size={40} className="mx-auto text-gray-800 mb-6 opacity-20" />
-                  <p className="text-[10px] text-gray-600 font-black uppercase tracking-[0.3em] leading-relaxed">No active deployments<br/>awaiting signals...</p>
-                </div>
-              )}
-              {activeTrades.map((t) => (
-                <div key={t.id} className="bg-[#181a20] rounded-[2.5rem] border-l-[8px] border-l-yellow-500 border border-white/5 p-8 shadow-2xl relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:opacity-15 transition-opacity pointer-events-none">
-                     <Activity size={100} />
-                  </div>
-                  
-                  <div className="flex justify-between items-start mb-8 relative z-10">
-                    <div>
-                      <h3 className="text-2xl font-black text-white italic tracking-tighter">{t.symbol}</h3>
-                      <p className="text-[10px] text-gray-500 font-black uppercase tracking-[0.25em] mt-1">{new Date(t.entry_at).toLocaleTimeString()}</p>
-                    </div>
-                    <button className="p-3 bg-red-500/5 text-gray-600 hover:text-red-500 hover:bg-red-500/10 rounded-2xl transition-all border border-transparent hover:border-red-500/20">
-                      <StopCircle size={24} />
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4 mb-8 relative z-10">
-                    <div className="bg-white/[0.03] p-5 rounded-3xl border border-white/5">
-                      <p className="text-[9px] text-gray-500 font-black uppercase mb-1.5 tracking-widest">Allocated</p>
-                      <p className="font-mono text-base font-black text-white">${parseFloat(t.total_usdt_allocated).toFixed(1)}</p>
-                    </div>
-                    <div className="bg-white/[0.03] p-5 rounded-3xl border border-white/5">
-                      <p className="text-[9px] text-gray-500 font-black uppercase mb-1.5 tracking-widest">Entry Avg</p>
-                      <p className="font-mono text-base font-black text-red-400">{parseFloat(t.avg_price).toFixed(4)}</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3 relative z-10">
-                    <div className="flex justify-between items-center bg-yellow-500/10 p-4 rounded-2xl border border-yellow-500/20 shadow-lg shadow-yellow-500/5">
-                        <span className="text-[10px] font-black text-yellow-500 italic tracking-widest uppercase">1st Ladder (Ready)</span>
-                        <span className="text-sm font-mono font-black text-white">${parseFloat(t.entry_1_price).toFixed(4)}</span>
-                    </div>
-                    <div className="flex justify-between items-center p-4 rounded-2xl border border-white/5 bg-white/[0.01] opacity-30">
-                        <span className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">2nd Ladder</span>
-                        <span className="text-sm font-mono font-bold text-gray-700">${(t.entry_1_price * 1.05).toFixed(4)}</span>
-                    </div>
-                  </div>
-                  
-                  <div className="mt-10 pt-6 border-t border-white/5 flex justify-between items-end relative z-10">
-                    <div>
-                        <span className="text-[9px] font-black text-green-500 uppercase tracking-[0.3em] block mb-2 italic">Target Profit (2%)</span>
-                        <span className="text-lg font-mono font-black text-green-500 tracking-tighter leading-none">${(t.avg_price * 0.98).toFixed(4)}</span>
-                    </div>
-                    <div className="text-right">
-                        <span className="text-[9px] text-gray-600 font-bold block mb-2 uppercase tracking-tighter">Bot Health</span>
-                        <div className="w-20 h-1.5 bg-white/5 rounded-full overflow-hidden border border-white/5 shadow-inner">
-                          <div className="w-2/3 h-full bg-gradient-to-r from-yellow-600 to-yellow-400 animate-pulse"></div>
+                            <aside className="lg:col-span-4 space-y-6">
+                                <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-3 ml-2"><Icon name="shield" className="text-yellow-500" /> Active Operations</h2>
+                                {activeTrades.length === 0 && <div className="p-16 text-center bg-[#181a20] rounded-[2.5rem] border border-dashed border-white/10 opacity-30 text-[10px] font-black uppercase">No active bots</div>}
+                                {activeTrades.map(t => (
+                                    <div key={t.id} className="bg-[#181a20] rounded-[2.5rem] border-l-4 border-yellow-500 p-8 shadow-2xl space-y-6 border border-white/5">
+                                        <div className="flex justify-between items-center">
+                                            <h3 className="text-xl font-black text-white italic">{t.symbol}</h3>
+                                            <Icon name="activity" size={16} className="text-yellow-500 animate-pulse" />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="bg-white/5 p-4 rounded-2xl"><p className="text-[8px] text-gray-500 uppercase mb-1">Entry</p><p className="font-black text-sm text-red-400">${parseFloat(t.avg_price).toFixed(4)}</p></div>
+                                            <div className="bg-white/5 p-4 rounded-2xl"><p className="text-[8px] text-gray-500 uppercase mb-1">Target</p><p className="font-black text-sm text-green-400">${(t.avg_price*0.98).toFixed(4)}</p></div>
+                                        </div>
+                                        <div className="pt-4 border-t border-white/5 flex justify-between items-center">
+                                            <span className="text-[10px] text-yellow-500 font-black uppercase">V6 Strategy Active</span>
+                                            <button className="text-gray-600 hover:text-red-500 transition-colors"><Icon name="stop-circle" /></button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </aside>
                         </div>
                     </div>
-                  </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+            );
+        }
 
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
