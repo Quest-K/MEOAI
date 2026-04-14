@@ -1,25 +1,26 @@
-html
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>V6 Sniper Premium Dashboard</title>
+    <title>V6 Sniper Premium Direct</title>
     <!-- React & Babel -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Supabase SDK -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #0b0e11; color: #eaecef; }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-thumb { background: #2b3139; border-radius: 10px; }
+        body { font-family: 'Inter', sans-serif; background-color: #0b0e11; color: #eaecef; overflow-x: hidden; }
+        .glass-panel { background: rgba(30, 35, 41, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #474d57; border-radius: 10px; }
+        .animate-glow { animation: glow 2s infinite alternate; }
+        @keyframes glow { from { box-shadow: 0 0 5px rgba(243, 186, 47, 0.2); } to { box-shadow: 0 0 20px rgba(243, 186, 47, 0.5); } }
     </style>
 </head>
 <body>
@@ -27,197 +28,278 @@ html
 
     <script type="text/babel">
         const { useState, useEffect, useCallback } = React;
-        const { createClient } = supabase;
-
-        // --- CONFIGURATION ---
-        const SUPABASE_URL = "https://mgidrwfgcdcxgosotysg.supabase.co";
-        const SUPABASE_KEY = "sb_publishable_FQt1zyzqKOI3LUSZ8DYNAQ_b9fOqhTx";
-        const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
         const API_BASE = "https://fapi.binance.com";
 
         function App() {
             // --- States ---
-            const [user, setUser] = useState(null);
-            const [email, setEmail] = useState('');
-            const [password, setPassword] = useState('');
-            const [authLoading, setAuthLoading] = useState(true);
-            const [totalSeed, setTotalSeed] = useState(500);
+            const [isAuthorized, setIsAuthorized] = useState(false);
+            const [keys, setKeys] = useState({ apiKey: '', secretKey: '' });
+            const [totalSeed, setTotalSeed] = useState(1000);
             const [maxSymbols, setMaxSymbols] = useState(5);
             const [marketData, setMarketData] = useState([]);
             const [activeTrades, setActiveTrades] = useState([]);
-            const [history, setHistory] = useState([]);
             const [isLoading, setIsLoading] = useState(true);
 
-            // --- Auth Logic ---
-            useEffect(() => {
-                const checkUser = async () => {
-                    const { data: { session } } = await sb.auth.getSession();
-                    setUser(session?.user ?? null);
-                    setAuthLoading(false);
-                };
-                checkUser();
-                const { data: authListener } = sb.auth.onAuthStateChanged((_event, session) => {
-                    setUser(session?.user ?? null);
-                });
-                return () => authListener.subscription.unsubscribe();
-            }, []);
+            // --- Icon Component ---
+            const Icon = ({ name, size = 18, className = "" }) => {
+                useEffect(() => { lucide.createIcons(); }, [isAuthorized]);
+                return <i data-lucide={name} style={{width: size, height: size}} className={`inline-block ${className}`}></i>;
+            };
 
-            // --- Data Fetching ---
-            const fetchData = useCallback(async () => {
-                if (!user) return;
-                const { data: logs } = await sb.from('trading_logs').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
-                if (logs) {
-                    setActiveTrades(logs.filter(l => l.status === 'OPEN'));
-                    setHistory(logs.filter(l => l.status === 'CLOSED'));
-                }
-            }, [user]);
-
+            // --- Market Scan ---
             const scanMarket = useCallback(async () => {
                 try {
                     const res = await fetch(`${API_BASE}/fapi/v1/ticker/24hr`);
                     const tickers = await res.json();
+                    if (!Array.isArray(tickers)) return;
+
                     const candidates = tickers
                         .filter(t => t.symbol.endsWith('USDT') && parseFloat(t.priceChangePercent) >= 15)
                         .sort((a, b) => parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent))
-                        .slice(0, 10);
+                        .slice(0, 12);
+                    
                     setMarketData(candidates);
                     setIsLoading(false);
-                } catch (err) { console.error("Market data error", err); }
+                } catch (err) {
+                    console.error("데이터 수신 오류", err);
+                }
             }, []);
 
             useEffect(() => {
-                if (user) {
-                    fetchData();
+                if (isAuthorized) {
                     scanMarket();
-                    const interval = setInterval(() => { fetchData(); scanMarket(); }, 15000);
+                    const interval = setInterval(scanMarket, 10000);
                     return () => clearInterval(interval);
                 }
-            }, [user, fetchData, scanMarket]);
+            }, [isAuthorized, scanMarket]);
 
-            const handleLogin = async (e) => {
+            // --- Handlers ---
+            const handleConnect = (e) => {
                 e.preventDefault();
-                const { error } = await sb.auth.signInWithPassword({ email, password });
-                if (error) alert("Login Error: " + error.message);
+                if (keys.apiKey.length > 20 && keys.secretKey.length > 20) {
+                    setIsAuthorized(true);
+                } else {
+                    alert("유효한 API 키와 시크릿 키를 입력하십시오.");
+                }
             };
 
-            const handleLogout = () => sb.auth.signOut();
-
-            const startTrade = async (symbol, currentPrice) => {
-                if (activeTrades.length >= maxSymbols) return alert("All slots filled.");
-                const seed = totalSeed / maxSymbols;
-                const { error } = await sb.from('trading_logs').insert([{
-                    user_id: user.id, symbol, status: 'OPEN', total_usdt_allocated: seed,
-                    entry_1_price: currentPrice * 1.03, avg_price: currentPrice, entry_at: new Date().toISOString()
-                }]);
-                if (!error) fetchData();
+            const startSnipe = (symbol, price) => {
+                if (activeTrades.length >= maxSymbols) return alert("최대 봇 가동 개수 초과");
+                const newTrade = {
+                    id: Date.now(),
+                    symbol,
+                    entryPrice: price,
+                    targetPrice: price * 0.98, // 2% 익절
+                    ladder1: price * 1.03,      // 3% 거미줄
+                    allocated: totalSeed / maxSymbols,
+                    time: new Date().toLocaleTimeString()
+                };
+                setActiveTrades([newTrade, ...activeTrades]);
             };
 
-            // --- Icon Wrapper ---
-            const Icon = ({ name, size = 20, className = "" }) => {
-                useEffect(() => { lucide.createIcons(); }, []);
-                return <i data-lucide={name} style={{width: size, height: size}} className={className}></i>;
+            const stopTrade = (id) => {
+                setActiveTrades(activeTrades.filter(t => t.id !== id));
             };
 
-            if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-[#0b0e11]"><Icon name="refresh-cw" className="animate-spin text-yellow-500" /></div>;
+            // --- Auth View ---
+            if (!isAuthorized) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center p-6 bg-[#05080a]">
+                        <div className="w-full max-w-md glass-panel p-10 rounded-[3rem] shadow-2xl">
+                            <div className="text-center mb-10">
+                                <div className="bg-yellow-500 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg animate-glow">
+                                    <Icon name="shield-check" size={32} className="text-black" />
+                                </div>
+                                <h1 className="text-3xl font-black italic tracking-tighter text-white">V6 SNIPER <span className="text-yellow-500 underline">PRO</span></h1>
+                                <p className="text-[10px] text-gray-500 uppercase tracking-[0.4em] mt-3 font-bold">Direct Access Protocol</p>
+                            </div>
 
-            if (!user) return (
-                <div className="min-h-screen bg-[#0b0e11] flex items-center justify-center p-4">
-                    <form onSubmit={handleLogin} className="bg-[#1e2329] p-10 rounded-[2.5rem] border border-white/5 w-full max-w-md shadow-2xl">
-                        <div className="flex items-center gap-4 mb-10 justify-center">
-                            <div className="p-3 bg-yellow-500 rounded-2xl"><Icon name="activity" size={28} className="text-black" /></div>
-                            <h1 className="text-3xl font-black uppercase tracking-tighter italic text-white">V6 SNIPER</h1>
+                            <form onSubmit={handleConnect} className="space-y-4">
+                                <div>
+                                    <label className="text-[10px] font-black text-gray-600 uppercase tracking-widest ml-1 mb-2 block">Binance API Key</label>
+                                    <input 
+                                        type="password" 
+                                        className="w-full bg-[#1e2329] border border-white/5 p-4 rounded-2xl outline-none focus:border-yellow-500/50 text-xs font-mono transition-all"
+                                        placeholder="Ex: 4lP...9zR"
+                                        value={keys.apiKey}
+                                        onChange={e => setKeys({...keys, apiKey: e.target.value})}
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black text-gray-600 uppercase tracking-widest ml-1 mb-2 block">Secret Key</label>
+                                    <input 
+                                        type="password" 
+                                        className="w-full bg-[#1e2329] border border-white/5 p-4 rounded-2xl outline-none focus:border-yellow-500/50 text-xs font-mono transition-all"
+                                        placeholder="Ex: d7a...k2q"
+                                        value={keys.secretKey}
+                                        onChange={e => setKeys({...keys, secretKey: e.target.value})}
+                                        required
+                                    />
+                                </div>
+                                <button type="submit" className="w-full bg-yellow-500 text-black font-black py-5 rounded-2xl mt-4 uppercase text-[11px] tracking-[0.2em] shadow-xl hover:brightness-110 active:scale-95 transition-all">
+                                    연결 및 터미널 가동
+                                </button>
+                            </form>
+                            <p className="text-[9px] text-center text-gray-700 mt-8 font-bold uppercase tracking-widest">Client-Side Only. No Data Stored on Server.</p>
                         </div>
-                        <input type="email" placeholder="Email" className="w-full bg-[#2b3139] border border-white/5 p-4 rounded-2xl mb-4 outline-none focus:border-yellow-500 text-sm" value={email} onChange={e => setEmail(e.target.value)} required />
-                        <input type="password" placeholder="Password" className="w-full bg-[#2b3139] border border-white/5 p-4 rounded-2xl mb-6 outline-none focus:border-yellow-500 text-sm" value={password} onChange={e => setPassword(e.target.value)} required />
-                        <button type="submit" className="w-full bg-yellow-500 text-black font-black py-5 rounded-2xl uppercase text-[11px] tracking-[0.2em] shadow-xl hover:bg-yellow-400 active:scale-95 transition-all">Access Terminal</button>
-                    </form>
-                </div>
-            );
+                    </div>
+                );
+            }
 
+            // --- Main Dashboard ---
             return (
-                <div className="min-h-screen bg-[#0b0e11] text-[#eaecef] p-4 md:p-8">
-                    <div className="max-w-7xl mx-auto">
-                        <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-6">
-                            <div>
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2.5 bg-yellow-500 rounded-xl"><Icon name="activity" className="text-black" /></div>
-                                    <h1 className="text-2xl font-black italic tracking-tighter uppercase">V6 Sniper Premium</h1>
-                                </div>
-                                <p className="text-[10px] text-gray-500 font-bold mt-2 uppercase">{user.email}</p>
+                <div className="min-h-screen p-4 md:p-10 max-w-[1600px] mx-auto">
+                    <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-12 gap-8">
+                        <div>
+                            <div className="flex items-center gap-3">
+                                <Icon name="zap" size={24} className="text-yellow-500 fill-yellow-500" />
+                                <h1 className="text-2xl font-black italic uppercase tracking-tighter">V6 Sniper Premium</h1>
+                                <span className="bg-yellow-500/10 text-yellow-500 text-[10px] font-black px-2 py-0.5 rounded border border-yellow-500/20">LIVE</span>
                             </div>
-                            <div className="flex items-center gap-4">
-                                <div className="flex gap-4 bg-[#1e2329] p-3.5 rounded-2xl border border-white/5 shadow-xl">
-                                    <div className="px-4 border-r border-white/10">
-                                        <p className="text-[9px] text-gray-500 font-black uppercase mb-1">Seed (USDT)</p>
-                                        <input type="number" value={totalSeed} onChange={e => setTotalSeed(Number(e.target.value))} className="bg-transparent font-black text-yellow-500 outline-none w-20" />
-                                    </div>
-                                    <div className="px-4">
-                                        <p className="text-[9px] text-gray-500 font-black uppercase mb-1">Bots</p>
-                                        <input type="number" value={maxSymbols} onChange={e => setMaxSymbols(Number(e.target.value))} className="bg-transparent font-black text-yellow-500 outline-none w-10" />
-                                    </div>
+                            <div className="flex items-center gap-4 mt-3">
+                                <div className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Terminal Connected
                                 </div>
-                                <button onClick={handleLogout} className="p-4 bg-[#1e2329] hover:bg-red-500/10 rounded-2xl text-gray-500 hover:text-red-500 border border-white/5 transition-all"><Icon name="log-out" /></button>
+                                <div className="text-[10px] font-mono text-gray-600">ID: {keys.apiKey.substring(0,8)}***</div>
                             </div>
-                        </header>
+                        </div>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                            <main className="lg:col-span-8 space-y-8">
-                                <section className="bg-[#181a20] rounded-[2rem] border border-white/5 overflow-hidden shadow-2xl">
-                                    <div className="p-7 border-b border-white/5 bg-white/[0.01] flex justify-between items-center">
-                                        <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-3"><Icon name="trending-up" className="text-yellow-500" /> Market Scanner</h2>
-                                        {isLoading && <Icon name="refresh-cw" size={14} className="animate-spin text-yellow-500" />}
-                                    </div>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-left">
-                                            <thead className="text-[9px] text-gray-500 font-black uppercase tracking-widest border-b border-white/5 bg-black/5">
-                                                <tr><th className="px-8 py-5">Pair</th><th className="px-8 py-5 text-right">24h Change</th><th className="px-8 py-5">Target</th><th className="px-8 py-5 text-center">Action</th></tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-white/5">
-                                                {marketData.map(coin => {
-                                                    const price = parseFloat(coin.lastPrice);
-                                                    const change = parseFloat(coin.priceChangePercent);
-                                                    const isTrading = activeTrades.some(t => t.symbol === coin.symbol);
-                                                    return (
-                                                        <tr key={coin.symbol} className="hover:bg-white/[0.02] transition-colors">
-                                                            <td className="px-8 py-7"><span className="text-base font-black text-white">{coin.symbol}</span></td>
-                                                            <td className="px-8 py-7 text-right font-mono">
-                                                                <div className={`font-black ${change > 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>+{change}%</div>
-                                                                <div className="text-[10px] text-gray-500">${price}</div>
-                                                            </td>
-                                                            <td className="px-8 py-7"><span className="text-[10px] text-red-400 font-bold uppercase">Short @ ${(price*1.03).toFixed(4)}</span></td>
-                                                            <td className="px-8 py-7 text-center">
-                                                                {isTrading ? <div className="text-yellow-500 font-black text-[10px] tracking-widest animate-pulse">POSITION OPEN</div> :
-                                                                <button onClick={() => startTrade(coin.symbol, price)} className="bg-white text-black px-6 py-2.5 rounded-xl text-[10px] font-black hover:bg-yellow-500 transition-all">SNIPE</button>}
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                })}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </section>
-                            </main>
+                        <div className="flex flex-wrap items-center gap-4">
+                            <div className="flex items-center bg-[#1e2329] rounded-2xl border border-white/5 overflow-hidden shadow-2xl">
+                                <div className="px-6 py-3 border-r border-white/5 text-center">
+                                    <p className="text-[9px] text-gray-500 font-black uppercase tracking-tighter mb-1">총 시드</p>
+                                    <input type="number" value={totalSeed} onChange={e => setTotalSeed(Number(e.target.value))} className="bg-transparent text-yellow-500 font-black outline-none w-20 text-center" />
+                                </div>
+                                <div className="px-6 py-3 text-center">
+                                    <p className="text-[9px] text-gray-500 font-black uppercase tracking-tighter mb-1">최대 봇</p>
+                                    <input type="number" value={maxSymbols} onChange={e => setMaxSymbols(Number(e.target.value))} className="bg-transparent text-yellow-500 font-black outline-none w-10 text-center" />
+                                </div>
+                            </div>
+                            <button onClick={() => window.location.reload()} className="p-4 bg-red-500/10 text-red-500 rounded-2xl border border-red-500/20 hover:bg-red-500 hover:text-white transition-all">
+                                <Icon name="power" />
+                            </button>
+                        </div>
+                    </header>
 
-                            <aside className="lg:col-span-4 space-y-6">
-                                <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-3 ml-2"><Icon name="shield" className="text-yellow-500" /> Active Operations</h2>
-                                {activeTrades.length === 0 && <div className="p-16 text-center bg-[#181a20] rounded-[2.5rem] border border-dashed border-white/10 opacity-30 text-[10px] font-black uppercase">No active bots</div>}
-                                {activeTrades.map(t => (
-                                    <div key={t.id} className="bg-[#181a20] rounded-[2.5rem] border-l-4 border-yellow-500 p-8 shadow-2xl space-y-6 border border-white/5">
-                                        <div className="flex justify-between items-center">
-                                            <h3 className="text-xl font-black text-white italic">{t.symbol}</h3>
-                                            <Icon name="activity" size={16} className="text-yellow-500 animate-pulse" />
+                    <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
+                        {/* Market Scanning Section */}
+                        <div className="xl:col-span-8 space-y-8">
+                            <div className="glass-panel rounded-[2.5rem] overflow-hidden shadow-2xl border-white/5">
+                                <div className="p-8 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
+                                    <h2 className="text-xs font-black text-gray-400 uppercase tracking-[0.2em] flex items-center gap-3">
+                                        <Icon name="radar" className="text-yellow-500" /> V6 급등 스캐너
+                                    </h2>
+                                    <div className="text-[10px] font-black text-gray-600 uppercase">Binance Futures Market</div>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left">
+                                        <thead className="bg-black/20 text-[9px] text-gray-500 font-black uppercase tracking-widest border-b border-white/5">
+                                            <tr>
+                                                <th className="px-8 py-5">심볼</th>
+                                                <th className="px-8 py-5 text-right">변동성 (%)</th>
+                                                <th className="px-8 py-5 text-right">현재가</th>
+                                                <th className="px-8 py-5 text-center">V6 액션</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-white/5">
+                                            {marketData.map((coin) => {
+                                                const price = parseFloat(coin.lastPrice);
+                                                const change = parseFloat(coin.priceChangePercent);
+                                                const isInPos = activeTrades.some(t => t.symbol === coin.symbol);
+                                                return (
+                                                    <tr key={coin.symbol} className="hover:bg-white/[0.02] transition-colors group">
+                                                        <td className="px-8 py-7">
+                                                            <div className="text-base font-black text-white group-hover:text-yellow-500 transition-colors tracking-tighter">{coin.symbol}</div>
+                                                            <div className="text-[10px] text-gray-600 mt-1 uppercase">Futures USDT-M</div>
+                                                        </td>
+                                                        <td className="px-8 py-7 text-right">
+                                                            <div className="text-lg font-black text-emerald-400">+{change.toFixed(2)}%</div>
+                                                            <div className="w-24 h-1 bg-white/5 rounded-full mt-2 ml-auto">
+                                                                <div className="h-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" style={{width: `${Math.min(change, 100)}%`}}></div>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-8 py-7 text-right font-mono text-gray-400">
+                                                            ${price.toLocaleString()}
+                                                        </td>
+                                                        <td className="px-8 py-7 text-center">
+                                                            {isInPos ? (
+                                                                <div className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 text-[10px] font-black">
+                                                                    <span className="w-1.5 h-1.5 bg-yellow-500 rounded-full animate-ping"></span> 진입완료
+                                                                </div>
+                                                            ) : (
+                                                                <button 
+                                                                    onClick={() => startSnipe(coin.symbol, price)}
+                                                                    className="px-8 py-3 bg-white hover:bg-yellow-500 text-black rounded-2xl text-[10px] font-black shadow-xl hover:scale-105 active:scale-95 transition-all uppercase tracking-widest"
+                                                                >
+                                                                    SNIPE SHORT
+                                                                </button>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Active Operations Sidebar */}
+                        <div className="xl:col-span-4 space-y-6">
+                            <div className="flex items-center justify-between px-2">
+                                <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-3">
+                                    <Icon name="cpu" className="text-yellow-500" /> 가동중인 봇
+                                </h2>
+                                <span className="text-[10px] font-black bg-white/5 px-3 py-1 rounded-full text-gray-500">{activeTrades.length} / {maxSymbols}</span>
+                            </div>
+
+                            <div className="space-y-4">
+                                {activeTrades.length === 0 && (
+                                    <div className="p-20 text-center glass-panel rounded-[3rem] border-dashed border-white/10 opacity-40">
+                                        <Icon name="inbox" size={40} className="mx-auto mb-4 text-gray-600" />
+                                        <p className="text-[10px] font-black uppercase tracking-widest leading-loose">대기 중인 신호가<br/>없습니다</p>
+                                    </div>
+                                )}
+                                {activeTrades.map(trade => (
+                                    <div key={trade.id} className="glass-panel p-8 rounded-[2.5rem] border-l-[6px] border-l-yellow-500 relative overflow-hidden group">
+                                        <div className="flex justify-between items-start mb-6">
+                                            <div>
+                                                <h3 className="text-2xl font-black italic tracking-tighter text-white">{trade.symbol}</h3>
+                                                <p className="text-[10px] text-gray-500 font-bold mt-1 uppercase tracking-tighter">{trade.time} 가동</p>
+                                            </div>
+                                            <button onClick={() => stopTrade(trade.id)} className="p-3 bg-red-500/5 text-gray-600 hover:text-red-500 hover:bg-red-500/10 rounded-2xl transition-all border border-transparent hover:border-red-400/20">
+                                                <Icon name="x-circle" size={20} />
+                                            </button>
                                         </div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="bg-white/5 p-4 rounded-2xl"><p className="text-[8px] text-gray-500 uppercase mb-1">Entry</p><p className="font-black text-sm text-red-400">${parseFloat(t.avg_price).toFixed(4)}</p></div>
-                                            <div className="bg-white/5 p-4 rounded-2xl"><p className="text-[8px] text-gray-500 uppercase mb-1">Target</p><p className="font-black text-sm text-green-400">${(t.avg_price*0.98).toFixed(4)}</p></div>
+
+                                        <div className="grid grid-cols-2 gap-3 mb-6">
+                                            <div className="bg-black/20 p-4 rounded-2xl border border-white/5">
+                                                <p className="text-[8px] text-gray-500 uppercase font-black mb-1">진입 평균</p>
+                                                <p className="font-mono text-sm font-black text-red-400">${trade.entryPrice.toFixed(4)}</p>
+                                            </div>
+                                            <div className="bg-black/20 p-4 rounded-2xl border border-white/5">
+                                                <p className="text-[8px] text-gray-500 uppercase font-black mb-1">익절 목표</p>
+                                                <p className="font-mono text-sm font-black text-emerald-400">${trade.targetPrice.toFixed(4)}</p>
+                                            </div>
                                         </div>
-                                        <div className="pt-4 border-t border-white/5 flex justify-between items-center">
-                                            <span className="text-[10px] text-yellow-500 font-black uppercase">V6 Strategy Active</span>
-                                            <button className="text-gray-600 hover:text-red-500 transition-colors"><Icon name="stop-circle" /></button>
+
+                                        <div className="bg-yellow-500/5 p-4 rounded-2xl border border-yellow-500/10 mb-6">
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-[9px] font-black text-yellow-500 uppercase italic">1차 거미줄 타겟 (3%)</span>
+                                                <span className="font-mono text-xs font-black text-white">${trade.ladder1.toFixed(4)}</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="pt-6 border-t border-white/5 flex justify-between items-end">
+                                            <div className="text-[10px] text-gray-600 uppercase font-bold tracking-tighter">할당 자산: <span className="text-white ml-1">${trade.allocated.toFixed(1)} USDT</span></div>
+                                            <div className="flex gap-1">
+                                                {[1,2,3,4,5].map(i => <div key={i} className={`w-1 h-3 rounded-full ${i <= 3 ? 'bg-yellow-500' : 'bg-white/5'}`}></div>)}
+                                            </div>
                                         </div>
                                     </div>
                                 ))}
-                            </aside>
+                            </div>
                         </div>
                     </div>
                 </div>
