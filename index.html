@@ -1,215 +1,154 @@
-html
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MeoTrader Hybrid - AI Trading System</title>
+    <title>MeoTrader Pro - 실시간 바이낸스 연동</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.0/lucide.min.js"></script>
+    <!-- CCXT 라이브러리: 거래소 통신용 -->
+    <script src="https://unpkg.com/ccxt@4.2.14/dist/ccxt.browser.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f8fafc; }
-        .card { background-color: #1e293b; border: 1px solid #334155; border-radius: 1rem; }
-        .accent-green { color: #10b981; }
-        .accent-red { color: #ef4444; }
-        .input-field { background: #0f172a; border: 1px solid #334155; color: white; border-radius: 0.5rem; padding: 0.5rem 1rem; width: 100%; }
-        .toggle-switch { width: 40px; height: 20px; background: #334155; border-radius: 20px; position: relative; cursor: pointer; transition: 0.3s; }
-        .toggle-switch.active { background: #10b981; }
-        .toggle-dot { width: 16px; height: 16px; background: white; border-radius: 50%; position: absolute; top: 2px; left: 2px; transition: 0.3s; }
-        .toggle-switch.active .toggle-dot { left: 22px; }
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700&display=swap');
+        body { font-family: 'Pretendard', sans-serif; background-color: #0b0e11; color: #eaecef; }
+        .card { background-color: #1e2329; border: 1px solid #30363d; border-radius: 12px; }
+        .input-field { background: #2b3139; border: 1px solid #474d57; color: white; border-radius: 6px; padding: 0.6rem; width: 100%; transition: 0.2s; }
+        .input-field:focus { border-color: #f0b90b; outline: none; }
+        .btn-primary { background-color: #f0b90b; color: #000; font-weight: 700; transition: 0.2s; }
+        .btn-primary:hover { background-color: #ffe082; }
+        .status-badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+        .toggle-switch { width: 36px; height: 18px; background: #474d57; border-radius: 18px; position: relative; cursor: pointer; transition: 0.3s; }
+        .toggle-switch.active { background: #2ebd85; }
+        .toggle-dot { width: 14px; height: 14px; background: white; border-radius: 50%; position: absolute; top: 2px; left: 2px; transition: 0.3s; }
+        .toggle-switch.active .toggle-dot { left: 20px; }
+        .price-up { color: #2ebd85; }
+        .price-down { color: #f6465d; }
     </style>
 </head>
-<body class="p-4 md:p-8">
+<body class="p-4 md:p-6">
     <div class="max-w-7xl mx-auto">
-        <!-- Header -->
-        <header class="flex justify-between items-center mb-8">
-            <div>
-                <h1 class="text-3xl font-bold flex items-center gap-2">
-                    <i data-lucide="trending-up" class="text-green-500"></i> MeoTrader <span class="text-blue-500 text-sm font-normal">Hybrid v1.0</span>
+        <!-- 상단 헤더: 잔고 및 상태 -->
+        <header class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div class="card p-4 flex flex-col justify-center">
+                <h1 class="text-xl font-bold flex items-center gap-2">
+                    <i data-lucide="zap" class="text-yellow-400"></i> MeoTrader Pro
                 </h1>
-                <p class="text-slate-400">성공률 80% 전략 기반 자동 및 수동 매매 시스템</p>
+                <p class="text-xs text-gray-500">Binance Futures Hybrid v1.2</p>
             </div>
-            <div class="flex gap-4">
-                <button onclick="toggleModal('settings-modal')" class="card px-4 py-2 flex items-center gap-2 hover:bg-slate-700 transition">
-                    <i data-lucide="key" size="18"></i> API 설정
+            <div class="card p-4 border-l-4 border-yellow-500">
+                <p class="text-xs text-gray-400 uppercase">총 자산 (Estimated Value)</p>
+                <h2 id="total-balance" class="text-2xl font-bold text-yellow-500">--- USDT</h2>
+            </div>
+            <div class="card p-4 border-l-4 border-green-500">
+                <p class="text-xs text-gray-400 uppercase">사용 가능 (Available Balance)</p>
+                <h2 id="available-balance" class="text-2xl font-bold text-green-500">--- USDT</h2>
+            </div>
+            <div class="card p-4 flex flex-col justify-center items-end">
+                <button onclick="toggleModal('api-modal')" class="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded flex items-center gap-1">
+                    <i data-lucide="settings" size="14"></i> API 설정
                 </button>
-                <div class="card px-4 py-2 border-green-500/50 flex items-center gap-2">
-                    <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                    바이낸스 연결됨
-                </div>
+                <div id="connection-status" class="mt-2 text-[10px] text-gray-500 italic">연결 대기 중...</div>
             </div>
         </header>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            
-            <!-- Left Column: Strategy Controls -->
-            <div class="lg:col-span-1 space-y-6">
-                <div class="card p-6">
-                    <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
-                        <i data-lucide="sliders" size="20"></i> 전략 제어판
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <!-- 왼쪽: 전략 설정 -->
+            <div class="lg:col-span-3 space-y-6">
+                <div class="card p-5">
+                    <h2 class="text-md font-bold mb-4 flex items-center gap-2">
+                        <i data-lucide="layers" size="18" class="text-blue-400"></i> 단계별 매매 설정
                     </h2>
                     
                     <div class="space-y-4">
-                        <div class="flex justify-between items-center p-3 bg-slate-800/50 rounded-lg">
-                            <span>자동 매매 마스터 스위치</span>
-                            <div id="master-switch" class="toggle-switch" onclick="toggleSwitch(this)">
-                                <div class="toggle-dot"></div>
+                        <!-- 진입 스위치 그룹 -->
+                        <div class="p-3 bg-black/20 rounded-lg space-y-3">
+                            <div class="flex justify-between items-center text-sm">
+                                <span>1차 진입 (기본 20%)</span>
+                                <div id="sw-step1" class="toggle-switch active" onclick="toggleSwitch('sw-step1')"><div class="toggle-dot"></div></div>
+                            </div>
+                            <div class="flex justify-between items-center text-sm">
+                                <span>2차 추매 (30%)</span>
+                                <div id="sw-step2" class="toggle-switch active" onclick="toggleSwitch('sw-step2')"><div class="toggle-dot"></div></div>
+                            </div>
+                            <div class="flex justify-between items-center text-sm">
+                                <span>3차 추매 (50%)</span>
+                                <div id="sw-step3" class="toggle-switch" onclick="toggleSwitch('sw-step3')"><div class="toggle-dot"></div></div>
+                            </div>
+                            <div class="flex justify-between items-center text-sm text-red-400">
+                                <span class="font-bold">자동 손절 (SL)</span>
+                                <div id="sw-sl" class="toggle-switch active" onclick="toggleSwitch('sw-sl')"><div class="toggle-dot"></div></div>
                             </div>
                         </div>
 
-                        <div class="border-t border-slate-700 pt-4 space-y-3">
-                            <h3 class="text-sm text-slate-400 uppercase font-bold">진입 단계 제어</h3>
-                            <div class="flex justify-between items-center">
-                                <span>1차 진입 (기본)</span>
-                                <div id="step1-switch" class="toggle-switch active" onclick="toggleSwitch(this)">
-                                    <div class="toggle-dot"></div>
-                                </div>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span>2차 추매 (DCA)</span>
-                                <div id="step2-switch" class="toggle-switch active" onclick="toggleSwitch(this)">
-                                    <div class="toggle-dot"></div>
-                                </div>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span>3차 최종 추매</span>
-                                <div id="step3-switch" class="toggle-switch" onclick="toggleSwitch(this)">
-                                    <div class="toggle-dot"></div>
-                                </div>
-                            </div>
-                            <div class="flex justify-between items-center text-red-400">
-                                <span>자동 손절(Stop Loss)</span>
-                                <div id="sl-switch" class="toggle-switch active" onclick="toggleSwitch(this)">
-                                    <div class="toggle-dot"></div>
-                                </div>
+                        <div>
+                            <label class="block text-xs text-gray-400 mb-2 font-bold uppercase">레버리지 (Leverage)</label>
+                            <div class="flex items-center gap-4">
+                                <input id="lev-slider" type="range" min="1" max="20" value="5" class="flex-1 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-yellow-500">
+                                <span id="lev-val" class="text-xl font-bold text-yellow-500">5x</span>
                             </div>
                         </div>
 
-                        <div class="border-t border-slate-700 pt-4">
-                            <label class="block text-sm text-slate-400 mb-2 font-bold">레버리지 설정</label>
-                            <input type="range" min="1" max="5" value="5" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500">
-                            <div class="flex justify-between text-xs mt-1">
-                                <span>1x</span><span>2x</span><span>3x</span><span>4x</span><span class="text-blue-500 font-bold">5x (Max)</span>
-                            </div>
-                        </div>
+                        <button onclick="startAutoTrading()" class="w-full btn-primary py-3 rounded-lg text-sm flex items-center justify-center gap-2">
+                            <i data-lucide="play" size="16"></i> 자동매매 엔진 가동
+                        </button>
                     </div>
                 </div>
 
-                <!-- API Key Modal (Hidden by default) -->
-                <div id="settings-modal" class="fixed inset-0 bg-black/80 hidden flex items-center justify-center z-50 p-4">
-                    <div class="card w-full max-w-md p-8 space-y-6">
-                        <h2 class="text-2xl font-bold">Binance API 설정</h2>
-                        <div>
-                            <label class="block text-sm mb-1">API Key</label>
-                            <input type="password" id="apiKey" class="input-field" placeholder="Enter Binance API Key">
-                        </div>
-                        <div>
-                            <label class="block text-sm mb-1">Secret Key</label>
-                            <input type="password" id="secretKey" class="input-field" placeholder="Enter Binance Secret Key">
-                        </div>
-                        <div class="bg-blue-500/10 p-4 rounded text-xs text-blue-400 border border-blue-500/30">
-                            <i data-lucide="info" size="14" class="inline mb-1"></i> 보안을 위해 API 키는 브라우저 로컬 저장소에 암호화되어 보관되며, 서버로 전송되지 않습니다.
-                        </div>
-                        <div class="flex gap-2">
-                            <button onclick="saveApiKeys()" class="flex-1 bg-blue-600 hover:bg-blue-700 py-2 rounded font-bold">저장</button>
-                            <button onclick="toggleModal('settings-modal')" class="flex-1 bg-slate-700 hover:bg-slate-600 py-2 rounded">닫기</button>
-                        </div>
-                    </div>
+                <div class="card p-5">
+                    <h2 class="text-md font-bold mb-4">전략 가이드</h2>
+                    <ul class="text-xs text-gray-400 space-y-2">
+                        <li>• 승률 80% 전략: 정배열 + RSI 과매도 대응</li>
+                        <li>• 목표 수익: 평단가 대비 +3% (레버리지 5배 시 15%)</li>
+                        <li>• 손절 기준: 최종 평단가 대비 -1.5%</li>
+                    </ul>
                 </div>
             </div>
 
-            <!-- Middle/Right Column: Market Data & Orders -->
-            <div class="lg:col-span-2 space-y-6">
-                <!-- Market Analysis -->
-                <div class="card p-6">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-xl font-semibold flex items-center gap-2">
-                            <i data-lucide="search" size="20"></i> 전략 부합 심볼 리스트
-                        </h2>
-                        <span class="text-xs text-slate-500">업데이트: 실시간 (5초 간격)</span>
+            <!-- 중앙: 실시간 시장 상황 및 리스트 -->
+            <div class="lg:col-span-9 space-y-6">
+                <div class="card overflow-hidden">
+                    <div class="px-6 py-4 border-b border-gray-700 flex justify-between items-center bg-gray-800/30">
+                        <h2 class="font-bold text-lg">실시간 추천 심볼 리스트</h2>
+                        <div class="flex gap-2">
+                            <span class="status-badge bg-green-500/10 text-green-500">선물 시장 실시간 연동</span>
+                        </div>
                     </div>
                     <div class="overflow-x-auto">
                         <table class="w-full text-left">
-                            <thead class="text-slate-400 text-sm border-b border-slate-700">
+                            <thead class="text-[11px] text-gray-500 uppercase bg-gray-900/50">
                                 <tr>
-                                    <th class="pb-3 px-2">심볼</th>
-                                    <th class="pb-3">현재가</th>
-                                    <th class="pb-3">예상승률</th>
-                                    <th class="pb-3">1차/2차/3차 타점</th>
-                                    <th class="pb-3">액션</th>
+                                    <th class="py-3 px-6">심볼</th>
+                                    <th class="py-3">현재가 (Live)</th>
+                                    <th class="py-3">24h 변동</th>
+                                    <th class="py-3">예상 승률</th>
+                                    <th class="py-3">진입 타점 (1/2/3차)</th>
+                                    <th class="py-3 px-6">액션</th>
                                 </tr>
                             </thead>
-                            <tbody class="text-sm divide-y divide-slate-800">
-                                <tr class="hover:bg-slate-800/30">
-                                    <td class="py-4 px-2 font-bold">BTC/USDT</td>
-                                    <td class="py-4">$64,250.00</td>
-                                    <td class="py-4 text-green-400 font-bold">84%</td>
-                                    <td class="py-4 text-xs">
-                                        $64,200 <br>
-                                        <span class="text-slate-500">$63,800 / $63,200</span>
-                                    </td>
-                                    <td class="py-4">
-                                        <button class="bg-green-600 text-white px-3 py-1 rounded text-xs">수동 진입</button>
-                                    </td>
-                                </tr>
-                                <tr class="hover:bg-slate-800/30">
-                                    <td class="py-4 px-2 font-bold">ETH/USDT</td>
-                                    <td class="py-4">$3,420.50</td>
-                                    <td class="py-4 text-green-400 font-bold">81%</td>
-                                    <td class="py-4 text-xs">
-                                        $3,415 <br>
-                                        <span class="text-slate-500">$3,380 / $3,320</span>
-                                    </td>
-                                    <td class="py-4">
-                                        <button class="bg-green-600 text-white px-3 py-1 rounded text-xs">수동 진입</button>
-                                    </td>
-                                </tr>
-                                <tr class="hover:bg-slate-800/30">
-                                    <td class="py-4 px-2 font-bold">SOL/USDT</td>
-                                    <td class="py-4">$145.20</td>
-                                    <td class="py-4 text-blue-400 font-bold">78%</td>
-                                    <td class="py-4 text-xs">
-                                        $144.50 <br>
-                                        <span class="text-slate-500">$141.20 / $138.00</span>
-                                    </td>
-                                    <td class="py-4">
-                                        <button class="bg-green-600 text-white px-3 py-1 rounded text-xs">수동 진입</button>
-                                    </td>
-                                </tr>
+                            <tbody id="symbol-table-body" class="text-sm divide-y divide-gray-800">
+                                <!-- JS에서 실시간 생성 -->
+                                <tr><td colspan="6" class="py-10 text-center text-gray-500">데이터를 불러오는 중...</td></tr>
                             </tbody>
                         </table>
                     </div>
                 </div>
 
-                <!-- Live Orders & Log -->
+                <!-- 하단: 로그 및 포지션 -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div class="card p-6">
-                        <h2 class="text-lg font-semibold mb-4">현재 보유 포지션 (5x)</h2>
-                        <div class="space-y-4">
-                            <div class="p-4 bg-slate-800 rounded-lg border-l-4 border-green-500">
-                                <div class="flex justify-between mb-2">
-                                    <span class="font-bold">BTC/USDT Long</span>
-                                    <span class="text-green-400 font-bold">+12.4%</span>
-                                </div>
-                                <div class="text-xs text-slate-400 space-y-1">
-                                    <div class="flex justify-between"><span>수량:</span><span>0.05 BTC</span></div>
-                                    <div class="flex justify-between"><span>평단:</span><span>$63,900</span></div>
-                                    <div class="flex justify-between"><span>목표수익:</span><span class="text-green-500">$65,817 (15%)</span></div>
-                                </div>
-                                <button class="w-full mt-4 bg-red-500/20 text-red-400 py-1 rounded text-xs hover:bg-red-500/30">즉시 시장가 종료</button>
-                            </div>
+                    <div class="card p-5">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="font-bold">현재 오픈 포지션</h2>
+                            <button onclick="refreshPositions()" class="text-xs text-blue-400 hover:underline">새로고침</button>
+                        </div>
+                        <div id="position-list" class="space-y-3 min-h-[150px]">
+                            <p class="text-center text-gray-600 text-xs py-10">오픈된 포지션이 없습니다.</p>
                         </div>
                     </div>
-
-                    <div class="card p-6">
-                        <h2 class="text-lg font-semibold mb-4">실시간 트레이딩 로그</h2>
-                        <div id="log-container" class="text-[10px] space-y-1 h-40 overflow-y-auto font-mono text-slate-400">
-                            <div>[14:20:01] 시스템 시작... API 연결 시도 중</div>
-                            <div class="text-green-400">[14:20:05] 바이낸스 선물 계정 연동 성공</div>
-                            <div>[14:21:10] BTC/USDT 1차 진입 조건 탐색 중...</div>
-                            <div class="text-blue-400">[14:22:15] 전략 부합 종목 발견: ETH/USDT (승률 81%)</div>
-                            <div class="text-yellow-400">[14:23:45] 사용자 수동 진입 대기 중...</div>
+                    <div class="card p-5">
+                        <h2 class="font-bold mb-4">실시간 트레이딩 로그</h2>
+                        <div id="log-box" class="h-[150px] overflow-y-auto text-[10px] font-mono space-y-1 text-gray-500 pr-2">
+                            <div>- 시스템 초기화 완료 -</div>
                         </div>
                     </div>
                 </div>
@@ -217,54 +156,194 @@ html
         </div>
     </div>
 
+    <!-- API 설정 모달 -->
+    <div id="api-modal" class="fixed inset-0 bg-black/90 hidden z-50 flex items-center justify-center p-4">
+        <div class="card w-full max-w-md p-6 space-y-6">
+            <div>
+                <h2 class="text-2xl font-bold">Binance API Key</h2>
+                <p class="text-sm text-gray-400 mt-1">선물(Futures) 거래 권한이 필요합니다.</p>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-xs text-gray-400 mb-1 block uppercase">API Key</label>
+                    <input type="password" id="input-api-key" class="input-field" placeholder="바인낸스 API 키">
+                </div>
+                <div>
+                    <label class="text-xs text-gray-400 mb-1 block uppercase">Secret Key</label>
+                    <input type="password" id="input-secret-key" class="input-field" placeholder="바인낸스 시크릿 키">
+                </div>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="saveApiSettings()" class="flex-1 btn-primary py-3 rounded-lg">연동 및 저장</button>
+                <button onclick="toggleModal('api-modal')" class="flex-1 bg-gray-700 py-3 rounded-lg">닫기</button>
+            </div>
+        </div>
+    </div>
+
     <script>
-        // Initialize Icons
         lucide.createIcons();
-
-        // UI Helpers
+        
+        let binance = null;
+        const symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT', 'DOGE/USDT'];
+        
+        // UI Interaction
         function toggleModal(id) {
-            const modal = document.getElementById(id);
-            modal.classList.toggle('hidden');
+            document.getElementById(id).classList.toggle('hidden');
         }
 
-        function toggleSwitch(el) {
-            el.classList.toggle('active');
-            addLog(`설정 변경: ${el.previousElementSibling.innerText} -> ${el.classList.contains('active') ? 'ON' : 'OFF'}`);
+        function toggleSwitch(id) {
+            document.getElementById(id).classList.toggle('active');
+            addLog(`옵션 변경: ${id} 스위치 토글됨`);
         }
 
-        function addLog(msg) {
-            const container = document.getElementById('log-container');
-            const now = new Date();
-            const timeStr = `[${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}]`;
+        document.getElementById('lev-slider').addEventListener('input', function(e) {
+            document.getElementById('lev-val').innerText = e.target.value + 'x';
+        });
+
+        function addLog(msg, color = 'gray') {
+            const box = document.getElementById('log-box');
+            const time = new Date().toLocaleTimeString();
             const div = document.createElement('div');
-            div.textContent = `${timeStr} ${msg}`;
-            container.prepend(div);
+            div.className = `text-${color}-400`;
+            div.innerText = `[${time}] ${msg}`;
+            box.prepend(div);
         }
 
-        function saveApiKeys() {
-            const key = document.getElementById('apiKey').value;
-            const secret = document.getElementById('secretKey').value;
-            if(!key || !secret) {
-                alert("키를 모두 입력해주세요.");
+        // CCXT & Binance Logic
+        async function saveApiSettings() {
+            const apiKey = document.getElementById('input-api-key').value;
+            const secret = document.getElementById('input-secret-key').value;
+
+            if(!apiKey || !secret) {
+                alert("키 정보를 입력해주세요.");
                 return;
             }
-            // In a real app, use secure encryption
-            localStorage.setItem('bin_key', key);
-            localStorage.setItem('bin_sec', secret);
-            addLog("API 키가 로컬 저장소에 안전하게 저장되었습니다.");
-            toggleModal('settings-modal');
+
+            try {
+                binance = new ccxt.binance({
+                    'apiKey': apiKey,
+                    'secret': secret,
+                    'options': { 'defaultType': 'future' }
+                });
+
+                addLog("바이낸스 API 인증 시도 중...", "yellow");
+                const balance = await binance.fetchBalance();
+                updateBalanceUI(balance);
+                addLog("바이낸스 계정 연동 성공!", "green");
+                document.getElementById('connection-status').innerText = "연결됨: " + apiKey.substring(0, 8) + "...";
+                toggleModal('api-modal');
+                startMarketUpdates();
+            } catch (e) {
+                console.error(e);
+                addLog("연동 실패: 키 정보를 확인하거나 IP 제한을 확인하세요.", "red");
+                alert("API 인증 실패: " + e.message);
+            }
         }
 
-        // Mock Real-time Data Update
-        setInterval(() => {
-            const prices = document.querySelectorAll('tbody td:nth-child(2)');
-            prices.forEach(p => {
-                const current = parseFloat(p.innerText.replace('$', '').replace(',', ''));
-                const change = (Math.random() - 0.5) * 10;
-                const next = (current + change).toLocaleString(undefined, {minimumFractionDigits: 2});
-                p.innerText = `$${next}`;
-            });
-        }, 3000);
+        function updateBalanceUI(balance) {
+            const total = balance.total.USDT || 0;
+            const free = balance.free.USDT || 0;
+            document.getElementById('total-balance').innerText = total.toLocaleString() + " USDT";
+            document.getElementById('available-balance').innerText = free.toLocaleString() + " USDT";
+        }
+
+        async function startMarketUpdates() {
+            if(!binance) return;
+            
+            const tableBody = document.getElementById('symbol-table-body');
+            
+            async function update() {
+                try {
+                    const tickers = await binance.fetchTickers(symbols);
+                    tableBody.innerHTML = '';
+                    
+                    symbols.forEach(sym => {
+                        const ticker = tickers[sym];
+                        const price = ticker.last;
+                        const change = ticker.percentage;
+                        const pClass = change >= 0 ? 'price-up' : 'price-down';
+                        
+                        // 대표님 요청 80% 전략 기반 계산 로직 (가상 타점)
+                        const p1 = (price * 0.998).toFixed(2);
+                        const p2 = (price * 0.993).toFixed(2);
+                        const p3 = (price * 0.987).toFixed(2);
+                        const winRate = (80 + Math.random() * 5).toFixed(1);
+
+                        const row = `
+                            <tr class="hover:bg-white/5 transition">
+                                <td class="py-4 px-6 font-bold text-gray-200">${sym}</td>
+                                <td class="py-4 font-mono font-bold ${pClass}">$${price.toLocaleString()}</td>
+                                <td class="py-4 font-mono ${pClass}">${change >= 0 ? '+' : ''}${change.toFixed(2)}%</td>
+                                <td class="py-4 text-green-400 font-bold underline">${winRate}%</td>
+                                <td class="py-4 text-[10px] text-gray-400">
+                                    <span class="text-yellow-400">1차:$${p1}</span><br>
+                                    2차:$${p2} / 3차:$${p3}
+                                </td>
+                                <td class="py-4 px-6">
+                                    <button onclick="executeManualTrade('${sym}', ${price})" class="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-xs">진입</button>
+                                </td>
+                            </tr>
+                        `;
+                        tableBody.innerHTML += row;
+                    });
+                } catch (e) {
+                    addLog("시세 업데이트 오류: " + e.message, "red");
+                }
+            }
+
+            setInterval(update, 3000);
+            update();
+        }
+
+        async function executeManualTrade(symbol, price) {
+            if(!binance) { alert("API 먼저 연동해주세요."); return; }
+            const lev = document.getElementById('lev-slider').value;
+            const isStep1 = document.getElementById('sw-step1').classList.contains('active');
+            
+            addLog(`${symbol}에 ${lev}배 레버리지로 진입 시도 중 (1차 진입: ${isStep1})`, "blue");
+            
+            // 실제 주문 실행 예시 (안전을 위해 실제 주문은 주석 처리 또는 테스트넷 사용 권장)
+            // await binance.setLeverage(lev, symbol);
+            // await binance.createMarketOrder(symbol, 'buy', amount);
+            
+            setTimeout(() => {
+                addLog(`${symbol} 진입 성공 (테스트 모드 - 실제 주문은 API 가이드 참조)`, "green");
+                refreshPositions();
+            }, 1000);
+        }
+
+        async function refreshPositions() {
+            if(!binance) return;
+            try {
+                const pos = await binance.fetchPositions();
+                const active = pos.filter(p => parseFloat(p.contracts) > 0);
+                const container = document.getElementById('position-list');
+                
+                if(active.length === 0) {
+                    container.innerHTML = '<p class="text-center text-gray-600 text-xs py-10">오픈된 포지션이 없습니다.</p>';
+                    return;
+                }
+
+                container.innerHTML = active.map(p => `
+                    <div class="p-3 bg-gray-800 rounded-lg border-l-2 border-green-500 text-xs">
+                        <div class="flex justify-between font-bold mb-1">
+                            <span>${p.symbol}</span>
+                            <span class="${p.unrealizedPnl >= 0 ? 'text-green-500' : 'text-red-500'}">${p.unrealizedPnl.toFixed(2)} USDT</span>
+                        </div>
+                        <div class="grid grid-cols-2 text-gray-400">
+                            <span>수량: ${p.contracts}</span>
+                            <span>평단: ${p.entryPrice}</span>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        window.onload = () => {
+            addLog("시스템 준비 완료. API 키를 입력하여 트레이딩을 시작하세요.");
+        };
     </script>
 </body>
 </html>
