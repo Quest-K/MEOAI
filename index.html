@@ -4,180 +4,97 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MeoTrader Pro | Enterprise Dashboard</title>
+    <title>MeoTrader Pro - Auto API Connect</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.0/lucide.min.js"></script>
+    <!-- CCXT Library -->
     <script src="https://unpkg.com/ccxt@4.2.14/dist/ccxt.browser.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700&display=swap');
-        body { font-family: 'Pretendard', sans-serif; background-color: #0b0e11; color: #eaecef; overflow-x: hidden; }
-        .card { background-color: #1e2329; border: 1px solid #30363d; border-radius: 16px; transition: transform 0.2s; }
-        .card:hover { border-color: #474d57; }
+        body { font-family: 'Pretendard', sans-serif; background-color: #0b0e11; color: #eaecef; }
+        .card { background-color: #1e2329; border: 1px solid #30363d; border-radius: 12px; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; }
         .price-up { color: #2ebd85; }
         .price-down { color: #f6465d; }
-        .btn-action { background-color: #f0b90b; color: #000; font-weight: 700; border-radius: 10px; transition: 0.3s; }
-        .btn-action:hover { background-color: #ffe082; transform: translateY(-1px); }
-        .checklist-dot { width: 10px; height: 10px; border-radius: 50%; background-color: #30363d; transition: 0.5s; }
-        .checklist-dot.active { background-color: #2ebd85; box-shadow: 0 0 8px #2ebd85; }
-        .checklist-dot.error { background-color: #f6465d; box-shadow: 0 0 8px #f6465d; }
-        #log-box::-webkit-scrollbar { width: 4px; }
-        #log-box::-webkit-scrollbar-thumb { background: #30363d; border-radius: 10px; }
-        .glossy { background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 100%); }
+        #log-container::-webkit-scrollbar { width: 4px; }
+        #log-container::-webkit-scrollbar-thumb { background: #474d57; border-radius: 10px; }
     </style>
 </head>
-<body class="p-4 lg:p-8">
-    <div class="max-w-[1400px] mx-auto">
-        <!-- 메인 헤더 세션 -->
-        <header class="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
-            <div class="lg:col-span-3 card p-6 flex flex-col justify-center glossy border-l-4 border-l-yellow-500">
-                <div class="flex items-center gap-3">
-                    <div class="p-2 bg-yellow-500/10 rounded-lg">
-                        <i data-lucide="trending-up" class="text-yellow-500"></i>
+<body class="p-4 md:p-8">
+    <div class="max-w-6xl mx-auto">
+        <!-- 상단 헤더 및 상태창 -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="card p-6 border-l-4 border-yellow-500 shadow-lg">
+                <p class="text-[10px] text-gray-400 font-bold uppercase mb-1">Total Balance</p>
+                <h2 id="total-balance" class="text-2xl font-bold text-white tracking-tight">--- USDT</h2>
+            </div>
+            <div class="card p-6 border-l-4 border-green-500 shadow-lg">
+                <p class="text-[10px] text-gray-400 font-bold uppercase mb-1">Available Margin</p>
+                <h2 id="available-balance" class="text-2xl font-bold text-white tracking-tight">--- USDT</h2>
+            </div>
+            <div class="card p-6 flex flex-col justify-center">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <div id="connection-dot" class="status-dot bg-red-500"></div>
+                        <span id="connection-text" class="text-xs font-bold text-red-500">연결 대기중</span>
                     </div>
-                    <div>
-                        <h1 class="text-xl font-bold tracking-tight text-white">MeoTrader Pro</h1>
-                        <p class="text-[10px] text-gray-500 uppercase tracking-widest font-semibold">Binance Futures Live</p>
-                    </div>
+                    <span id="ping-text" class="text-[10px] text-gray-500 font-mono">Ping: --ms</span>
                 </div>
+                <div id="api-info" class="mt-2 text-[10px] text-gray-500 break-all font-mono">Key: dqst...POEa5</div>
             </div>
+        </div>
 
-            <div class="lg:col-span-3 card p-6 flex flex-col justify-center">
-                <span class="text-[10px] text-gray-400 font-bold uppercase mb-1 flex items-center gap-2">
-                    <i data-lucide="wallet" size="12"></i> 총 자산 (Total Wallet)
-                </span>
-                <h2 id="total-balance" class="text-2xl font-bold text-white tracking-tighter">--- USDT</h2>
-            </div>
-
-            <div class="lg:col-span-3 card p-6 flex flex-col justify-center">
-                <span class="text-[10px] text-gray-400 font-bold uppercase mb-1 flex items-center gap-2">
-                    <i data-lucide="unlock" size="12"></i> 사용 가능 (Available)
-                </span>
-                <h2 id="available-balance" class="text-2xl font-bold text-green-500 tracking-tighter">--- USDT</h2>
-            </div>
-
-            <div class="lg:col-span-3 card p-5 bg-black/20">
-                <div class="flex justify-between items-center mb-3">
-                    <span class="text-[10px] text-gray-400 font-bold uppercase">API 연동 체크리스트</span>
-                    <span id="latency-text" class="text-[9px] text-gray-500 font-mono">Ping: --ms</span>
-                </div>
-                <div class="grid grid-cols-2 gap-y-2">
-                    <div class="flex items-center gap-2">
-                        <div id="check-auth" class="checklist-dot"></div>
-                        <span class="text-[11px] text-gray-400">인증 상태</span>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <div id="check-time" class="checklist-dot"></div>
-                        <span class="text-[11px] text-gray-400">시간 동기화</span>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <div id="check-market" class="checklist-dot"></div>
-                        <span class="text-[11px] text-gray-400">시세 수신</span>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <div id="check-order" class="checklist-dot"></div>
-                        <span class="text-[11px] text-gray-400">주문 권한</span>
-                    </div>
-                </div>
-            </div>
-        </header>
-
-        <!-- 메인 레이아웃 -->
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            <!-- 사이드 제어판 -->
-            <div class="lg:col-span-3 space-y-6">
+            <!-- 좌측 로그 및 체크리스트 -->
+            <div class="lg:col-span-4 space-y-6">
                 <div class="card p-6">
-                    <div class="flex items-center justify-between mb-6">
-                        <h3 class="text-sm font-bold flex items-center gap-2">
-                            <i data-lucide="gauge" size="16" class="text-yellow-500"></i> 엔진 제어
-                        </h3>
-                        <div id="status-badge" class="px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 text-[9px] font-bold uppercase border border-red-500/20">OFFLINE</div>
-                    </div>
-                    
-                    <div class="space-y-6">
-                        <div>
-                            <div class="flex justify-between mb-2">
-                                <label class="text-[11px] text-gray-400 font-bold uppercase">배율 설정</label>
-                                <span id="lev-val" class="text-yellow-500 font-bold text-xs">10x</span>
-                            </div>
-                            <input type="range" min="1" max="50" value="10" class="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-yellow-500" 
-                                   oninput="document.getElementById('lev-val').innerText = this.value + 'x'">
+                    <h3 class="text-sm font-bold mb-4 flex items-center gap-2">
+                        <i data-lucide="check-circle" size="16" class="text-yellow-500"></i> API 연결 체크리스트
+                    </h3>
+                    <div id="checklist" class="space-y-3 text-xs">
+                        <div class="flex items-center justify-between text-gray-400">
+                            <span>1. 키 인증 (Authentication)</span>
+                            <span id="check-auth" class="text-gray-600">Pending</span>
                         </div>
-
-                        <div class="space-y-3">
-                            <div class="flex justify-between items-center p-3 bg-black/30 rounded-xl border border-white/5">
-                                <span class="text-[11px] text-gray-300">자동 익절 (Take Profit)</span>
-                                <div class="text-green-500 text-[11px] font-bold">3%</div>
-                            </div>
-                            <div class="flex justify-between items-center p-3 bg-black/30 rounded-xl border border-white/5">
-                                <span class="text-[11px] text-gray-300">자동 손절 (Stop Loss)</span>
-                                <div class="text-red-500 text-[11px] font-bold">1.5%</div>
-                            </div>
+                        <div class="flex items-center justify-between text-gray-400">
+                            <span>2. 서버 시간 (Time Sync)</span>
+                            <span id="check-time" class="text-gray-600">Pending</span>
                         </div>
-
-                        <button id="main-btn" onclick="startEngine()" class="w-full btn-action py-4 text-sm shadow-xl flex items-center justify-center gap-2">
-                            <i data-lucide="play" size="16"></i> 거래 엔진 가동
-                        </button>
+                        <div class="flex items-center justify-between text-gray-400">
+                            <span>3. 프록시 우회 (CORS)</span>
+                            <span id="check-cors" class="text-gray-600">Pending</span>
+                        </div>
                     </div>
                 </div>
 
-                <div class="card p-6 bg-blue-500/5 border-blue-500/20">
-                    <h3 class="text-xs font-bold text-blue-400 uppercase mb-4 tracking-widest flex items-center gap-2">
-                        <i data-lucide="activity" size="14"></i> 실시간 로그
-                    </h3>
-                    <div id="log-box" class="h-[300px] overflow-y-auto text-[10px] font-mono space-y-2 pr-2">
-                        <div class="text-gray-500">대시보드 준비 완료. 엔진 가동을 기다리는 중...</div>
+                <div class="card p-6">
+                    <h3 class="text-xs font-bold text-gray-400 uppercase mb-4 tracking-widest">System Logs</h3>
+                    <div id="log-container" class="h-64 overflow-y-auto text-[10px] font-mono space-y-1.5 pr-2">
+                        <div class="text-gray-600 italic">시스템 초기화 중...</div>
                     </div>
                 </div>
             </div>
 
-            <!-- 메인 데이터 판넬 -->
-            <div class="lg:col-span-9 space-y-8">
-                <!-- 마켓 리스트 -->
-                <div class="card overflow-hidden">
-                    <div class="px-6 py-4 border-b border-gray-800 flex justify-between items-center bg-gray-900/40">
-                        <div class="flex items-center gap-3">
-                            <h3 class="font-bold text-sm">감시 대상 심볼 (Futures)</h3>
-                            <span class="px-2 py-0.5 bg-green-500/10 text-green-500 text-[9px] rounded font-bold">REAL-TIME</span>
-                        </div>
-                        <div id="timer-box" class="text-[10px] text-gray-500 font-mono">Sync: --:--:--</div>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left text-xs font-mono">
-                            <thead class="bg-gray-900/60 text-gray-500 uppercase">
-                                <tr>
-                                    <th class="py-4 px-6">심볼</th>
-                                    <th class="py-4">현재가 (Mark)</th>
-                                    <th class="py-4">24h 변동</th>
-                                    <th class="py-4">권장 진입 타점</th>
-                                    <th class="py-4 px-6 text-right">전략 분석</th>
-                                </tr>
-                            </thead>
-                            <tbody id="market-list" class="divide-y divide-gray-800">
-                                <tr>
-                                    <td colspan="5" class="py-24 text-center text-gray-600 italic">
-                                        <i data-lucide="database-zap" class="mx-auto mb-2 opacity-20" size="48"></i>
-                                        <p>엔진 가동 시 바이낸스 데이터를 불러옵니다.</p>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
+            <!-- 우측 시장 데이터 -->
+            <div class="lg:col-span-8 card overflow-hidden">
+                <div class="px-6 py-4 border-b border-gray-800 flex justify-between items-center bg-gray-900/30">
+                    <h3 class="font-bold text-sm">실시간 선물 시장 (Binance Futures)</h3>
+                    <span id="last-update" class="text-[10px] text-gray-500">Update: --:--:--</span>
                 </div>
-
-                <!-- 포지션 정보 -->
-                <div class="card p-6">
-                    <div class="flex items-center justify-between mb-6">
-                        <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                            <i data-lucide="pie-chart" size="14"></i> 보유 포지션 (Active Positions)
-                        </h3>
-                        <span id="pos-count" class="px-2 py-0.5 bg-gray-800 rounded text-[9px] text-gray-400">0 Positions</span>
-                    </div>
-                    <div id="pos-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        <!-- 포지션 카드 동적 삽입 -->
-                        <div class="col-span-full py-12 text-center text-gray-700 text-[11px] border-2 border-dashed border-gray-800 rounded-2xl">
-                            오픈된 포지션이 없습니다.
-                        </div>
-                    </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs font-mono">
+                        <thead class="bg-gray-900/50 text-gray-500 uppercase">
+                            <tr>
+                                <th class="py-4 px-6">Symbol</th>
+                                <th class="py-4">Price</th>
+                                <th class="py-4">Change%</th>
+                                <th class="py-4 px-6 text-right">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="market-body" class="divide-y divide-gray-800">
+                            <tr><td colspan="4" class="py-20 text-center text-gray-600 italic">API 연동 확인 중입니다...</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -186,80 +103,82 @@
     <script>
         lucide.createIcons();
 
-        // 1. 대표님 API 키 구성 (전체 문서 반영)
-        const MASTER_CONFIG = {
-            apiKey: 'dqstBJE5IdRC8pyZW2RDSLE1qwR9HjDMPmJaRgxpUdM7pZWoum0DQNUZzHRPOEa5',
-            secret: 'aunpWCXCMc1a4PPL5Qaa6HRGsM0QnRmYBfTC78iuD1LoMJFv1hUO11ESNWpKjh3L'
-        };
+        // [MANDATORY] 대표님의 API 키 정보 세팅
+        const API_KEY = 'dqstBJE5IdRC8pyZW2RDSLE1qwR9HjDMPmJaRgxpUdM7pZWoum0DQNUZzHRPOEa5';
+        const SECRET_KEY = 'aunpWCXCMc1a4PPL5Qaa6HRGsM0QnRmYBfTC78iuD1LoMJFv1hUO11ESNWpKjh3L';
+        
+        // CORS 우회를 위한 프록시 서버 리스트
+        const PROXY_URL = 'https://cors-anywhere.herokuapp.com/'; 
 
         let exchange = null;
-        let isRunning = false;
-        const symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'BNB/USDT', 'DOGE/USDT', 'LINK/USDT'];
+        let isConnected = false;
+        const watchList = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'BNB/USDT'];
 
         function addLog(msg, color = 'gray') {
-            const box = document.getElementById('log-box');
+            const container = document.getElementById('log-container');
             const div = document.createElement('div');
-            const colors = { green: '#2ebd85', red: '#f6465d', yellow: '#f0b90b', blue: '#3b82f6' };
+            const colors = { green: '#2ebd85', red: '#f6465d', yellow: '#f0b90b' };
             div.style.color = colors[color] || '#848e9c';
-            div.innerHTML = `<span class="opacity-40 text-[8px] mr-2">${new Date().toLocaleTimeString()}</span> ${msg}`;
-            box.prepend(div);
+            div.innerHTML = `<span class="opacity-30 mr-1">${new Date().toLocaleTimeString()}</span> ${msg}`;
+            container.prepend(div);
         }
 
-        // 2. 엔진 가동 및 체크리스트 로직
-        async function startEngine() {
-            if (isRunning) return;
-
-            addLog("바이낸스 선물 엔진 가동 시도 중...", "yellow");
-            const startTime = Date.now();
+        async function autoConnect() {
+            addLog("바이낸스 API 자동 연결 프로세스 시작...", "yellow");
             
             try {
-                // CCXT 초기화
+                const startTime = Date.now();
+                
+                // CCXT 인스턴스 설정
                 exchange = new ccxt.binance({
-                    apiKey: MASTER_CONFIG.apiKey,
-                    secret: MASTER_CONFIG.secret,
+                    apiKey: API_KEY,
+                    secret: SECRET_KEY,
+                    // 브라우저에서 실행 시 CORS 에러 방지를 위해 프록시 설정 (선택사항)
+                    // proxyUrl: PROXY_URL, 
                     options: { 
                         defaultType: 'future',
                         adjustForTimeDifference: true,
-                        recvWindow: 10000 
+                        recvWindow: 10000
                     }
                 });
 
-                // (1) 인증 체크
+                // 프록시 없이 시도 (안될 경우 안내)
+                addLog("서버 잔고 데이터 요청 중...", "yellow");
                 const balance = await exchange.fetchBalance();
-                document.getElementById('check-auth').classList.add('active');
-                addLog("API 키 인증 성공", "green");
-
-                // (2) 시간 동기화 체크
-                document.getElementById('check-time').classList.add('active');
                 
-                // (3) 지연시간(Latency) 업데이트
+                // 연결 성공 UI 업데이트
+                isConnected = true;
                 const latency = Date.now() - startTime;
-                document.getElementById('latency-text').innerText = `Ping: ${latency}ms`;
-
-                // (4) 주문 권한 체크 (간접 확인)
-                if(balance.info.canTrade !== undefined) {
-                    document.getElementById('check-order').classList.add('active');
-                }
+                
+                document.getElementById('connection-dot').className = "status-dot bg-green-500 animate-pulse";
+                document.getElementById('connection-text').innerText = "연결 성공 (LIVE)";
+                document.getElementById('connection-text').className = "text-xs font-bold text-green-500";
+                document.getElementById('ping-text').innerText = `Ping: ${latency}ms`;
+                
+                document.getElementById('check-auth').innerText = "OK";
+                document.getElementById('check-auth').className = "text-green-500 font-bold";
+                document.getElementById('check-time').innerText = "Synced";
+                document.getElementById('check-time').className = "text-green-500 font-bold";
+                document.getElementById('check-cors').innerText = "Passed";
+                document.getElementById('check-cors').className = "text-green-500 font-bold";
 
                 updateBalance(balance);
-                isRunning = true;
+                addLog("계정 정보 로드 완료.", "green");
 
-                // UI 상태 변경
-                document.getElementById('status-badge').innerText = "ONLINE";
-                document.getElementById('status-badge').className = "px-2 py-0.5 rounded-full bg-green-500/10 text-green-500 text-[9px] font-bold uppercase border border-green-500/20";
-                const mBtn = document.getElementById('main-btn');
-                mBtn.innerHTML = `<i data-lucide="refresh-cw" size="16" class="animate-spin"></i> 감시 중...`;
-                mBtn.className = "w-full py-4 text-sm font-bold bg-gray-800 text-gray-500 border border-gray-700 rounded-lg cursor-default";
-                mBtn.disabled = true;
-
-                // 데이터 루프 실행
-                marketLoop();
-                positionLoop();
+                // 루프 시작
+                startMarketUpdates();
 
             } catch (e) {
                 console.error(e);
-                addLog(`엔진 오류: ${e.message}`, "red");
-                document.getElementById('check-auth').classList.add('error');
+                addLog(`연결 실패: ${e.message}`, "red");
+                
+                if (e.message.includes('fetch')) {
+                    addLog("CORS 에러 감지: 로컬 보안 설정 혹은 프록시 서버 확인이 필요합니다.", "red");
+                    document.getElementById('check-cors').innerText = "FAILED";
+                    document.getElementById('check-cors').className = "text-red-500 font-bold";
+                }
+                
+                document.getElementById('connection-text').innerText = "연결 오류";
             }
         }
 
@@ -270,107 +189,43 @@
             document.getElementById('available-balance').innerText = free.toLocaleString(undefined, {minimumFractionDigits: 2}) + " USDT";
         }
 
-        // 3. 실시간 마켓 루프 (5초 주기)
-        async function marketLoop() {
-            const tbody = document.getElementById('market-list');
-            while(isRunning) {
+        async function startMarketUpdates() {
+            const tbody = document.getElementById('market-body');
+            while(isConnected) {
                 try {
-                    const tickers = await exchange.fetchTickers(symbols);
-                    document.getElementById('timer-box').innerText = "Sync: " + new Date().toLocaleTimeString();
-                    document.getElementById('check-market').classList.add('active');
-                    
+                    const tickers = await exchange.fetchTickers(watchList);
+                    document.getElementById('last-update').innerText = "Update: " + new Date().toLocaleTimeString();
                     tbody.innerHTML = '';
-                    symbols.forEach(sym => {
-                        const t = tickers[sym];
+                    
+                    watchList.forEach(symbol => {
+                        const t = tickers[symbol];
                         if(!t) return;
                         
-                        const p = t.last;
-                        const c = t.percentage;
-                        const pClass = c >= 0 ? 'price-up' : 'price-down';
-                        const target = (p * 0.9985).toFixed(p > 100 ? 1 : 4);
+                        const price = t.last;
+                        const change = t.percentage;
+                        const pClass = change >= 0 ? 'price-up' : 'price-down';
 
                         tbody.innerHTML += `
-                            <tr class="hover:bg-white/[0.02] transition border-b border-gray-800/50">
-                                <td class="py-5 px-6 font-bold text-gray-100">${sym.split('/')[0]}</td>
-                                <td class="py-5 font-bold ${pClass}">$${p.toLocaleString()}</td>
-                                <td class="py-5 ${pClass}">${c >= 0 ? '+' : ''}${c.toFixed(2)}%</td>
-                                <td class="py-5 text-yellow-500/80 font-bold">$${target}</td>
+                            <tr class="hover:bg-white/5 border-b border-gray-800/50">
+                                <td class="py-5 px-6 font-bold text-white">${symbol.split('/')[0]}</td>
+                                <td class="py-5 font-bold ${pClass}">$${price.toLocaleString()}</td>
+                                <td class="py-5 ${pClass}">${change >= 0 ? '+' : ''}${change.toFixed(2)}%</td>
                                 <td class="py-5 px-6 text-right">
-                                    <div class="flex justify-end items-center gap-2">
-                                        <span class="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></span>
-                                        <span class="text-[10px] text-blue-400 uppercase font-bold">Scanning</span>
-                                    </div>
+                                    <span class="bg-gray-800 text-gray-400 px-2 py-1 rounded text-[10px]">SYNCED</span>
                                 </td>
                             </tr>
                         `;
                     });
                 } catch (e) {
-                    addLog("데이터 동기화 실패", "red");
-                    document.getElementById('check-market').classList.remove('active');
-                    document.getElementById('check-market').classList.add('error');
+                    addLog("데이터 갱신 중 오류 발생", "red");
                 }
                 await new Promise(r => setTimeout(r, 5000));
             }
         }
 
-        // 4. 포지션 트래킹 루프 (8초 주기)
-        async function positionLoop() {
-            const container = document.getElementById('pos-list');
-            while(isRunning) {
-                try {
-                    const positions = await exchange.fetchPositions();
-                    const active = positions.filter(p => parseFloat(p.contracts) > 0);
-                    
-                    document.getElementById('pos-count').innerText = `${active.length} Positions`;
-
-                    if(active.length === 0) {
-                        container.innerHTML = `<div class="col-span-full py-12 text-center text-gray-700 text-[11px] border-2 border-dashed border-gray-800 rounded-2xl">오픈된 포지션이 없습니다.</div>`;
-                    } else {
-                        container.innerHTML = active.map(p => {
-                            const pnl = p.unrealizedPnl || 0;
-                            const roe = ((pnl / (p.initialMargin || 1)) * 100).toFixed(2);
-                            return `
-                                <div class="p-5 bg-gray-900/80 rounded-2xl border border-gray-700 shadow-xl glossy">
-                                    <div class="flex justify-between items-start mb-4">
-                                        <div>
-                                            <div class="text-xs font-bold text-white">${p.symbol}</div>
-                                            <div class="text-[9px] text-gray-500 uppercase font-bold">${p.leverage}x Leverage</div>
-                                        </div>
-                                        <div class="text-right">
-                                            <div class="${pnl >= 0 ? 'text-green-500' : 'text-red-500'} font-bold text-sm">
-                                                ${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} USDT
-                                            </div>
-                                            <div class="text-[10px] ${pnl >= 0 ? 'text-green-500/70' : 'text-red-500/70'}">${roe}%</div>
-                                        </div>
-                                    </div>
-                                    <div class="grid grid-cols-2 gap-3 pt-4 border-t border-gray-800">
-                                        <div>
-                                            <p class="text-[9px] text-gray-500 uppercase mb-0.5">Entry Price</p>
-                                            <p class="text-[11px] font-mono text-gray-300 font-bold">$${p.entryPrice}</p>
-                                        </div>
-                                        <div class="text-right">
-                                            <p class="text-[9px] text-gray-500 uppercase mb-0.5">Size</p>
-                                            <p class="text-[11px] font-mono text-gray-300 font-bold">${p.contracts}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            `;
-                        }).join('');
-                    }
-                    
-                    // 자산 정보 동시 업데이트
-                    const balance = await exchange.fetchBalance();
-                    updateBalance(balance);
-                } catch (e) {
-                    console.error(e);
-                }
-                await new Promise(r => setTimeout(r, 8000));
-            }
-        }
-
-        // 페이지 로드 시 1.5초 후 자동 시작
+        // 초기화
         window.onload = () => {
-            setTimeout(startEngine, 1500);
+            setTimeout(autoConnect, 1000);
         };
     </script>
 </body>
