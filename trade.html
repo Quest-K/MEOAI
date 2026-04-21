@@ -1,361 +1,185 @@
-```html
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MEOAI - Professional Futures Scanner</title>
+    <title>Binance Futures Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
-        body { background-color: #0b0e11; color: #eaecef; font-family: 'Inter', sans-serif; overflow-x: hidden; }
-        .card { background-color: #1e2329; border: 1px solid #30363d; border-radius: 12px; }
-        .accent-green { color: #02c076; }
-        .accent-red { color: #f84960; }
-        .input-dark { background-color: #0b0e11; border: 1px solid #474d57; border-radius: 6px; padding: 0.5rem; color: white; font-size: 0.875rem; width: 100%; }
-        .input-dark:focus { border-color: #f0b90b; outline: none; }
-        .binance-gold { color: #f0b90b; }
-        
-        .switch { position: relative; display: inline-block; width: 34px; height: 20px; }
-        .switch input { opacity: 0; width: 0; height: 0; }
-        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #474d57; transition: .4s; border-radius: 20px; }
-        .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
-        input:checked + .slider { background-color: #f0b90b; }
-        input:checked + .slider:before { transform: translateX(14px); }
-
-        .progress-container { width: 100%; height: 3px; background: #2b3139; position: absolute; bottom: 0; left: 0; }
-        #progress-bar { height: 100%; background: #f0b90b; width: 100%; transition: width 0.1s linear; }
-
-        #chart-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 1000; align-items: center; justify-content: center; padding: 20px; }
-        .modal-content { width: 100%; max-width: 1400px; height: 90vh; background: #1e2329; border-radius: 16px; position: relative; overflow: hidden; display: flex; flex-direction: column; }
-        
-        .loading-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 2000; }
+        body { background-color: #0b0e11; color: #eaecef; }
+        .card { background-color: #1e2329; border-radius: 12px; border: 1px solid #333; }
+        .accent { color: #fcd535; }
+        .btn-primary { background-color: #fcd535; color: #000; font-weight: bold; }
+        .btn-primary:hover { background-color: #e2c02d; }
+        .status-up { color: #0ecb81; }
+        .status-down { color: #f6465d; }
     </style>
 </head>
-<body class="p-4 md:p-6">
-
-    <div id="loading" class="loading-overlay">
-        <i class="fas fa-circle-notch fa-spin text-4xl binance-gold mb-4"></i>
-        <p class="text-white font-bold">선물 시장 정밀 분석 중...</p>
-        <p id="loading-detail" class="text-gray-400 text-xs mt-2">최고가 데이터 계산 중</p>
-    </div>
-
-    <!-- Chart Modal -->
-    <div id="chart-modal">
-        <div class="modal-content card">
-            <div class="p-4 border-b border-gray-700 flex justify-between items-center bg-[#1e2329]">
-                <div class="flex items-center gap-3">
-                    <i class="fas fa-chart-line binance-gold"></i>
-                    <h3 id="modal-title" class="text-white font-bold text-lg uppercase">Chart</h3>
-                </div>
-                <button onclick="closeChart()" class="text-gray-400 hover:text-white text-xl p-2"><i class="fas fa-times"></i></button>
+<body class="p-4 md:p-8">
+    <div class="max-w-4xl mx-auto">
+        <!-- Header -->
+        <header class="mb-8 flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-bold accent">Binance Futures</h1>
+                <p class="text-sm text-gray-400">실시간 선물 계정 상태</p>
             </div>
-            <div id="tradingview-container" class="flex-grow w-full h-full"></div>
-        </div>
-    </div>
+            <button id="refreshBtn" class="px-4 py-2 btn-primary rounded-lg transition">데이터 갱신</button>
+        </header>
 
-    <header class="mb-6 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
-        <div>
-            <h1 class="text-2xl font-bold text-white flex items-center gap-2">
-                <i class="fas fa-bolt binance-gold"></i>
-                MEOAI 선물 전략 터미널
-            </h1>
-            <p class="text-[10px] text-gray-500 mt-1 uppercase tracking-[0.2em]">Binance Futures Real-time Engine</p>
-        </div>
-
-        <div class="flex flex-wrap gap-3">
-            <div class="card p-2 px-4 flex items-center gap-4 relative overflow-hidden min-w-[280px]">
-                <div class="z-10">
-                    <p class="text-[10px] text-gray-500 uppercase font-bold">Market Sync</p>
-                    <div class="flex items-center gap-2 text-sm font-mono">
-                        <span id="timer-text" class="binance-gold font-bold">30s</span>
-                        <div class="w-[1px] h-3 bg-gray-700"></div>
-                        <p id="last-update" class="text-gray-400 text-[10px]">--:--:--</p>
-                    </div>
-                </div>
-                <button onclick="manualRefresh()" class="z-10 ml-auto bg-[#f0b90b] hover:bg-[#e6b00a] text-black font-bold py-2 px-4 rounded-lg text-xs transition flex items-center gap-2">
-                    <i id="refresh-icon" class="fas fa-sync-alt"></i> 실시간 스캔
-                </button>
-                <div class="progress-container"><div id="progress-bar"></div></div>
+        <!-- Balance Info -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+            <div class="card p-6">
+                <p class="text-gray-400 text-sm mb-1">총 잔고 (Total Wallet Balance)</p>
+                <h2 id="totalBalance" class="text-3xl font-bold">-- <span class="text-lg font-normal">USDT</span></h2>
+            </div>
+            <div class="card p-6">
+                <p class="text-gray-400 text-sm mb-1">사용 가능한 잔고 (Available Balance)</p>
+                <h2 id="availableBalance" class="text-3xl font-bold accent">-- <span class="text-lg font-normal">USDT</span></h2>
             </div>
         </div>
-    </header>
 
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        <!-- Sidebar -->
-        <div class="lg:col-span-3 space-y-4">
-            <section class="card p-4">
-                <div class="flex justify-between items-center mb-1">
-                    <h2 class="text-[11px] font-bold text-white uppercase">1. 정배열 N자형</h2>
-                    <label class="switch"><input type="checkbox" id="toggle-1"><span class="slider"></span></label>
-                </div>
-            </section>
-            <section class="card p-4">
-                <div class="flex justify-between items-center mb-1">
-                    <h2 class="text-[11px] font-bold text-purple-400 uppercase">2. 역배열 돌파/눌림</h2>
-                    <label class="switch"><input type="checkbox" id="toggle-2"><span class="slider"></span></label>
-                </div>
-            </section>
-            <section class="card p-4">
-                <div class="flex justify-between items-center mb-3">
-                    <h2 class="text-[11px] font-bold text-orange-400 uppercase">3. 펀딩비 필터</h2>
-                    <label class="switch"><input type="checkbox" id="toggle-3"><span class="slider"></span></label>
-                </div>
-                <div class="flex items-center gap-2">
-                    <span class="text-[10px] text-gray-500">절대값 ≥</span>
-                    <input type="number" id="param-3-funding" value="0.01" step="0.01" class="input-dark py-1 text-center">
-                    <span class="text-[10px] text-gray-500">%</span>
-                </div>
-            </section>
-
-            <!-- 조건 5: 정밀 고점 대비 분석 -->
-            <section class="card p-5 border-l-4 border-l-red-500 shadow-xl bg-red-500/5">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-[11px] font-bold text-white uppercase flex items-center gap-2">
-                        <i class="fas fa-history text-red-500"></i> 5. 고점 경과 및 등락률
-                    </h2>
-                    <label class="switch">
-                        <input type="checkbox" id="toggle-5" checked>
-                        <span class="slider"></span>
-                    </label>
-                </div>
-                <div class="space-y-4">
-                    <div class="flex items-center justify-between gap-2">
-                        <label class="text-[10px] text-gray-400">분석 시간(분 이내)</label>
-                        <div class="flex items-center gap-1 w-20">
-                            <input type="number" id="param-5-time" value="60" class="input-dark py-1 text-center">
-                        </div>
-                    </div>
-                    <div class="flex items-center justify-between gap-2">
-                        <label class="text-[10px] text-gray-400">최고가 대비 변동(%)</label>
-                        <div class="flex items-center gap-1 w-20">
-                            <input type="number" id="param-5-pct" value="1.5" step="0.1" class="input-dark py-1 text-center">
-                        </div>
-                    </div>
-                    <div class="p-2 bg-black/40 rounded border border-red-500/10 text-[9px] text-red-400 leading-relaxed italic">
-                        <i class="fas fa-check-circle mr-1"></i> 설정 시간 동안의 '최고점'을 찾아 현재가와의 거리 및 경과 시간을 측정합니다.
-                    </div>
-                </div>
-            </section>
+        <!-- Position/Assets List -->
+        <div class="card p-6 mb-8">
+            <h3 class="text-xl font-semibold mb-4 border-b border-gray-700 pb-2">상세 잔고 내역</h3>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead>
+                        <tr class="text-gray-400 text-sm border-b border-gray-800">
+                            <th class="py-2">자산</th>
+                            <th class="py-2 text-right">잔고</th>
+                            <th class="py-2 text-right">미실현 손익</th>
+                        </tr>
+                    </thead>
+                    <tbody id="assetTableBody">
+                        <!-- Data injected here -->
+                    </tbody>
+                </table>
+            </div>
         </div>
 
-        <!-- Main Content -->
-        <div class="lg:col-span-9 space-y-4">
-            <div class="card overflow-hidden">
-                <div class="p-4 border-b border-gray-700 bg-[#1e2329]/50 flex justify-between items-center">
-                    <h2 class="text-sm font-bold text-white flex items-center gap-2">
-                        실시간 선물 스캔 결과 <span id="filtered-count" class="binance-gold font-mono px-2 py-0.5 rounded bg-gray-900">0</span>
-                    </h2>
-                    <div class="flex items-center gap-2 text-[10px] text-gray-500">
-                        <i class="fas fa-database"></i> Binance Futures Perpetual Only
-                    </div>
-                </div>
-                
-                <div class="overflow-x-auto min-h-[600px]">
-                    <table class="w-full text-left text-sm">
-                        <thead class="bg-gray-800/50 text-gray-500 uppercase text-[10px] tracking-wider font-bold">
-                            <tr>
-                                <th class="p-4">선물 심볼</th>
-                                <th class="p-4">현재가</th>
-                                <th class="p-4">기준 최고가</th>
-                                <th class="p-4">고점대비 등락</th>
-                                <th class="p-4">고점 경과 시간</th>
-                                <th class="p-4 text-center">분석</th>
-                            </tr>
-                        </thead>
-                        <tbody id="scanner-tbody">
-                            <tr><td colspan="6" class="p-20 text-center text-gray-600">데이터를 분석하고 있습니다...</td></tr>
-                        </tbody>
-                    </table>
-                </div>
+        <!-- Trade History -->
+        <div class="card p-6">
+            <h3 class="text-xl font-semibold mb-4 border-b border-gray-700 pb-2">최근 거래 내역</h3>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead>
+                        <tr class="text-gray-400 text-sm border-b border-gray-800">
+                            <th class="py-2">심볼</th>
+                            <th class="py-2">사이드</th>
+                            <th class="py-2 text-right">가격</th>
+                            <th class="py-2 text-right">수량</th>
+                            <th class="py-2 text-right">날짜</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tradeHistoryBody">
+                        <!-- Data injected here -->
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
 
     <script>
-        const FAPI_BASE = "https://fapi.binance.com/fapi/v1";
-        const UPDATE_INTERVAL = 30000;
-        let remainingTime = UPDATE_INTERVAL;
-        let progressTimer = null;
+        const apiKey = "dqstBJE5IdRC8pyZW2RDSLE1qwR9HjDMPmJaRgxpUdM7pZWoum0DQNUZzHRPOEa5";
+        const apiSecret = "aunpWCXCMc1a4PPL5Qaa6HRGsM0QnRmYBfTC78iuD1LoMJFv1hUO11ESNWpKjh3L";
+        const baseUrl = "https://fapi.binance.com"; // Futures Testnet을 원하시면 https://testnet.binancefuture.com 사용
 
-        window.onload = () => {
-            fetchMarketData();
-            startUpdateCycle();
-        };
+        // 유틸리티: 서명 생성
+        function generateSignature(queryString) {
+            return CryptoJS.HmacSHA256(queryString, apiSecret).toString(CryptoJS.enc.Hex);
+        }
 
-        async function fetchMarketData() {
-            const loader = document.getElementById('loading');
-            const icon = document.getElementById('refresh-icon');
-            loader.style.display = 'flex';
-            icon.classList.add('fa-spin');
+        // 유틸리티: Fetch API 호출 (선물 API 필수 헤더 포함)
+        async function callBinanceApi(endpoint, params = {}) {
+            const timestamp = Date.now();
+            let queryString = `timestamp=${timestamp}`;
+            
+            Object.keys(params).forEach(key => {
+                queryString += `&${key}=${params[key]}`;
+            });
 
-            const s5Enabled = document.getElementById('toggle-5').checked;
-            const s5Minutes = parseInt(document.getElementById('param-5-time').value) || 60;
-            const s5Threshold = parseFloat(document.getElementById('param-5-pct').value) || 1.5;
-            const s3Enabled = document.getElementById('toggle-3').checked;
-            const fThreshold = parseFloat(document.getElementById('param-3-funding').value) || 0.01;
+            const signature = generateSignature(queryString);
+            const url = `${baseUrl}${endpoint}?${queryString}&signature=${signature}`;
 
             try {
-                // 1. 전체 선물 시세 및 펀딩비 가져오기
-                const [tickerRes, fundingRes] = await Promise.all([
-                    fetch(`${FAPI_BASE}/ticker/price`),
-                    fetch(`${FAPI_BASE}/premiumIndex`)
-                ]);
-                const tickerData = await tickerRes.json();
-                const fundingData = await fundingRes.json();
-
-                // 2. 상위 거래량 종목 30개만 우선 정밀 분석 (API 제한 방지)
-                // 실제 서비스에서는 모든 종목에 대해 Klines를 비동기로 병렬 처리해야 함
-                let symbolsToScan = tickerData
-                    .filter(t => t.symbol.endsWith("USDT"))
-                    .slice(0, 40); // 상위 40개 종목 우선 정밀 분석
-
-                const detailedData = await Promise.all(symbolsToScan.map(async (item) => {
-                    try {
-                        // 조건 5를 위한 과거 캔들 데이터 가져오기 (1분봉 기준)
-                        const klinesRes = await fetch(`${FAPI_BASE}/klines?symbol=${item.symbol}&interval=1m&limit=${s5Minutes}`);
-                        const klines = await klinesRes.json();
-                        
-                        if (!klines || klines.length === 0) return null;
-
-                        let highestPrice = 0;
-                        let highestTime = 0;
-                        
-                        // 최고가 및 최고가 시점 탐색
-                        klines.forEach(k => {
-                            const high = parseFloat(k[2]);
-                            if (high > highestPrice) {
-                                highestPrice = high;
-                                highestTime = k[0]; // Open time
-                            }
-                        });
-
-                        const currentPrice = parseFloat(item.price);
-                        const diffPct = ((currentPrice - highestPrice) / highestPrice) * 100;
-                        const timeElapsed = Math.floor((Date.now() - highestTime) / 60000);
-                        const fInfo = fundingData.find(f => f.symbol === item.symbol);
-
-                        return {
-                            symbol: item.symbol,
-                            price: currentPrice,
-                            highPrice: highestPrice,
-                            diff: diffPct,
-                            timeElapsed: timeElapsed,
-                            funding: fInfo ? parseFloat(fInfo.lastFundingRate) * 100 : 0
-                        };
-                    } catch (e) { return null; }
-                }));
-
-                // 3. 필터 적용
-                const filtered = detailedData.filter(item => {
-                    if (!item) return false;
-                    let pass = true;
-                    if (s5Enabled && Math.abs(item.diff) < s5Threshold) pass = false;
-                    if (s3Enabled && Math.abs(item.funding) < fThreshold) pass = false;
-                    return pass;
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'X-MBX-APIKEY': apiKey,
+                        'Content-Type': 'application/json'
+                    }
                 });
-
-                renderTable(filtered);
-                document.getElementById('filtered-count').innerText = filtered.length;
-                document.getElementById('last-update').innerText = new Date().toLocaleTimeString();
-
-            } catch (err) {
-                console.error("Fetch Error:", err);
-            } finally {
-                loader.style.display = 'none';
-                icon.classList.remove('fa-spin');
+                if (!response.ok) throw new Error('API 호출 실패: ' + response.statusText);
+                return await response.json();
+            } catch (error) {
+                console.error(error);
+                return null;
             }
         }
 
-        function renderTable(data) {
-            const tbody = document.getElementById('scanner-tbody');
-            if (data.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" class="p-20 text-center text-gray-600 italic">현재 조건에 부합하는 선물 종목이 없습니다.</td></tr>`;
-                return;
-            }
+        // 잔고 정보 로드
+        async function loadAccountData() {
+            const accountData = await callBinanceApi("/fapi/v2/account");
+            if (!accountData) return;
 
-            data.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+            document.getElementById('totalBalance').innerText = parseFloat(accountData.totalWalletBalance).toFixed(2);
+            document.getElementById('availableBalance').innerText = parseFloat(accountData.availableBalance).toFixed(2);
 
-            tbody.innerHTML = data.map(item => {
-                const diffColor = item.diff >= 0 ? 'accent-green' : 'accent-red';
-                
-                return `
-                    <tr class="border-t border-gray-800 hover:bg-[#2b3139] transition group">
-                        <td class="p-4">
-                            <div class="font-bold text-white text-base group-hover:binance-gold transition">${item.symbol}</div>
-                        </td>
-                        <td class="p-4 font-mono font-bold">$${item.price.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                        <td class="p-4 font-mono text-gray-400">$${item.highPrice.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                        <td class="p-4">
-                            <div class="flex flex-col">
-                                <span class="${diffColor} font-bold text-lg">${item.diff.toFixed(2)}%</span>
-                                <span class="text-[9px] text-gray-500 uppercase">vs Max High</span>
-                            </div>
-                        </td>
-                        <td class="p-4">
-                            <div class="flex items-center gap-2">
-                                <span class="text-white font-mono bg-gray-800 px-2 py-1 rounded text-xs">${item.timeElapsed}분 전</span>
-                                <i class="fas fa-clock text-[10px] text-gray-600"></i>
-                            </div>
-                        </td>
-                        <td class="p-4 text-center">
-                            <button onclick="openChart('${item.symbol}')" class="bg-[#2b3139] hover:bg-[#f0b90b] hover:text-black text-white text-[10px] font-bold py-2 px-4 rounded-lg transition-all shadow-md">
-                                <i class="fas fa-external-link-alt mr-1"></i> 차트 열기
-                            </button>
+            const assetTable = document.getElementById('assetTableBody');
+            assetTable.innerHTML = '';
+            
+            // USDT 등 보유 자산만 표시
+            accountData.assets.filter(a => parseFloat(a.walletBalance) > 0).forEach(asset => {
+                const row = `
+                    <tr class="border-b border-gray-800 text-sm">
+                        <td class="py-3 font-medium">${asset.asset}</td>
+                        <td class="py-3 text-right">${parseFloat(asset.walletBalance).toFixed(4)}</td>
+                        <td class="py-3 text-right ${parseFloat(asset.unrealizedProfit) >= 0 ? 'status-up' : 'status-down'}">
+                            ${parseFloat(asset.unrealizedProfit).toFixed(2)}
                         </td>
                     </tr>
                 `;
-            }).join('');
+                assetTable.innerHTML += row;
+            });
         }
 
-        function openChart(symbol) {
-            const modal = document.getElementById('chart-modal');
-            const container = document.getElementById('tradingview-container');
-            document.getElementById('modal-title').innerText = `${symbol} 선물 실시간 차트`;
-            
-            modal.style.display = 'flex';
-            container.innerHTML = `<div id="tv_widget" class="w-full h-full"></div>`;
+        // 거래 내역 로드
+        async function loadTradeHistory() {
+            // 최근 10개 거래 내역
+            const trades = await callBinanceApi("/fapi/v1/userTrades", { limit: 10 });
+            if (!trades) return;
 
-            const script = document.createElement("script");
-            script.src = "https://s3.tradingview.com/tv.js";
-            script.async = true;
-            script.onload = () => {
-                new TradingView.widget({
-                    "autosize": true,
-                    "symbol": `BINANCE:${symbol}.P`, // 선물 무기한 계약 심볼 형식
-                    "interval": "15",
-                    "timezone": "Asia/Seoul",
-                    "theme": "dark",
-                    "style": "1",
-                    "locale": "kr",
-                    "toolbar_bg": "#f1f3f6",
-                    "enable_publishing": false,
-                    "hide_side_toolbar": false,
-                    "allow_symbol_change": true,
-                    "container_id": "tv_widget"
-                });
-            };
-            document.head.appendChild(script);
+            const tradeHistory = document.getElementById('tradeHistoryBody');
+            tradeHistory.innerHTML = '';
+
+            trades.reverse().forEach(trade => {
+                const date = new Date(trade.time).toLocaleDateString() + ' ' + new Date(trade.time).toLocaleTimeString();
+                const row = `
+                    <tr class="border-b border-gray-800 text-sm hover:bg-gray-800 transition">
+                        <td class="py-3 font-medium">${trade.symbol}</td>
+                        <td class="py-3 ${trade.side === 'BUY' ? 'status-up' : 'status-down'} font-bold">${trade.side}</td>
+                        <td class="py-3 text-right font-mono">${parseFloat(trade.price).toFixed(2)}</td>
+                        <td class="py-3 text-right font-mono">${trade.qty}</td>
+                        <td class="py-3 text-right text-gray-500 text-xs">${date}</td>
+                    </tr>
+                `;
+                tradeHistory.innerHTML += row;
+            });
         }
 
-        function closeChart() {
-            document.getElementById('chart-modal').style.display = 'none';
+        // 초기화 및 갱신
+        async function refreshData() {
+            document.getElementById('refreshBtn').innerText = "로딩 중...";
+            await Promise.all([loadAccountData(), loadTradeHistory()]);
+            document.getElementById('refreshBtn').innerText = "데이터 갱신";
         }
 
-        function startUpdateCycle() {
-            if (progressTimer) clearInterval(progressTimer);
-            remainingTime = UPDATE_INTERVAL;
-            progressTimer = setInterval(() => {
-                remainingTime -= 100;
-                document.getElementById('progress-bar').style.width = `${(remainingTime / UPDATE_INTERVAL) * 100}%`;
-                document.getElementById('timer-text').innerText = `${Math.ceil(remainingTime/1000)}s`;
-                if (remainingTime <= 0) { fetchMarketData(); remainingTime = UPDATE_INTERVAL; }
-            }, 100);
-        }
+        document.getElementById('refreshBtn').onclick = refreshData;
 
-        function manualRefresh() { fetchMarketData(); startUpdateCycle(); }
+        // 페이지 로드 시 실행
+        window.onload = refreshData;
     </script>
 </body>
 </html>
