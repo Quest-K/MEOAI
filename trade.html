@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scanner Pro | 30s Update</title>
+    <title>Scanner Pro | Sorting Enabled</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
@@ -20,6 +20,9 @@
         .loading-shimmer { background: linear-gradient(90deg, #2b3139 25%, #3e444e 50%, #2b3139 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
         @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
         .progress-bar { height: 2px; background: #fcd535; transition: width 0.3s; position: absolute; bottom: 0; left: 0; }
+        .sortable-header { cursor: pointer; transition: background 0.2s; position: relative; }
+        .sortable-header:hover { background: rgba(255, 255, 255, 0.05); }
+        .sort-icon { font-size: 8px; margin-left: 4px; vertical-align: middle; }
     </style>
 </head>
 <body class="antialiased pb-10">
@@ -64,7 +67,7 @@
 
         <!-- Toolbar -->
         <div class="flex flex-col md:flex-row gap-3 mb-6 items-center">
-            <input type="text" id="symbolSearch" placeholder="심볼 검색 (예: AIOT)..." class="search-input px-4 py-3 rounded-lg text-sm w-full md:w-64">
+            <input type="text" id="symbolSearch" placeholder="심볼 검색 (예: BTC)..." class="search-input px-4 py-3 rounded-lg text-sm w-full md:w-64">
             <div class="flex bg-[#1e2329] p-1 rounded-lg border border-[#2b3139] w-full">
                 <button onclick="setFilter('all')" id="btn-all" class="flex-1 px-4 py-1.5 rounded-md text-xs filter-btn bg-gray-700">전체</button>
                 <button onclick="setFilter('gainers')" id="btn-gainers" class="flex-1 px-4 py-1.5 rounded-md text-xs filter-btn">상승장</button>
@@ -80,10 +83,10 @@
                         <tr>
                             <th class="px-4 py-4">Symbol</th>
                             <th class="px-4 py-4 text-right">Price</th>
-                            <th class="px-4 py-4 text-center">15m</th>
-                            <th class="px-4 py-4 text-center">1h</th>
-                            <th class="px-4 py-4 text-center">6h</th>
-                            <th class="px-4 py-4 text-center bg-black/20">24h</th>
+                            <th class="px-4 py-4 text-center sortable-header" onclick="handleSort('m15')">15m <span id="sort-m15" class="sort-icon"></span></th>
+                            <th class="px-4 py-4 text-center sortable-header" onclick="handleSort('h1')">1h <span id="sort-h1" class="sort-icon"></span></th>
+                            <th class="px-4 py-4 text-center sortable-header" onclick="handleSort('h6')">6h <span id="sort-h6" class="sort-icon"></span></th>
+                            <th class="px-4 py-4 text-center sortable-header bg-black/20" onclick="handleSort('d24')">24h <span id="sort-d24" class="sort-icon"></span></th>
                             <th class="px-4 py-4 text-right">Volume</th>
                             <th class="px-4 py-4 text-center">Signal</th>
                         </tr>
@@ -98,17 +101,20 @@
 
     <script>
         const FAPI = "https://fapi.binance.com";
-        const UPDATE_INTERVAL = 30000; // 30초
+        const UPDATE_INTERVAL = 30000;
         let allTickerData = [];
         let timeframeCache = JSON.parse(localStorage.getItem('tf_cache') || '{}'); 
         let currentFilter = 'all';
         let isScanning = false;
         let countdown = 30;
 
+        // 정렬 관련 상태
+        let sortKey = 'd24'; // 기본 정렬 24시간 변동률
+        let sortOrder = 'desc'; // desc: 하락률/상승률 높은순(절대값 기준 아님, 큰 수부터)
+
         async function initScanner() {
             startCountdown();
             await refreshData();
-            // 30초 주기 설정
             setInterval(refreshData, UPDATE_INTERVAL);
         }
 
@@ -149,17 +155,9 @@
 
         async function updateMultiTimeframes() {
             const progressBar = document.getElementById('loadingProgress');
-            const searchVal = document.getElementById('symbolSearch').value.toUpperCase();
-            
-            // 우선순위 정렬: 검색어 포함 -> 거래량 상위
-            let targets = [...allTickerData].sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));
-            if(searchVal) {
-                const searched = targets.filter(t => t.symbol.includes(searchVal));
-                targets = [...searched, ...targets.filter(t => !t.symbol.includes(searchVal))];
-            }
-
+            const targets = [...allTickerData].sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));
             const total = targets.length;
-            const chunkSize = 8; // 30초 주기에 맞춰 병렬 요청 수 상향
+            const chunkSize = 8;
             
             for (let i = 0; i < targets.length; i += chunkSize) {
                 const chunk = targets.slice(i, i + chunkSize);
@@ -169,7 +167,6 @@
 
                 await Promise.all(chunk.map(async (t) => {
                     try {
-                        // 30초마다 모든 데이터를 갱신하기 위해 limit 최적화 (75 -> 72)
                         const res = await fetch(`${FAPI}/fapi/v1/klines?symbol=${t.symbol}&interval=5m&limit=73`);
                         const klines = await res.json();
                         
@@ -191,23 +188,19 @@
                 }));
                 
                 if (i % 16 === 0) renderOpportunities();
-                await new Promise(r => setTimeout(r, 50)); // API Rate Limit 준수
+                await new Promise(r => setTimeout(r, 50));
             }
             
             progressBar.style.width = '0%';
             localStorage.setItem('tf_cache', JSON.stringify(timeframeCache));
+            renderOpportunities();
         }
 
         function updateStatus(state, message) {
             const dot = document.getElementById('statusDot');
             const txt = document.getElementById('statusText');
             txt.innerText = message;
-            
-            if(state === 'analyzing') {
-                dot.className = "w-2 h-2 rounded-full bg-yellow-500 animate-pulse";
-            } else {
-                dot.className = "w-2 h-2 rounded-full bg-green-500";
-            }
+            dot.className = state === 'analyzing' ? "w-2 h-2 rounded-full bg-yellow-500 animate-pulse" : "w-2 h-2 rounded-full bg-green-500";
         }
 
         function updateSummary() {
@@ -216,9 +209,32 @@
             const bears = allTickerData.filter(t => parseFloat(t.priceChangePercent) < -3).length;
             document.getElementById('bullSymbols').innerText = bulls;
             document.getElementById('bearSymbols').innerText = bears;
-            
             const avg = allTickerData.reduce((acc, cur) => acc + Math.abs(parseFloat(cur.priceChangePercent)), 0) / allTickerData.length;
             document.getElementById('avgVol').innerText = avg.toFixed(2) + "%";
+        }
+
+        function handleSort(key) {
+            if (sortKey === key) {
+                sortOrder = sortOrder === 'desc' ? 'asc' : 'desc';
+            } else {
+                sortKey = key;
+                sortOrder = 'desc';
+            }
+            updateSortIcons();
+            renderOpportunities();
+        }
+
+        function updateSortIcons() {
+            const keys = ['m15', 'h1', 'h6', 'd24'];
+            keys.forEach(k => {
+                const el = document.getElementById(`sort-${k}`);
+                if (k === sortKey) {
+                    el.innerText = sortOrder === 'desc' ? '▼' : '▲';
+                    el.className = "sort-icon text-yellow-500";
+                } else {
+                    el.innerText = '';
+                }
+            });
         }
 
         function setFilter(filter) {
@@ -228,23 +244,35 @@
             renderOpportunities();
         }
 
+        function getSortValue(ticker, key) {
+            if (key === 'd24') return parseFloat(ticker.priceChangePercent);
+            const cache = timeframeCache[ticker.symbol];
+            if (!cache || cache[key] === undefined) return sortOrder === 'desc' ? -999 : 999;
+            return cache[key];
+        }
+
         function renderOpportunities() {
             const listBody = document.getElementById('opportunityList');
             const search = document.getElementById('symbolSearch').value.toUpperCase();
             
             let displayList = [...allTickerData];
 
+            // 1. 필터 적용
             if (currentFilter === 'gainers') displayList = displayList.filter(t => parseFloat(t.priceChangePercent) > 0);
-            if (currentFilter === 'volume') displayList.sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));
-            else displayList.sort((a, b) => Math.abs(parseFloat(b.priceChangePercent)) - Math.abs(parseFloat(a.priceChangePercent)));
-
-            if (search) displayList = displayList.filter(t => t.symbol.includes(search));
-
-            const btcIndex = displayList.findIndex(t => t.symbol === 'BTCUSDT');
-            if (btcIndex > -1 && !search) {
-                const btc = displayList.splice(btcIndex, 1)[0];
-                displayList.unshift(btc);
+            
+            // 2. 정렬 로직 (필터가 'volume'이면 거래량 우선, 그 외엔 선택된 시간대 정렬)
+            if (currentFilter === 'volume') {
+                displayList.sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));
+            } else {
+                displayList.sort((a, b) => {
+                    const valA = getSortValue(a, sortKey);
+                    const valB = getSortValue(b, sortKey);
+                    return sortOrder === 'desc' ? valB - valA : valA - valB;
+                });
             }
+
+            // 3. 검색 필터
+            if (search) displayList = displayList.filter(t => t.symbol.includes(search));
 
             listBody.innerHTML = displayList.slice(0, 60).map(t => {
                 const isBTC = t.symbol === 'BTCUSDT';
@@ -284,6 +312,7 @@
         }
 
         function getSignalBadge(d24, m15, h1) {
+            if (m15 === null) return '-';
             if (m15 > 0.8 && h1 > 1.5) return `<span class="text-[9px] bg-green-500/20 text-green-500 px-2 py-0.5 rounded border border-green-500/30 font-bold">STRONG BUY</span>`;
             if (m15 < -0.8 && h1 < -1.5) return `<span class="text-[9px] bg-red-500/20 text-red-500 px-2 py-0.5 rounded border border-red-500/30 font-bold">STRONG SELL</span>`;
             if (Math.abs(m15) > 0.5) return `<span class="text-[9px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded border border-blue-500/30">VOLATILE</span>`;
