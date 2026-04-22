@@ -41,17 +41,18 @@
         .clickable-row { cursor: pointer; }
         .clickable-row:hover { background-color: rgba(252, 213, 53, 0.05); }
         .selected-row { background-color: rgba(252, 213, 53, 0.1) !important; border-left: 4px solid #fcd535; }
+        .text-xs-mono { font-size: 0.7rem; font-family: monospace; }
     </style>
 </head>
 <body class="antialiased pb-12">
-    <div class="max-w-5xl mx-auto px-4 pt-8">
+    <div class="max-w-6xl mx-auto px-4 pt-8">
         <!-- Header -->
         <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
             <div>
                 <h1 class="text-3xl font-bold flex items-center gap-2">
-                    <span class="accent-yellow">Binance</span> Futures
+                    <span class="accent-yellow">MeoTrader</span> Futures
                 </h1>
-                <p class="text-gray-500 text-sm mt-1">10초 자동 업데이트 및 심볼 필터링 시스템</p>
+                <p class="text-gray-500 text-sm mt-1">실시간 포지션 분석 및 거래 내역 모니터링</p>
             </div>
             <div class="flex gap-2">
                 <div id="connectionIndicator" class="flex items-center gap-2 px-3 py-1 rounded-full bg-gray-800 text-xs">
@@ -83,37 +84,41 @@
         </div>
 
         <!-- Details Grid -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <!-- Asset List & Position -->
+        <div class="grid grid-cols-1 gap-8">
+            <!-- Asset List & Position (Full Width) -->
             <section>
                 <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-xl font-bold">보유 자산 및 포지션</h3>
-                    <span class="text-[10px] text-gray-500 uppercase font-bold tracking-tighter">Click symbol to filter trades</span>
+                    <h3 class="text-xl font-bold">실시간 보유 포지션</h3>
+                    <span class="text-[10px] text-gray-500 uppercase font-bold tracking-tighter">심볼 클릭 시 하단 거래내역이 필터링됩니다</span>
                 </div>
-                <div class="binance-card overflow-hidden">
-                    <table class="w-full text-sm text-left">
+                <div class="binance-card overflow-x-auto">
+                    <table class="w-full text-sm text-left min-w-[800px]">
                         <thead class="bg-[#2b3139] text-gray-400">
                             <tr>
-                                <th class="px-4 py-3">자산/심볼</th>
-                                <th class="px-4 py-3 text-right">잔고/수량</th>
+                                <th class="px-4 py-3">심볼/방향</th>
+                                <th class="px-4 py-3 text-right">수량 / 가치(USDT)</th>
+                                <th class="px-4 py-3 text-right">평단가 / 현재가</th>
+                                <th class="px-4 py-3 text-right">수익률(ROE)</th>
                                 <th class="px-4 py-3 text-right">미실현 손익</th>
                             </tr>
                         </thead>
                         <tbody id="assetList" class="divide-y divide-[#2b3139]">
-                            <tr><td colspan="3" class="px-4 py-8 text-center text-gray-500">데이터를 불러오는 중...</td></tr>
+                            <tr><td colspan="5" class="px-4 py-8 text-center text-gray-500">데이터를 불러오는 중...</td></tr>
                         </tbody>
                     </table>
                 </div>
             </section>
 
-            <!-- Recent Trades (Filtered) -->
+            <!-- Recent Trades (Aggregated) -->
             <section>
                 <div class="flex justify-between items-center mb-4">
                     <h3 class="text-xl font-bold flex items-center gap-2">
-                        최근 거래 내역 
+                        최근 거래 내역 (24H)
                         <span id="filterBadge" class="hidden text-[10px] bg-yellow-500/20 text-yellow-500 px-2 py-0.5 rounded border border-yellow-500/30"></span>
                     </h3>
-                    <span id="lastSyncTime" class="text-[10px] text-gray-500 font-mono">--:--:--</span>
+                    <div class="flex flex-col items-end">
+                        <span id="lastSyncTime" class="text-[10px] text-gray-500 font-mono">--:--:--</span>
+                    </div>
                 </div>
                 <div class="binance-card overflow-hidden">
                     <table class="w-full text-sm text-left">
@@ -121,12 +126,12 @@
                             <tr>
                                 <th class="px-4 py-3">종목</th>
                                 <th class="px-4 py-3">방향</th>
-                                <th class="px-4 py-3 text-right">체결가</th>
-                                <th class="px-4 py-3 text-right">시간</th>
+                                <th class="px-4 py-3 text-right">평균단가/수량</th>
+                                <th class="px-4 py-3 text-right">시간(분)</th>
                             </tr>
                         </thead>
                         <tbody id="tradeList" class="divide-y divide-[#2b3139]">
-                            <tr><td colspan="4" class="px-4 py-8 text-center text-gray-600">필터링된 데이터가 여기에 표시됩니다.</td></tr>
+                            <tr><td colspan="4" class="px-4 py-8 text-center text-gray-600">데이터를 불러오는 중...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -148,7 +153,7 @@
         const API_SECRET = "aunpWCXCMc1a4PPL5Qaa6HRGsM0QnRmYBfTC78iuD1LoMJFv1hUO11ESNWpKjh3L";
         const BASE_URL = "https://fapi.binance.com";
 
-        let selectedSymbol = null; // 선택된 심볼 필터링용
+        let selectedSymbol = null; 
 
         function closeError() {
             document.getElementById('errorModal').classList.add('hidden');
@@ -205,52 +210,90 @@
         async function fetchData() {
             updateIndicator('loading');
             try {
-                // 1. 계정 정보 및 거래 내역 병렬 요청
-                const account = await requestBinance("/fapi/v2/account");
+                // 병렬 요청: 계정 정보 + 현재가(Premium Index)
+                const [account, prices] = await Promise.all([
+                    requestBinance("/fapi/v2/account"),
+                    requestBinance("/fapi/v1/premiumIndex")
+                ]);
                 
-                // 2. 상단 잔고 갱신
+                // 가격 정보를 맵으로 변환
+                const priceMap = {};
+                prices.forEach(p => { priceMap[p.symbol] = p.markPrice; });
+                
                 document.getElementById('totalBalance').innerText = parseFloat(account.totalWalletBalance).toLocaleString(undefined, {minimumFractionDigits: 2});
                 document.getElementById('availableBalance').innerText = parseFloat(account.availableBalance).toLocaleString(undefined, {minimumFractionDigits: 2});
 
-                // 3. 자산 및 포지션 리스트 렌더링
                 const assetListBody = document.getElementById('assetList');
                 assetListBody.innerHTML = '';
                 
-                // 지갑 잔고가 있는 자산 + 현재 포지션이 있는 심볼 병합 표시
-                const activeAssets = account.assets.filter(a => parseFloat(a.walletBalance) > 0.01);
-                const activePositions = account.positions.filter(p => Math.abs(parseFloat(p.positionAmt)) > 0);
-
-                // 자산 렌더링
+                // 1. 순수 현금 자산 (USDT 등)
+                const activeAssets = account.assets.filter(a => parseFloat(a.walletBalance) > 1.0);
                 activeAssets.forEach(asset => {
                     assetListBody.innerHTML += `
-                        <tr class="bg-black/10">
-                            <td class="px-4 py-4 font-semibold text-gray-400 italic">${asset.asset} (Wallet)</td>
-                            <td class="px-4 py-4 text-right font-mono">${parseFloat(asset.walletBalance).toFixed(2)}</td>
-                            <td class="px-4 py-4 text-right font-mono text-gray-600">-</td>
+                        <tr class="bg-black/20 opacity-60">
+                            <td class="px-4 py-3 font-semibold text-gray-500 italic">${asset.asset} (Wallet)</td>
+                            <td class="px-4 py-3 text-right font-mono">${parseFloat(asset.walletBalance).toFixed(2)} USDT</td>
+                            <td colspan="3" class="px-4 py-3 text-right text-gray-700 text-xs font-mono">No Active Position</td>
                         </tr>
                     `;
                 });
 
-                // 포지션 렌더링 (클릭 시 필터링 기능 추가)
+                // 2. 보유 포지션 (상세 분석)
+                const activePositions = account.positions.filter(p => Math.abs(parseFloat(p.positionAmt)) > 0);
+
+                if (activePositions.length === 0) {
+                    assetListBody.innerHTML += `<tr><td colspan="5" class="px-4 py-12 text-center text-gray-600 italic">현재 보유 중인 포지션이 없습니다.</td></tr>`;
+                }
+
                 activePositions.forEach(pos => {
+                    const entryPrice = parseFloat(pos.entryPrice);
+                    const markPrice = parseFloat(priceMap[pos.symbol] || pos.markPrice);
+                    const amount = parseFloat(pos.positionAmt);
                     const pnl = parseFloat(pos.unrealizedProfit);
+                    const margin = parseFloat(pos.initialMargin); // 증거금
+                    
+                    // 수익률(ROE) 계산: (미실현손익 / 사용증거금) * 100
+                    const roe = margin > 0 ? (pnl / margin) * 100 : 0;
+                    
+                    // 포지션 가치 (USDT 기준)
+                    const positionValue = Math.abs(amount * markPrice);
+                    
                     const isSelected = selectedSymbol === pos.symbol;
+                    const side = amount > 0 ? 'LONG' : 'SHORT';
+                    
                     const row = document.createElement('tr');
-                    row.className = `clickable-row transition ${isSelected ? 'selected-row' : ''}`;
+                    row.className = `clickable-row transition border-l-4 ${side === 'LONG' ? 'border-l-green-500/50' : 'border-l-red-500/50'} ${isSelected ? 'selected-row' : ''}`;
                     row.onclick = () => toggleFilter(pos.symbol);
+                    
                     row.innerHTML = `
-                        <td class="px-4 py-4 font-bold text-yellow-500">${pos.symbol}</td>
-                        <td class="px-4 py-4 text-right font-mono">${pos.positionAmt}</td>
-                        <td class="px-4 py-4 text-right font-mono ${pnl >= 0 ? 'status-up' : 'status-down'}">
-                            ${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
+                        <td class="px-4 py-4">
+                            <div class="font-bold text-white">${pos.symbol}</div>
+                            <div class="text-[10px] font-bold ${side === 'LONG' ? 'status-up' : 'status-down'}">${side} ${pos.leverage}x</div>
+                        </td>
+                        <td class="px-4 py-4 text-right">
+                            <div class="font-mono text-white">${amount}</div>
+                            <div class="text-xs-mono text-gray-500">≈ ${positionValue.toLocaleString(undefined, {maximumFractionDigits: 2})} USDT</div>
+                        </td>
+                        <td class="px-4 py-4 text-right">
+                            <div class="text-xs-mono text-gray-400">Entry: ${entryPrice.toLocaleString()}</div>
+                            <div class="text-xs-mono text-yellow-500 font-bold">Mark: ${markPrice.toLocaleString()}</div>
+                        </td>
+                        <td class="px-4 py-4 text-right">
+                            <div class="font-mono font-bold ${roe >= 0 ? 'status-up' : 'status-down'}">
+                                ${roe >= 0 ? '+' : ''}${roe.toFixed(2)}%
+                            </div>
+                        </td>
+                        <td class="px-4 py-4 text-right">
+                            <div class="font-mono font-bold ${pnl >= 0 ? 'status-up' : 'status-down'}">
+                                ${pnl >= 0 ? '+' : ''}${pnl.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                            </div>
+                            <div class="text-[9px] text-gray-500">USDT</div>
                         </td>
                     `;
                     assetListBody.appendChild(row);
                 });
 
-                // 4. 거래 내역 로드 및 필터링
                 await fetchTrades();
-
                 updateIndicator('success');
                 document.getElementById('lastSyncTime').innerText = "Last Sync: " + new Date().toLocaleTimeString();
             } catch (error) {
@@ -265,17 +308,34 @@
             const filterBadge = document.getElementById('filterBadge');
             
             try {
-                const params = { limit: 100 };
+                const params = { limit: 300 }; 
                 if (selectedSymbol) params.symbol = selectedSymbol;
 
                 const trades = await requestBinance("/fapi/v1/userTrades", "GET", params);
                 
-                // 24시간 이내 데이터 필터링
                 const now = Date.now();
                 const twentyFourHoursAgo = now - (24 * 60 * 60 * 1000);
-                const recentTrades = trades.filter(t => t.time >= twentyFourHoursAgo);
+                const rawRecentTrades = trades.filter(t => t.time >= twentyFourHoursAgo);
 
-                // UI 업데이트
+                const aggregatedMap = new Map();
+                rawRecentTrades.forEach(t => {
+                    const d = new Date(t.time);
+                    const minuteKey = `${t.symbol}_${t.side}_${d.getFullYear()}${d.getMonth()}${d.getDate()}${d.getHours()}${d.getMinutes()}`;
+                    
+                    if (aggregatedMap.has(minuteKey)) {
+                        const existing = aggregatedMap.get(minuteKey);
+                        const totalQty = parseFloat(existing.qty) + parseFloat(t.qty);
+                        const weightedPrice = ( (parseFloat(existing.price) * parseFloat(existing.qty)) + (parseFloat(t.price) * parseFloat(t.qty)) ) / totalQty;
+                        existing.qty = totalQty.toString();
+                        existing.price = weightedPrice.toString();
+                        if (t.time > existing.time) existing.time = t.time; 
+                    } else {
+                        aggregatedMap.set(minuteKey, { ...t });
+                    }
+                });
+
+                const aggregatedTrades = Array.from(aggregatedMap.values());
+
                 if (selectedSymbol) {
                     filterBadge.innerText = selectedSymbol;
                     filterBadge.classList.remove('hidden');
@@ -284,17 +344,20 @@
                 }
 
                 tradeListBody.innerHTML = '';
-                if (recentTrades.length === 0) {
+                if (aggregatedTrades.length === 0) {
                     tradeListBody.innerHTML = `<tr><td colspan="4" class="px-4 py-12 text-center text-gray-600">최근 24시간 내 거래 내역이 없습니다.</td></tr>`;
                 } else {
-                    recentTrades.reverse().forEach(trade => {
-                        const time = new Date(trade.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    aggregatedTrades.sort((a, b) => b.time - a.time).forEach(trade => {
+                        const timeStr = new Date(trade.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                         tradeListBody.innerHTML += `
                             <tr class="hover:bg-white/5 transition">
                                 <td class="px-4 py-4 font-semibold">${trade.symbol}</td>
                                 <td class="px-4 py-4 font-bold ${trade.side === 'BUY' ? 'status-up' : 'status-down'}">${trade.side}</td>
-                                <td class="px-4 py-4 text-right font-mono">$${parseFloat(trade.price).toLocaleString()}</td>
-                                <td class="px-4 py-4 text-right text-gray-500 text-xs">${time}</td>
+                                <td class="px-4 py-4 text-right">
+                                    <div class="font-mono text-white">$${parseFloat(trade.price).toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+                                    <div class="text-[10px] text-gray-500 font-mono">${parseFloat(trade.qty).toFixed(3)} Qty</div>
+                                </td>
+                                <td class="px-4 py-4 text-right text-gray-400 text-xs font-mono">${timeStr}</td>
                             </tr>
                         `;
                     });
@@ -306,18 +369,16 @@
 
         function toggleFilter(symbol) {
             if (selectedSymbol === symbol) {
-                selectedSymbol = null; // 필터 해제
+                selectedSymbol = null;
             } else {
-                selectedSymbol = symbol; // 필터 적용
+                selectedSymbol = symbol;
             }
-            fetchData(); // 즉시 갱신
+            fetchData();
         }
 
-        // 초기 실행 및 버튼 바인딩
         document.getElementById('refreshBtn').onclick = fetchData;
         window.onload = () => {
             fetchData();
-            // 10초마다 자동 갱신 (요구사항 반영)
             setInterval(fetchData, 10000);
         };
     </script>
