@@ -4,9 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Opportunity Finder | MeoTrader Pro</title>
+    <title>Scanner Pro | MeoTrader</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         body { background-color: #0b0e11; color: #eaecef; font-family: 'Inter', sans-serif; }
@@ -17,181 +16,227 @@
         .glass-header { background: rgba(30, 35, 41, 0.8); backdrop-filter: blur(10px); position: sticky; top: 0; z-index: 50; }
         .search-input { background: #2b3139; border: 1px solid #474d57; color: white; }
         .search-input:focus { border-color: #fcd535; outline: none; }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-thumb { background: #474d57; border-radius: 10px; }
+        .fixed-btc { border-left: 4px solid #f3ba2f; background: rgba(243, 186, 47, 0.05); }
     </style>
 </head>
 <body class="antialiased pb-10">
 
-    <!-- Sticky Header -->
     <nav class="glass-header border-b border-[#2b3139] py-4 mb-6">
         <div class="max-w-7xl mx-auto px-4 flex justify-between items-center">
             <div class="flex items-center gap-3">
                 <div class="w-8 h-8 bg-yellow-500 rounded-lg flex items-center justify-center font-bold text-black text-xl">M</div>
-                <h1 class="text-xl font-bold tracking-tight">Trade <span class="accent-yellow">Finder</span></h1>
+                <h1 class="text-xl font-bold tracking-tight">Market <span class="accent-yellow">Scanner</span></h1>
             </div>
-            <div class="flex items-center gap-4 text-xs">
-                <div id="marketStatus" class="flex items-center gap-2 text-gray-400">
-                    <span class="w-2 h-2 rounded-full bg-green-500 animate-ping"></span>
-                    시장 전수 조사 중...
-                </div>
+            <div id="scanIndicator" class="flex items-center gap-2 text-xs text-gray-400">
+                <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                실시간 타임프레임(15m/1h/6h/24h) 분석 중...
             </div>
         </div>
     </nav>
 
     <div class="max-w-7xl mx-auto px-4">
         
-        <!-- Summary Widgets -->
+        <!-- Summary Stats -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
             <div class="binance-card p-4">
-                <p class="text-gray-500 text-xs font-semibold mb-1 uppercase">분석 대상</p>
+                <p class="text-gray-500 text-xs font-semibold mb-1 uppercase">분석 종목</p>
                 <div id="totalSymbols" class="text-2xl font-bold">---</div>
             </div>
             <div class="binance-card p-4">
-                <p class="text-gray-500 text-xs font-semibold mb-1 uppercase text-green-500">상승 종목</p>
+                <p class="text-gray-500 text-xs font-semibold mb-1 uppercase text-green-500">Long Signal</p>
                 <div id="bullSymbols" class="text-2xl font-bold status-up">---</div>
             </div>
             <div class="binance-card p-4">
-                <p class="text-gray-500 text-xs font-semibold mb-1 uppercase text-red-500">하락 종목</p>
+                <p class="text-gray-500 text-xs font-semibold mb-1 uppercase text-red-500">Short Signal</p>
                 <div id="bearSymbols" class="text-2xl font-bold status-down">---</div>
             </div>
             <div class="binance-card p-4">
-                <p class="text-gray-500 text-xs font-semibold mb-1 uppercase text-yellow-500">최고 변동성</p>
-                <div id="topVolatility" class="text-2xl font-bold accent-yellow">---</div>
+                <p class="text-gray-500 text-xs font-semibold mb-1 uppercase text-yellow-500">평균 변동성</p>
+                <div id="avgVol" class="text-2xl font-bold accent-yellow">---</div>
             </div>
         </div>
 
-        <!-- Filter Controls -->
-        <div class="flex flex-wrap gap-3 mb-6">
-            <input type="text" id="symbolSearch" placeholder="심볼 검색 (BTC, ETH...)" class="search-input px-4 py-2 rounded-lg text-sm w-full md:w-64">
-            <button onclick="setFilter('all')" class="px-4 py-2 bg-gray-800 rounded-lg text-sm hover:bg-gray-700 transition">전체</button>
-            <button onclick="setFilter('gainers')" class="px-4 py-2 bg-green-500/10 text-green-500 border border-green-500/20 rounded-lg text-sm hover:bg-green-500/20 transition">급등</button>
-            <button onclick="setFilter('losers')" class="px-4 py-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-lg text-sm hover:bg-red-500/20 transition">급락</button>
-            <button onclick="setFilter('volume')" class="px-4 py-2 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-lg text-sm hover:bg-blue-500/20 transition">거래량 상위</button>
+        <!-- Toolbar -->
+        <div class="flex flex-wrap gap-3 mb-6 items-center">
+            <input type="text" id="symbolSearch" placeholder="심볼 검색..." class="search-input px-4 py-2 rounded-lg text-sm w-full md:w-64">
+            <div class="flex bg-[#1e2329] p-1 rounded-lg border border-[#2b3139]">
+                <button onclick="setFilter('all')" class="px-4 py-1.5 rounded-md text-xs filter-btn active bg-gray-700">전체</button>
+                <button onclick="setFilter('gainers')" class="px-4 py-1.5 rounded-md text-xs filter-btn">상승장</button>
+                <button onclick="setFilter('volume')" class="px-4 py-1.5 rounded-md text-xs filter-btn">거래대금</button>
+            </div>
+            <span class="text-[10px] text-gray-500">BTCUSDT는 항상 상단에 고정됩니다.</span>
         </div>
 
-        <!-- Opportunity Table -->
+        <!-- Scanner Table -->
         <div class="binance-card overflow-hidden">
-            <table class="w-full text-sm text-left">
-                <thead class="bg-[#2b3139] text-gray-400 text-[11px] uppercase tracking-wider">
-                    <tr>
-                        <th class="px-6 py-4">Symbol</th>
-                        <th class="px-6 py-4 text-right">Price</th>
-                        <th class="px-6 py-4 text-right">24h Change</th>
-                        <th class="px-6 py-4 text-right">24h Volume (USDT)</th>
-                        <th class="px-6 py-4 text-right">Market Signal</th>
-                    </tr>
-                </thead>
-                <tbody id="opportunityList" class="divide-y divide-[#2b3139]">
-                    <!-- Data will be injected here -->
-                    <tr>
-                        <td colspan="5" class="px-6 py-20 text-center">
-                            <div class="flex flex-col items-center gap-4">
-                                <div class="w-10 h-10 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin"></div>
-                                <p class="text-gray-500">바이낸스 전체 선물 종목을 스캔하고 있습니다...</p>
-                            </div>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead class="bg-[#2b3139] text-gray-400 text-[10px] uppercase tracking-wider">
+                        <tr>
+                            <th class="px-6 py-4">Symbol</th>
+                            <th class="px-6 py-4 text-right">Price</th>
+                            <th class="px-6 py-4 text-center">15m</th>
+                            <th class="px-6 py-4 text-center">1h</th>
+                            <th class="px-6 py-4 text-center">6h</th>
+                            <th class="px-6 py-4 text-center">24h (Daily)</th>
+                            <th class="px-6 py-4 text-right">Volume</th>
+                            <th class="px-6 py-4 text-center">Signal</th>
+                        </tr>
+                    </thead>
+                    <tbody id="opportunityList" class="divide-y divide-[#2b3139]">
+                        <tr>
+                            <td colspan="8" class="px-6 py-20 text-center text-gray-500">
+                                멀티 타임프레임 데이터 로딩 중...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 
     <script>
-        const BASE_URL = "https://fapi.binance.com";
+        const FAPI = "https://fapi.binance.com";
         let allTickerData = [];
+        let timeframeCache = {}; // { SYMBOL: { m15: 0, h1: 0, h6: 0 } }
         let currentFilter = 'all';
 
-        async function fetchMarketData() {
+        async function initScanner() {
+            await fetchBaseTickers();
+            renderOpportunities();
+            updateMultiTimeframes();
+        }
+
+        async function fetchBaseTickers() {
             try {
-                // 바이낸스 선물 전 종목의 24시간 통계 데이터를 한 번에 가져옵니다.
-                const response = await fetch(`${BASE_URL}/fapi/v1/ticker/24hr`);
-                const data = await response.json();
-                allTickerData = data.filter(item => item.symbol.endsWith('USDT'));
-                
-                renderOpportunities();
+                const res = await fetch(`${FAPI}/fapi/v1/ticker/24hr`);
+                const data = await res.json();
+                allTickerData = data.filter(i => i.symbol.endsWith('USDT'));
                 updateSummary();
-            } catch (error) {
-                console.error("Market scan failed:", error);
+            } catch (e) { console.error("Fetch error", e); }
+        }
+
+        async function updateMultiTimeframes() {
+            // 거래량 상위 종목 우선 분석
+            const targets = allTickerData
+                .sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume))
+                .slice(0, 100);
+
+            for (const t of targets) {
+                try {
+                    // 다양한 타임프레임을 얻기 위해 5분봉 데이터를 활용하여 계산 (API 호출 최소화)
+                    // 6시간 변동률을 위해 최소 72개의 5분봉 필요 (60/5 * 6 = 72)
+                    const res = await fetch(`${FAPI}/fapi/v1/klines?symbol=${t.symbol}&interval=5m&limit=100`);
+                    const klines = await res.json();
+                    
+                    if (klines.length >= 72) {
+                        const currentPrice = parseFloat(klines[klines.length - 1][4]);
+                        
+                        const getChangeFromKlines = (candlesBack) => {
+                            const pastPrice = parseFloat(klines[klines.length - 1 - candlesBack][4]);
+                            return ((currentPrice - pastPrice) / pastPrice) * 100;
+                        };
+
+                        timeframeCache[t.symbol] = {
+                            m15: getChangeFromKlines(3),  // 3 * 5m = 15m
+                            h1: getChangeFromKlines(12),  // 12 * 5m = 1h
+                            h6: getChangeFromKlines(72)   // 72 * 5m = 6h
+                        };
+                    }
+                } catch (e) {}
+                
+                if (Object.keys(timeframeCache).length % 5 === 0) renderOpportunities();
             }
         }
 
         function updateSummary() {
             document.getElementById('totalSymbols').innerText = allTickerData.length;
-            const bulls = allTickerData.filter(t => parseFloat(t.priceChangePercent) > 0).length;
-            const bears = allTickerData.length - bulls;
+            const bulls = allTickerData.filter(t => parseFloat(t.priceChangePercent) > 2).length;
+            const bears = allTickerData.filter(t => parseFloat(t.priceChangePercent) < -2).length;
             document.getElementById('bullSymbols').innerText = bulls;
             document.getElementById('bearSymbols').innerText = bears;
-
-            const maxVol = Math.max(...allTickerData.map(t => Math.abs(parseFloat(t.priceChangePercent))));
-            document.getElementById('topVolatility').innerText = maxVol.toFixed(2) + "%";
+            
+            const avg = allTickerData.reduce((acc, cur) => acc + Math.abs(parseFloat(cur.priceChangePercent)), 0) / allTickerData.length;
+            document.getElementById('avgVol').innerText = avg.toFixed(2) + "%";
         }
 
         function setFilter(filter) {
             currentFilter = filter;
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('bg-gray-700'));
+            event.target.classList.add('bg-gray-700');
             renderOpportunities();
-        }
-
-        function getSignal(ticker) {
-            const change = parseFloat(ticker.priceChangePercent);
-            const volume = parseFloat(ticker.quoteVolume);
-            
-            // 간단한 시그널 로직 (종목 발굴용)
-            if (change > 10 && volume > 100000000) return { text: '강력 매수세', color: 'bg-green-500' };
-            if (change < -10 && volume > 100000000) return { text: '과매도 반등주의', color: 'bg-orange-500' };
-            if (volume > 500000000) return { text: '대량 거래 유입', color: 'bg-blue-500' };
-            return { text: '관망', color: 'bg-gray-600' };
         }
 
         function renderOpportunities() {
             const listBody = document.getElementById('opportunityList');
-            const searchQuery = document.getElementById('symbolSearch').value.toUpperCase();
+            const search = document.getElementById('symbolSearch').value.toUpperCase();
             
-            let filtered = [...allTickerData];
+            const btcData = allTickerData.find(t => t.symbol === 'BTCUSDT');
+            let others = allTickerData.filter(t => t.symbol !== 'BTCUSDT');
 
-            // 필터링 로직
-            if (currentFilter === 'gainers') filtered = filtered.filter(t => parseFloat(t.priceChangePercent) > 5);
-            if (currentFilter === 'losers') filtered = filtered.filter(t => parseFloat(t.priceChangePercent) < -5);
-            if (currentFilter === 'volume') filtered.sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));
-            else filtered.sort((a, b) => Math.abs(parseFloat(b.priceChangePercent)) - Math.abs(parseFloat(a.priceChangePercent)));
+            if (currentFilter === 'gainers') others = others.filter(t => parseFloat(t.priceChangePercent) > 0);
+            if (currentFilter === 'volume') others.sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));
+            else others.sort((a, b) => Math.abs(parseFloat(b.priceChangePercent)) - Math.abs(parseFloat(a.priceChangePercent)));
 
-            if (searchQuery) filtered = filtered.filter(t => t.symbol.includes(searchQuery));
+            if (search) {
+                others = others.filter(t => t.symbol.includes(search));
+            }
 
-            listBody.innerHTML = filtered.slice(0, 50).map(t => {
-                const change = parseFloat(t.priceChangePercent);
-                const signal = getSignal(t);
+            const finalDisplayList = btcData && (!search || btcData.symbol.includes(search)) 
+                                    ? [btcData, ...others.slice(0, 49)] 
+                                    : others.slice(0, 50);
+
+            listBody.innerHTML = finalDisplayList.map(t => {
+                const isBTC = t.symbol === 'BTCUSDT';
+                const d24 = parseFloat(t.priceChangePercent);
+                const tc = timeframeCache[t.symbol] || { m15: null, h1: null, h6: null };
+                
+                const formatVal = (val, isMain = false) => {
+                    if (val === null) return `<span class="text-gray-600">...</span>`;
+                    const colorClass = val >= 0 ? 'status-up' : 'status-down';
+                    const weightClass = isMain ? 'font-bold' : '';
+                    return `<span class="${colorClass} ${weightClass}">${val >= 0 ? '+' : ''}${val.toFixed(2)}%</span>`;
+                };
+
                 return `
-                    <tr class="hover:bg-white/5 transition cursor-pointer">
+                    <tr class="hover:bg-white/5 transition ${isBTC ? 'fixed-btc' : ''}">
                         <td class="px-6 py-4">
-                            <div class="font-bold text-white text-base">${t.symbol.replace('USDT', '')}<span class="text-xs text-gray-500 ml-1">/USDT</span></div>
+                            <div class="flex items-center gap-2">
+                                ${isBTC ? '📌' : ''}
+                                <span class="font-bold ${isBTC ? 'accent-yellow' : 'text-white'}">${t.symbol.replace('USDT', '')}</span>
+                                <span class="text-[10px] text-gray-500">USDT</span>
+                            </div>
                         </td>
-                        <td class="px-6 py-4 text-right font-mono">
-                            ${parseFloat(t.lastPrice).toLocaleString()}
+                        <td class="px-6 py-4 text-right font-mono text-xs">
+                            ${parseFloat(t.lastPrice).toLocaleString(undefined, {minimumFractionDigits: 2})}
                         </td>
-                        <td class="px-6 py-4 text-right font-bold ${change >= 0 ? 'status-up' : 'status-down'}">
-                            ${change >= 0 ? '+' : ''}${change.toFixed(2)}%
-                        </td>
-                        <td class="px-6 py-4 text-right text-gray-400 font-mono">
+                        <td class="px-6 py-4 text-center font-mono text-xs">${formatVal(tc.m15)}</td>
+                        <td class="px-6 py-4 text-center font-mono text-xs">${formatVal(tc.h1)}</td>
+                        <td class="px-6 py-4 text-center font-mono text-xs">${formatVal(tc.h6)}</td>
+                        <td class="px-6 py-4 text-center font-mono text-sm bg-white/5">${formatVal(d24, true)}</td>
+                        <td class="px-6 py-4 text-right text-gray-400 text-xs">
                             ${(parseFloat(t.quoteVolume) / 1000000).toFixed(1)}M
                         </td>
-                        <td class="px-6 py-4 text-right">
-                            <span class="px-2 py-1 rounded text-[10px] font-bold text-white ${signal.color}">
-                                ${signal.text}
-                            </span>
+                        <td class="px-6 py-4 text-center">
+                            ${getSignalBadge(d24, tc.m15)}
                         </td>
                     </tr>
                 `;
             }).join('');
         }
 
-        // 검색창 실시간 필터링
+        function getSignalBadge(d24, m15) {
+            if (m15 > 0.5) return `<span class="text-[9px] bg-green-500/20 text-green-500 px-2 py-0.5 rounded border border-green-500/30 font-bold">15m 급등</span>`;
+            if (m15 < -0.5) return `<span class="text-[9px] bg-red-500/20 text-red-500 px-2 py-0.5 rounded border border-red-500/30 font-bold">15m 급락</span>`;
+            if (d24 > 5) return `<span class="text-[9px] bg-yellow-500/20 text-yellow-500 px-2 py-0.5 rounded border border-yellow-500/30">강세 유지</span>`;
+            return `<span class="text-[9px] bg-gray-800 text-gray-500 px-2 py-0.5 rounded">관망</span>`;
+        }
+
         document.getElementById('symbolSearch').addEventListener('input', renderOpportunities);
 
-        window.onload = () => {
-            fetchMarketData();
-            // 10초마다 시장 전수 스캔 업데이트
-            setInterval(fetchMarketData, 10000);
-        };
+        window.onload = initScanner;
+        setInterval(fetchBaseTickers, 5000);
+        setInterval(updateMultiTimeframes, 30000); // 타임프레임 갱신 주기를 30초로 단축
     </script>
 </body>
 </html>
