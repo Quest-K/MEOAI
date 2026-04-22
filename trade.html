@@ -4,182 +4,194 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Binance Futures Dashboard</title>
+    <title>Opportunity Finder | MeoTrader Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <style>
-        body { background-color: #0b0e11; color: #eaecef; }
-        .card { background-color: #1e2329; border-radius: 12px; border: 1px solid #333; }
-        .accent { color: #fcd535; }
-        .btn-primary { background-color: #fcd535; color: #000; font-weight: bold; }
-        .btn-primary:hover { background-color: #e2c02d; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body { background-color: #0b0e11; color: #eaecef; font-family: 'Inter', sans-serif; }
+        .binance-card { background-color: #1e2329; border-radius: 12px; border: 1px solid #2b3139; }
+        .accent-yellow { color: #fcd535; }
         .status-up { color: #0ecb81; }
         .status-down { color: #f6465d; }
+        .glass-header { background: rgba(30, 35, 41, 0.8); backdrop-filter: blur(10px); position: sticky; top: 0; z-index: 50; }
+        .search-input { background: #2b3139; border: 1px solid #474d57; color: white; }
+        .search-input:focus { border-color: #fcd535; outline: none; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #474d57; border-radius: 10px; }
     </style>
 </head>
-<body class="p-4 md:p-8">
-    <div class="max-w-4xl mx-auto">
-        <!-- Header -->
-        <header class="mb-8 flex justify-between items-center">
-            <div>
-                <h1 class="text-2xl font-bold accent">Binance Futures</h1>
-                <p class="text-sm text-gray-400">실시간 선물 계정 상태</p>
-            </div>
-            <button id="refreshBtn" class="px-4 py-2 btn-primary rounded-lg transition">데이터 갱신</button>
-        </header>
+<body class="antialiased pb-10">
 
-        <!-- Balance Info -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-            <div class="card p-6">
-                <p class="text-gray-400 text-sm mb-1">총 잔고 (Total Wallet Balance)</p>
-                <h2 id="totalBalance" class="text-3xl font-bold">-- <span class="text-lg font-normal">USDT</span></h2>
+    <!-- Sticky Header -->
+    <nav class="glass-header border-b border-[#2b3139] py-4 mb-6">
+        <div class="max-w-7xl mx-auto px-4 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-yellow-500 rounded-lg flex items-center justify-center font-bold text-black text-xl">M</div>
+                <h1 class="text-xl font-bold tracking-tight">Trade <span class="accent-yellow">Finder</span></h1>
             </div>
-            <div class="card p-6">
-                <p class="text-gray-400 text-sm mb-1">사용 가능한 잔고 (Available Balance)</p>
-                <h2 id="availableBalance" class="text-3xl font-bold accent">-- <span class="text-lg font-normal">USDT</span></h2>
+            <div class="flex items-center gap-4 text-xs">
+                <div id="marketStatus" class="flex items-center gap-2 text-gray-400">
+                    <span class="w-2 h-2 rounded-full bg-green-500 animate-ping"></span>
+                    시장 전수 조사 중...
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-4">
+        
+        <!-- Summary Widgets -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div class="binance-card p-4">
+                <p class="text-gray-500 text-xs font-semibold mb-1 uppercase">분석 대상</p>
+                <div id="totalSymbols" class="text-2xl font-bold">---</div>
+            </div>
+            <div class="binance-card p-4">
+                <p class="text-gray-500 text-xs font-semibold mb-1 uppercase text-green-500">상승 종목</p>
+                <div id="bullSymbols" class="text-2xl font-bold status-up">---</div>
+            </div>
+            <div class="binance-card p-4">
+                <p class="text-gray-500 text-xs font-semibold mb-1 uppercase text-red-500">하락 종목</p>
+                <div id="bearSymbols" class="text-2xl font-bold status-down">---</div>
+            </div>
+            <div class="binance-card p-4">
+                <p class="text-gray-500 text-xs font-semibold mb-1 uppercase text-yellow-500">최고 변동성</p>
+                <div id="topVolatility" class="text-2xl font-bold accent-yellow">---</div>
             </div>
         </div>
 
-        <!-- Position/Assets List -->
-        <div class="card p-6 mb-8">
-            <h3 class="text-xl font-semibold mb-4 border-b border-gray-700 pb-2">상세 잔고 내역</h3>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left">
-                    <thead>
-                        <tr class="text-gray-400 text-sm border-b border-gray-800">
-                            <th class="py-2">자산</th>
-                            <th class="py-2 text-right">잔고</th>
-                            <th class="py-2 text-right">미실현 손익</th>
-                        </tr>
-                    </thead>
-                    <tbody id="assetTableBody">
-                        <!-- Data injected here -->
-                    </tbody>
-                </table>
-            </div>
+        <!-- Filter Controls -->
+        <div class="flex flex-wrap gap-3 mb-6">
+            <input type="text" id="symbolSearch" placeholder="심볼 검색 (BTC, ETH...)" class="search-input px-4 py-2 rounded-lg text-sm w-full md:w-64">
+            <button onclick="setFilter('all')" class="px-4 py-2 bg-gray-800 rounded-lg text-sm hover:bg-gray-700 transition">전체</button>
+            <button onclick="setFilter('gainers')" class="px-4 py-2 bg-green-500/10 text-green-500 border border-green-500/20 rounded-lg text-sm hover:bg-green-500/20 transition">급등</button>
+            <button onclick="setFilter('losers')" class="px-4 py-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-lg text-sm hover:bg-red-500/20 transition">급락</button>
+            <button onclick="setFilter('volume')" class="px-4 py-2 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-lg text-sm hover:bg-blue-500/20 transition">거래량 상위</button>
         </div>
 
-        <!-- Trade History -->
-        <div class="card p-6">
-            <h3 class="text-xl font-semibold mb-4 border-b border-gray-700 pb-2">최근 거래 내역</h3>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left">
-                    <thead>
-                        <tr class="text-gray-400 text-sm border-b border-gray-800">
-                            <th class="py-2">심볼</th>
-                            <th class="py-2">사이드</th>
-                            <th class="py-2 text-right">가격</th>
-                            <th class="py-2 text-right">수량</th>
-                            <th class="py-2 text-right">날짜</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tradeHistoryBody">
-                        <!-- Data injected here -->
-                    </tbody>
-                </table>
-            </div>
+        <!-- Opportunity Table -->
+        <div class="binance-card overflow-hidden">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-[#2b3139] text-gray-400 text-[11px] uppercase tracking-wider">
+                    <tr>
+                        <th class="px-6 py-4">Symbol</th>
+                        <th class="px-6 py-4 text-right">Price</th>
+                        <th class="px-6 py-4 text-right">24h Change</th>
+                        <th class="px-6 py-4 text-right">24h Volume (USDT)</th>
+                        <th class="px-6 py-4 text-right">Market Signal</th>
+                    </tr>
+                </thead>
+                <tbody id="opportunityList" class="divide-y divide-[#2b3139]">
+                    <!-- Data will be injected here -->
+                    <tr>
+                        <td colspan="5" class="px-6 py-20 text-center">
+                            <div class="flex flex-col items-center gap-4">
+                                <div class="w-10 h-10 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin"></div>
+                                <p class="text-gray-500">바이낸스 전체 선물 종목을 스캔하고 있습니다...</p>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
     </div>
 
     <script>
-        const apiKey = "dqstBJE5IdRC8pyZW2RDSLE1qwR9HjDMPmJaRgxpUdM7pZWoum0DQNUZzHRPOEa5";
-        const apiSecret = "aunpWCXCMc1a4PPL5Qaa6HRGsM0QnRmYBfTC78iuD1LoMJFv1hUO11ESNWpKjh3L";
-        const baseUrl = "https://fapi.binance.com"; // Futures Testnet을 원하시면 https://testnet.binancefuture.com 사용
+        const BASE_URL = "https://fapi.binance.com";
+        let allTickerData = [];
+        let currentFilter = 'all';
 
-        // 유틸리티: 서명 생성
-        function generateSignature(queryString) {
-            return CryptoJS.HmacSHA256(queryString, apiSecret).toString(CryptoJS.enc.Hex);
-        }
-
-        // 유틸리티: Fetch API 호출 (선물 API 필수 헤더 포함)
-        async function callBinanceApi(endpoint, params = {}) {
-            const timestamp = Date.now();
-            let queryString = `timestamp=${timestamp}`;
-            
-            Object.keys(params).forEach(key => {
-                queryString += `&${key}=${params[key]}`;
-            });
-
-            const signature = generateSignature(queryString);
-            const url = `${baseUrl}${endpoint}?${queryString}&signature=${signature}`;
-
+        async function fetchMarketData() {
             try {
-                const response = await fetch(url, {
-                    method: 'GET',
-                    headers: {
-                        'X-MBX-APIKEY': apiKey,
-                        'Content-Type': 'application/json'
-                    }
-                });
-                if (!response.ok) throw new Error('API 호출 실패: ' + response.statusText);
-                return await response.json();
+                // 바이낸스 선물 전 종목의 24시간 통계 데이터를 한 번에 가져옵니다.
+                const response = await fetch(`${BASE_URL}/fapi/v1/ticker/24hr`);
+                const data = await response.json();
+                allTickerData = data.filter(item => item.symbol.endsWith('USDT'));
+                
+                renderOpportunities();
+                updateSummary();
             } catch (error) {
-                console.error(error);
-                return null;
+                console.error("Market scan failed:", error);
             }
         }
 
-        // 잔고 정보 로드
-        async function loadAccountData() {
-            const accountData = await callBinanceApi("/fapi/v2/account");
-            if (!accountData) return;
+        function updateSummary() {
+            document.getElementById('totalSymbols').innerText = allTickerData.length;
+            const bulls = allTickerData.filter(t => parseFloat(t.priceChangePercent) > 0).length;
+            const bears = allTickerData.length - bulls;
+            document.getElementById('bullSymbols').innerText = bulls;
+            document.getElementById('bearSymbols').innerText = bears;
 
-            document.getElementById('totalBalance').innerText = parseFloat(accountData.totalWalletBalance).toFixed(2);
-            document.getElementById('availableBalance').innerText = parseFloat(accountData.availableBalance).toFixed(2);
+            const maxVol = Math.max(...allTickerData.map(t => Math.abs(parseFloat(t.priceChangePercent))));
+            document.getElementById('topVolatility').innerText = maxVol.toFixed(2) + "%";
+        }
 
-            const assetTable = document.getElementById('assetTableBody');
-            assetTable.innerHTML = '';
+        function setFilter(filter) {
+            currentFilter = filter;
+            renderOpportunities();
+        }
+
+        function getSignal(ticker) {
+            const change = parseFloat(ticker.priceChangePercent);
+            const volume = parseFloat(ticker.quoteVolume);
             
-            // USDT 등 보유 자산만 표시
-            accountData.assets.filter(a => parseFloat(a.walletBalance) > 0).forEach(asset => {
-                const row = `
-                    <tr class="border-b border-gray-800 text-sm">
-                        <td class="py-3 font-medium">${asset.asset}</td>
-                        <td class="py-3 text-right">${parseFloat(asset.walletBalance).toFixed(4)}</td>
-                        <td class="py-3 text-right ${parseFloat(asset.unrealizedProfit) >= 0 ? 'status-up' : 'status-down'}">
-                            ${parseFloat(asset.unrealizedProfit).toFixed(2)}
+            // 간단한 시그널 로직 (종목 발굴용)
+            if (change > 10 && volume > 100000000) return { text: '강력 매수세', color: 'bg-green-500' };
+            if (change < -10 && volume > 100000000) return { text: '과매도 반등주의', color: 'bg-orange-500' };
+            if (volume > 500000000) return { text: '대량 거래 유입', color: 'bg-blue-500' };
+            return { text: '관망', color: 'bg-gray-600' };
+        }
+
+        function renderOpportunities() {
+            const listBody = document.getElementById('opportunityList');
+            const searchQuery = document.getElementById('symbolSearch').value.toUpperCase();
+            
+            let filtered = [...allTickerData];
+
+            // 필터링 로직
+            if (currentFilter === 'gainers') filtered = filtered.filter(t => parseFloat(t.priceChangePercent) > 5);
+            if (currentFilter === 'losers') filtered = filtered.filter(t => parseFloat(t.priceChangePercent) < -5);
+            if (currentFilter === 'volume') filtered.sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));
+            else filtered.sort((a, b) => Math.abs(parseFloat(b.priceChangePercent)) - Math.abs(parseFloat(a.priceChangePercent)));
+
+            if (searchQuery) filtered = filtered.filter(t => t.symbol.includes(searchQuery));
+
+            listBody.innerHTML = filtered.slice(0, 50).map(t => {
+                const change = parseFloat(t.priceChangePercent);
+                const signal = getSignal(t);
+                return `
+                    <tr class="hover:bg-white/5 transition cursor-pointer">
+                        <td class="px-6 py-4">
+                            <div class="font-bold text-white text-base">${t.symbol.replace('USDT', '')}<span class="text-xs text-gray-500 ml-1">/USDT</span></div>
+                        </td>
+                        <td class="px-6 py-4 text-right font-mono">
+                            ${parseFloat(t.lastPrice).toLocaleString()}
+                        </td>
+                        <td class="px-6 py-4 text-right font-bold ${change >= 0 ? 'status-up' : 'status-down'}">
+                            ${change >= 0 ? '+' : ''}${change.toFixed(2)}%
+                        </td>
+                        <td class="px-6 py-4 text-right text-gray-400 font-mono">
+                            ${(parseFloat(t.quoteVolume) / 1000000).toFixed(1)}M
+                        </td>
+                        <td class="px-6 py-4 text-right">
+                            <span class="px-2 py-1 rounded text-[10px] font-bold text-white ${signal.color}">
+                                ${signal.text}
+                            </span>
                         </td>
                     </tr>
                 `;
-                assetTable.innerHTML += row;
-            });
+            }).join('');
         }
 
-        // 거래 내역 로드
-        async function loadTradeHistory() {
-            // 최근 10개 거래 내역
-            const trades = await callBinanceApi("/fapi/v1/userTrades", { limit: 10 });
-            if (!trades) return;
+        // 검색창 실시간 필터링
+        document.getElementById('symbolSearch').addEventListener('input', renderOpportunities);
 
-            const tradeHistory = document.getElementById('tradeHistoryBody');
-            tradeHistory.innerHTML = '';
-
-            trades.reverse().forEach(trade => {
-                const date = new Date(trade.time).toLocaleDateString() + ' ' + new Date(trade.time).toLocaleTimeString();
-                const row = `
-                    <tr class="border-b border-gray-800 text-sm hover:bg-gray-800 transition">
-                        <td class="py-3 font-medium">${trade.symbol}</td>
-                        <td class="py-3 ${trade.side === 'BUY' ? 'status-up' : 'status-down'} font-bold">${trade.side}</td>
-                        <td class="py-3 text-right font-mono">${parseFloat(trade.price).toFixed(2)}</td>
-                        <td class="py-3 text-right font-mono">${trade.qty}</td>
-                        <td class="py-3 text-right text-gray-500 text-xs">${date}</td>
-                    </tr>
-                `;
-                tradeHistory.innerHTML += row;
-            });
-        }
-
-        // 초기화 및 갱신
-        async function refreshData() {
-            document.getElementById('refreshBtn').innerText = "로딩 중...";
-            await Promise.all([loadAccountData(), loadTradeHistory()]);
-            document.getElementById('refreshBtn').innerText = "데이터 갱신";
-        }
-
-        document.getElementById('refreshBtn').onclick = refreshData;
-
-        // 페이지 로드 시 실행
-        window.onload = refreshData;
+        window.onload = () => {
+            fetchMarketData();
+            // 10초마다 시장 전수 스캔 업데이트
+            setInterval(fetchMarketData, 10000);
+        };
     </script>
 </body>
 </html>
