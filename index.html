@@ -18,6 +18,10 @@
         .status-down { color: #f6465d; }
         .progress-bar { height: 4px; background: #2b3139; border-radius: 2px; overflow: hidden; }
         .progress-fill { height: 100%; background: #fcd535; width: 0%; transition: width 0.1s linear; }
+        
+        /* 수동 업데이트 버튼 애니메이션 */
+        .refresh-btn:active svg { transform: rotate(180deg); }
+        .refresh-btn svg { transition: transform 0.3s ease; }
     </style>
 </head>
 <body class="antialiased pb-20">
@@ -30,11 +34,20 @@
                 </h1>
                 <p class="text-gray-500 text-sm mt-1">실시간 자산 흐름 및 확정 수익 정밀 분석</p>
             </div>
-            <div class="flex flex-col items-end">
-                <div id="connectionIndicator" class="flex items-center gap-2 px-3 py-1 rounded-full bg-gray-800 text-xs mb-2">
-                    <span class="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span> 데이터 동기화 중 (5s)
+            <div class="flex flex-col items-end gap-3">
+                <div class="flex items-center gap-3">
+                    <!-- 수동 업데이트 버튼 -->
+                    <button onclick="manualRefresh()" class="refresh-btn flex items-center gap-2 px-4 py-2 bg-[#2b3139] hover:bg-[#363d47] text-white text-sm font-semibold rounded-lg transition shadow-sm border border-gray-700">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path><path d="M3 22v-6h6"></path><path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path></svg>
+                        지금 업데이트
+                    </button>
+                    
+                    <div id="connectionIndicator" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-800/50 text-xs border border-gray-700">
+                        <span id="statusDot" class="w-2.5 h-2.5 rounded-full bg-yellow-500 animate-pulse"></span> 
+                        <span id="statusLabel" class="font-medium">대기 중...</span>
+                    </div>
                 </div>
-                <div class="w-32 progress-bar">
+                <div class="w-64 progress-bar">
                     <div id="syncProgress" class="progress-fill"></div>
                 </div>
             </div>
@@ -42,7 +55,6 @@
 
         <!-- Main Stats & Chart Grid -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-            <!-- Left: Balance Info -->
             <div class="space-y-6">
                 <div class="binance-card p-6">
                     <p class="text-gray-400 text-xs mb-1 uppercase tracking-wider font-semibold">Total Wallet Balance</p>
@@ -57,9 +69,8 @@
                 </div>
             </div>
 
-            <!-- Right: Balance Visualizer (Chart) -->
             <div class="binance-card p-4 lg:col-span-2 relative overflow-hidden">
-                <p class="text-gray-400 text-xs mb-4 uppercase tracking-wider font-semibold">Asset Timeline (Last 60 Minutes)</p>
+                <p class="text-gray-400 text-xs mb-4 uppercase tracking-wider font-semibold">Asset Timeline (Update Interval: 30s)</p>
                 <div class="h-40">
                     <canvas id="balanceChart"></canvas>
                 </div>
@@ -68,11 +79,7 @@
 
         <!-- 24H Realized Summary -->
         <section class="mb-10">
-            <div class="flex justify-between items-end mb-4">
-                <h3 class="text-xl font-bold flex items-center gap-2 text-white">
-                    📊 24시간 확정 성과 <span class="text-xs text-gray-500 font-normal">(보유 종목 제외)</span>
-                </h3>
-            </div>
+            <h3 class="text-xl font-bold mb-4 flex items-center gap-2 text-white">📊 24시간 확정 성과 <span class="text-xs text-gray-500 font-normal">(보유 종목 제외)</span></h3>
             <div class="binance-card overflow-hidden">
                 <table class="w-full text-sm text-left">
                     <thead class="bg-[#2b3139] text-gray-400 text-[11px] uppercase">
@@ -84,7 +91,7 @@
                         </tr>
                     </thead>
                     <tbody id="summaryList" class="divide-y divide-[#2b3139]">
-                        <tr><td colspan="4" class="px-6 py-10 text-center text-gray-600">트랜잭션 분석 중...</td></tr>
+                        <tr><td colspan="4" class="px-6 py-10 text-center text-gray-600 italic">데이터 수신 대기 중...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -92,9 +99,7 @@
 
         <!-- Active Positions -->
         <section>
-            <h3 class="text-xl font-bold mb-4 flex items-center gap-2 text-white">
-                ⚡ Active Positions
-            </h3>
+            <h3 class="text-xl font-bold mb-4 flex items-center gap-2 text-white">⚡ Active Positions</h3>
             <div class="binance-card overflow-x-auto">
                 <table class="w-full text-sm text-left min-w-[700px]">
                     <thead class="bg-[#2b3139] text-gray-400 text-[11px] uppercase">
@@ -102,11 +107,11 @@
                             <th class="px-6 py-4">Market / Side</th>
                             <th class="px-6 py-4 text-right">Size / Value</th>
                             <th class="px-6 py-4 text-right">Entry / Mark</th>
-                            <th class="px-6 py-4 text-right">Unrealized Profit</th>
+                            <th class="px-6 py-4 text-right">Unrealized PnL</th>
                         </tr>
                     </thead>
                     <tbody id="assetList" class="divide-y divide-[#2b3139]">
-                        <tr><td colspan="4" class="px-6 py-10 text-center text-gray-600">포지션 로드 중...</td></tr>
+                        <tr><td colspan="4" class="px-6 py-10 text-center text-gray-600">포지션 정보 없음</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -117,12 +122,11 @@
         const API_KEY = "dqstBJE5IdRC8pyZW2RDSLE1qwR9HjDMPmJaRgxpUdM7pZWoum0DQNUZzHRPOEa5";
         const API_SECRET = "aunpWCXCMc1a4PPL5Qaa6HRGsM0QnRmYBfTC78iuD1LoMJFv1hUO11ESNWpKjh3L";
         const BASE_URL = "https://fapi.binance.com";
-        const UPDATE_INTERVAL = 5000; // 5초
+        const UPDATE_INTERVAL = 30000;
 
-        let balanceHistory = [];
         let balanceChart = null;
+        let refreshTimer = null;
 
-        // --- 초기화: Chart.js ---
         function initChart() {
             const ctx = document.getElementById('balanceChart').getContext('2d');
             balanceChart = new Chart(ctx, {
@@ -130,14 +134,14 @@
                 data: {
                     labels: [],
                     datasets: [{
-                        label: 'Balance',
                         data: [],
                         borderColor: '#fcd535',
                         borderWidth: 2,
                         fill: true,
                         backgroundColor: 'rgba(252, 213, 53, 0.05)',
                         tension: 0.4,
-                        pointRadius: 0
+                        pointRadius: 2,
+                        pointBackgroundColor: '#fcd535'
                     }]
                 },
                 options: {
@@ -146,121 +150,77 @@
                     plugins: { legend: { display: false } },
                     scales: {
                         x: { display: false },
-                        y: { 
-                            grid: { color: '#2b3139' },
-                            ticks: { color: '#848e9c', font: { size: 10 } }
-                        }
+                        y: { grid: { color: '#2b3139' }, ticks: { color: '#848e9c', font: { size: 10 } } }
                     }
                 }
             });
         }
 
-        async function requestBinance(path, method = "GET", params = {}) {
+        async function requestBinance(path, params = {}) {
             const timestamp = Date.now();
             let queryString = `timestamp=${timestamp}&recvWindow=10000`;
             Object.keys(params).forEach(key => queryString += `&${key}=${params[key]}`);
             const signature = CryptoJS.HmacSHA256(queryString, API_SECRET).toString(CryptoJS.enc.Hex);
             const url = `${BASE_URL}${path}?${queryString}&signature=${signature}`;
             const response = await fetch(url, { headers: { 'X-MBX-APIKEY': API_KEY } });
+            if (!response.ok) throw new Error(`API Status: ${response.status}`);
             return await response.json();
         }
 
         async function fetchData() {
             updateProgress(0);
+            const statusDot = document.getElementById('statusDot');
+            const statusLabel = document.getElementById('statusLabel');
+            
+            statusDot.className = "w-2.5 h-2.5 rounded-full bg-yellow-500 animate-pulse";
+            statusLabel.innerText = "데이터 요청 중...";
+
             try {
                 const [account, prices, trades] = await Promise.all([
                     requestBinance("/fapi/v2/account"),
                     requestBinance("/fapi/v1/premiumIndex"),
-                    requestBinance("/fapi/v1/userTrades", "GET", { limit: 500 })
+                    requestBinance("/fapi/v1/userTrades", { limit: 500 })
                 ]);
 
-                // 1. Balance 및 Chart Update
+                // Balance & Chart
                 const totalBal = parseFloat(account.totalWalletBalance);
                 document.getElementById('totalBalance').innerText = totalBal.toLocaleString(undefined, {minimumFractionDigits: 2});
                 document.getElementById('availableBalance').innerText = parseFloat(account.availableBalance).toLocaleString(undefined, {minimumFractionDigits: 2}) + " USDT";
-                
                 updateChart(totalBal);
 
-                // 2. Active Positions Filtering
+                // Positions
                 const activePositions = account.positions.filter(p => Math.abs(parseFloat(p.positionAmt)) > 0);
-                const activeSymbolSet = new Set(activePositions.map(p => p.symbol));
-
-                // 3. UI Rendering
-                renderSummary(trades, activeSymbolSet);
                 renderPositions(activePositions, prices);
 
-                document.getElementById('connectionIndicator').innerHTML = `<span class="w-2 h-2 rounded-full bg-green-500"></span> 실시간 (5초 주기)`;
+                // Summary (Realized)
+                renderSummary(trades, new Set(activePositions.map(p => p.symbol)));
+
+                statusDot.className = "w-2.5 h-2.5 rounded-full bg-green-500";
+                statusLabel.innerText = "정상 작동 (30s 주기)";
             } catch (e) {
                 console.error(e);
+                statusDot.className = "w-2.5 h-2.5 rounded-full bg-red-500";
+                statusLabel.innerText = "연결 오류 - 재시도 중";
             }
         }
 
-        function updateChart(newVal) {
-            const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            balanceChart.data.labels.push(now);
-            balanceChart.data.datasets[0].data.push(newVal);
-            
-            // 데이터가 너무 많아지면 오래된 순으로 삭제 (1시간분량 약 720개 지점 유지)
-            if (balanceChart.data.labels.length > 100) {
-                balanceChart.data.labels.shift();
-                balanceChart.data.datasets[0].data.shift();
-            }
-            balanceChart.update('none');
-        }
-
-        function renderSummary(trades, activeSymbolSet) {
-            const summaryBody = document.getElementById('summaryList');
-            const summaryMap = {};
-            const cutoff = Date.now() - (24 * 60 * 60 * 1000);
-
-            trades.filter(t => t.time >= cutoff).forEach(t => {
-                if (activeSymbolSet.has(t.symbol)) return; // 보유 중인 심볼 제외
-
-                if (!summaryMap[t.symbol]) summaryMap[t.symbol] = { inVal: 0, outVal: 0, pnl: 0 };
-                const val = parseFloat(t.price) * parseFloat(t.qty);
-                const realizedPnl = parseFloat(t.realizedPnl);
-
-                if (t.side === 'BUY') summaryMap[t.symbol].inVal += val;
-                else summaryMap[t.symbol].outVal += val;
-                
-                summaryMap[t.symbol].pnl += realizedPnl;
-            });
-
-            const symbols = Object.keys(summaryMap);
-            if (symbols.length === 0) {
-                summaryBody.innerHTML = `<tr><td colspan="4" class="px-6 py-10 text-center text-gray-600 italic">24시간 내 확정된 수익 내역이 없습니다.</td></tr>`;
-                return;
-            }
-
-            summaryBody.innerHTML = symbols.map(sym => {
-                const s = summaryMap[sym];
-                return `
-                    <tr class="hover:bg-white/5">
-                        <td class="px-6 py-4 font-bold text-white text-base">${sym}</td>
-                        <td class="px-6 py-4 text-right font-mono text-gray-400">${s.inVal.toLocaleString(undefined, {maximumFractionDigits: 1})}</td>
-                        <td class="px-6 py-4 text-right font-mono text-gray-400">${s.outVal.toLocaleString(undefined, {maximumFractionDigits: 1})}</td>
-                        <td class="px-6 py-4 text-right">
-                            <div class="font-bold text-base ${s.pnl >= 0 ? 'status-up' : 'status-down'}">
-                                ${s.pnl >= 0 ? '+' : ''}${s.pnl.toLocaleString(undefined, {minimumFractionDigits: 2})}
-                            </div>
-                            <div class="text-[10px] text-gray-500 uppercase">Realized USDT</div>
-                        </td>
-                    </tr>
-                `;
-            }).join('');
+        function manualRefresh() {
+            // 기존 타이머 클리어 후 즉시 실행 및 타이머 재시작
+            clearInterval(refreshTimer);
+            fetchData();
+            refreshTimer = setInterval(fetchData, UPDATE_INTERVAL);
         }
 
         function renderPositions(positions, prices) {
-            const assetBody = document.getElementById('assetList');
-            const priceMap = {};
-            prices.forEach(p => priceMap[p.symbol] = p.markPrice);
+            const container = document.getElementById('assetList');
+            const priceMap = Object.fromEntries(prices.map(p => [p.symbol, p.markPrice]));
             
             if (positions.length === 0) {
-                assetBody.innerHTML = `<tr><td colspan="4" class="px-6 py-10 text-center text-gray-600 italic">현재 보유 중인 포지션이 없습니다.</td></tr>`;
+                container.innerHTML = `<tr><td colspan="4" class="px-6 py-10 text-center text-gray-600 italic">현재 보유 중인 포지션이 없습니다.</td></tr>`;
                 return;
             }
 
-            assetBody.innerHTML = positions.map(pos => {
+            container.innerHTML = positions.map(pos => {
                 const mark = parseFloat(priceMap[pos.symbol] || pos.markPrice);
                 const amt = parseFloat(pos.positionAmt);
                 const pnl = parseFloat(pos.unrealizedProfit);
@@ -268,10 +228,10 @@
                 const roe = (pnl / parseFloat(pos.initialMargin)) * 100;
 
                 return `
-                    <tr class="hover:bg-white/5 transition border-l-2 ${side === 'LONG' ? 'border-green-500' : 'border-red-500'}">
+                    <tr class="hover:bg-white/5 border-l-2 ${side === 'LONG' ? 'border-green-500' : 'border-red-500'}">
                         <td class="px-6 py-4">
-                            <div class="text-white font-bold text-base">${pos.symbol}</div>
-                            <span class="text-[10px] px-1.5 py-0.5 rounded ${side === 'LONG' ? 'bg-green-500/10 status-up' : 'bg-red-500/10 status-down'}">${side} ${pos.leverage}x</span>
+                            <div class="text-white font-bold">${pos.symbol}</div>
+                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400">${side} ${pos.leverage}x</span>
                         </td>
                         <td class="px-6 py-4 text-right">
                             <div class="text-white font-mono">${amt.toFixed(3)}</div>
@@ -282,7 +242,7 @@
                             <div class="text-[10px]">Entry: ${parseFloat(pos.entryPrice).toLocaleString()}</div>
                         </td>
                         <td class="px-6 py-4 text-right">
-                            <div class="font-bold text-base ${pnl >= 0 ? 'status-up' : 'status-down'}">
+                            <div class="font-bold ${pnl >= 0 ? 'status-up' : 'status-down'}">
                                 ${pnl >= 0 ? '+' : ''}${pnl.toLocaleString(undefined, {minimumFractionDigits: 2})}
                             </div>
                             <div class="${pnl >= 0 ? 'status-up' : 'status-down'} text-[11px] font-bold">${roe.toFixed(2)}%</div>
@@ -292,9 +252,55 @@
             }).join('');
         }
 
+        function renderSummary(trades, activeSymbolSet) {
+            const container = document.getElementById('summaryList');
+            const summaryMap = {};
+            const cutoff = Date.now() - (24 * 60 * 60 * 1000);
+
+            trades.filter(t => t.time >= cutoff).forEach(t => {
+                if (activeSymbolSet.has(t.symbol)) return;
+                if (!summaryMap[t.symbol]) summaryMap[t.symbol] = { inVal: 0, outVal: 0, pnl: 0 };
+                const val = parseFloat(t.price) * parseFloat(t.qty);
+                if (t.side === 'BUY') summaryMap[t.symbol].inVal += val;
+                else summaryMap[t.symbol].outVal += val;
+                summaryMap[t.symbol].pnl += parseFloat(t.realizedPnl);
+            });
+
+            const symbols = Object.keys(summaryMap);
+            if (symbols.length === 0) {
+                container.innerHTML = `<tr><td colspan="4" class="px-6 py-10 text-center text-gray-600 italic">24시간 내 확정 수익 없음</td></tr>`;
+                return;
+            }
+
+            container.innerHTML = symbols.map(sym => {
+                const s = summaryMap[sym];
+                return `
+                    <tr class="hover:bg-white/5">
+                        <td class="px-6 py-4 font-bold text-white">${sym}</td>
+                        <td class="px-6 py-4 text-right text-gray-400 font-mono">${s.inVal.toLocaleString(undefined, {maximumFractionDigits: 1})}</td>
+                        <td class="px-6 py-4 text-right text-gray-400 font-mono">${s.outVal.toLocaleString(undefined, {maximumFractionDigits: 1})}</td>
+                        <td class="px-6 py-4 text-right font-bold ${s.pnl >= 0 ? 'status-up' : 'status-down'}">
+                            ${s.pnl >= 0 ? '+' : ''}${s.pnl.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function updateChart(val) {
+            const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            balanceChart.data.labels.push(now);
+            balanceChart.data.datasets[0].data.push(val);
+            if (balanceChart.data.labels.length > 40) {
+                balanceChart.data.labels.shift();
+                balanceChart.data.datasets[0].data.shift();
+            }
+            balanceChart.update('none');
+        }
+
         function updateProgress(val) {
             const bar = document.getElementById('syncProgress');
-            bar.style.transition = val === 0 ? 'none' : 'width 5s linear';
+            bar.style.transition = val === 0 ? 'none' : `width ${UPDATE_INTERVAL}ms linear`;
             bar.style.width = val + '%';
             if(val === 0) setTimeout(() => updateProgress(100), 50);
         }
@@ -302,7 +308,7 @@
         window.onload = () => { 
             initChart();
             fetchData(); 
-            setInterval(fetchData, UPDATE_INTERVAL); 
+            refreshTimer = setInterval(fetchData, UPDATE_INTERVAL); 
         };
     </script>
 </body>
