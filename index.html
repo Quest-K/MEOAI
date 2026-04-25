@@ -4,219 +4,272 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Binance Futures Dashboard | MeoTrader Pro</title>
+    <title>MeoTrader Pro | Secure Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         body { background-color: #0b0e11; color: #eaecef; font-family: 'Inter', sans-serif; }
-        .binance-card { background-color: #1e2329; border-radius: 16px; border: 1px solid #2b3139; transition: all 0.2s ease; }
+        .binance-card { background-color: #1e2329; border-radius: 16px; border: 1px solid #2b3139; }
         .accent-yellow { color: #fcd535; }
         .bg-yellow { background-color: #fcd535; color: #181a20; }
         .status-up { color: #0ecb81; }
         .status-down { color: #f6465d; }
+        .input-field { background-color: #2b3139; border: 1px solid #474d57; color: white; border-radius: 8px; padding: 10px; font-size: 14px; outline: none; }
+        .input-field:focus { border-color: #fcd535; }
         .progress-bar { height: 4px; background: #2b3139; border-radius: 2px; overflow: hidden; }
         .progress-fill { height: 100%; background: #fcd535; width: 0%; transition: width 0.1s linear; }
-        
-        /* 수동 업데이트 버튼 애니메이션 */
-        .refresh-btn:active svg { transform: rotate(180deg); }
-        .refresh-btn svg { transition: transform 0.3s ease; }
     </style>
 </head>
 <body class="antialiased pb-20">
     <div class="max-w-6xl mx-auto px-4 pt-8">
-        <!-- Header -->
-        <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+        <!-- 상단 헤더 -->
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b border-gray-800 pb-6">
             <div>
                 <h1 class="text-3xl font-bold flex items-center gap-2">
-                    <span class="accent-yellow">MeoTrader</span> <span class="text-white">Futures</span>
+                    <span class="accent-yellow">MeoTrader</span> <span class="text-white font-light">Pro</span>
                 </h1>
-                <p class="text-gray-500 text-sm mt-1">실시간 자산 흐름 및 확정 수익 정밀 분석</p>
+                <p class="text-gray-500 text-sm mt-1">바이낸스 선물 실시간 자산 분석 및 성과 대시보드</p>
             </div>
-            <div class="flex flex-col items-end gap-3">
-                <div class="flex items-center gap-3">
-                    <!-- 수동 업데이트 버튼 -->
-                    <button onclick="manualRefresh()" class="refresh-btn flex items-center gap-2 px-4 py-2 bg-[#2b3139] hover:bg-[#363d47] text-white text-sm font-semibold rounded-lg transition shadow-sm border border-gray-700">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path><path d="M3 22v-6h6"></path><path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path></svg>
-                        지금 업데이트
-                    </button>
-                    
-                    <div id="connectionIndicator" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-800/50 text-xs border border-gray-700">
-                        <span id="statusDot" class="w-2.5 h-2.5 rounded-full bg-yellow-500 animate-pulse"></span> 
-                        <span id="statusLabel" class="font-medium">대기 중...</span>
-                    </div>
+            <div class="flex flex-col items-end gap-2">
+                <div id="connectionIndicator" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-800/50 text-xs border border-gray-700">
+                    <span id="statusDot" class="w-2 h-2 rounded-full bg-gray-600"></span> 
+                    <span id="statusLabel" class="font-medium">연동 대기 중</span>
                 </div>
-                <div class="w-64 progress-bar">
+                <div class="w-48 progress-bar">
                     <div id="syncProgress" class="progress-fill"></div>
                 </div>
             </div>
         </header>
 
-        <!-- Main Stats & Chart Grid -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-            <div class="space-y-6">
-                <div class="binance-card p-6">
-                    <p class="text-gray-400 text-xs mb-1 uppercase tracking-wider font-semibold">Total Wallet Balance</p>
-                    <div class="flex items-baseline gap-2">
-                        <span id="totalBalance" class="text-4xl font-bold">0.00</span>
-                        <span class="text-gray-500 font-semibold">USDT</span>
+        <!-- API 설정 섹션 -->
+        <section id="configSection" class="binance-card p-6 mb-8 border-dashed border-2 border-gray-700">
+            <h3 class="text-lg font-bold mb-4 text-white flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="accent-yellow"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                API Key 연동 설정
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="flex flex-col gap-2">
+                    <label class="text-xs text-gray-400 font-bold ml-1">API Key</label>
+                    <input type="password" id="apiKey" class="input-field" placeholder="바이낸스 API Key를 입력하세요.">
+                </div>
+                <div class="flex flex-col gap-2">
+                    <label class="text-xs text-gray-400 font-bold ml-1">Secret Key</label>
+                    <input type="password" id="apiSecret" class="input-field" placeholder="바이낸스 Secret Key를 입력하세요.">
+                </div>
+            </div>
+            <div class="mt-6 flex flex-wrap gap-3">
+                <button onclick="saveAndSync()" class="bg-yellow hover:bg-[#e2c02e] font-bold py-2.5 px-6 rounded-lg transition active:scale-95 shadow-lg">
+                    설정 저장 및 연동
+                </button>
+                <button onclick="clearKeys()" class="text-gray-400 hover:text-white text-sm font-medium px-4">
+                    키 삭제
+                </button>
+            </div>
+            <p class="mt-4 text-[11px] text-gray-500">
+                * 입력된 키는 서버로 전송되지 않으며, 본인 브라우저의 <span class="text-gray-300">localStorage</span>에 안전하게 암호화 보관됩니다.
+            </p>
+        </section>
+
+        <!-- 대시보드 메인 내용 (연동 후 표시) -->
+        <div id="dashboardMain" class="opacity-30 pointer-events-none transition-opacity duration-500">
+            <!-- 요약 스탯 -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                <div class="space-y-6">
+                    <div class="binance-card p-6 border-l-4 border-l-yellow-500 shadow-xl">
+                        <p class="text-gray-400 text-xs mb-1 uppercase tracking-wider font-semibold">Total Wallet Balance</p>
+                        <div class="flex items-baseline gap-2">
+                            <span id="totalBalance" class="text-4xl font-bold">0.00</span>
+                            <span class="text-gray-500 font-semibold">USDT</span>
+                        </div>
+                    </div>
+                    <div class="binance-card p-6">
+                        <p class="text-gray-400 text-xs mb-1 uppercase tracking-wider font-semibold">Available Margin</p>
+                        <div id="availableBalance" class="text-2xl font-bold accent-yellow">0.00 USDT</div>
                     </div>
                 </div>
-                <div class="binance-card p-6 border-l-4 border-l-[#fcd535]">
-                    <p class="text-gray-400 text-xs mb-1 uppercase tracking-wider font-semibold">Available Margin</p>
-                    <div id="availableBalance" class="text-2xl font-bold accent-yellow">0.00 USDT</div>
+                <div class="binance-card p-4 lg:col-span-2 relative h-48 lg:h-auto">
+                    <p class="text-gray-400 text-[10px] mb-2 uppercase font-bold px-2">Asset Performance History</p>
+                    <div class="h-40">
+                        <canvas id="balanceChart"></canvas>
+                    </div>
                 </div>
             </div>
 
-            <div class="binance-card p-4 lg:col-span-2 relative overflow-hidden">
-                <p class="text-gray-400 text-xs mb-4 uppercase tracking-wider font-semibold">Asset Timeline (Update Interval: 30s)</p>
-                <div class="h-40">
-                    <canvas id="balanceChart"></canvas>
+            <!-- 포지션 테이블 -->
+            <section>
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-xl font-bold text-white flex items-center gap-2">⚡ Active Positions <span id="posCount" class="text-xs bg-gray-800 px-2 py-1 rounded text-gray-500 font-normal ml-2">0</span></h3>
+                    <button onclick="manualRefresh()" id="refreshBtn" class="flex items-center gap-2 text-xs text-gray-400 hover:text-yellow-500 transition">
+                        <svg id="refreshIcon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                        강제 새로고침
+                    </button>
                 </div>
-            </div>
+                <div class="binance-card overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left">
+                            <thead class="bg-[#2b3139] text-gray-400 text-[11px] uppercase tracking-widest font-bold">
+                                <tr>
+                                    <th class="px-6 py-4">Symbol</th>
+                                    <th class="px-6 py-4 text-right">Size / Value</th>
+                                    <th class="px-6 py-4 text-right">Entry / Mark</th>
+                                    <th class="px-6 py-4 text-right">PnL (ROE%)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="assetList" class="divide-y divide-[#2b3139]">
+                                <tr><td colspan="4" class="px-6 py-12 text-center text-gray-600 italic">API 연동이 필요합니다.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
         </div>
 
-        <!-- 24H Realized Summary -->
-        <section class="mb-10">
-            <h3 class="text-xl font-bold mb-4 flex items-center gap-2 text-white">📊 24시간 확정 성과 <span class="text-xs text-gray-500 font-normal">(보유 종목 제외)</span></h3>
-            <div class="binance-card overflow-hidden">
-                <table class="w-full text-sm text-left">
-                    <thead class="bg-[#2b3139] text-gray-400 text-[11px] uppercase">
-                        <tr>
-                            <th class="px-6 py-4">Symbol</th>
-                            <th class="px-6 py-4 text-right">Total In (Buy)</th>
-                            <th class="px-6 py-4 text-right">Total Out (Sell)</th>
-                            <th class="px-6 py-4 text-right">Realized PnL</th>
-                        </tr>
-                    </thead>
-                    <tbody id="summaryList" class="divide-y divide-[#2b3139]">
-                        <tr><td colspan="4" class="px-6 py-10 text-center text-gray-600 italic">데이터 수신 대기 중...</td></tr>
-                    </tbody>
-                </table>
+        <!-- 에러 알림 박스 -->
+        <div id="errorBox" class="mt-8 p-4 bg-red-900/10 border border-red-900/30 rounded-xl hidden">
+            <div class="flex gap-3">
+                <div class="text-red-500">⚠️</div>
+                <div class="text-xs text-red-300 leading-relaxed font-mono" id="errorContent"></div>
             </div>
-        </section>
-
-        <!-- Active Positions -->
-        <section>
-            <h3 class="text-xl font-bold mb-4 flex items-center gap-2 text-white">⚡ Active Positions</h3>
-            <div class="binance-card overflow-x-auto">
-                <table class="w-full text-sm text-left min-w-[700px]">
-                    <thead class="bg-[#2b3139] text-gray-400 text-[11px] uppercase">
-                        <tr>
-                            <th class="px-6 py-4">Market / Side</th>
-                            <th class="px-6 py-4 text-right">Size / Value</th>
-                            <th class="px-6 py-4 text-right">Entry / Mark</th>
-                            <th class="px-6 py-4 text-right">Unrealized PnL</th>
-                        </tr>
-                    </thead>
-                    <tbody id="assetList" class="divide-y divide-[#2b3139]">
-                        <tr><td colspan="4" class="px-6 py-10 text-center text-gray-600">포지션 정보 없음</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </section>
+        </div>
     </div>
 
     <script>
-        const API_KEY = "dqstBJE5IdRC8pyZW2RDSLE1qwR9HjDMPmJaRgxpUdM7pZWoum0DQNUZzHRPOEa5";
-        const API_SECRET = "aunpWCXCMc1a4PPL5Qaa6HRGsM0QnRmYBfTC78iuD1LoMJFv1hUO11ESNWpKjh3L";
+        // --- 전역 설정 및 상태 ---
+        const PROXY_URL = "https://api.allorigins.win/raw?url=";
         const BASE_URL = "https://fapi.binance.com";
         const UPDATE_INTERVAL = 30000;
 
+        let API_KEY = "";
+        let API_SECRET = "";
         let balanceChart = null;
         let refreshTimer = null;
+
+        // --- 초기화 로직 ---
+        window.onload = () => {
+            initChart();
+            loadStoredKeys();
+            if (API_KEY && API_SECRET) {
+                document.getElementById('apiKey').value = "********"; // 보안상 숨김
+                document.getElementById('apiSecret').value = "********";
+                startSync();
+            }
+        };
 
         function initChart() {
             const ctx = document.getElementById('balanceChart').getContext('2d');
             balanceChart = new Chart(ctx, {
                 type: 'line',
-                data: {
-                    labels: [],
-                    datasets: [{
-                        data: [],
-                        borderColor: '#fcd535',
-                        borderWidth: 2,
-                        fill: true,
-                        backgroundColor: 'rgba(252, 213, 53, 0.05)',
-                        tension: 0.4,
-                        pointRadius: 2,
-                        pointBackgroundColor: '#fcd535'
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        x: { display: false },
-                        y: { grid: { color: '#2b3139' }, ticks: { color: '#848e9c', font: { size: 10 } } }
-                    }
-                }
+                data: { labels: [], datasets: [{ data: [], borderColor: '#fcd535', borderWidth: 2, fill: true, backgroundColor: 'rgba(252, 213, 53, 0.05)', tension: 0.4, pointRadius: 0 }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { grid: { color: '#2b3139' }, ticks: { color: '#848e9c', font: { size: 10 } } } } }
             });
+        }
+
+        // --- 키 관리 ---
+        function loadStoredKeys() {
+            API_KEY = localStorage.getItem('bn_key') || "";
+            API_SECRET = localStorage.getItem('bn_secret') || "";
+        }
+
+        function saveAndSync() {
+            const keyInput = document.getElementById('apiKey').value;
+            const secretInput = document.getElementById('apiSecret').value;
+
+            if (keyInput.includes('*') || secretInput.includes('*')) {
+                // 기존 저장된 키 사용
+            } else {
+                if (!keyInput || !secretInput) {
+                    showError("API Key와 Secret Key를 모두 입력해 주세요.");
+                    return;
+                }
+                API_KEY = keyInput;
+                API_SECRET = secretInput;
+                localStorage.setItem('bn_key', API_KEY);
+                localStorage.setItem('bn_secret', API_SECRET);
+            }
+            startSync();
+        }
+
+        function clearKeys() {
+            localStorage.removeItem('bn_key');
+            localStorage.removeItem('bn_secret');
+            location.reload();
+        }
+
+        // --- 데이터 연동 ---
+        function startSync() {
+            document.getElementById('dashboardMain').style.opacity = "1";
+            document.getElementById('dashboardMain').style.pointerEvents = "auto";
+            document.getElementById('configSection').classList.remove('border-yellow-500');
+            
+            fetchData();
+            clearInterval(refreshTimer);
+            refreshTimer = setInterval(fetchData, UPDATE_INTERVAL);
         }
 
         async function requestBinance(path, params = {}) {
             const timestamp = Date.now();
             let queryString = `timestamp=${timestamp}&recvWindow=10000`;
             Object.keys(params).forEach(key => queryString += `&${key}=${params[key]}`);
+
             const signature = CryptoJS.HmacSHA256(queryString, API_SECRET).toString(CryptoJS.enc.Hex);
-            const url = `${BASE_URL}${path}?${queryString}&signature=${signature}`;
-            const response = await fetch(url, { headers: { 'X-MBX-APIKEY': API_KEY } });
-            if (!response.ok) throw new Error(`API Status: ${response.status}`);
+            const fullUrl = `${BASE_URL}${path}?${queryString}&signature=${signature}`;
+            const proxiedUrl = PROXY_URL + encodeURIComponent(fullUrl);
+
+            const response = await fetch(proxiedUrl, {
+                headers: { 'X-MBX-APIKEY': API_KEY }
+            });
+
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(`[Status ${response.status}] ${text}`);
+            }
             return await response.json();
         }
 
         async function fetchData() {
-            updateProgress(0);
             const statusDot = document.getElementById('statusDot');
             const statusLabel = document.getElementById('statusLabel');
-            
-            statusDot.className = "w-2.5 h-2.5 rounded-full bg-yellow-500 animate-pulse";
-            statusLabel.innerText = "데이터 요청 중...";
+            const errorBox = document.getElementById('errorBox');
+
+            statusDot.className = "w-2 h-2 rounded-full bg-yellow-500 animate-pulse";
+            statusLabel.innerText = "데이터 동기화 중...";
 
             try {
-                const [account, prices, trades] = await Promise.all([
+                const [account, prices] = await Promise.all([
                     requestBinance("/fapi/v2/account"),
-                    requestBinance("/fapi/v1/premiumIndex"),
-                    requestBinance("/fapi/v1/userTrades", { limit: 500 })
+                    requestBinance("/fapi/v1/premiumIndex")
                 ]);
 
-                // Balance & Chart
+                // 스탯 갱신
                 const totalBal = parseFloat(account.totalWalletBalance);
                 document.getElementById('totalBalance').innerText = totalBal.toLocaleString(undefined, {minimumFractionDigits: 2});
                 document.getElementById('availableBalance').innerText = parseFloat(account.availableBalance).toLocaleString(undefined, {minimumFractionDigits: 2}) + " USDT";
                 updateChart(totalBal);
 
-                // Positions
-                const activePositions = account.positions.filter(p => Math.abs(parseFloat(p.positionAmt)) > 0);
-                renderPositions(activePositions, prices);
+                // 포지션 갱신
+                const activePos = account.positions.filter(p => Math.abs(parseFloat(p.positionAmt)) > 0);
+                renderPositions(activePos, prices);
 
-                // Summary (Realized)
-                renderSummary(trades, new Set(activePositions.map(p => p.symbol)));
-
-                statusDot.className = "w-2.5 h-2.5 rounded-full bg-green-500";
-                statusLabel.innerText = "정상 작동 (30s 주기)";
+                statusDot.className = "w-2 h-2 rounded-full bg-green-500";
+                statusLabel.innerText = "연결 정상";
+                errorBox.classList.add('hidden');
+                updateProgress(0);
             } catch (e) {
-                console.error(e);
-                statusDot.className = "w-2.5 h-2.5 rounded-full bg-red-500";
-                statusLabel.innerText = "연결 오류 - 재시도 중";
+                showError(e.message);
+                statusDot.className = "w-2 h-2 rounded-full bg-red-500";
+                statusLabel.innerText = "연결 오류";
             }
-        }
-
-        function manualRefresh() {
-            // 기존 타이머 클리어 후 즉시 실행 및 타이머 재시작
-            clearInterval(refreshTimer);
-            fetchData();
-            refreshTimer = setInterval(fetchData, UPDATE_INTERVAL);
         }
 
         function renderPositions(positions, prices) {
             const container = document.getElementById('assetList');
+            document.getElementById('posCount').innerText = positions.length;
             const priceMap = Object.fromEntries(prices.map(p => [p.symbol, p.markPrice]));
-            
+
             if (positions.length === 0) {
-                container.innerHTML = `<tr><td colspan="4" class="px-6 py-10 text-center text-gray-600 italic">현재 보유 중인 포지션이 없습니다.</td></tr>`;
+                container.innerHTML = `<tr><td colspan="4" class="px-6 py-12 text-center text-gray-600 italic">현재 오픈된 포지션이 없습니다.</td></tr>`;
                 return;
             }
 
@@ -224,66 +277,31 @@
                 const mark = parseFloat(priceMap[pos.symbol] || pos.markPrice);
                 const amt = parseFloat(pos.positionAmt);
                 const pnl = parseFloat(pos.unrealizedProfit);
-                const side = amt > 0 ? 'LONG' : 'SHORT';
                 const roe = (pnl / parseFloat(pos.initialMargin)) * 100;
+                const side = amt > 0 ? 'LONG' : 'SHORT';
 
                 return `
-                    <tr class="hover:bg-white/5 border-l-2 ${side === 'LONG' ? 'border-green-500' : 'border-red-500'}">
+                    <tr class="hover:bg-white/5 border-l-4 ${side === 'LONG' ? 'border-green-500' : 'border-red-500'}">
                         <td class="px-6 py-4">
                             <div class="text-white font-bold">${pos.symbol}</div>
-                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400">${side} ${pos.leverage}x</span>
+                            <div class="flex gap-1 mt-1 text-[9px] font-bold">
+                                <span class="px-1.5 py-0.5 rounded bg-gray-800 text-gray-400">${side}</span>
+                                <span class="px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-500">${pos.leverage}x</span>
+                            </div>
                         </td>
                         <td class="px-6 py-4 text-right">
-                            <div class="text-white font-mono">${amt.toFixed(3)}</div>
-                            <div class="text-[10px] text-gray-500">${(Math.abs(amt)*mark).toLocaleString()} USDT</div>
+                            <div class="text-white font-mono font-medium">${Math.abs(amt).toFixed(3)}</div>
+                            <div class="text-[10px] text-gray-500">${(Math.abs(amt)*mark).toLocaleString(undefined, {maximumFractionDigits:1})} USDT</div>
                         </td>
                         <td class="px-6 py-4 text-right font-mono text-gray-400">
-                            <div>${mark.toLocaleString()}</div>
-                            <div class="text-[10px]">Entry: ${parseFloat(pos.entryPrice).toLocaleString()}</div>
+                            <div class="text-xs">${mark.toLocaleString()}</div>
+                            <div class="text-[10px] opacity-50">Entry: ${parseFloat(pos.entryPrice).toLocaleString()}</div>
                         </td>
                         <td class="px-6 py-4 text-right">
-                            <div class="font-bold ${pnl >= 0 ? 'status-up' : 'status-down'}">
-                                ${pnl >= 0 ? '+' : ''}${pnl.toLocaleString(undefined, {minimumFractionDigits: 2})}
-                            </div>
-                            <div class="${pnl >= 0 ? 'status-up' : 'status-down'} text-[11px] font-bold">${roe.toFixed(2)}%</div>
+                            <div class="font-bold ${pnl >= 0 ? 'status-up' : 'status-down'}">${pnl >= 0 ? '+' : ''}${pnl.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+                            <div class="${pnl >= 0 ? 'status-up' : 'status-down'} text-[11px] font-bold opacity-80">${roe.toFixed(2)}%</div>
                         </td>
-                    </tr>
-                `;
-            }).join('');
-        }
-
-        function renderSummary(trades, activeSymbolSet) {
-            const container = document.getElementById('summaryList');
-            const summaryMap = {};
-            const cutoff = Date.now() - (24 * 60 * 60 * 1000);
-
-            trades.filter(t => t.time >= cutoff).forEach(t => {
-                if (activeSymbolSet.has(t.symbol)) return;
-                if (!summaryMap[t.symbol]) summaryMap[t.symbol] = { inVal: 0, outVal: 0, pnl: 0 };
-                const val = parseFloat(t.price) * parseFloat(t.qty);
-                if (t.side === 'BUY') summaryMap[t.symbol].inVal += val;
-                else summaryMap[t.symbol].outVal += val;
-                summaryMap[t.symbol].pnl += parseFloat(t.realizedPnl);
-            });
-
-            const symbols = Object.keys(summaryMap);
-            if (symbols.length === 0) {
-                container.innerHTML = `<tr><td colspan="4" class="px-6 py-10 text-center text-gray-600 italic">24시간 내 확정 수익 없음</td></tr>`;
-                return;
-            }
-
-            container.innerHTML = symbols.map(sym => {
-                const s = summaryMap[sym];
-                return `
-                    <tr class="hover:bg-white/5">
-                        <td class="px-6 py-4 font-bold text-white">${sym}</td>
-                        <td class="px-6 py-4 text-right text-gray-400 font-mono">${s.inVal.toLocaleString(undefined, {maximumFractionDigits: 1})}</td>
-                        <td class="px-6 py-4 text-right text-gray-400 font-mono">${s.outVal.toLocaleString(undefined, {maximumFractionDigits: 1})}</td>
-                        <td class="px-6 py-4 text-right font-bold ${s.pnl >= 0 ? 'status-up' : 'status-down'}">
-                            ${s.pnl >= 0 ? '+' : ''}${s.pnl.toLocaleString(undefined, {minimumFractionDigits: 2})}
-                        </td>
-                    </tr>
-                `;
+                    </tr>`;
             }).join('');
         }
 
@@ -291,7 +309,7 @@
             const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             balanceChart.data.labels.push(now);
             balanceChart.data.datasets[0].data.push(val);
-            if (balanceChart.data.labels.length > 40) {
+            if (balanceChart.data.labels.length > 30) {
                 balanceChart.data.labels.shift();
                 balanceChart.data.datasets[0].data.shift();
             }
@@ -302,14 +320,19 @@
             const bar = document.getElementById('syncProgress');
             bar.style.transition = val === 0 ? 'none' : `width ${UPDATE_INTERVAL}ms linear`;
             bar.style.width = val + '%';
-            if(val === 0) setTimeout(() => updateProgress(100), 50);
+            if(val === 0) setTimeout(() => updateProgress(100), 100);
         }
 
-        window.onload = () => { 
-            initChart();
-            fetchData(); 
-            refreshTimer = setInterval(fetchData, UPDATE_INTERVAL); 
-        };
+        function manualRefresh() {
+            fetchData();
+        }
+
+        function showError(msg) {
+            const errorBox = document.getElementById('errorBox');
+            const errorContent = document.getElementById('errorContent');
+            errorBox.classList.remove('hidden');
+            errorContent.innerText = msg + "\n\n1. API 키/시크릿 오타 확인\n2. 바이낸스 API 관리에서 'Enable Futures' 권한 체크 확인\n3. 본인 IP가 API 화이트리스트에 등록되었는지 확인";
+        }
     </script>
 </body>
 </html>
