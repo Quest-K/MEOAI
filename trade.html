@@ -1,147 +1,169 @@
-
 <!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scanner Pro | Sorting Enabled</title>
+    <title>Scanner Pro | Advanced</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         body { background-color: #0b0e11; color: #eaecef; font-family: 'Inter', sans-serif; overflow-x: hidden; }
         .binance-card { background-color: #1e2329; border-radius: 12px; border: 1px solid #2b3139; }
         .accent-yellow { color: #fcd535; }
         .status-up { color: #0ecb81; }
         .status-down { color: #f6465d; }
-        .glass-header { background: rgba(30, 35, 41, 0.9); backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 50; }
+        .glass-header { background: rgba(30, 35, 41, 0.95); backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 50; }
         .search-input { background: #2b3139; border: 1px solid #474d57; color: white; transition: all 0.2s; }
-        .search-input:focus { border-color: #fcd535; outline: none; box-shadow: 0 0 0 2px rgba(252, 213, 53, 0.2); }
-        .fixed-btc { border-left: 4px solid #f3ba2f; background: rgba(243, 186, 47, 0.05); }
+        .search-input:focus { border-color: #fcd535; outline: none; box-shadow: 0 0 0 3px rgba(252, 213, 53, 0.25); }
+        .fixed-btc { border-left: 4px solid #f3ba2f; background: rgba(243, 186, 47, 0.08); }
         .loading-shimmer { background: linear-gradient(90deg, #2b3139 25%, #3e444e 50%, #2b3139 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
         @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-        .progress-bar { height: 2px; background: #fcd535; transition: width 0.3s; position: absolute; bottom: 0; left: 0; }
-        .sortable-header { cursor: pointer; transition: background 0.2s; position: relative; }
-        .sortable-header:hover { background: rgba(255, 255, 255, 0.05); }
-        .sort-icon { font-size: 8px; margin-left: 4px; vertical-align: middle; }
+        .progress-bar { height: 3px; background: linear-gradient(to right, #fcd535, #f3ba2f); transition: width 0.4s ease-out; }
+        .sortable-header { cursor: pointer; transition: all 0.2s; position: relative; user-select: none; }
+        .sortable-header:hover { background: rgba(255, 255, 255, 0.08); }
+        .sort-icon { font-size: 10px; margin-left: 4px; }
+        .toast { animation: slideIn 0.3s ease-out forwards; }
+        @keyframes slideIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
     </style>
 </head>
 <body class="antialiased pb-10">
 
-    <nav class="glass-header border-b border-[#2b3139] py-4 mb-6">
+    <nav class="glass-header border-b border-[#2b3139] py-4">
         <div class="max-w-7xl mx-auto px-4 flex justify-between items-center">
             <div class="flex items-center gap-3">
-                <div class="w-8 h-8 bg-yellow-500 rounded-lg flex items-center justify-center font-bold text-black text-xl">M</div>
-                <h1 class="text-xl font-bold tracking-tight">Market <span class="accent-yellow">Scanner</span></h1>
+                <div class="w-9 h-9 bg-gradient-to-br from-yellow-400 to-amber-500 rounded-xl flex items-center justify-center font-bold text-black text-2xl shadow-inner">M</div>
+                <h1 class="text-2xl font-bold tracking-tighter">Market <span class="accent-yellow">Scanner Pro</span></h1>
             </div>
-            <div class="flex flex-col items-end gap-1">
-                <div id="scanIndicator" class="flex items-center gap-2 text-xs text-gray-400">
-                    <span id="statusDot" class="w-2 h-2 rounded-full bg-green-500"></span>
-                    <span id="statusText">대기 중 (30초 주기)</span>
+            <div class="flex items-center gap-4 text-sm">
+                <div id="scanIndicator" class="flex items-center gap-2 text-xs">
+                    <span id="statusDot" class="w-2.5 h-2.5 rounded-full bg-green-500 ring-2 ring-green-500/30"></span>
+                    <span id="statusText" class="font-medium">대기 중</span>
                 </div>
-                <div class="text-[10px] text-gray-500" id="nextUpdate">다음 업데이트: 계산 중...</div>
+                <div id="nextUpdate" class="text-xs text-gray-500 font-mono">00:30</div>
             </div>
         </div>
-        <div id="loadingProgress" class="progress-bar" style="width: 0%"></div>
+        <div id="loadingProgress" class="progress-bar w-0"></div>
     </nav>
 
-    <div class="max-w-7xl mx-auto px-4">
+    <div class="max-w-7xl mx-auto px-4 pt-6">
         <!-- Summary Stats -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-            <div class="binance-card p-3 md:p-4">
-                <p class="text-gray-500 text-[10px] font-semibold mb-1 uppercase">분석 종목</p>
-                <div id="totalSymbols" class="text-xl md:text-2xl font-bold">---</div>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+            <div class="binance-card p-5">
+                <p class="text-gray-400 text-xs font-medium tracking-widest">TOTAL</p>
+                <div id="totalSymbols" class="text-3xl font-bold mt-1">---</div>
             </div>
-            <div class="binance-card p-3 md:p-4 border-l-4 border-green-500">
-                <p class="text-gray-500 text-[10px] font-semibold mb-1 uppercase">LONG</p>
-                <div id="bullSymbols" class="text-xl md:text-2xl font-bold status-up">---</div>
+            <div class="binance-card p-5 border-l-4 border-emerald-500">
+                <p class="text-gray-400 text-xs font-medium tracking-widest">LONG BIAS</p>
+                <div id="bullSymbols" class="text-3xl font-bold mt-1 status-up">---</div>
             </div>
-            <div class="binance-card p-3 md:p-4 border-l-4 border-red-500">
-                <p class="text-gray-500 text-[10px] font-semibold mb-1 uppercase">SHORT</p>
-                <div id="bearSymbols" class="text-xl md:text-2xl font-bold status-down">---</div>
+            <div class="binance-card p-5 border-l-4 border-rose-500">
+                <p class="text-gray-400 text-xs font-medium tracking-widest">SHORT BIAS</p>
+                <div id="bearSymbols" class="text-3xl font-bold mt-1 status-down">---</div>
             </div>
-            <div class="binance-card p-3 md:p-4 border-l-4 border-yellow-500">
-                <p class="text-gray-500 text-[10px] font-semibold mb-1 uppercase">변동성</p>
-                <div id="avgVol" class="text-xl md:text-2xl font-bold accent-yellow">---</div>
+            <div class="binance-card p-5 border-l-4 border-amber-500">
+                <p class="text-gray-400 text-xs font-medium tracking-widest">AVG VOL</p>
+                <div id="avgVol" class="text-3xl font-bold mt-1 accent-yellow">---</div>
+            </div>
+            <div class="binance-card p-5">
+                <p class="text-gray-400 text-xs font-medium tracking-widest">WATCHLIST</p>
+                <div id="watchCount" class="text-3xl font-bold mt-1 text-yellow-400">0</div>
             </div>
         </div>
 
         <!-- Toolbar -->
-        <div class="flex flex-col md:flex-row gap-3 mb-6 items-center">
-            <input type="text" id="symbolSearch" placeholder="심볼 검색 (예: BTC)..." class="search-input px-4 py-3 rounded-lg text-sm w-full md:w-64">
-            <div class="flex bg-[#1e2329] p-1 rounded-lg border border-[#2b3139] w-full">
-                <button onclick="setFilter('all')" id="btn-all" class="flex-1 px-4 py-1.5 rounded-md text-xs filter-btn bg-gray-700">전체</button>
-                <button onclick="setFilter('gainers')" id="btn-gainers" class="flex-1 px-4 py-1.5 rounded-md text-xs filter-btn">상승장</button>
-                <button onclick="setFilter('volume')" id="btn-volume" class="flex-1 px-4 py-1.5 rounded-md text-xs filter-btn">거래대금순</button>
+        <div class="flex flex-col lg:flex-row gap-4 mb-6 items-end">
+            <div class="flex-1">
+                <input type="text" id="symbolSearch" placeholder="심볼 검색 (BTC, ETH 등)" 
+                       class="search-input px-5 py-3.5 rounded-2xl text-base w-full focus:ring-2">
+            </div>
+            <div class="flex gap-2 flex-wrap">
+                <button onclick="setFilter('all')" id="btn-all" class="filter-btn px-6 py-2.5 rounded-2xl text-sm font-medium bg-gray-700">전체</button>
+                <button onclick="setFilter('gainers')" id="btn-gainers" class="filter-btn px-6 py-2.5 rounded-2xl text-sm font-medium">상승</button>
+                <button onclick="setFilter('volume')" id="btn-volume" class="filter-btn px-6 py-2.5 rounded-2xl text-sm font-medium">거래대금</button>
+                <button onclick="setFilter('watchlist')" id="btn-watchlist" class="filter-btn px-6 py-2.5 rounded-2xl text-sm font-medium bg-yellow-500/10 text-yellow-400 border border-yellow-500/30">⭐ Watchlist</button>
             </div>
         </div>
 
         <!-- Table -->
         <div class="binance-card overflow-hidden shadow-2xl">
             <div class="overflow-x-auto">
-                <table class="w-full text-sm text-left">
-                    <thead class="bg-[#2b3139] text-gray-400 text-[10px] uppercase tracking-wider">
+                <table class="w-full text-sm">
+                    <thead class="bg-[#252a32] text-gray-400 text-xs uppercase tracking-widest sticky top-0 z-10">
                         <tr>
-                            <th class="px-4 py-4">Symbol</th>
-                            <th class="px-4 py-4 text-right">Price</th>
-                            <th class="px-4 py-4 text-center sortable-header" onclick="handleSort('m15')">15m <span id="sort-m15" class="sort-icon"></span></th>
-                            <th class="px-4 py-4 text-center sortable-header" onclick="handleSort('h1')">1h <span id="sort-h1" class="sort-icon"></span></th>
-                            <th class="px-4 py-4 text-center sortable-header" onclick="handleSort('h6')">6h <span id="sort-h6" class="sort-icon"></span></th>
-                            <th class="px-4 py-4 text-center sortable-header bg-black/20" onclick="handleSort('d24')">24h <span id="sort-d24" class="sort-icon"></span></th>
-                            <th class="px-4 py-4 text-right">Volume</th>
-                            <th class="px-4 py-4 text-center">Signal</th>
+                            <th class="px-6 py-5 text-left">Symbol</th>
+                            <th class="px-6 py-5 text-right">Price</th>
+                            <th class="px-6 py-5 text-center sortable-header" onclick="handleSort('m15')">15m <span id="sort-m15" class="sort-icon"></span></th>
+                            <th class="px-6 py-5 text-center sortable-header" onclick="handleSort('h1')">1h <span id="sort-h1" class="sort-icon"></span></th>
+                            <th class="px-6 py-5 text-center sortable-header" onclick="handleSort('h6')">6h <span id="sort-h6" class="sort-icon"></span></th>
+                            <th class="px-6 py-5 text-center sortable-header bg-black/30" onclick="handleSort('d24')">24h <span id="sort-d24" class="sort-icon"></span></th>
+                            <th class="px-6 py-5 text-center sortable-header" onclick="handleSort('funding')">Funding</th>
+                            <th class="px-6 py-5 text-right sortable-header" onclick="handleSort('oi')">OI</th>
+                            <th class="px-6 py-5 text-right">Volume</th>
+                            <th class="px-6 py-5 text-center">Signal</th>
+                            <th class="px-6 py-5 text-center w-12">★</th>
                         </tr>
                     </thead>
-                    <tbody id="opportunityList" class="divide-y divide-[#2b3139]">
-                        <!-- 데이터 로딩 전 스켈레톤 -->
-                    </tbody>
+                    <tbody id="opportunityList" class="divide-y divide-[#2b3139] text-base"></tbody>
                 </table>
             </div>
         </div>
     </div>
 
+    <!-- Toast -->
+    <div id="toast" class="fixed bottom-6 right-6 hidden bg-gray-800 border border-yellow-500 text-white px-5 py-3 rounded-2xl shadow-2xl text-sm toast flex items-center gap-3"></div>
+
     <script>
         const FAPI = "https://fapi.binance.com";
         const UPDATE_INTERVAL = 30000;
+        
         let allTickerData = [];
-        let timeframeCache = JSON.parse(localStorage.getItem('tf_cache') || '{}'); 
+        let timeframeCache = JSON.parse(localStorage.getItem('tf_cache') || '{}');
+        let fundingCache = {};
+        let oiCache = {};
+        let watchlist = JSON.parse(localStorage.getItem('watchlist') || '[]');
+        
         let currentFilter = 'all';
+        let sortKey = 'd24';
+        let sortOrder = 'desc';
         let isScanning = false;
         let countdown = 30;
 
-        // 정렬 관련 상태
-        let sortKey = 'd24'; // 기본 정렬 24시간 변동률
-        let sortOrder = 'desc'; // desc: 하락률/상승률 높은순(절대값 기준 아님, 큰 수부터)
-
-        async function initScanner() {
-            startCountdown();
-            await refreshData();
-            setInterval(refreshData, UPDATE_INTERVAL);
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.remove('hidden', 'bg-green-600', 'bg-red-600');
+            toast.classList.add(type === 'success' ? 'bg-emerald-600' : 'bg-red-600');
+            setTimeout(() => toast.classList.add('hidden'), 2500);
         }
 
-        async function refreshData() {
-            if(isScanning) return;
-            isScanning = true;
-            countdown = 30;
-            
-            updateStatus('analyzing', '기초 데이터 수집 중...');
-            await fetchBaseTickers();
+        function toggleWatchlist(symbol) {
+            if (watchlist.includes(symbol)) {
+                watchlist = watchlist.filter(s => s !== symbol);
+            } else {
+                watchlist.push(symbol);
+            }
+            localStorage.setItem('watchlist', JSON.stringify(watchlist));
+            document.getElementById('watchCount').textContent = watchlist.length;
             renderOpportunities();
-            
-            await updateMultiTimeframes();
-            isScanning = false;
-            updateStatus('idle', '분석 완료 (30초 주기)');
+            showToast(`${symbol} ${watchlist.includes(symbol) ? '추가' : '제거'}됨`);
         }
 
-        function startCountdown() {
-            setInterval(() => {
-                if(!isScanning) {
-                    countdown--;
-                    if(countdown < 0) countdown = 0;
-                    document.getElementById('nextUpdate').innerText = `다음 업데이트까지: ${countdown}초`;
-                } else {
-                    document.getElementById('nextUpdate').innerText = `업데이트 진행 중...`;
-                }
-            }, 1000);
+        async function fetchFundingInfo() {
+            try {
+                const res = await fetch(`${FAPI}/fapi/v1/fundingInfo`);
+                const data = await res.json();
+                data.forEach(item => {
+                    fundingCache[item.symbol] = parseFloat(item.lastFundingRate) * 100;
+                });
+            } catch (e) { console.error("Funding fetch error", e); }
+        }
+
+        async function fetchOpenInterest(symbol) {
+            try {
+                const res = await fetch(`\( {FAPI}/fapi/v1/openInterest?symbol= \){symbol}`);
+                const data = await res.json();
+                oiCache[symbol] = parseFloat(data.openInterest);
+            } catch (e) {}
         }
 
         async function fetchBaseTickers() {
@@ -150,31 +172,36 @@
                 const data = await res.json();
                 allTickerData = data.filter(i => i.symbol.endsWith('USDT'));
                 updateSummary();
+                await fetchFundingInfo();
+                
+                // 상위 거래량 종목 OI 미리 로드
+                const topSymbols = [...allTickerData]
+                    .sort((a,b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume))
+                    .slice(0, 30);
+                await Promise.all(topSymbols.map(t => fetchOpenInterest(t.symbol)));
             } catch (e) { console.error("Base fetch error", e); }
         }
 
         async function updateMultiTimeframes() {
             const progressBar = document.getElementById('loadingProgress');
             const targets = [...allTickerData].sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));
-            const total = targets.length;
-            const chunkSize = 8;
-            
+            const chunkSize = 6; // rate limit 안전하게 조정
+
             for (let i = 0; i < targets.length; i += chunkSize) {
                 const chunk = targets.slice(i, i + chunkSize);
-                const progress = Math.round((i / total) * 100);
+                const progress = Math.round((i / targets.length) * 100);
                 progressBar.style.width = `${progress}%`;
-                updateStatus('analyzing', `지표 분석 중 (${progress}%)`);
 
                 await Promise.all(chunk.map(async (t) => {
                     try {
-                        const res = await fetch(`${FAPI}/fapi/v1/klines?symbol=${t.symbol}&interval=5m&limit=73`);
+                        const res = await fetch(`\( {FAPI}/fapi/v1/klines?symbol= \){t.symbol}&interval=5m&limit=73`);
                         const klines = await res.json();
                         
                         if (klines.length >= 72) {
-                            const currentPrice = parseFloat(klines[klines.length - 1][4]);
-                            const getChange = (index) => {
-                                const past = parseFloat(klines[klines.length - 1 - index][4]);
-                                return ((currentPrice - past) / past) * 100;
+                            const current = parseFloat(klines[klines.length-1][4]);
+                            const getChange = (steps) => {
+                                const past = parseFloat(klines[klines.length-1-steps][4]);
+                                return ((current - past) / past) * 100;
                             };
 
                             timeframeCache[t.symbol] = {
@@ -186,9 +213,9 @@
                         }
                     } catch (e) {}
                 }));
-                
-                if (i % 16 === 0) renderOpportunities();
-                await new Promise(r => setTimeout(r, 50));
+
+                if (i % 12 === 0) renderOpportunities();
+                await new Promise(r => setTimeout(r, 80));
             }
             
             progressBar.style.width = '0%';
@@ -196,21 +223,26 @@
             renderOpportunities();
         }
 
-        function updateStatus(state, message) {
-            const dot = document.getElementById('statusDot');
-            const txt = document.getElementById('statusText');
-            txt.innerText = message;
-            dot.className = state === 'analyzing' ? "w-2 h-2 rounded-full bg-yellow-500 animate-pulse" : "w-2 h-2 rounded-full bg-green-500";
-        }
-
         function updateSummary() {
-            document.getElementById('totalSymbols').innerText = allTickerData.length;
+            document.getElementById('totalSymbols').innerText = allTickerData.length.toLocaleString();
             const bulls = allTickerData.filter(t => parseFloat(t.priceChangePercent) > 3).length;
             const bears = allTickerData.filter(t => parseFloat(t.priceChangePercent) < -3).length;
             document.getElementById('bullSymbols').innerText = bulls;
             document.getElementById('bearSymbols').innerText = bears;
-            const avg = allTickerData.reduce((acc, cur) => acc + Math.abs(parseFloat(cur.priceChangePercent)), 0) / allTickerData.length;
-            document.getElementById('avgVol').innerText = avg.toFixed(2) + "%";
+            
+            const avg = allTickerData.reduce((acc, t) => acc + Math.abs(parseFloat(t.priceChangePercent)), 0) / allTickerData.length;
+            document.getElementById('avgVol').innerText = avg.toFixed(1) + "%";
+            document.getElementById('watchCount').innerText = watchlist.length;
+        }
+
+        function getSortValue(ticker, key) {
+            if (key === 'd24') return parseFloat(ticker.priceChangePercent || 0);
+            if (key === 'funding') return fundingCache[ticker.symbol] || 0;
+            if (key === 'oi') return oiCache[ticker.symbol] || 0;
+            
+            const cache = timeframeCache[ticker.symbol];
+            if (!cache || cache[key] === undefined) return sortOrder === 'desc' ? -9999 : 9999;
+            return cache[key];
         }
 
         function handleSort(key) {
@@ -225,102 +257,171 @@
         }
 
         function updateSortIcons() {
-            const keys = ['m15', 'h1', 'h6', 'd24'];
-            keys.forEach(k => {
+            ['m15','h1','h6','d24','funding','oi'].forEach(k => {
                 const el = document.getElementById(`sort-${k}`);
-                if (k === sortKey) {
-                    el.innerText = sortOrder === 'desc' ? '▼' : '▲';
-                    el.className = "sort-icon text-yellow-500";
-                } else {
-                    el.innerText = '';
+                if (el) {
+                    if (k === sortKey) {
+                        el.innerHTML = sortOrder === 'desc' ? '▼' : '▲';
+                        el.className = "sort-icon text-yellow-400";
+                    } else {
+                        el.innerHTML = '';
+                    }
                 }
             });
         }
 
         function setFilter(filter) {
             currentFilter = filter;
-            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('bg-gray-700'));
-            document.getElementById(`btn-${filter}`).classList.add('bg-gray-700');
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('bg-gray-700', 'ring-1', 'ring-yellow-400');
+            });
+            document.getElementById(`btn-${filter}`).classList.add('bg-gray-700', 'ring-1', 'ring-yellow-400');
             renderOpportunities();
         }
 
-        function getSortValue(ticker, key) {
-            if (key === 'd24') return parseFloat(ticker.priceChangePercent);
-            const cache = timeframeCache[ticker.symbol];
-            if (!cache || cache[key] === undefined) return sortOrder === 'desc' ? -999 : 999;
-            return cache[key];
+        function getSignalBadge(d24, m15, h1, funding) {
+            if (m15 === null) return `<span class="text-xs bg-gray-700 px-3 py-1 rounded-full">LOADING</span>`;
+            
+            const absM15 = Math.abs(m15);
+            const absH1 = Math.abs(h1);
+            
+            if (m15 > 1.2 && h1 > 2.0 && d24 > 0) 
+                return `<span class="text-xs bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full border border-emerald-500/40 font-bold">STRONG LONG</span>`;
+            if (m15 < -1.2 && h1 < -2.0 && d24 < 0) 
+                return `<span class="text-xs bg-rose-500/20 text-rose-400 px-3 py-1 rounded-full border border-rose-500/40 font-bold">STRONG SHORT</span>`;
+            if (absM15 > 1.5 || absH1 > 3) 
+                return `<span class="text-xs bg-blue-500/20 text-blue-400 px-3 py-1 rounded-full border border-blue-500/40">HIGH VOL</span>`;
+            if (Math.abs(funding) > 0.05) 
+                return `<span class="text-xs bg-purple-500/20 text-purple-400 px-3 py-1 rounded-full">FUNDING BIAS</span>`;
+            
+            return `<span class="text-xs bg-gray-700 px-3 py-1 rounded-full text-gray-400">NEUTRAL</span>`;
+        }
+
+        function formatNumber(num, decimals = 2) {
+            return parseFloat(num).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
         }
 
         function renderOpportunities() {
-            const listBody = document.getElementById('opportunityList');
-            const search = document.getElementById('symbolSearch').value.toUpperCase();
-            
-            let displayList = [...allTickerData];
+            const tbody = document.getElementById('opportunityList');
+            const searchTerm = document.getElementById('symbolSearch').value.toUpperCase().trim();
 
-            // 1. 필터 적용
-            if (currentFilter === 'gainers') displayList = displayList.filter(t => parseFloat(t.priceChangePercent) > 0);
-            
-            // 2. 정렬 로직 (필터가 'volume'이면 거래량 우선, 그 외엔 선택된 시간대 정렬)
+            let list = [...allTickerData];
+
+            // Filter
+            if (currentFilter === 'gainers') {
+                list = list.filter(t => parseFloat(t.priceChangePercent) > 0);
+            } else if (currentFilter === 'watchlist') {
+                list = list.filter(t => watchlist.includes(t.symbol));
+            }
+
+            // Sort
             if (currentFilter === 'volume') {
-                displayList.sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));
+                list.sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));
             } else {
-                displayList.sort((a, b) => {
+                list.sort((a, b) => {
                     const valA = getSortValue(a, sortKey);
                     const valB = getSortValue(b, sortKey);
                     return sortOrder === 'desc' ? valB - valA : valA - valB;
                 });
             }
 
-            // 3. 검색 필터
-            if (search) displayList = displayList.filter(t => t.symbol.includes(search));
+            // Search
+            if (searchTerm) {
+                list = list.filter(t => t.symbol.includes(searchTerm));
+            }
 
-            listBody.innerHTML = displayList.slice(0, 60).map(t => {
-                const isBTC = t.symbol === 'BTCUSDT';
-                const d24 = parseFloat(t.priceChangePercent);
+            tbody.innerHTML = list.slice(0, 80).map(t => {
+                const d24 = parseFloat(t.priceChangePercent || 0);
                 const tc = timeframeCache[t.symbol] || { m15: null, h1: null, h6: null };
-                
-                const formatVal = (val, isMain = false) => {
-                    if (val === null) return `<div class="h-4 w-12 loading-shimmer rounded mx-auto"></div>`;
-                    const colorClass = val >= 0 ? 'status-up' : 'status-down';
-                    return `<span class="${colorClass} ${isMain ? 'font-bold text-sm' : 'text-[11px]'}">${val >= 0 ? '+' : ''}${val.toFixed(2)}%</span>`;
+                const funding = fundingCache[t.symbol] || 0;
+                const oi = oiCache[t.symbol] || 0;
+                const isWatched = watchlist.includes(t.symbol);
+                const isBTC = t.symbol === 'BTCUSDT';
+
+                const formatChange = (val) => {
+                    if (val === null) return `<div class="h-5 w-16 mx-auto loading-shimmer rounded"></div>`;
+                    const cls = val >= 0 ? 'status-up' : 'status-down';
+                    return `<span class="\( {cls} font-medium"> \){val >= 0 ? '+' : ''}${val.toFixed(2)}%</span>`;
                 };
 
                 return `
-                    <tr class="hover:bg-white/5 transition border-b border-[#2b3139] ${isBTC ? 'fixed-btc' : ''}">
-                        <td class="px-4 py-3">
-                            <div class="flex flex-col">
-                                <span class="font-bold ${isBTC ? 'accent-yellow' : 'text-white'} text-sm">${t.symbol.replace('USDT', '')}</span>
-                                <span class="text-[9px] text-gray-500 uppercase">Binance Perp</span>
+                    <tr class="hover:bg-white/5 transition-all duration-200 border-b border-[#2b3139] ${isBTC ? 'fixed-btc' : ''}">
+                        <td class="px-6 py-4">
+                            <div class="flex items-center gap-3">
+                                <span class="font-semibold text-base \( {isBTC ? 'accent-yellow' : ''}"> \){t.symbol.replace('USDT', '')}</span>
+                                <span class="text-[10px] text-gray-500">PERP</span>
                             </div>
                         </td>
-                        <td class="px-4 py-3 text-right font-mono text-xs text-gray-300">
-                            ${parseFloat(t.lastPrice).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                        <td class="px-6 py-4 text-right font-mono text-gray-200">${formatNumber(t.lastPrice)}</td>
+                        <td class="px-6 py-4 text-center font-mono text-sm">${formatChange(tc.m15)}</td>
+                        <td class="px-6 py-4 text-center font-mono text-sm">${formatChange(tc.h1)}</td>
+                        <td class="px-6 py-4 text-center font-mono text-sm">${formatChange(tc.h6)}</td>
+                        <td class="px-6 py-4 text-center font-mono font-semibold bg-black/20">${formatChange(d24)}</td>
+                        <td class="px-6 py-4 text-center font-mono ${funding >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
+                            ${funding.toFixed(4)}%
                         </td>
-                        <td class="px-4 py-3 text-center font-mono">${formatVal(tc.m15)}</td>
-                        <td class="px-4 py-3 text-center font-mono">${formatVal(tc.h1)}</td>
-                        <td class="px-4 py-3 text-center font-mono">${formatVal(tc.h6)}</td>
-                        <td class="px-4 py-3 text-center font-mono bg-black/10">${formatVal(d24, true)}</td>
-                        <td class="px-4 py-3 text-right text-gray-400 text-[10px]">
+                        <td class="px-6 py-4 text-right font-mono text-gray-400">
+                            ${(oi / 1000000).toFixed(1)}M
+                        </td>
+                        <td class="px-6 py-4 text-right text-gray-400 font-mono text-sm">
                             ${(parseFloat(t.quoteVolume) / 1000000).toFixed(1)}M
                         </td>
-                        <td class="px-4 py-3 text-center">
-                            ${getSignalBadge(d24, tc.m15, tc.h1)}
+                        <td class="px-6 py-4 text-center">
+                            ${getSignalBadge(d24, tc.m15, tc.h1, funding)}
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            <button onclick="toggleWatchlist('${t.symbol}')" 
+                                    class="text-xl transition hover:scale-110 ${isWatched ? 'text-yellow-400' : 'text-gray-600 hover:text-gray-400'}">
+                                ${isWatched ? '★' : '☆'}
+                            </button>
                         </td>
                     </tr>
                 `;
             }).join('');
         }
 
-        function getSignalBadge(d24, m15, h1) {
-            if (m15 === null) return '-';
-            if (m15 > 0.8 && h1 > 1.5) return `<span class="text-[9px] bg-green-500/20 text-green-500 px-2 py-0.5 rounded border border-green-500/30 font-bold">STRONG BUY</span>`;
-            if (m15 < -0.8 && h1 < -1.5) return `<span class="text-[9px] bg-red-500/20 text-red-500 px-2 py-0.5 rounded border border-red-500/30 font-bold">STRONG SELL</span>`;
-            if (Math.abs(m15) > 0.5) return `<span class="text-[9px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded border border-blue-500/30">VOLATILE</span>`;
-            return `<span class="text-[9px] bg-gray-800 text-gray-500 px-2 py-0.5 rounded">STABLE</span>`;
+        function startCountdown() {
+            setInterval(() => {
+                if (!isScanning) {
+                    countdown--;
+                    if (countdown <= 0) countdown = 30;
+                    const min = Math.floor(countdown / 60);
+                    const sec = (countdown % 60).toString().padStart(2, '0');
+                    document.getElementById('nextUpdate').innerText = `\( {min}: \){sec}`;
+                }
+            }, 1000);
         }
 
-        document.getElementById('symbolSearch').addEventListener('input', renderOpportunities);
-        window.onload = initScanner;
+        async function refreshData() {
+            if (isScanning) return;
+            isScanning = true;
+            countdown = 30;
+
+            document.getElementById('statusText').innerText = "데이터 수집 중...";
+            document.getElementById('statusDot').className = "w-2.5 h-2.5 rounded-full bg-yellow-400 animate-pulse ring-2 ring-yellow-400/30";
+
+            await fetchBaseTickers();
+            renderOpportunities();
+
+            await updateMultiTimeframes();
+
+            isScanning = false;
+            document.getElementById('statusText').innerText = "분석 완료";
+            document.getElementById('statusDot').className = "w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-500/30";
+        }
+
+        // 초기화
+        document.getElementById('symbolSearch').addEventListener('input', () => {
+            renderOpportunities();
+        });
+
+        window.onload = async () => {
+            startCountdown();
+            await refreshData();
+            setInterval(refreshData, UPDATE_INTERVAL);
+            updateSortIcons();
+            renderOpportunities();
+        };
     </script>
 </body>
 </html>
