@@ -1,313 +1,279 @@
+react
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>V6 Sniper Premium Direct</title>
-    <!-- React & Babel -->
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #0b0e11; color: #eaecef; overflow-x: hidden; }
-        .glass-panel { background: rgba(30, 35, 41, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.05); }
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-thumb { background: #474d57; border-radius: 10px; }
-        .animate-glow { animation: glow 2s infinite alternate; }
-        @keyframes glow { from { box-shadow: 0 0 5px rgba(243, 186, 47, 0.2); } to { box-shadow: 0 0 20px rgba(243, 186, 47, 0.5); } }
-    </style>
-</head>
-<body>
-    <div id="root"></div>
+const App = () => {
+  const [gameState, setGameState] = useState('START');
+  const [score, setScore] = useState(0);
+  const [level, setLevel] = useState(1);
+  const [timer, setTimer] = useState(10);
+  const [hasSensorPermission, setHasSensorPermission] = useState(false);
+  
+  const playerPos = useRef({ x: 50, y: 50 });
+  const velocity = useRef({ x: 0, y: 0 }); // 자이로 조작을 위한 가속도
+  const history = useRef([]);
+  const echoes = useRef([]);
+  const goalPos = useRef({ x: 80, y: 80 });
+  const canvasRef = useRef(null);
+  const requestRef = useRef(null);
 
-    <script type="text/babel">
-        const { useState, useEffect, useCallback } = React;
-        const API_BASE = "https://fapi.binance.com";
-
-        function App() {
-            // --- States ---
-            const [isAuthorized, setIsAuthorized] = useState(false);
-            const [keys, setKeys] = useState({ apiKey: '', secretKey: '' });
-            const [totalSeed, setTotalSeed] = useState(1000);
-            const [maxSymbols, setMaxSymbols] = useState(5);
-            const [marketData, setMarketData] = useState([]);
-            const [activeTrades, setActiveTrades] = useState([]);
-            const [isLoading, setIsLoading] = useState(true);
-
-            // --- Icon Component ---
-            const Icon = ({ name, size = 18, className = "" }) => {
-                useEffect(() => { lucide.createIcons(); }, [isAuthorized]);
-                return <i data-lucide={name} style={{width: size, height: size}} className={`inline-block ${className}`}></i>;
-            };
-
-            // --- Market Scan ---
-            const scanMarket = useCallback(async () => {
-                try {
-                    const res = await fetch(`${API_BASE}/fapi/v1/ticker/24hr`);
-                    const tickers = await res.json();
-                    if (!Array.isArray(tickers)) return;
-
-                    const candidates = tickers
-                        .filter(t => t.symbol.endsWith('USDT') && parseFloat(t.priceChangePercent) >= 15)
-                        .sort((a, b) => parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent))
-                        .slice(0, 12);
-                    
-                    setMarketData(candidates);
-                    setIsLoading(false);
-                } catch (err) {
-                    console.error("데이터 수신 오류", err);
-                }
-            }, []);
-
-            useEffect(() => {
-                if (isAuthorized) {
-                    scanMarket();
-                    const interval = setInterval(scanMarket, 10000);
-                    return () => clearInterval(interval);
-                }
-            }, [isAuthorized, scanMarket]);
-
-            // --- Handlers ---
-            const handleConnect = (e) => {
-                e.preventDefault();
-                if (keys.apiKey.length > 20 && keys.secretKey.length > 20) {
-                    setIsAuthorized(true);
-                } else {
-                    alert("유효한 API 키와 시크릿 키를 입력하십시오.");
-                }
-            };
-
-            const startSnipe = (symbol, price) => {
-                if (activeTrades.length >= maxSymbols) return alert("최대 봇 가동 개수 초과");
-                const newTrade = {
-                    id: Date.now(),
-                    symbol,
-                    entryPrice: price,
-                    targetPrice: price * 0.98, // 2% 익절
-                    ladder1: price * 1.03,      // 3% 거미줄
-                    allocated: totalSeed / maxSymbols,
-                    time: new Date().toLocaleTimeString()
-                };
-                setActiveTrades([newTrade, ...activeTrades]);
-            };
-
-            const stopTrade = (id) => {
-                setActiveTrades(activeTrades.filter(t => t.id !== id));
-            };
-
-            // --- Auth View ---
-            if (!isAuthorized) {
-                return (
-                    <div className="min-h-screen flex items-center justify-center p-6 bg-[#05080a]">
-                        <div className="w-full max-w-md glass-panel p-10 rounded-[3rem] shadow-2xl">
-                            <div className="text-center mb-10">
-                                <div className="bg-yellow-500 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg animate-glow">
-                                    <Icon name="shield-check" size={32} className="text-black" />
-                                </div>
-                                <h1 className="text-3xl font-black italic tracking-tighter text-white">V6 SNIPER <span className="text-yellow-500 underline">PRO</span></h1>
-                                <p className="text-[10px] text-gray-500 uppercase tracking-[0.4em] mt-3 font-bold">Direct Access Protocol</p>
-                            </div>
-
-                            <form onSubmit={handleConnect} className="space-y-4">
-                                <div>
-                                    <label className="text-[10px] font-black text-gray-600 uppercase tracking-widest ml-1 mb-2 block">Binance API Key</label>
-                                    <input 
-                                        type="password" 
-                                        className="w-full bg-[#1e2329] border border-white/5 p-4 rounded-2xl outline-none focus:border-yellow-500/50 text-xs font-mono transition-all"
-                                        placeholder="Ex: 4lP...9zR"
-                                        value={keys.apiKey}
-                                        onChange={e => setKeys({...keys, apiKey: e.target.value})}
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-black text-gray-600 uppercase tracking-widest ml-1 mb-2 block">Secret Key</label>
-                                    <input 
-                                        type="password" 
-                                        className="w-full bg-[#1e2329] border border-white/5 p-4 rounded-2xl outline-none focus:border-yellow-500/50 text-xs font-mono transition-all"
-                                        placeholder="Ex: d7a...k2q"
-                                        value={keys.secretKey}
-                                        onChange={e => setKeys({...keys, secretKey: e.target.value})}
-                                        required
-                                    />
-                                </div>
-                                <button type="submit" className="w-full bg-yellow-500 text-black font-black py-5 rounded-2xl mt-4 uppercase text-[11px] tracking-[0.2em] shadow-xl hover:brightness-110 active:scale-95 transition-all">
-                                    연결 및 터미널 가동
-                                </button>
-                            </form>
-                            <p className="text-[9px] text-center text-gray-700 mt-8 font-bold uppercase tracking-widest">Client-Side Only. No Data Stored on Server.</p>
-                        </div>
-                    </div>
-                );
-            }
-
-            // --- Main Dashboard ---
-            return (
-                <div className="min-h-screen p-4 md:p-10 max-w-[1600px] mx-auto">
-                    <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-12 gap-8">
-                        <div>
-                            <div className="flex items-center gap-3">
-                                <Icon name="zap" size={24} className="text-yellow-500 fill-yellow-500" />
-                                <h1 className="text-2xl font-black italic uppercase tracking-tighter">V6 Sniper Premium</h1>
-                                <span className="bg-yellow-500/10 text-yellow-500 text-[10px] font-black px-2 py-0.5 rounded border border-yellow-500/20">LIVE</span>
-                            </div>
-                            <div className="flex items-center gap-4 mt-3">
-                                <div className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1.5">
-                                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Terminal Connected
-                                </div>
-                                <div className="text-[10px] font-mono text-gray-600">ID: {keys.apiKey.substring(0,8)}***</div>
-                            </div>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-4">
-                            <div className="flex items-center bg-[#1e2329] rounded-2xl border border-white/5 overflow-hidden shadow-2xl">
-                                <div className="px-6 py-3 border-r border-white/5 text-center">
-                                    <p className="text-[9px] text-gray-500 font-black uppercase tracking-tighter mb-1">총 시드</p>
-                                    <input type="number" value={totalSeed} onChange={e => setTotalSeed(Number(e.target.value))} className="bg-transparent text-yellow-500 font-black outline-none w-20 text-center" />
-                                </div>
-                                <div className="px-6 py-3 text-center">
-                                    <p className="text-[9px] text-gray-500 font-black uppercase tracking-tighter mb-1">최대 봇</p>
-                                    <input type="number" value={maxSymbols} onChange={e => setMaxSymbols(Number(e.target.value))} className="bg-transparent text-yellow-500 font-black outline-none w-10 text-center" />
-                                </div>
-                            </div>
-                            <button onClick={() => window.location.reload()} className="p-4 bg-red-500/10 text-red-500 rounded-2xl border border-red-500/20 hover:bg-red-500 hover:text-white transition-all">
-                                <Icon name="power" />
-                            </button>
-                        </div>
-                    </header>
-
-                    <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
-                        {/* Market Scanning Section */}
-                        <div className="xl:col-span-8 space-y-8">
-                            <div className="glass-panel rounded-[2.5rem] overflow-hidden shadow-2xl border-white/5">
-                                <div className="p-8 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
-                                    <h2 className="text-xs font-black text-gray-400 uppercase tracking-[0.2em] flex items-center gap-3">
-                                        <Icon name="radar" className="text-yellow-500" /> V6 급등 스캐너
-                                    </h2>
-                                    <div className="text-[10px] font-black text-gray-600 uppercase">Binance Futures Market</div>
-                                </div>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left">
-                                        <thead className="bg-black/20 text-[9px] text-gray-500 font-black uppercase tracking-widest border-b border-white/5">
-                                            <tr>
-                                                <th className="px-8 py-5">심볼</th>
-                                                <th className="px-8 py-5 text-right">변동성 (%)</th>
-                                                <th className="px-8 py-5 text-right">현재가</th>
-                                                <th className="px-8 py-5 text-center">V6 액션</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-white/5">
-                                            {marketData.map((coin) => {
-                                                const price = parseFloat(coin.lastPrice);
-                                                const change = parseFloat(coin.priceChangePercent);
-                                                const isInPos = activeTrades.some(t => t.symbol === coin.symbol);
-                                                return (
-                                                    <tr key={coin.symbol} className="hover:bg-white/[0.02] transition-colors group">
-                                                        <td className="px-8 py-7">
-                                                            <div className="text-base font-black text-white group-hover:text-yellow-500 transition-colors tracking-tighter">{coin.symbol}</div>
-                                                            <div className="text-[10px] text-gray-600 mt-1 uppercase">Futures USDT-M</div>
-                                                        </td>
-                                                        <td className="px-8 py-7 text-right">
-                                                            <div className="text-lg font-black text-emerald-400">+{change.toFixed(2)}%</div>
-                                                            <div className="w-24 h-1 bg-white/5 rounded-full mt-2 ml-auto">
-                                                                <div className="h-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" style={{width: `${Math.min(change, 100)}%`}}></div>
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-8 py-7 text-right font-mono text-gray-400">
-                                                            ${price.toLocaleString()}
-                                                        </td>
-                                                        <td className="px-8 py-7 text-center">
-                                                            {isInPos ? (
-                                                                <div className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 text-[10px] font-black">
-                                                                    <span className="w-1.5 h-1.5 bg-yellow-500 rounded-full animate-ping"></span> 진입완료
-                                                                </div>
-                                                            ) : (
-                                                                <button 
-                                                                    onClick={() => startSnipe(coin.symbol, price)}
-                                                                    className="px-8 py-3 bg-white hover:bg-yellow-500 text-black rounded-2xl text-[10px] font-black shadow-xl hover:scale-105 active:scale-95 transition-all uppercase tracking-widest"
-                                                                >
-                                                                    SNIPE SHORT
-                                                                </button>
-                                                            )}
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Active Operations Sidebar */}
-                        <div className="xl:col-span-4 space-y-6">
-                            <div className="flex items-center justify-between px-2">
-                                <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-3">
-                                    <Icon name="cpu" className="text-yellow-500" /> 가동중인 봇
-                                </h2>
-                                <span className="text-[10px] font-black bg-white/5 px-3 py-1 rounded-full text-gray-500">{activeTrades.length} / {maxSymbols}</span>
-                            </div>
-
-                            <div className="space-y-4">
-                                {activeTrades.length === 0 && (
-                                    <div className="p-20 text-center glass-panel rounded-[3rem] border-dashed border-white/10 opacity-40">
-                                        <Icon name="inbox" size={40} className="mx-auto mb-4 text-gray-600" />
-                                        <p className="text-[10px] font-black uppercase tracking-widest leading-loose">대기 중인 신호가<br/>없습니다</p>
-                                    </div>
-                                )}
-                                {activeTrades.map(trade => (
-                                    <div key={trade.id} className="glass-panel p-8 rounded-[2.5rem] border-l-[6px] border-l-yellow-500 relative overflow-hidden group">
-                                        <div className="flex justify-between items-start mb-6">
-                                            <div>
-                                                <h3 className="text-2xl font-black italic tracking-tighter text-white">{trade.symbol}</h3>
-                                                <p className="text-[10px] text-gray-500 font-bold mt-1 uppercase tracking-tighter">{trade.time} 가동</p>
-                                            </div>
-                                            <button onClick={() => stopTrade(trade.id)} className="p-3 bg-red-500/5 text-gray-600 hover:text-red-500 hover:bg-red-500/10 rounded-2xl transition-all border border-transparent hover:border-red-400/20">
-                                                <Icon name="x-circle" size={20} />
-                                            </button>
-                                        </div>
-
-                                        <div className="grid grid-cols-2 gap-3 mb-6">
-                                            <div className="bg-black/20 p-4 rounded-2xl border border-white/5">
-                                                <p className="text-[8px] text-gray-500 uppercase font-black mb-1">진입 평균</p>
-                                                <p className="font-mono text-sm font-black text-red-400">${trade.entryPrice.toFixed(4)}</p>
-                                            </div>
-                                            <div className="bg-black/20 p-4 rounded-2xl border border-white/5">
-                                                <p className="text-[8px] text-gray-500 uppercase font-black mb-1">익절 목표</p>
-                                                <p className="font-mono text-sm font-black text-emerald-400">${trade.targetPrice.toFixed(4)}</p>
-                                            </div>
-                                        </div>
-
-                                        <div className="bg-yellow-500/5 p-4 rounded-2xl border border-yellow-500/10 mb-6">
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-[9px] font-black text-yellow-500 uppercase italic">1차 거미줄 타겟 (3%)</span>
-                                                <span className="font-mono text-xs font-black text-white">${trade.ladder1.toFixed(4)}</span>
-                                            </div>
-                                        </div>
-
-                                        <div className="pt-6 border-t border-white/5 flex justify-between items-end">
-                                            <div className="text-[10px] text-gray-600 uppercase font-bold tracking-tighter">할당 자산: <span className="text-white ml-1">${trade.allocated.toFixed(1)} USDT</span></div>
-                                            <div className="flex gap-1">
-                                                {[1,2,3,4,5].map(i => <div key={i} className={`w-1 h-3 rounded-full ${i <= 3 ? 'bg-yellow-500' : 'bg-white/5'}`}></div>)}
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            );
+  // 센서 권한 요청 (iOS 13+ 대응)
+  const requestPermission = async () => {
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      try {
+        const permission = await DeviceOrientationEvent.requestPermission();
+        if (permission === 'granted') {
+          setHasSensorPermission(true);
+          initLevel(1);
         }
+      } catch (error) {
+        console.error("Sensor permission denied");
+        initLevel(1); // 권한 거부 시 터치/키보드로 진행
+      }
+    } else {
+      setHasSensorPermission(true); // 안드로이드 등 일반 환경
+      initLevel(1);
+    }
+  };
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
-</body>
-</html>
+  const initLevel = useCallback((nextLevel = 1) => {
+    playerPos.current = { x: 10, y: 50 };
+    velocity.current = { x: 0, y: 0 };
+    goalPos.current = { 
+      x: 70 + Math.random() * 20, 
+      y: 20 + Math.random() * 60 
+    };
+    setTimer(10);
+    if (nextLevel === 1) {
+      echoes.current = [];
+    } else {
+      echoes.current.push([...history.current]);
+    }
+    history.current = [];
+    setGameState('PLAYING');
+  }, []);
+
+  const update = useCallback(() => {
+    if (gameState !== 'PLAYING') return;
+
+    // 가속도를 위치에 반영
+    playerPos.current.x += velocity.current.x;
+    playerPos.current.y += velocity.current.y;
+
+    // 화면 경계 제한
+    playerPos.current.x = Math.max(5, Math.min(95, playerPos.current.x));
+    playerPos.current.y = Math.max(5, Math.min(95, playerPos.current.y));
+
+    history.current.push({ ...playerPos.current });
+
+    const currentIndex = history.current.length - 1;
+    echoes.current.forEach((echoPath) => {
+      if (echoPath[currentIndex]) {
+        const dx = playerPos.current.x - echoPath[currentIndex].x;
+        const dy = playerPos.current.y - echoPath[currentIndex].y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance < 4) setGameState('GAMEOVER');
+      }
+    });
+
+    const gdx = playerPos.current.x - goalPos.current.x;
+    const gdy = playerPos.current.y - goalPos.current.y;
+    if (Math.sqrt(gdx * gdx + gdy * gdy) < 6) {
+      setScore(s => s + 100 + Math.floor(timer * 10));
+      setLevel(l => l + 1);
+      initLevel(level + 1);
+    }
+
+    draw();
+    requestRef.current = requestAnimationFrame(update);
+  }, [gameState, timer, level, initLevel]);
+
+  const draw = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.strokeStyle = '#1a1a2e';
+    for(let i=0; i<w; i+=40) {
+      ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, h); ctx.stroke();
+    }
+    for(let i=0; i<h; i+=40) {
+      ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(w, i); ctx.stroke();
+    }
+
+    // 목표 지점
+    ctx.fillStyle = '#f9d423';
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = '#f9d423';
+    ctx.beginPath();
+    ctx.arc(goalPos.current.x * w / 100, goalPos.current.y * h / 100, 12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // 과거의 나 (Echoes)
+    const currentIndex = history.current.length - 1;
+    echoes.current.forEach((echoPath, i) => {
+      const pos = echoPath[currentIndex] || echoPath[echoPath.length - 1];
+      ctx.fillStyle = `rgba(255, 75, 75, ${0.3 + (i * 0.15)})`;
+      ctx.beginPath();
+      ctx.arc(pos.x * w / 100, pos.y * h / 100, 8, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // 현재 플레이어
+    ctx.fillStyle = '#4deeea';
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = '#4deeea';
+    ctx.beginPath();
+    ctx.arc(playerPos.current.x * w / 100, playerPos.current.y * h / 100, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  };
+
+  // 자이로스코프 이벤트 핸들러
+  useEffect(() => {
+    const handleOrientation = (e) => {
+      if (gameState !== 'PLAYING') return;
+      // 기기 기울기에 따라 가속도 조절 (beta: 앞뒤, gamma: 좌우)
+      const sensitivity = 0.05;
+      velocity.current.x = e.gamma * sensitivity;
+      velocity.current.y = e.beta * sensitivity;
+    };
+
+    const handleKeyDown = (e) => {
+      const power = 1.2;
+      if (e.key === 'ArrowUp' || e.key === 'w') velocity.current.y = -power;
+      if (e.key === 'ArrowDown' || e.key === 's') velocity.current.y = power;
+      if (e.key === 'ArrowLeft' || e.key === 'a') velocity.current.x = -power;
+      if (e.key === 'ArrowRight' || e.key === 'd') velocity.current.x = power;
+    };
+
+    const handleKeyUp = () => {
+      // 키보드 떼면 감속 (자이로 사용시에는 orientation 이벤트가 계속 덮어씀)
+      if (!window.DeviceOrientationEvent) {
+          velocity.current.x = 0;
+          velocity.current.y = 0;
+      }
+    };
+
+    window.addEventListener('deviceorientation', handleOrientation);
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('deviceorientation', handleOrientation);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [gameState]);
+
+  useEffect(() => {
+    if (gameState === 'PLAYING') {
+      const interval = setInterval(() => {
+        setTimer(t => (t <= 0 ? 0 : t - 0.1));
+      }, 100);
+      return () => clearInterval(interval);
+    }
+  }, [gameState]);
+
+  useEffect(() => {
+    if (timer <= 0 && gameState === 'PLAYING') setGameState('GAMEOVER');
+  }, [timer, gameState]);
+
+  useEffect(() => {
+    requestRef.current = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(requestRef.current);
+  }, [update]);
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-[#050505] text-white p-4 overflow-hidden touch-none">
+      <div className="mb-6 text-center">
+        <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-b from-cyan-300 to-blue-500 uppercase tracking-widest">
+          Echo Motion 4D
+        </h1>
+        <p className="text-xs text-blue-300/60 mt-1">기기를 기울여서 조작하세요</p>
+      </div>
+
+      <div className="relative w-full max-w-lg aspect-[3/4] md:aspect-video bg-gray-900 rounded-3xl shadow-[0_0_50px_rgba(0,150,255,0.2)] border border-white/10 overflow-hidden">
+        <canvas ref={canvasRef} width={600} height={800} className="w-full h-full object-cover" />
+        
+        {/* HUD */}
+        <div className="absolute top-6 left-6 right-6 flex justify-between items-start pointer-events-none">
+          <div className="flex flex-col">
+            <span className="text-[10px] text-cyan-400 font-bold uppercase tracking-tighter">Level</span>
+            <span className="text-2xl font-black italic">{level}</span>
+          </div>
+          <div className="flex flex-col items-center">
+            <span className="text-[10px] text-yellow-400 font-bold uppercase tracking-tighter">Time</span>
+            <span className={`text-2xl font-black italic ${timer < 3 ? 'animate-pulse text-red-500' : ''}`}>
+              {timer.toFixed(1)}
+            </span>
+          </div>
+          <div className="flex flex-col items-end">
+            <span className="text-[10px] text-green-400 font-bold uppercase tracking-tighter">Score</span>
+            <span className="text-2xl font-black italic">{score}</span>
+          </div>
+        </div>
+
+        {/* Start / Overlay */}
+        {gameState === 'START' && (
+          <div className="absolute inset-0 bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center p-8 text-center">
+            <div className="w-20 h-20 mb-6 border-4 border-cyan-500 rounded-full flex items-center justify-center animate-bounce">
+              <svg className="w-10 h-10 text-cyan-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+            </div>
+            <h2 className="text-2xl font-bold mb-2 text-white">모바일 자이로 활성화</h2>
+            <p className="text-gray-400 text-sm mb-8 leading-relaxed">
+              이 게임은 기기를 기울여서 조작합니다.<br/>
+              과거의 자신과 부딪히지 않게 조심하세요.
+            </p>
+            <button 
+              onClick={requestPermission}
+              className="w-full py-4 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-2xl font-bold text-lg shadow-lg active:scale-95 transition-transform"
+            >
+              게임 시작하기
+            </button>
+          </div>
+        )}
+
+        {gameState === 'GAMEOVER' && (
+          <div className="absolute inset-0 bg-red-950/95 backdrop-blur-md flex flex-col items-center justify-center p-8 text-center">
+            <h2 className="text-5xl font-black text-white mb-2 italic">FAILED</h2>
+            <p className="text-red-200 mb-8 uppercase tracking-widest text-xs font-bold">Time Paradox Detected</p>
+            <div className="bg-black/30 w-full py-4 rounded-2xl mb-8 border border-white/5">
+              <div className="text-gray-400 text-xs uppercase">Final Score</div>
+              <div className="text-4xl font-black text-white">{score}</div>
+            </div>
+            <button 
+              onClick={() => {
+                setLevel(1);
+                setScore(0);
+                initLevel(1);
+              }}
+              className="w-full py-4 bg-white text-black rounded-2xl font-bold text-lg active:scale-95 transition-transform"
+            >
+              다시 시도
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-8 flex gap-8">
+         <div className="flex items-center gap-2">
+            <div className="w-4 h-4 bg-cyan-400 rounded-full shadow-[0_0_10px_rgba(0,255,255,0.5)]"></div>
+            <span className="text-[10px] font-bold uppercase text-gray-500">You</span>
+         </div>
+         <div className="flex items-center gap-2">
+            <div className="w-4 h-4 bg-red-500 rounded-full shadow-[0_0_10px_rgba(255,0,0,0.5)]"></div>
+            <span className="text-[10px] font-bold uppercase text-gray-500">Echo</span>
+         </div>
+         <div className="flex items-center gap-2">
+            <div className="w-4 h-4 bg-yellow-400 rounded-full shadow-[0_0_10px_rgba(255,255,0,0.5)]"></div>
+            <span className="text-[10px] font-bold uppercase text-gray-500">Portal</span>
+         </div>
+      </div>
+    </div>
+  );
+};
+
+export default App;
