@@ -4,44 +4,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Time Loop: Dark Echo Fixed</title>
+    <title>Time Loop: Dark Echo Final</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Creepster&display=swap');
-        
-        body {
-            margin: 0;
-            overflow: hidden;
-            background-color: #000;
-            font-family: 'Courier New', Courier, monospace;
-            touch-action: none;
-        }
-
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', monospace; touch-action: none; }
         canvas { display: block; }
-
         #vignette {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: radial-gradient(circle, transparent 15%, rgba(0,0,0,0.98) 75%);
-            pointer-events: none;
-            z-index: 10;
+            pointer-events: none; z-index: 10;
         }
-
         .horror-font { font-family: 'Creepster', cursive; }
-
-        #ui-layer {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            pointer-events: none;
-            z-index: 20;
-        }
-
-        .btn-active { pointer-events: auto; cursor: pointer; }
-        
-        @keyframes pulse-red {
-            0%, 100% { color: #991b1b; }
-            50% { color: #f87171; }
-        }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; }
+        @keyframes pulse-red { 0%, 100% { color: #991b1b; } 50% { color: #f87171; } }
         .animate-horror { animation: pulse-red 2s infinite; }
     </style>
 </head>
@@ -51,46 +27,37 @@
     <div id="vignette"></div>
 
     <div id="ui-layer" class="flex flex-col justify-between p-6">
-        <!-- HUD -->
         <div class="flex justify-between items-start text-red-700">
             <div class="flex flex-col">
-                <span class="text-[10px] font-bold uppercase tracking-widest opacity-50">Depth</span>
-                <span id="level-display" class="text-4xl horror-font">01</span>
+                <span class="text-[10px] font-bold uppercase opacity-50">Depth</span>
+                <span id="level-display" class="text-4xl horror-font text-red-600">01</span>
             </div>
             <div class="flex flex-col items-center">
-                <span class="text-[10px] font-bold uppercase tracking-widest opacity-50">Stamina</span>
+                <span class="text-[10px] font-bold uppercase opacity-50">Stamina</span>
                 <div class="w-32 h-1 bg-red-950 rounded-full mt-2 overflow-hidden">
                     <div id="stamina-bar" class="h-full bg-red-600 w-full transition-all"></div>
                 </div>
             </div>
-            <div class="flex flex-col items-end">
-                <span class="text-[10px] font-bold uppercase tracking-widest opacity-50">Echoes</span>
+            <div class="flex flex-col items-end text-red-600">
+                <span class="text-[10px] font-bold uppercase opacity-50 text-red-700">Echoes</span>
                 <span id="echo-count" class="text-4xl horror-font">0</span>
             </div>
         </div>
 
-        <!-- 메인 메뉴/게임오버 오버레이 -->
         <div id="overlay" class="m-auto pointer-events-auto bg-black/90 border border-red-900/40 p-10 rounded-lg text-center max-w-sm backdrop-blur-xl">
             <div id="start-screen">
                 <h1 class="text-5xl text-red-700 horror-font mb-6 animate-horror">DARK ECHO</h1>
-                <p class="text-gray-500 text-xs mb-8 leading-relaxed italic uppercase tracking-widest">
-                    "당신이 남긴 흔적이 당신을 사냥합니다."
-                </p>
-                <button onclick="requestPermissions()" class="w-full py-4 border border-red-700 text-red-600 font-bold hover:bg-red-900/20 transition-all">
-                    공포 속으로 진입
-                </button>
+                <p class="text-gray-500 text-xs mb-8 leading-relaxed italic uppercase">"당신의 과거가 당신을 사냥합니다."</p>
+                <button onclick="requestPermissions()" class="w-full py-4 border border-red-700 text-red-600 font-bold hover:bg-red-900/20 transition-all">공포 속으로 진입</button>
             </div>
-
             <div id="gameover-screen" class="hidden">
                 <h2 class="text-5xl text-red-600 horror-font mb-4">CAUGHT</h2>
-                <p id="death-reason" class="text-gray-500 text-[10px] mb-8 uppercase tracking-widest">Time Paradox</p>
-                <button onclick="resetGame()" class="w-full py-4 bg-red-900/40 border border-red-700 text-white font-bold hover:bg-red-800/50 transition-all">
-                    다시 시도
-                </button>
+                <p id="death-reason" class="text-gray-500 text-[10px] mb-8 uppercase">Time Paradox</p>
+                <button onclick="resetGame()" class="w-full py-4 bg-red-900/40 border border-red-700 text-white font-bold hover:bg-red-800/50 transition-all">다시 시도</button>
             </div>
         </div>
 
-        <div id="status-msg" class="text-center text-[10px] text-red-900/40 font-bold uppercase tracking-[0.3em] mb-4">
+        <div id="status-msg" class="text-center text-[10px] text-red-900/40 font-bold uppercase mb-4 tracking-widest">
             Don't step on your past
         </div>
     </div>
@@ -98,24 +65,11 @@
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-        
-        let state = 'START';
-        let level = 1;
-        let stamina = 100;
-        
-        let player = { x: 50, y: 50, r: 8 };
-        let vel = { x: 0, y: 0 };
-        let exit = { x: 80, y: 80, r: 12 };
-        
-        let history = []; // 현재 라운드 경로
-        let echoes = [];  // 이전 라운드들 경로 저장 (충돌 대상)
-        
-        const keys = {};
+        let state = 'START', level = 1, stamina = 100, spawnTimer = 0;
+        let player = { x: 15, y: 15, r: 8 }, vel = { x: 0, y: 0 }, exit = { x: 80, y: 80, r: 12 };
+        let history = [], echoes = [], keys = {};
 
-        function resize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
+        function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
         window.addEventListener('resize', resize);
         resize();
 
@@ -125,23 +79,17 @@
                     const res = await DeviceOrientationEvent.requestPermission();
                     if (res === 'granted') window.addEventListener('deviceorientation', handleGyro);
                 } catch (e) { console.error(e); }
-            } else {
-                window.addEventListener('deviceorientation', handleGyro);
-            }
+            } else { window.addEventListener('deviceorientation', handleGyro); }
             startGame();
         }
 
         function handleGyro(e) {
             if (state !== 'PLAYING') return;
-            const sens = 0.05;
-            vel.x = e.gamma * sens;
-            vel.y = (e.beta - 45) * sens;
+            vel.x = e.gamma * 0.05;
+            vel.y = (e.beta - 45) * 0.05;
         }
 
-        window.addEventListener('keydown', e => {
-            keys[e.key.toLowerCase()] = true;
-            if (state === 'START') startGame();
-        });
+        window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; if (state === 'START') startGame(); });
         window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
         function startGame() {
@@ -153,24 +101,17 @@
 
         function initLevel(lv) {
             level = lv;
-            player.x = 15;
-            player.y = 15;
-            vel = { x: 0, y: 0 };
-            stamina = 100;
+            player.x = 15; player.y = 15;
+            vel = { x: 0, y: 0 }; stamina = 100;
+            spawnTimer = 90; // 약 1.5초간 무적 (60fps 기준)
             
-            // 출구 랜덤 배치 (플레이어와 멀리)
-            exit.x = 40 + Math.random() * 50;
-            exit.y = 40 + Math.random() * 50;
+            exit.x = 30 + Math.random() * 60;
+            exit.y = 30 + Math.random() * 60;
             
-            // 이전 라운드 경로를 장애물로 추가
-            if (lv === 1) {
-                echoes = [];
-            } else {
-                // 이전 기록을 통째로 echoes 배열에 보관
-                echoes.push([...history]);
-            }
+            if (lv > 1 && history.length > 0) echoes.push([...history]);
+            else if (lv === 1) echoes = [];
             
-            history = []; // 현재 이동 경로 초기화
+            history = [];
             document.getElementById('level-display').innerText = String(lv).padStart(2, '0');
             document.getElementById('echo-count').innerText = echoes.length;
         }
@@ -178,58 +119,39 @@
         function loop() {
             if (state !== 'PLAYING') return;
 
-            // PC 조작
             const speed = 0.7;
             if (keys['w'] || keys['arrowup']) vel.y = -speed;
             if (keys['s'] || keys['arrowdown']) vel.y = speed;
             if (keys['a'] || keys['arrowleft']) vel.x = -speed;
             if (keys['d'] || keys['arrowright']) vel.x = speed;
 
-            // 마찰 및 이동
-            vel.x *= 0.95;
-            vel.y *= 0.95;
-            player.x += vel.x;
-            player.y += vel.y;
-
-            // 벽 충돌 방지
+            vel.x *= 0.95; vel.y *= 0.95;
+            player.x += vel.x; player.y += vel.y;
             player.x = Math.max(5, Math.min(95, player.x));
             player.y = Math.max(5, Math.min(95, player.y));
 
-            // 경로 기록 (타임라인 구축)
             history.push({ x: player.x, y: player.y });
-
-            // 스태미너 감소 (시간 제한 요소)
-            stamina -= 0.05;
+            stamina -= 0.04;
             document.getElementById('stamina-bar').style.width = stamina + '%';
             if (stamina <= 0) endGame("탈출 시간이 초과되었습니다.");
 
-            // **핵심 수정: 충돌 체크 로직**
-            const currentIdx = history.length - 1;
-            
-            // 오직 '이전 라운드들(echoes)'의 동일 시간대 위치와만 비교합니다.
-            // 현재 라운드(history)의 이전 기록과는 부딪히지 않게 설계되었습니다.
-            for (let i = 0; i < echoes.length; i++) {
-                const echoPath = echoes[i];
-                // 과거의 내가 해당 시간대에 있었던 위치 가져오기
-                // 만약 과거의 내가 더 짧게 움직였다면 마지막 위치에 머물러 있는 것으로 간주
-                const echoPos = echoPath[currentIdx] || echoPath[echoPath.length - 1];
-                
-                const dx = player.x - echoPos.x;
-                const dy = player.y - echoPos.y;
-                const dist = Math.sqrt(dx*dx + dy*dy);
-                
-                if (dist < 3.5) { // 충돌 판정 범위
-                    endGame("과거의 자신과 인과관계가 충돌했습니다.");
-                    return;
+            // 스폰 보호 타이머 감소
+            if (spawnTimer > 0) {
+                spawnTimer--;
+                document.getElementById('status-msg').innerText = "SAFE TIME: " + Math.ceil(spawnTimer/60) + "s";
+            } else {
+                document.getElementById('status-msg').innerText = "Don't step on your past";
+                // 충돌 체크
+                const currentIdx = history.length - 1;
+                for (let i = 0; i < echoes.length; i++) {
+                    const echoPath = echoes[i];
+                    const echoPos = echoPath[currentIdx] || echoPath[echoPath.length - 1];
+                    const dist = Math.sqrt((player.x - echoPos.x)**2 + (player.y - echoPos.y)**2);
+                    if (dist < 4) { endGame("과거의 자신과 충돌했습니다."); return; }
                 }
             }
 
-            // 목표 도달
-            const edx = player.x - exit.x;
-            const edy = player.y - exit.y;
-            if (Math.sqrt(edx*edx + edy*edy) < 5) {
-                initLevel(level + 1);
-            }
+            if (Math.sqrt((player.x - exit.x)**2 + (player.y - exit.y)**2) < 5) initLevel(level + 1);
 
             draw();
             requestAnimationFrame(loop);
@@ -238,44 +160,28 @@
         function draw() {
             ctx.fillStyle = '#050000';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
+            const w = canvas.width, h = canvas.height;
 
-            const w = canvas.width;
-            const h = canvas.height;
-
-            // 출구 (희미한 붉은 맥동)
-            const pulse = 20 + Math.sin(Date.now() * 0.005) * 5;
-            const grad = ctx.createRadialGradient(exit.x*w/100, exit.y*h/100, 0, exit.x*w/100, exit.y*h/100, pulse);
-            grad.addColorStop(0, 'rgba(255, 0, 0, 0.4)');
-            grad.addColorStop(1, 'transparent');
+            // 출구
+            const pulse = 15 + Math.sin(Date.now() * 0.005) * 5;
+            const grad = ctx.createRadialGradient(exit.x*w/100, exit.y*h/100, 0, exit.x*w/100, exit.y*h/100, pulse*2);
+            grad.addColorStop(0, 'rgba(255, 0, 0, 0.4)'); grad.addColorStop(1, 'transparent');
             ctx.fillStyle = grad;
-            ctx.beginPath();
-            ctx.arc(exit.x*w/100, exit.y*h/100, pulse, 0, Math.PI*2);
-            ctx.fill();
+            ctx.beginPath(); ctx.arc(exit.x*w/100, exit.y*h/100, pulse*2, 0, Math.PI*2); ctx.fill();
 
-            // 과거의 잔상들 (Echoes)
+            // 과거 잔상
             const currentIdx = history.length - 1;
             echoes.forEach((path, i) => {
                 const pos = path[currentIdx] || path[path.length - 1];
-                const opacity = 0.2 + (i / echoes.length) * 0.5;
-                
-                ctx.fillStyle = `rgba(255, 0, 0, ${opacity})`;
-                ctx.shadowBlur = 10;
-                ctx.shadowColor = 'red';
-                
-                // 기괴한 떨림 효과
-                const jitter = (Math.random() - 0.5) * 1.5;
-                ctx.beginPath();
-                ctx.arc((pos.x + jitter)*w/100, (pos.y + jitter)*h/100, 7, 0, Math.PI*2);
-                ctx.fill();
+                ctx.fillStyle = `rgba(255, 0, 0, ${0.3 + (i/echoes.length)*0.5})`;
+                ctx.beginPath(); ctx.arc(pos.x*w/100, pos.y*h/100, 7, 0, Math.PI*2); ctx.fill();
             });
 
-            // 현재 플레이어
-            ctx.shadowBlur = 15;
-            ctx.shadowColor = '#4deeea';
-            ctx.fillStyle = '#4deeea';
-            ctx.beginPath();
-            ctx.arc(player.x*w/100, player.y*h/100, 8, 0, Math.PI*2);
-            ctx.fill();
+            // 플레이어
+            ctx.shadowBlur = spawnTimer > 0 ? 30 : 15;
+            ctx.shadowColor = spawnTimer > 0 ? 'white' : '#4deeea';
+            ctx.fillStyle = spawnTimer > 0 ? `rgba(255,255,255,${0.5 + Math.sin(Date.now()*0.01)*0.5})` : '#4deeea';
+            ctx.beginPath(); ctx.arc(player.x*w/100, player.y*h/100, 8, 0, Math.PI*2); ctx.fill();
             ctx.shadowBlur = 0;
         }
 
@@ -283,14 +189,14 @@
             state = 'GAMEOVER';
             document.getElementById('death-reason').innerText = reason;
             document.getElementById('gameover-screen').classList.remove('hidden');
-            document.getElementById('start-screen').classList.add('hidden');
             document.getElementById('overlay').classList.remove('hidden');
         }
 
         function resetGame() {
             state = 'START';
-            initLevel(1);
-            document.getElementById('overlay').classList.remove('hidden');
+            level = 1;
+            echoes = [];
+            history = [];
             document.getElementById('gameover-screen').classList.add('hidden');
             document.getElementById('start-screen').classList.remove('hidden');
         }
