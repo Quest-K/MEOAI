@@ -4,125 +4,129 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Time Echo: 4D Motion</title>
+    <title>Time Loop: Dark Echo</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Creepster&display=swap');
+        
         body {
             margin: 0;
             overflow: hidden;
-            background-color: #050505;
-            font-family: 'Pretendard', sans-serif;
+            background-color: #000;
+            font-family: 'Courier New', Courier, monospace;
             touch-action: none;
         }
+
         canvas {
             display: block;
-            image-rendering: pixelated;
         }
-        .retro-text {
-            text-shadow: 0 0 10px rgba(0, 255, 255, 0.7);
+
+        /* 호러 분위기를 위한 시야 제한(비네트) 효과 */
+        #vignette {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle, transparent 20%, rgba(0,0,0,0.95) 80%);
+            pointer-events: none;
+            z-index: 10;
         }
+
+        .horror-font {
+            font-family: 'Creepster', cursive;
+        }
+
         #ui-layer {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            top: 0; left: 0; width: 100%; height: 100%;
             pointer-events: none;
+            z-index: 20;
         }
+
         .btn-active {
             pointer-events: auto;
-            transition: transform 0.1s;
+            cursor: pointer;
         }
-        .btn-active:active {
-            transform: scale(0.95);
+
+        /* 펄스 애니메이션 */
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
         }
-        @keyframes pulse-red {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-        .danger-blink {
-            animation: pulse-red 0.5s infinite;
-        }
+        .pulse { animation: pulse 2s infinite; }
     </style>
 </head>
 <body>
 
     <canvas id="gameCanvas"></canvas>
+    <div id="vignette"></div>
 
-    <div id="ui-layer" class="flex flex-col items-center justify-between p-6">
-        <!-- 상단 점수판 -->
-        <div class="w-full flex justify-between items-start text-white">
+    <div id="ui-layer" class="flex flex-col justify-between p-6">
+        <!-- HUD -->
+        <div class="flex justify-between items-start text-red-600">
             <div class="flex flex-col">
-                <span class="text-[10px] font-bold text-cyan-400 tracking-widest uppercase">Level</span>
-                <span id="level-display" class="text-3xl font-black italic">1</span>
+                <span class="text-xs font-bold uppercase tracking-widest opacity-60">Level</span>
+                <span id="level-display" class="text-3xl font-black horror-font">01</span>
             </div>
             <div class="flex flex-col items-center">
-                <span class="text-[10px] font-bold text-yellow-400 tracking-widest uppercase">Time Remaining</span>
-                <span id="timer-display" class="text-3xl font-black italic">10.0</span>
+                <span class="text-xs font-bold uppercase tracking-widest opacity-60">Time Flux</span>
+                <div class="w-32 h-2 bg-red-900/30 rounded-full mt-1 overflow-hidden border border-red-600/20">
+                    <div id="flux-bar" class="h-full bg-red-600 w-0 transition-all"></div>
+                </div>
             </div>
             <div class="flex flex-col items-end">
-                <span class="text-[10px] font-bold text-green-400 tracking-widest uppercase">Score</span>
-                <span id="score-display" class="text-3xl font-black italic">0</span>
+                <span class="text-xs font-bold uppercase tracking-widest opacity-60">Echoes</span>
+                <span id="echo-count" class="text-3xl font-black horror-font">0</span>
             </div>
         </div>
 
-        <!-- 중앙 메시지 오버레이 -->
-        <div id="overlay" class="pointer-events-auto bg-black/90 backdrop-blur-md border border-white/10 p-8 rounded-3xl text-center max-w-sm shadow-2xl">
+        <!-- 중앙 오버레이 -->
+        <div id="overlay" class="m-auto pointer-events-auto bg-black/80 border border-red-900/50 p-10 rounded-lg text-center max-w-sm backdrop-blur-md">
             <div id="start-screen">
-                <div class="w-16 h-16 bg-cyan-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <svg class="w-8 h-8 text-cyan-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
-                </div>
-                <h1 class="text-2xl font-black text-white mb-2 tracking-tighter">TIME ECHO 4D</h1>
-                <p class="text-gray-400 text-sm mb-6 leading-relaxed">
-                    기기를 기울여 움직이세요.<br>
-                    과거의 당신(빨간색)과 부딪히면 안 됩니다!
+                <h1 class="text-5xl text-red-700 horror-font mb-4 pulse">DARK ECHO</h1>
+                <p class="text-gray-500 text-sm mb-8 leading-relaxed italic">
+                    "과거의 당신은 당신을 죽이려 할 것입니다."<br>
+                    기기를 기울여 어둠 속 탈출구를 찾으세요.
                 </p>
-                <button onclick="requestSensorPermission()" class="w-full py-4 bg-cyan-600 hover:bg-cyan-500 text-white rounded-2xl font-bold transition-all shadow-lg shadow-cyan-900/20">
-                    센서 활성화 및 시작
+                <button onclick="initSensors()" class="px-10 py-4 bg-red-900/40 hover:bg-red-800/60 border border-red-700 text-red-500 font-bold rounded transition-all">
+                    공포 속으로 진입
                 </button>
-                <p class="text-[10px] text-gray-600 mt-4">PC 사용자는 WASD나 방향키로 즉시 시작 가능</p>
             </div>
 
             <div id="gameover-screen" class="hidden">
-                <h2 class="text-4xl font-black text-red-500 mb-2 italic">FAILED</h2>
-                <p class="text-gray-400 text-sm mb-6 uppercase tracking-widest font-bold">Time Paradox Detected</p>
-                <div class="bg-white/5 py-4 rounded-xl mb-6">
-                    <div class="text-gray-500 text-xs uppercase">Final Score</div>
-                    <div id="final-score" class="text-4xl font-black text-white">0</div>
-                </div>
-                <button onclick="resetGame()" class="w-full py-4 bg-white text-black hover:bg-gray-200 rounded-2xl font-bold transition-all">
+                <h2 class="text-5xl text-red-600 horror-font mb-2">CAUGHT</h2>
+                <p id="death-reason" class="text-gray-500 text-xs mb-8 uppercase tracking-widest">Time Paradox Occurred</p>
+                <button onclick="restartGame()" class="px-10 py-4 bg-white/10 hover:bg-white/20 text-white border border-white/30 rounded font-bold transition-all">
                     다시 시도
                 </button>
             </div>
         </div>
 
-        <!-- 하단 가이드 -->
-        <div class="w-full flex justify-center gap-6 text-[10px] font-bold text-gray-500 uppercase tracking-widest">
-            <div class="flex items-center gap-2"><div class="w-2 h-2 bg-cyan-400 rounded-full shadow-lg shadow-cyan-500/50"></div> Present</div>
-            <div class="flex items-center gap-2"><div class="w-2 h-2 bg-red-500 rounded-full shadow-lg shadow-red-500/50"></div> Past Echo</div>
-            <div class="flex items-center gap-2"><div class="w-2 h-2 bg-yellow-400 rounded-full shadow-lg shadow-yellow-500/50"></div> Portal</div>
+        <!-- 하단 정보 -->
+        <div class="flex justify-between items-end text-[10px] text-red-900/50 font-bold uppercase tracking-widest">
+            <div>Gyroscope Active</div>
+            <div id="status-msg">Don't look back...</div>
         </div>
     </div>
 
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-        const overlay = document.getElementById('overlay');
-        const startScreen = document.getElementById('start-screen');
-        const gameoverScreen = document.getElementById('gameover-screen');
+        const fluxBar = document.getElementById('flux-bar');
         
-        let gameState = 'START'; // START, PLAYING, GAMEOVER
-        let score = 0;
+        let state = 'START';
         let level = 1;
-        let timer = 10;
+        let score = 0;
+        let flux = 0;
+        let isFreezing = false;
         
-        let player = { x: 10, y: 50, radius: 8 };
+        let player = { x: 50, y: 50, r: 8 };
         let vel = { x: 0, y: 0 };
-        let goal = { x: 80, y: 50, radius: 12 };
-        let history = [];
-        let echoes = [];
+        let exit = { x: 80, y: 80, r: 15 };
         
-        // 캔버스 크기 조정
+        let history = []; // 현재 이동 경로
+        let echoes = [];  // 과거의 경로들
+        let particles = [];
+
         function resize() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
@@ -130,181 +134,190 @@
         window.addEventListener('resize', resize);
         resize();
 
-        // 센서 요청 및 게임 시작
-        async function requestSensorPermission() {
+        async function initSensors() {
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 try {
                     const permission = await DeviceOrientationEvent.requestPermission();
                     if (permission === 'granted') {
-                        window.addEventListener('deviceorientation', handleOrientation);
+                        window.addEventListener('deviceorientation', handleGyro);
                     }
-                } catch (e) { console.error(e); }
+                } catch (e) { console.warn("Gyro blocked"); }
             } else {
-                window.addEventListener('deviceorientation', handleOrientation);
+                window.addEventListener('deviceorientation', handleGyro);
             }
             startGame();
         }
 
-        function handleOrientation(e) {
-            if (gameState !== 'PLAYING') return;
-            // 가속도 조절 (기기 기울기)
-            const sens = 0.04;
-            vel.x = e.gamma * sens;
-            vel.y = e.beta * sens;
+        function handleGyro(e) {
+            if (state !== 'PLAYING' || isFreezing) return;
+            const sensitivity = 0.06;
+            vel.x = e.gamma * sensitivity;
+            vel.y = (e.beta - 45) * sensitivity; // 45도 기울기를 기본값으로 설정
         }
 
-        // 키보드 조작 (PC)
+        // 키보드 지원 (PC)
         const keys = {};
         window.addEventListener('keydown', e => {
             keys[e.key.toLowerCase()] = true;
-            if (gameState === 'START') startGame();
+            if (e.code === 'Space' && flux >= 100) triggerFreeze();
         });
         window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
-        function startGame() {
-            gameState = 'PLAYING';
-            overlay.classList.add('hidden');
-            initLevel(1);
-            gameLoop();
+        function triggerFreeze() {
+            isFreezing = true;
+            flux = 0;
+            document.getElementById('status-msg').innerText = "TIME FROZEN";
+            setTimeout(() => {
+                isFreezing = false;
+                document.getElementById('status-msg').innerText = "Don't look back...";
+            }, 3000);
         }
 
-        function initLevel(nextLevel) {
+        function startGame() {
+            state = 'PLAYING';
+            document.getElementById('overlay').classList.add('hidden');
+            initLevel(1);
+            requestAnimationFrame(loop);
+        }
+
+        function initLevel(lv) {
+            level = lv;
             player.x = 10;
-            player.y = 50;
+            player.y = 10;
             vel = { x: 0, y: 0 };
-            goal = { 
-                x: 20 + Math.random() * 70, 
-                y: 10 + Math.random() * 80 
-            };
-            timer = 10;
-            if (nextLevel === 1) {
+            
+            // 출구 위치 랜덤 (멀리 배치)
+            exit.x = 50 + Math.random() * 40;
+            exit.y = 50 + Math.random() * 40;
+            
+            if (lv === 1) {
                 echoes = [];
-                score = 0;
             } else {
                 echoes.push([...history]);
             }
             history = [];
-            level = nextLevel;
-            updateUI();
+            flux = 0;
+            
+            document.getElementById('level-display').innerText = String(lv).padStart(2, '0');
+            document.getElementById('echo-count').innerText = echoes.length;
         }
 
-        function updateUI() {
-            document.getElementById('level-display').innerText = level;
-            document.getElementById('score-display').innerText = score;
-            document.getElementById('timer-display').innerText = timer.toFixed(1);
-        }
+        function loop() {
+            if (state !== 'PLAYING') return;
 
-        function resetGame() {
-            gameState = 'START';
-            gameoverScreen.classList.add('hidden');
-            startScreen.classList.remove('hidden');
-            overlay.classList.remove('hidden');
-        }
+            if (!isFreezing) {
+                // 키보드 입력
+                const speed = 0.8;
+                if (keys['w'] || keys['arrowup']) vel.y = -speed;
+                if (keys['s'] || keys['arrowdown']) vel.y = speed;
+                if (keys['a'] || keys['arrowleft']) vel.x = -speed;
+                if (keys['d'] || keys['arrowright']) vel.x = speed;
 
-        function gameLoop() {
-            if (gameState !== 'PLAYING') return;
+                // 감속
+                vel.x *= 0.96;
+                vel.y *= 0.96;
 
-            // 키보드 입력 반영
-            const kSpeed = 0.8;
-            if (keys['w'] || keys['arrowup']) vel.y = -kSpeed;
-            if (keys['s'] || keys['arrowdown']) vel.y = kSpeed;
-            if (keys['a'] || keys['arrowleft']) vel.x = -kSpeed;
-            if (keys['d'] || keys['arrowright']) vel.x = kSpeed;
+                player.x += vel.x;
+                player.y += vel.y;
 
-            // 마찰력 (조금 더 부드러운 움직임)
-            if (!window.DeviceOrientationEvent || Math.abs(vel.x) < 0.1) vel.x *= 0.95;
-            if (!window.DeviceOrientationEvent || Math.abs(vel.y) < 0.1) vel.y *= 0.95;
+                // 경계
+                player.x = Math.max(5, Math.min(95, player.x));
+                player.y = Math.max(5, Math.min(95, player.y));
 
-            player.x += vel.x;
-            player.y += vel.y;
+                // 경로 기록
+                history.push({ x: player.x, y: player.y });
 
-            // 경계선 처리
-            player.x = Math.max(2, Math.min(98, player.x));
-            player.y = Math.max(2, Math.min(98, player.y));
+                // 에너지 충전
+                if (flux < 100) flux += 0.2;
+                fluxBar.style.width = `${flux}%`;
 
-            // 데이터 기록
-            history.push({ x: player.x, y: player.y });
+                // 충돌 체크 (과거의 나와 부딪힘)
+                const currentIdx = history.length - 1;
+                echoes.forEach(path => {
+                    const echoPos = path[currentIdx] || path[path.length - 1];
+                    const dx = player.x - echoPos.x;
+                    const dy = player.y - echoPos.y;
+                    if (Math.sqrt(dx*dx + dy*dy) < 3.5) {
+                        endGame("과거의 자신에게 붙잡혔습니다.");
+                    }
+                });
 
-            // 타이머 업데이트
-            timer -= 1/60;
-            if (timer <= 0) endGame();
-
-            // 충돌 감지
-            const currIdx = history.length - 1;
-            echoes.forEach(path => {
-                if (path[currIdx]) {
-                    const dx = player.x - path[currIdx].x;
-                    const dy = player.y - path[currIdx].y;
-                    if (Math.sqrt(dx*dx + dy*dy) < 3.5) endGame();
+                // 목표 도달
+                const edx = player.x - exit.x;
+                const edy = player.y - exit.y;
+                if (Math.sqrt(edx*edx + edy*edy) < 5) {
+                    initLevel(level + 1);
                 }
-            });
-
-            // 목표 도달
-            const gdx = player.x - goal.x;
-            const gdy = player.y - goal.y;
-            if (Math.sqrt(gdx*gdx + gdy*gdy) < 5) {
-                score += Math.floor(100 + timer * 20);
-                initLevel(level + 1);
             }
 
             draw();
-            updateUI();
-            requestAnimationFrame(gameLoop);
+            requestAnimationFrame(loop);
         }
 
         function draw() {
-            ctx.fillStyle = '#050505';
+            ctx.fillStyle = '#050000';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             const w = canvas.width;
             const h = canvas.height;
 
-            // 그리드
-            ctx.strokeStyle = '#111';
-            ctx.lineWidth = 1;
-            for(let i=0; i<w; i+=w/10) {
-                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, h); ctx.stroke();
-            }
-            for(let i=0; i<h; i+=h/10) {
-                ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(w, i); ctx.stroke();
+            // 시간 정지 시 효과
+            if (isFreezing) {
+                ctx.fillStyle = 'rgba(0, 100, 255, 0.05)';
+                ctx.fillRect(0, 0, w, h);
             }
 
-            // 목표
-            ctx.shadowBlur = 20;
-            ctx.shadowColor = '#f9d423';
-            ctx.fillStyle = '#f9d423';
+            // 출구 (희미한 빛)
+            const grad = ctx.createRadialGradient(exit.x*w/100, exit.y*h/100, 0, exit.x*w/100, exit.y*h/100, 30);
+            grad.addColorStop(0, 'rgba(255, 0, 0, 0.8)');
+            grad.addColorStop(1, 'transparent');
+            ctx.fillStyle = grad;
             ctx.beginPath();
-            ctx.arc(goal.x * w / 100, goal.y * h / 100, 15, 0, Math.PI*2);
+            ctx.arc(exit.x*w/100, exit.y*h/100, 30, 0, Math.PI*2);
             ctx.fill();
 
-            // 잔상 (Echoes)
-            const currIdx = history.length - 1;
-            echoes.forEach((path, idx) => {
-                const pos = path[currIdx] || path[path.length - 1];
-                ctx.shadowBlur = 10;
-                ctx.shadowColor = '#ff4b4b';
-                ctx.fillStyle = `rgba(255, 75, 75, ${0.4 + (idx * 0.1)})`;
+            // 잔상 (과거의 나) - 공포스럽게 표현
+            const currentIdx = history.length - 1;
+            echoes.forEach((path, i) => {
+                const pos = path[currentIdx] || path[path.length - 1];
+                const age = i / echoes.length;
+                
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#ff0000';
+                ctx.fillStyle = `rgba(150, 0, 0, ${0.3 + age * 0.4})`;
+                
+                // 잔상을 약간 떨리게 표현 (Glitch 효과)
+                const shakeX = (Math.random() - 0.5) * 2;
+                const shakeY = (Math.random() - 0.5) * 2;
+                
                 ctx.beginPath();
-                ctx.arc(pos.x * w / 100, pos.y * h / 100, 10, 0, Math.PI*2);
+                ctx.arc((pos.x + shakeX)*w/100, (pos.y + shakeY)*h/100, 8, 0, Math.PI*2);
                 ctx.fill();
             });
 
-            // 플레이어
-            ctx.shadowBlur = 15;
-            ctx.shadowColor = '#4deeea';
-            ctx.fillStyle = '#4deeea';
+            // 플레이어 (현재)
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = isFreezing ? '#00ffff' : '#ff3333';
+            ctx.fillStyle = isFreezing ? '#ffffff' : '#ff1111';
             ctx.beginPath();
-            ctx.arc(player.x * w / 100, player.y * h / 100, 10, 0, Math.PI*2);
+            ctx.arc(player.x*w/100, player.y*h/100, 9, 0, Math.PI*2);
             ctx.fill();
             ctx.shadowBlur = 0;
         }
 
-        function endGame() {
-            gameState = 'GAMEOVER';
-            document.getElementById('final-score').innerText = score;
-            startScreen.classList.add('hidden');
-            gameoverScreen.classList.remove('hidden');
-            overlay.classList.remove('hidden');
+        function endGame(reason) {
+            state = 'GAMEOVER';
+            document.getElementById('death-reason').innerText = reason;
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('gameover-screen').classList.remove('hidden');
+            document.getElementById('overlay').classList.remove('hidden');
+        }
+
+        function restartGame() {
+            initLevel(1);
+            state = 'PLAYING';
+            document.getElementById('overlay').classList.add('hidden');
+            requestAnimationFrame(loop);
         }
     </script>
 </body>
