@@ -274,6 +274,17 @@
     gap: 6px;
     margin-bottom: 24px;
     align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 800;
+    background: rgba(6,11,18,0.96);
+    backdrop-filter: blur(8px);
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(0,212,255,0.12);
+    margin-left: -8px;
+    margin-right: -8px;
+    padding-left: 8px;
+    padding-right: 8px;
   }
 
   .interval-label {
@@ -695,6 +706,33 @@
   .evidence-panel.bull-evidence { border-top: 2px solid var(--accent-green); }
   .evidence-panel.bear-evidence { border-top: 2px solid var(--accent-red); }
 
+  /* 사용자 임의 조건 구분 */
+  .ev-item.user-bull {
+    border-left: 3px solid #ffe066;
+    background: rgba(255,224,102,0.06);
+    padding-left: 10px;
+    margin-left: -2px;
+  }
+  .ev-item.user-bear {
+    border-left: 3px solid #ff9f43;
+    background: rgba(255,159,67,0.06);
+    padding-left: 10px;
+    margin-left: -2px;
+  }
+  .ev-badge-user {
+    font-size: 0.58rem;
+    background: rgba(255,224,102,0.18);
+    color: #ffe066;
+    border: 1px solid rgba(255,224,102,0.35);
+    padding: 1px 5px;
+    border-radius: 2px;
+    margin-left: 6px;
+    vertical-align: middle;
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+  .ev-badge-user.bear { background: rgba(255,159,67,0.18); color: #ff9f43; border-color: rgba(255,159,67,0.35); }
+
   .ev-title {
     font-family: 'Orbitron', monospace;
     font-size: 0.8rem;
@@ -919,6 +957,21 @@
         <div class="ma-row"><span class="ma-name">MA 50</span><span class="ma-value" id="ma50">---</span><span class="ma-signal neutral" id="ma50-sig">---</span></div>
         <div class="ma-row"><span class="ma-name">MA 100</span><span class="ma-value" id="ma100">---</span><span class="ma-signal neutral" id="ma100-sig">---</span></div>
         <div class="ma-row"><span class="ma-name">MA 200</span><span class="ma-value" id="ma200">---</span><span class="ma-signal neutral" id="ma200-sig">---</span></div>
+        <div class="ma-row" style="border-top:1px solid rgba(0,212,255,0.12);margin-top:4px;padding-top:4px;">
+          <span class="ma-name" style="color:var(--accent-cyan);font-size:0.65rem">BB상단</span>
+          <span class="ma-value" id="bb-upper" style="font-size:0.72rem">---</span>
+          <span class="ma-signal neutral" id="bb-upper-sig" style="font-size:0.62rem">---</span>
+        </div>
+        <div class="ma-row">
+          <span class="ma-name" style="color:var(--accent-cyan);font-size:0.65rem">BB중단</span>
+          <span class="ma-value" id="bb-mid" style="font-size:0.72rem">---</span>
+          <span class="ma-signal neutral" id="bb-mid-sig" style="font-size:0.62rem">---</span>
+        </div>
+        <div class="ma-row">
+          <span class="ma-name" style="color:var(--accent-cyan);font-size:0.65rem">BB하단</span>
+          <span class="ma-value" id="bb-lower" style="font-size:0.72rem">---</span>
+          <span class="ma-signal neutral" id="bb-lower-sig" style="font-size:0.62rem">---</span>
+        </div>
       </div>
       <div style="margin-top:12px">
         <div class="panel-title" style="margin-bottom:8px">거래량 MA</div>
@@ -1287,6 +1340,26 @@ function processData(klines, ticker, funding, oi) {
   const volMa20 = ma(volumes, 20);
   const volMax  = Math.max(...volumes.slice(-50));
 
+  // ── 볼린저밴드 (20, 2σ) ──
+  function calcBB(cls, period=20, mult=2) {
+    if (cls.length < period) return null;
+    const slice = cls.slice(-period);
+    const mean = slice.reduce((a,b) => a+b, 0) / period;
+    const std = Math.sqrt(slice.reduce((a,b) => a + (b-mean)**2, 0) / period);
+    const upper = mean + mult * std;
+    const lower = mean - mult * std;
+    // 바로 이전 봉 기준 BB
+    const slicePrev = cls.slice(-period-1, -1);
+    let prevUpper = null;
+    if (slicePrev.length === period) {
+      const m2 = slicePrev.reduce((a,b) => a+b, 0) / period;
+      const s2 = Math.sqrt(slicePrev.reduce((a,b) => a + (b-m2)**2, 0) / period);
+      prevUpper = m2 + mult * s2;
+    }
+    return { upper, lower, mid: mean, prevUpper };
+  }
+  const bb = calcBB(closes);
+
   // Funding
   const fundingRate = +funding.lastFundingRate;
   const nextFunding = new Date(+funding.nextFundingTime);
@@ -1329,6 +1402,30 @@ function processData(klines, ticker, funding, oi) {
   updateMA('ma50','ma50-sig',ma50);
   updateMA('ma100','ma100-sig',ma100);
   updateMA('ma200','ma200-sig',ma200);
+
+  // BB UI
+  if (bb) {
+    document.getElementById('bb-upper').textContent = fmtPrice(bb.upper);
+    document.getElementById('bb-mid').textContent   = fmtPrice(bb.mid);
+    document.getElementById('bb-lower').textContent = fmtPrice(bb.lower);
+
+    // 상단 비교
+    const bbUpSig = document.getElementById('bb-upper-sig');
+    if (bb.prevUpper !== null) {
+      const d = bb.upper - bb.prevUpper;
+      if (d < -0.0001) { bbUpSig.textContent = '▼수축'; bbUpSig.className = 'ma-signal bear'; }
+      else if (d > 0.0001) { bbUpSig.textContent = '▲확장'; bbUpSig.className = 'ma-signal bull'; }
+      else { bbUpSig.textContent = '→유지'; bbUpSig.className = 'ma-signal neutral'; }
+    }
+    // 중단 대비 위치
+    const bbMidSig = document.getElementById('bb-mid-sig');
+    if (price > bb.mid) { bbMidSig.textContent = '위'; bbMidSig.className = 'ma-signal bull'; }
+    else { bbMidSig.textContent = '아래'; bbMidSig.className = 'ma-signal bear'; }
+    // 하단 대비
+    const bbLowSig = document.getElementById('bb-lower-sig');
+    if (price < bb.lower) { bbLowSig.textContent = '이탈'; bbLowSig.className = 'ma-signal bear'; }
+    else { bbLowSig.textContent = '위'; bbLowSig.className = 'ma-signal neutral'; }
+  }
 
   // Volume MA
   document.getElementById('vol-ma7').textContent = fmt(volMa7,0);
@@ -1411,7 +1508,7 @@ function processData(klines, ticker, funding, oi) {
 
   // ── PROBABILITY ENGINE ──
   const analysis = analyzeProbability(candles, price, ma7, ma20, ma50, ma100, ma200,
-                                       volMa7, volMa20, fundingRate, oiVal, lastData?.oi, ticker);
+                                       volMa7, volMa20, fundingRate, oiVal, lastData?.oi, ticker, bb, lastData?.bbUpperPrev);
 
   // Update prob bars
   document.getElementById('bull-pct').textContent = analysis.bullPct + '%';
@@ -1436,14 +1533,14 @@ function processData(klines, ticker, funding, oi) {
   drawSparkline(priceHistory);
 
   // Store for next cycle
-  lastData = { oi: oiVal, price };
+  lastData = { oi: oiVal, price, bbUpperPrev: bb?.upper ?? null };
 }
 
 // ═══════════════════════════════════════════════════════
 //  PROBABILITY ENGINE
 // ═══════════════════════════════════════════════════════
 function analyzeProbability(candles, price, ma7, ma20, ma50, ma100, ma200,
-                             volMa7, volMa20, fundingRate, oi, prevOI, ticker) {
+                             volMa7, volMa20, fundingRate, oi, prevOI, ticker, bb, prevCycleBBUpper) {
   let bullScore = 50;
   let bullEvidence = [];
   let bearEvidence = [];
@@ -1620,6 +1717,98 @@ function analyzeProbability(candles, price, ma7, ma20, ma50, ma100, ma200,
     bearEvidence.push({ text: `직전봉 저점(${fmtPrice(prev.l)}) 이탈 — 단기 지지 붕괴`, strength: 'strong-bear' });
   }
 
+  // ═══════════════════════════════════════════════════════
+  //  사용자 임의 조건 (USER-DEFINED)
+  // ═══════════════════════════════════════════════════════
+
+  // [USER-BULL] n봉 연속 저점 상승 패턴
+  (function checkRisingLows() {
+    const N = 3; // 최소 확인 봉 수
+    let risingLowCount = 0;
+    for (let i = candles.length - 1; i >= 1; i--) {
+      if (candles[i].l > candles[i-1].l) risingLowCount++;
+      else break;
+    }
+    if (risingLowCount >= N) {
+      bullScore += 5;
+      bullEvidence.push({
+        text: `저점 ${risingLowCount}봉 연속 상승 — 단기 상승 구조 확인`,
+        strength: risingLowCount >= 5 ? 'strong-bull' : 'weak-bull',
+        user: true
+      });
+    }
+  })();
+
+  // [USER-BEAR] 30분봉 기준 MA30 대비 1% 이상 하락 감지 (30분봉 데이터 없으면 현재 봉 MA로 대체)
+  (function checkMa30Drop() {
+    // 현재 인터벌 데이터로 30봉 MA를 MA30 근사치로 사용 (별도 fetch 없이)
+    const closes30 = candles.map(c => c.c);
+    const ma30val = (function(arr, p) {
+      if (arr.length < p) return null;
+      const sl = arr.slice(-p);
+      return sl.reduce((a,b) => a+b, 0) / p;
+    })(closes30, 30);
+
+    if (ma30val && price < ma30val * 0.99) {
+      // 지속 상승 후 여부 판단: 직전 5봉이 모두 ma30 위였는지
+      const above5 = candles.slice(-6, -1).every(c => c.c > ma30val);
+      if (above5) {
+        bullScore -= 6;
+        bearEvidence.push({
+          text: `MA30(${fmtPrice(ma30val)}) 대비 ${(((price/ma30val)-1)*100).toFixed(2)}% 이탈 — 지속 상승 후 이탈`,
+          strength: 'strong-bear',
+          user: true
+        });
+      } else {
+        bullScore -= 3;
+        bearEvidence.push({
+          text: `MA30(${fmtPrice(ma30val)}) 대비 ${(((price/ma30val)-1)*100).toFixed(2)}% 이탈 (1% 초과)`,
+          strength: 'weak-bear',
+          user: true
+        });
+      }
+    }
+  })();
+
+  // [USER] 볼린저밴드 상단 감소 여부 비교
+  (function checkBBUpperDecline() {
+    if (!bb) return;
+    // 같은 사이클 내 이전 봉 BB 상단과 비교
+    if (bb.prevUpper !== null) {
+      const diff = bb.upper - bb.prevUpper;
+      const diffPct = (diff / bb.prevUpper) * 100;
+      if (diff < 0) {
+        bullScore -= 3;
+        bearEvidence.push({
+          text: `BB상단 수축(${fmtPrice(bb.prevUpper)} → ${fmtPrice(bb.upper)}, ${diffPct.toFixed(3)}%) — 추세 약화`,
+          strength: Math.abs(diffPct) > 0.1 ? 'strong-bear' : 'weak-bear',
+          user: true
+        });
+      } else if (diff > 0) {
+        bullScore += 2;
+        bullEvidence.push({
+          text: `BB상단 확장(${fmtPrice(bb.prevUpper)} → ${fmtPrice(bb.upper)}, +${diffPct.toFixed(3)}%) — 상승 모멘텀 유지`,
+          strength: 'weak-bull',
+          user: true
+        });
+      }
+    }
+    // 가격과 BB 위치 참고 정보
+    if (price > bb.upper) {
+      bearEvidence.push({
+        text: `가격(${fmtPrice(price)})이 BB상단(${fmtPrice(bb.upper)}) 돌파 — 과매수 주의`,
+        strength: 'weak-bear',
+        user: true
+      });
+    } else if (price < bb.lower) {
+      bullEvidence.push({
+        text: `가격(${fmtPrice(price)})이 BB하단(${fmtPrice(bb.lower)}) 이탈 — 과매도 반등 가능`,
+        strength: 'weak-bull',
+        user: true
+      });
+    }
+  })();
+
   // Clamp
   bullScore = Math.min(90, Math.max(10, bullScore));
   const bearScore = 100 - bullScore;
@@ -1685,12 +1874,20 @@ function renderEvidence(bullEv, bearEv) {
       el.innerHTML = `<div class="ev-item ${defaultCls}"><span class="ev-icon">—</span><span>현재 조건 해당 없음</span></div>`;
       return;
     }
-    el.innerHTML = items.map(e => `
-      <div class="ev-item ${e.strength}">
-        <span class="ev-icon">${e.strength.includes('strong') ? '●' : '○'}</span>
-        <span>${e.text}</span>
-      </div>
-    `).join('');
+    el.innerHTML = items.map(e => {
+      const isUser = !!e.user;
+      const cls = isUser
+        ? (defaultCls.includes('bull') ? 'user-bull' : 'user-bear')
+        : e.strength;
+      const icon = e.strength.includes('strong') ? '●' : '○';
+      const badge = isUser
+        ? `<span class="ev-badge-user${defaultCls.includes('bear') ? ' bear' : ''}">USER</span>`
+        : '';
+      return `<div class="ev-item ${cls}">
+        <span class="ev-icon">${icon}</span>
+        <span>${e.text}${badge}</span>
+      </div>`;
+    }).join('');
   };
   render('bull-evidence', bullEv, 'weak-bull');
   render('bear-evidence', bearEv, 'weak-bear');
