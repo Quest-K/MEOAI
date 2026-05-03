@@ -1,339 +1,967 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scanner Pro | Advanced</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        body { background-color: #0b0e11; color: #eaecef; font-family: 'Inter', sans-serif; overflow-x: hidden; }
-        .binance-card { background-color: #1e2329; border-radius: 12px; border: 1px solid #2b3139; }
-        .accent-yellow { color: #fcd535; }
-        .status-up { color: #0ecb81; }
-        .status-down { color: #f6465d; }
-        .glass-header { background: rgba(30, 35, 41, 0.95); backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 50; }
-        .search-input { background: #2b3139; border: 1px solid #474d57; color: white; transition: all 0.2s; }
-        .search-input:focus { border-color: #fcd535; outline: none; box-shadow: 0 0 0 3px rgba(252, 213, 53, 0.25); }
-        .fixed-btc { border-left: 4px solid #f3ba2f; background: rgba(243, 186, 47, 0.08); }
-        .loading-shimmer { background: linear-gradient(90deg, #2b3139 25%, #3e444e 50%, #2b3139 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
-        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-        .progress-bar { height: 3px; background: linear-gradient(to right, #fcd535, #f3ba2f); transition: width 0.4s ease-out; }
-        .sortable-header { cursor: pointer; transition: all 0.2s; position: relative; user-select: none; }
-        .sortable-header:hover { background: rgba(255, 255, 255, 0.08); }
-        .sort-icon { font-size: 10px; margin-left: 4px; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>하인리히 법칙 · 바이낸스 선물 실시간 위험 예측</title>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@300;400;500;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#04060f; --surface:#080d1e; --border:#1a2140;
+  --red:#ff2d55; --orange:#ff6b00; --yellow:#ffd600;
+  --green:#00e676; --blue:#2979ff; --cyan:#00e5ff;
+  --tp:#e8eaf6; --ts:#7986cb; --td:#3d4f7c;
+  --gr:rgba(255,45,85,.3); --go:rgba(255,107,0,.3);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--tp);font-family:'Noto Sans KR',sans-serif;min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.07) 2px,rgba(0,0,0,.07) 4px);pointer-events:none;z-index:1000}
+body::after{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(41,121,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(41,121,255,.04) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0}
+
+/* LOADING */
+#loadingOverlay{position:fixed;inset:0;background:rgba(4,6,15,.94);z-index:2000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;transition:opacity .5s}
+#loadingOverlay.hidden{opacity:0;pointer-events:none}
+.load-ring{width:48px;height:48px;border:3px solid var(--border);border-top-color:var(--cyan);border-radius:50%;animation:spin .8s linear infinite}
+.load-text{font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--cyan);letter-spacing:2px}
+.load-sub{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--td);letter-spacing:1px}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.7)}}
+@keyframes slideIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:translateX(0)}}
+@keyframes sflash{0%,100%{border-color:var(--border)}50%{border-color:var(--orange);box-shadow:0 0 10px rgba(255,107,0,.3)}}
+@keyframes scrash{0%,100%{border-color:var(--border)}50%{border-color:var(--red);box-shadow:0 0 14px rgba(255,45,85,.4)}}
+@keyframes tickerScroll{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+
+/* HEADER */
+header{position:relative;z-index:10;padding:28px 40px 0;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.htag{font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:3px;color:var(--cyan);display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.htag::before{content:'';width:20px;height:1px;background:var(--cyan)}
+h1{font-family:'Black Han Sans',sans-serif;font-size:clamp(22px,3.5vw,44px);line-height:1.1;letter-spacing:-1px}
+h1 .hl{color:var(--red)}
+h1 .sub{font-size:.5em;color:var(--ts);display:block;margin-top:4px;font-family:'Noto Sans KR',sans-serif;font-weight:300;letter-spacing:2px}
+.hright{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.sbadge{font-family:'Share Tech Mono',monospace;font-size:11px;padding:5px 12px;border:1px solid var(--green);color:var(--green);border-radius:2px;display:flex;align-items:center;gap:7px}
+.sbadge.err{border-color:var(--red)!important;color:var(--red)!important}
+.pdot{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 1.5s ease-in-out infinite}
+.pdot.red{background:var(--red)}
+.mono-sm{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--td);text-align:right;line-height:1.7}
+
+/* TICKER STRIP */
+.ticker-strip{position:relative;z-index:10;padding:10px 40px 0;overflow:hidden;height:34px}
+.ticker-inner{display:flex;gap:24px;white-space:nowrap;animation:tickerScroll 50s linear infinite}
+.ticker-item{font-family:'Share Tech Mono',monospace;font-size:11px;display:flex;gap:8px;align-items:center}
+.ticker-sym{color:var(--ts)}
+.ticker-price{color:var(--tp)}
+.up{color:var(--green)}
+.dn{color:var(--red)}
+
+/* CONTROLS */
+.controls{position:relative;z-index:10;padding:14px 40px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.clabel{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--ts);letter-spacing:1px;white-space:nowrap}
+.btn{font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:1.5px;padding:6px 14px;border:1px solid;border-radius:2px;cursor:pointer;background:transparent;transition:all .2s;text-transform:uppercase;white-space:nowrap}
+.btn-cyan{color:var(--cyan);border-color:var(--cyan)}
+.btn-cyan:hover{background:rgba(0,229,255,.1);box-shadow:0 0 10px rgba(0,229,255,.2)}
+.btn-red{color:var(--red);border-color:rgba(255,45,85,.4)}
+.btn-red:hover{background:rgba(255,45,85,.1);border-color:var(--red)}
+
+/* SYMBOL SELECTOR */
+.sym-wrap{position:relative}
+.sym-input{font-family:'Share Tech Mono',monospace;font-size:11px;background:var(--surface);color:var(--tp);border:1px solid var(--border);border-radius:2px;padding:6px 10px;cursor:pointer;min-width:150px;user-select:none}
+.sym-input:hover{border-color:var(--cyan)}
+#symDropdown{position:absolute;top:calc(100% + 4px);left:0;width:220px;background:var(--surface);border:1px solid var(--border);border-radius:2px;max-height:240px;overflow:hidden;z-index:500;display:none;flex-direction:column}
+#symDropdown.open{display:flex}
+.sym-search{font-family:'Share Tech Mono',monospace;font-size:11px;background:transparent;color:var(--tp);border:none;border-bottom:1px solid var(--border);padding:8px 10px;width:100%;outline:none;flex-shrink:0}
+#symList{overflow-y:auto;flex:1}
+#symList::-webkit-scrollbar{width:3px}
+#symList::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.sym-opt{font-family:'Share Tech Mono',monospace;font-size:11px;padding:7px 10px;cursor:pointer;color:var(--ts);display:flex;justify-content:space-between;align-items:center;transition:background .15s}
+.sym-opt:hover,.sym-opt.sel{background:rgba(41,121,255,.12);color:var(--tp)}
+
+/* MAIN GRID */
+main{position:relative;z-index:10;padding:18px 40px 40px;display:grid;grid-template-columns:1fr 340px;gap:18px}
+
+/* PANEL */
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:18px;position:relative;overflow:hidden}
+.panel::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.panel.red::before{background:linear-gradient(90deg,var(--red),transparent)}
+.panel.orange::before{background:linear-gradient(90deg,var(--orange),transparent)}
+.panel.yellow::before{background:linear-gradient(90deg,var(--yellow),transparent)}
+.panel.blue::before{background:linear-gradient(90deg,var(--blue),transparent)}
+.panel.cyan::before{background:linear-gradient(90deg,var(--cyan),transparent)}
+.ptitle{font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--ts);text-transform:uppercase;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between}
+
+/* LEFT COL */
+.left-col{display:flex;flex-direction:column;gap:18px}
+
+/* PYRAMID */
+.pycon{display:flex;flex-direction:column;gap:5px;padding:2px 0}
+.plevel{display:flex;align-items:center;gap:12px;cursor:pointer}
+.plevel:hover .pbar{filter:brightness(1.25)}
+.pbwrap{flex:1;display:flex;justify-content:center}
+.pbar{height:44px;border-radius:3px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;clip-path:polygon(3% 0%,97% 0%,100% 100%,0% 100%);transition:all .4s}
+.l1 .pbar{width:18%;background:linear-gradient(135deg,#ff2d55,#c00);box-shadow:0 0 26px rgba(255,45,85,.35)}
+.l2 .pbar{width:36%;background:linear-gradient(135deg,#ff6b00,#c44);box-shadow:0 0 20px rgba(255,107,0,.3)}
+.l3 .pbar{width:54%;background:linear-gradient(135deg,#ffd600,#c80);box-shadow:0 0 16px rgba(255,214,0,.25)}
+.l4 .pbar{width:72%;background:linear-gradient(135deg,#2979ff,#0051c4);box-shadow:0 0 14px rgba(41,121,255,.25)}
+.l5 .pbar{width:90%;background:linear-gradient(135deg,#1a2140,#0d1530);border:1px solid var(--border)}
+.bcount{font-family:'Black Han Sans',sans-serif;font-size:15px;color:rgba(255,255,255,.95);line-height:1}
+.blabel{font-size:9px;color:rgba(255,255,255,.6);text-align:right;line-height:1.3}
+.lmeta{width:168px;flex-shrink:0}
+.lmeta .lt{font-size:11px;font-weight:700;margin-bottom:2px}
+.lmeta .ld{font-size:10px;color:var(--ts);line-height:1.4}
+.lmeta .lr{font-family:'Share Tech Mono',monospace;font-size:9px;margin-top:3px;transition:color .4s}
+
+/* SIGNAL GRID */
+.sgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.scard{background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:3px;padding:10px 12px;transition:border-color .3s;position:relative;overflow:hidden}
+.scard.active{animation:sflash 2s ease-in-out infinite}
+.scard.crit{animation:scrash 1s ease-in-out infinite}
+.sicon{font-size:18px;margin-bottom:5px}
+.sname{font-size:10px;font-weight:700;margin-bottom:2px}
+.sdesc{font-size:9px;color:var(--ts);line-height:1.4}
+.sval{font-family:'Share Tech Mono',monospace;font-size:9px;margin-top:4px;color:var(--td)}
+.sbar{height:2px;margin-top:5px;border-radius:1px;background:var(--border);overflow:hidden}
+.sbar-fill{height:100%;border-radius:1px;transition:width 1.2s ease,background .5s}
+
+/* CHART */
+.chart-wrap{position:relative;height:180px}
+canvas#riskChart{width:100%!important;height:180px!important}
+
+/* RIGHT COL */
+.right-col{display:flex;flex-direction:column;gap:18px}
+
+/* GAUGE */
+.gauge-wrap{display:flex;flex-direction:column;align-items:center;padding:4px 0}
+.gauge-svg-wrap{position:relative;width:248px;height:142px}
+#gaugeLabel{position:absolute;bottom:0;left:50%;transform:translateX(-50%);text-align:center}
+.gval{font-family:'Black Han Sans',sans-serif;font-size:36px;line-height:1;display:block}
+.gunit{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--ts);display:block;letter-spacing:2px}
+.gticks{display:flex;justify-content:space-between;width:248px;padding:0 6px;margin-top:2px}
+.gtick{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--td)}
+.rlbadge{margin-top:10px;padding:7px 20px;border-radius:2px;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;transition:all .5s;border:1px solid}
+
+/* STATS */
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stat{background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:3px;padding:9px 11px}
+.slabel{font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:1.5px;color:var(--td);text-transform:uppercase;margin-bottom:4px}
+.svalue{font-family:'Black Han Sans',sans-serif;font-size:18px;line-height:1;transition:color .4s}
+.ssub{font-size:9px;color:var(--ts);margin-top:2px}
+
+/* ALERT LOG */
+.alog{max-height:185px;overflow-y:auto;display:flex;flex-direction:column;gap:4px}
+.alog::-webkit-scrollbar{width:3px}
+.alog::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.aitem{display:flex;gap:8px;align-items:flex-start;padding:6px 8px;border-radius:2px;border-left:2px solid transparent;font-size:10px;line-height:1.4;animation:slideIn .3s ease}
+.aitem.crit{background:rgba(255,45,85,.06);border-color:var(--red)}
+.aitem.warn{background:rgba(255,107,0,.06);border-color:var(--orange)}
+.aitem.info{background:rgba(41,121,255,.06);border-color:var(--blue)}
+.aitem.ok{background:rgba(0,230,118,.06);border-color:var(--green)}
+.atime{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--td);white-space:nowrap;flex-shrink:0}
+.amsg{color:var(--ts)}
+.amsg strong{color:var(--tp)}
+
+/* DISCLAIMER */
+.disclaimer{position:relative;z-index:10;padding:6px 40px 28px}
+.disclaimer p{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--td);line-height:1.6}
+.disclaimer strong{color:var(--red)}
+
+/* RESPONSIVE */
+@media(max-width:960px){
+  main{grid-template-columns:1fr;padding:14px 16px 36px}
+  header,.controls,.ticker-strip,.disclaimer{padding-left:16px;padding-right:16px}
+  .sgrid{grid-template-columns:repeat(2,1fr)}
+}
+</style>
 </head>
-<body class="antialiased pb-10">
+<body>
 
-    <nav class="glass-header border-b border-[#2b3139] py-4">
-        <div class="max-w-7xl mx-auto px-4 flex justify-between items-center">
-            <div class="flex items-center gap-3">
-                <div class="w-9 h-9 bg-gradient-to-br from-yellow-400 to-amber-500 rounded-xl flex items-center justify-center font-bold text-black text-2xl shadow-inner">M</div>
-                <h1 class="text-2xl font-bold tracking-tighter">Market <span class="accent-yellow">Scanner Pro</span></h1>
-            </div>
-            <div class="flex items-center gap-4 text-sm">
-                <div id="scanIndicator" class="flex items-center gap-2 text-xs">
-                    <span id="statusDot" class="w-2.5 h-2.5 rounded-full bg-green-500 ring-2 ring-green-500/30"></span>
-                    <span id="statusText" class="font-medium">대기 중</span>
-                </div>
-                <div id="nextUpdate" class="text-xs text-gray-500 font-mono">00:30</div>
-            </div>
-        </div>
-        <div id="loadingProgress" class="progress-bar w-0"></div>
-    </nav>
+<!-- LOADING OVERLAY -->
+<div id="loadingOverlay">
+  <div class="load-ring"></div>
+  <div class="load-text" id="loadText">BINANCE API 연결 중...</div>
+  <div class="load-sub" id="loadSub">fapi.binance.com</div>
+</div>
 
-    <div class="max-w-7xl mx-auto px-4 pt-6">
-        <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-            <div class="binance-card p-5">
-                <p class="text-gray-400 text-xs font-medium tracking-widest">TOTAL</p>
-                <div id="totalSymbols" class="text-3xl font-bold mt-1">---</div>
-            </div>
-            <div class="binance-card p-5 border-l-4 border-emerald-500">
-                <p class="text-gray-400 text-xs font-medium tracking-widest">LONG BIAS</p>
-                <div id="bullSymbols" class="text-3xl font-bold mt-1 status-up">---</div>
-            </div>
-            <div class="binance-card p-5 border-l-4 border-rose-500">
-                <p class="text-gray-400 text-xs font-medium tracking-widest">SHORT BIAS</p>
-                <div id="bearSymbols" class="text-3xl font-bold mt-1 status-down">---</div>
-            </div>
-            <div class="binance-card p-5 border-l-4 border-amber-500">
-                <p class="text-gray-400 text-xs font-medium tracking-widest">AVG VOL</p>
-                <div id="avgVol" class="text-3xl font-bold mt-1 accent-yellow">---</div>
-            </div>
-            <div class="binance-card p-5">
-                <p class="text-gray-400 text-xs font-medium tracking-widest">WATCHLIST</p>
-                <div id="watchCount" class="text-3xl font-bold mt-1 text-yellow-400">0</div>
-            </div>
-        </div>
+<!-- HEADER -->
+<header>
+  <div>
+    <div class="htag">HEINRICH LAW · BINANCE USDT-M FUTURES · REAL-TIME v2</div>
+    <h1><span class="hl">하인리히</span> 법칙 코인 선물 위험 예측
+      <span class="sub">BINANCE PERPETUAL FUTURES · LIVE DATA STREAM</span>
+    </h1>
+  </div>
+  <div class="hright">
+    <div class="sbadge" id="connBadge"><div class="pdot" id="connDot"></div><span id="connText">연결 중...</span></div>
+    <div class="mono-sm">
+      <div id="clockDisp">--:--:--</div>
+      <div>갱신: 15초 · 하인리히 1:29:300</div>
+      <div id="lastUpd" style="color:var(--td)">마지막 갱신: —</div>
+    </div>
+  </div>
+</header>
 
-        <div class="flex flex-col lg:flex-row gap-4 mb-6 items-end">
-            <div class="flex-1 w-full">
-                <input type="text" id="symbolSearch" placeholder="심볼 검색 (BTC, ETH 등)" 
-                       class="search-input px-5 py-3.5 rounded-2xl text-base w-full focus:ring-2">
-            </div>
-            <div class="flex gap-2 flex-wrap">
-                <button onclick="setFilter('all')" id="btn-all" class="filter-btn px-6 py-2.5 rounded-2xl text-sm font-medium bg-gray-700 ring-1 ring-yellow-400">전체</button>
-                <button onclick="setFilter('gainers')" id="btn-gainers" class="filter-btn px-6 py-2.5 rounded-2xl text-sm font-medium border border-gray-600">상승</button>
-                <button onclick="setFilter('volume')" id="btn-volume" class="filter-btn px-6 py-2.5 rounded-2xl text-sm font-medium border border-gray-600">거래대금</button>
-                <button onclick="setFilter('watchlist')" id="btn-watchlist" class="filter-btn px-6 py-2.5 rounded-2xl text-sm font-medium bg-yellow-500/10 text-yellow-400 border border-yellow-500/30">⭐ Watchlist</button>
-            </div>
-        </div>
+<!-- TICKER STRIP -->
+<div class="ticker-strip"><div class="ticker-inner" id="tickerInner"><span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--td)">시세 로딩 중...</span></div></div>
 
-        <div class="binance-card overflow-hidden shadow-2xl">
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm">
-                    <thead class="bg-[#252a32] text-gray-400 text-xs uppercase tracking-widest">
-                        <tr>
-                            <th class="px-6 py-5 text-left">Symbol</th>
-                            <th class="px-6 py-5 text-right">Price</th>
-                            <th class="px-6 py-5 text-center sortable-header" onclick="handleSort('m15')">15m <span id="sort-m15" class="sort-icon"></span></th>
-                            <th class="px-6 py-5 text-center sortable-header" onclick="handleSort('h1')">1h <span id="sort-h1" class="sort-icon"></span></th>
-                            <th class="px-6 py-5 text-center sortable-header" onclick="handleSort('h6')">6h <span id="sort-h6" class="sort-icon"></span></th>
-                            <th class="px-6 py-5 text-center sortable-header bg-black/10" onclick="handleSort('d24')">24h <span id="sort-d24" class="sort-icon"></span></th>
-                            <th class="px-6 py-5 text-center sortable-header" onclick="handleSort('funding')">Funding</th>
-                            <th class="px-6 py-5 text-right sortable-header" onclick="handleSort('oi')">OI</th>
-                            <th class="px-6 py-5 text-right">Volume</th>
-                            <th class="px-6 py-5 text-center">Signal</th>
-                            <th class="px-6 py-5 text-center w-12">★</th>
-                        </tr>
-                    </thead>
-                    <tbody id="opportunityList" class="divide-y divide-[#2b3139] text-base"></tbody>
-                </table>
-            </div>
+<!-- CONTROLS -->
+<div class="controls">
+  <span class="clabel">심볼:</span>
+  <div class="sym-wrap">
+    <div class="sym-input" id="symInput" onclick="toggleDrop()">BTCUSDT ▾</div>
+    <div id="symDropdown">
+      <input class="sym-search" id="symSearch" placeholder="심볼 검색 (예: SOL)..." autocomplete="off" oninput="filterSyms(this.value)" onclick="event.stopPropagation()">
+      <div id="symList"></div>
+    </div>
+  </div>
+  <span class="clabel" style="margin-left:6px">인기:</span>
+  <button class="btn btn-red" onclick="selectSym('BTCUSDT')">BTC</button>
+  <button class="btn btn-red" onclick="selectSym('ETHUSDT')">ETH</button>
+  <button class="btn btn-red" onclick="selectSym('SOLUSDT')">SOL</button>
+  <button class="btn btn-red" onclick="selectSym('XRPUSDT')">XRP</button>
+  <button class="btn btn-red" onclick="selectSym('DOGEUSDT')">DOGE</button>
+  <button class="btn btn-red" onclick="selectSym('BNBUSDT')">BNB</button>
+  <button class="btn btn-cyan" id="refreshBtn" onclick="fetchAll(true)">↻ 새로고침</button>
+</div>
+
+<!-- MAIN -->
+<main>
+  <div class="left-col">
+
+    <!-- PYRAMID -->
+    <div class="panel red">
+      <div class="ptitle">
+        <span>하인리히 피라미드 · 위험 구조 분석</span>
+        <span id="pyramidAlert" style="color:var(--td)">● 모니터링</span>
+      </div>
+      <div class="pycon">
+        <div class="plevel l1">
+          <div class="pbwrap"><div class="pbar"><span class="bcount" id="c1">—</span><span class="blabel">대형 사고<br>MAJOR</span></div></div>
+          <div class="lmeta">
+            <div class="lt" style="color:var(--red)">🔴 LV1 · 대형 폭락/폭등</div>
+            <div class="ld">대규모 연쇄 청산 · 스탑헌팅 · 시장 구조 붕괴</div>
+            <div class="lr" style="color:var(--red)" id="r1">예측 확률: —</div>
+          </div>
         </div>
+        <div class="plevel l2">
+          <div class="pbwrap"><div class="pbar"><span class="bcount" id="c2">—</span><span class="blabel">중소형<br>MINOR</span></div></div>
+          <div class="lmeta">
+            <div class="lt" style="color:var(--orange)">🟠 LV2 · 중소형 급변</div>
+            <div class="ld">단기 급등락 · 부분 청산 · 비정상 거래량</div>
+            <div class="lr" style="color:var(--orange)" id="r2">중소형 이벤트: —</div>
+          </div>
+        </div>
+        <div class="plevel l3">
+          <div class="pbwrap"><div class="pbar"><span class="bcount" id="c3">—</span><span class="blabel">아차사고<br>NEAR MISS</span></div></div>
+          <div class="lmeta">
+            <div class="lt" style="color:var(--yellow)">🟡 LV3 · 아차사고</div>
+            <div class="ld">CVD 다이버전스 · 오더북 공백 · 펀딩 스파이크</div>
+            <div class="lr" style="color:var(--yellow)" id="r3">아차사고 누적: —</div>
+          </div>
+        </div>
+        <div class="plevel l4">
+          <div class="pbwrap"><div class="pbar"><span class="bcount" id="c4" style="color:rgba(255,255,255,.9);font-size:12px">—</span><span class="blabel" style="color:rgba(255,255,255,.5)">약징후<br>WEAK</span></div></div>
+          <div class="lmeta">
+            <div class="lt" style="color:var(--blue)">🔵 LV4 · 약한 이상징후</div>
+            <div class="ld">OI 변화 · 펀딩비 편향 · 롱숏 비율 이상</div>
+            <div class="lr" style="color:var(--blue)" id="r4">약징후 감지: —</div>
+          </div>
+        </div>
+        <div class="plevel l5">
+          <div class="pbwrap"><div class="pbar"><span class="bcount" id="c5" style="color:var(--td);font-size:11px">잠재 리스크</span><span class="blabel" style="color:var(--td)">불안전<br>환경</span></div></div>
+          <div class="lmeta">
+            <div class="lt" style="color:var(--ts)">⚪ LV5 · 잠재적 리스크</div>
+            <div class="ld">구조적 불안전 · 과도한 레버리지 · 낮은 유동성</div>
+            <div class="lr" style="color:var(--td)">시장 기저 리스크 환경</div>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <div id="toast" class="fixed bottom-6 right-6 hidden bg-gray-800 border border-yellow-500 text-white px-5 py-3 rounded-2xl shadow-2xl text-sm flex items-center gap-3 z-50"></div>
+    <!-- SIGNALS -->
+    <div class="panel orange">
+      <div class="ptitle">
+        <span>실시간 하인리히 선행지표 (바이낸스 LIVE)</span>
+        <span id="sigActive" style="color:var(--orange)">— / 8 SIGNALS</span>
+      </div>
+      <div class="sgrid" id="sgrid"></div>
+    </div>
 
-    <script>
-        const FAPI = "https://fapi.binance.com";
-        const UPDATE_INTERVAL = 30000;
-        
-        let allTickerData = [];
-        let timeframeCache = JSON.parse(localStorage.getItem('tf_cache') || '{}');
-        let fundingCache = {};
-        let oiCache = {};
-        let watchlist = JSON.parse(localStorage.getItem('watchlist') || '[]');
-        
-        let currentFilter = 'all';
-        let sortKey = 'd24';
-        let sortOrder = 'desc';
-        let isScanning = false;
-        let countdown = 30;
+    <!-- CHART -->
+    <div class="panel blue">
+      <div class="ptitle">
+        <span>HRI 위험지수 히스토리</span>
+        <span id="chartLabel" style="color:var(--blue)">BTC</span>
+      </div>
+      <div class="chart-wrap"><canvas id="riskChart"></canvas></div>
+    </div>
 
-        function showToast(message, type = 'success') {
-            const toast = document.getElementById('toast');
-            toast.textContent = message;
-            toast.classList.remove('hidden', 'bg-emerald-600', 'bg-red-600');
-            toast.classList.add(type === 'success' ? 'bg-emerald-600' : 'bg-red-600');
-            setTimeout(() => toast.classList.add('hidden'), 2500);
-        }
+  </div><!-- /left-col -->
 
-        function toggleWatchlist(symbol) {
-            if (watchlist.includes(symbol)) {
-                watchlist = watchlist.filter(s => s !== symbol);
-            } else {
-                watchlist.push(symbol);
-            }
-            localStorage.setItem('watchlist', JSON.stringify(watchlist));
-            document.getElementById('watchCount').textContent = watchlist.length;
-            renderOpportunities();
-            showToast(`${symbol} ${watchlist.includes(symbol) ? '추가' : '제거'}됨`);
-        }
+  <div class="right-col">
 
-        async function fetchFundingInfo() {
-            try {
-                const res = await fetch(`${FAPI}/fapi/v1/fundingInfo`);
-                const data = await res.json();
-                data.forEach(item => {
-                    fundingCache[item.symbol] = parseFloat(item.lastFundingRate) * 100;
-                });
-            } catch (e) { console.error("Funding error", e); }
-        }
+    <!-- GAUGE -->
+    <div class="panel red">
+      <div class="ptitle">
+        <span>종합 위험지수 (HRI)</span>
+        <span id="hriTrend" style="font-size:13px">—</span>
+      </div>
+      <div class="gauge-wrap">
+        <div class="gauge-svg-wrap">
+          <svg viewBox="0 0 260 150" width="248" height="142">
+            <defs>
+              <linearGradient id="gg" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" style="stop-color:#2979ff"/>
+                <stop offset="33%" style="stop-color:#ffd600"/>
+                <stop offset="66%" style="stop-color:#ff6b00"/>
+                <stop offset="100%" style="stop-color:#ff2d55"/>
+              </linearGradient>
+            </defs>
+            <path d="M 20 135 A 110 110 0 0 1 240 135" fill="none" stroke="#1a2140" stroke-width="18" stroke-linecap="round"/>
+            <path id="gaugeFill" d="M 20 135 A 110 110 0 0 1 240 135" fill="none" stroke="url(#gg)" stroke-width="18" stroke-linecap="round"
+              stroke-dasharray="345" stroke-dashoffset="345"
+              style="transition:stroke-dashoffset 1.3s cubic-bezier(.34,1.56,.64,1)"/>
+            <line id="gaugeNeedle" x1="130" y1="135" x2="130" y2="42"
+              stroke="white" stroke-width="2.5" stroke-linecap="round"
+              style="transform-origin:130px 135px;transform:rotate(-90deg);transition:transform 1.3s cubic-bezier(.34,1.56,.64,1)"/>
+            <circle cx="130" cy="135" r="5" fill="white"/>
+            <text x="14" y="148" font-family="'Share Tech Mono',monospace" font-size="8" fill="#2979ff">LOW</text>
+            <text x="108" y="22" font-family="'Share Tech Mono',monospace" font-size="8" fill="#ffd600" text-anchor="middle">MID</text>
+            <text x="232" y="148" font-family="'Share Tech Mono',monospace" font-size="8" fill="#ff2d55" text-anchor="end">HIGH</text>
+          </svg>
+          <div id="gaugeLabel">
+            <span class="gval" id="gval" style="color:var(--green)">0</span>
+            <span class="gunit">HRI SCORE</span>
+          </div>
+        </div>
+        <div class="gticks">
+          <span class="gtick">0</span><span class="gtick">25</span>
+          <span class="gtick">50</span><span class="gtick">75</span><span class="gtick">100</span>
+        </div>
+        <div class="rlbadge" id="rlbadge" style="background:rgba(0,230,118,.08);color:var(--green);border-color:var(--green)">안전 · SAFE</div>
+      </div>
+    </div>
 
-        async function fetchOpenInterest(symbol) {
-            try {
-                const res = await fetch(`${FAPI}/fapi/v1/openInterest?symbol=${symbol}`);
-                const data = await res.json();
-                oiCache[symbol] = parseFloat(data.openInterest);
-            } catch (e) {}
-        }
+    <!-- LIVE STATS -->
+    <div class="panel cyan">
+      <div class="ptitle">
+        <span>바이낸스 실시간 지표</span>
+        <span id="symDisp" style="color:var(--cyan)">BTCUSDT</span>
+      </div>
+      <div class="stats-grid">
+        <div class="stat">
+          <div class="slabel">LAST PRICE</div>
+          <div class="svalue" id="stPrice" style="color:var(--tp);font-size:14px">—</div>
+          <div class="ssub">현재가</div>
+        </div>
+        <div class="stat">
+          <div class="slabel">24H CHANGE</div>
+          <div class="svalue" id="st24h">—</div>
+          <div class="ssub">가격 변동률</div>
+        </div>
+        <div class="stat">
+          <div class="slabel">FUNDING RATE</div>
+          <div class="svalue" id="stFund">—</div>
+          <div class="ssub">현재 펀딩비</div>
+        </div>
+        <div class="stat">
+          <div class="slabel">OPEN INTEREST</div>
+          <div class="svalue" id="stOI">—</div>
+          <div class="ssub">미결제약정</div>
+        </div>
+        <div class="stat">
+          <div class="slabel">24H VOLUME</div>
+          <div class="svalue" id="stVol">—</div>
+          <div class="ssub">거래대금</div>
+        </div>
+        <div class="stat">
+          <div class="slabel">LONG / SHORT</div>
+          <div class="svalue" id="stLS">—</div>
+          <div class="ssub">롱숏 포지션 비율</div>
+        </div>
+      </div>
+    </div>
 
-        async function fetchBaseTickers() {
-            try {
-                const res = await fetch(`${FAPI}/fapi/v1/ticker/24hr`);
-                const data = await res.json();
-                allTickerData = data.filter(i => i.symbol.endsWith('USDT'));
-                updateSummary();
-                await fetchFundingInfo();
-                
-                const topSymbols = [...allTickerData]
-                    .sort((a,b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume))
-                    .slice(0, 30);
-                await Promise.all(topSymbols.map(t => fetchOpenInterest(t.symbol)));
-            } catch (e) { console.error("Base fetch error", e); }
-        }
+    <!-- LOG -->
+    <div class="panel yellow">
+      <div class="ptitle">
+        <span>이벤트 로그 · LIVE STREAM</span>
+        <span style="color:var(--yellow);cursor:pointer;font-size:10px" onclick="clearLog()">CLEAR</span>
+      </div>
+      <div class="alog" id="alog">
+        <div class="aitem info"><span class="atime">--:--:--</span><span class="amsg">시스템 초기화 중...</span></div>
+      </div>
+    </div>
 
-        async function updateMultiTimeframes() {
-            const progressBar = document.getElementById('loadingProgress');
-            const targets = [...allTickerData].sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));
-            const chunkSize = 8;
+  </div><!-- /right-col -->
+</main>
 
-            for (let i = 0; i < targets.length; i += chunkSize) {
-                const chunk = targets.slice(i, i + chunkSize);
-                progressBar.style.width = `${Math.round((i / targets.length) * 100)}%`;
+<div class="disclaimer">
+  <p>⚠ <strong>경고</strong> · 본 모델은 하인리히 법칙(1:29:300)을 바이낸스 USDT-M 선물시장 이상징후 감지에 응용한 교육·연구용 시각화입니다.
+  HRI 점수는 공개 API의 펀딩비·OI·변동폭·롱숏비율 등 선행지표를 가중 합산한 지표로, 실제 미래 가격을 예측하지 않습니다.
+  실제 투자·청산 판단에 절대 사용하지 마십시오. 코인 선물거래는 원금 전액 손실 위험이 있습니다.</p>
+</div>
 
-                await Promise.all(chunk.map(async (t) => {
-                    try {
-                        const res = await fetch(`${FAPI}/fapi/v1/klines?symbol=${t.symbol}&interval=5m&limit=73`);
-                        const klines = await res.json();
-                        if (klines.length >= 72) {
-                            const current = parseFloat(klines[klines.length-1][4]);
-                            const getChange = (steps) => {
-                                const past = parseFloat(klines[klines.length-1-steps][4]);
-                                return ((current - past) / past) * 100;
-                            };
-                            timeframeCache[t.symbol] = {
-                                m15: getChange(3), h1: getChange(12), h6: getChange(72), ts: Date.now()
-                            };
-                        }
-                    } catch (e) {}
-                }));
-                if (i % 16 === 0) renderOpportunities();
-                await new Promise(r => setTimeout(r, 100));
-            }
-            progressBar.style.width = '0%';
-            localStorage.setItem('tf_cache', JSON.stringify(timeframeCache));
-            renderOpportunities();
-        }
+<script>
+/* ================================================================
+   CONFIG
+   ================================================================ */
+const FAPI   = 'https://fapi.binance.com/fapi/v1';
+const FAPI2  = 'https://fapi.binance.com/fapi/v2';
+// CORS proxy for browsers that block direct cross-origin requests
+const PROXY  = 'https://corsproxy.io/?url=';
 
-        function updateSummary() {
-            document.getElementById('totalSymbols').innerText = allTickerData.length.toLocaleString();
-            const bulls = allTickerData.filter(t => parseFloat(t.priceChangePercent) > 3).length;
-            const bears = allTickerData.filter(t => parseFloat(t.priceChangePercent) < -3).length;
-            document.getElementById('bullSymbols').innerText = bulls;
-            document.getElementById('bearSymbols').innerText = bears;
-            const avg = allTickerData.reduce((acc, t) => acc + Math.abs(parseFloat(t.priceChangePercent)), 0) / allTickerData.length;
-            document.getElementById('avgVol').innerText = avg.toFixed(1) + "%";
-            document.getElementById('watchCount').innerText = watchlist.length;
-        }
+const REFRESH_MS = 15000;
 
-        function getSortValue(ticker, key) {
-            if (key === 'd24') return parseFloat(ticker.priceChangePercent || 0);
-            if (key === 'funding') return fundingCache[ticker.symbol] || 0;
-            if (key === 'oi') return oiCache[ticker.symbol] || 0;
-            const cache = timeframeCache[ticker.symbol];
-            if (!cache || cache[key] === undefined) return sortOrder === 'desc' ? -999 : 999;
-            return cache[key];
-        }
+/* ================================================================
+   SIGNAL DEFINITIONS
+   ================================================================ */
+const SIGS = [
+  { id:'fund',   icon:'💰', name:'펀딩비',      desc:'절대값 기준 편향도', wt:18 },
+  { id:'chg',    icon:'⚡', name:'24H 변동폭',  desc:'가격 변동률 극단도', wt:16 },
+  { id:'spread', icon:'🌊', name:'고저 스프레드',desc:'고가-저가 폭 이상',  wt:12 },
+  { id:'oi',     icon:'📊', name:'OI 이상',     desc:'미결제약정 변화율',  wt:14 },
+  { id:'ls',     icon:'⚖️', name:'롱숏 편향',   desc:'포지션 극단 쏠림',  wt:15 },
+  { id:'vol',    icon:'📈', name:'거래량 폭발',  desc:'거래대금 이상 급증', wt:11 },
+  { id:'mom',    icon:'🎸', name:'모멘텀 반전',  desc:'단기 추세 변화율',  wt:8  },
+  { id:'liq',    icon:'💥', name:'변동성 지수',  desc:'종합 변동성 지표',  wt:6  },
+];
 
-        function handleSort(key) {
-            if (sortKey === key) sortOrder = sortOrder === 'desc' ? 'asc' : 'desc';
-            else { sortKey = key; sortOrder = 'desc'; }
-            updateSortIcons();
-            renderOpportunities();
-        }
+/* ================================================================
+   STATE
+   ================================================================ */
+let sym         = 'BTCUSDT';
+let allSyms     = [];
+let hriHist     = Array(40).fill(0);
+let prevHRI     = 0;
+let refreshTimer= null;
+let chartCtx    = null;
+let animFrame   = null;
 
-        function updateSortIcons() {
-            ['m15','h1','h6','d24','funding','oi'].forEach(k => {
-                const el = document.getElementById(`sort-${k}`);
-                if (el) el.innerHTML = (k === sortKey) ? (sortOrder === 'desc' ? '▼' : '▲') : '';
-            });
-        }
+/* ================================================================
+   INIT
+   ================================================================ */
+window.addEventListener('DOMContentLoaded', async () => {
+  buildSigCards();
+  initChart();
+  startClock();
+  startChartLoop();
 
-        function setFilter(filter) {
-            currentFilter = filter;
-            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('bg-gray-700', 'ring-1', 'ring-yellow-400'));
-            document.getElementById(`btn-${filter}`).classList.add('bg-gray-700', 'ring-1', 'ring-yellow-400');
-            renderOpportunities();
-        }
+  setLoadText('심볼 목록 로딩...');
+  await loadSymbols();
 
-        function getSignalBadge(d24, m15, h1) {
-            if (m15 === null) return `<span class="text-[10px] text-gray-500">LOADING</span>`;
-            if (m15 > 1.2 && h1 > 2.0 && d24 > 0) return `<span class="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded border border-emerald-500/40">LONG</span>`;
-            if (m15 < -1.2 && h1 < -2.0 && d24 < 0) return `<span class="text-[10px] bg-rose-500/20 text-rose-400 px-2 py-1 rounded border border-rose-500/40">SHORT</span>`;
-            return `<span class="text-[10px] text-gray-500">---</span>`;
-        }
+  setLoadText('실시간 데이터 수신 중...');
+  await fetchAll(false);
 
-        function renderOpportunities() {
-            const tbody = document.getElementById('opportunityList');
-            const search = document.getElementById('symbolSearch').value.toUpperCase();
-            let list = [...allTickerData];
+  document.getElementById('loadingOverlay').classList.add('hidden');
+  startAutoRefresh();
 
-            if (currentFilter === 'gainers') list = list.filter(t => parseFloat(t.priceChangePercent) > 0);
-            else if (currentFilter === 'watchlist') list = list.filter(t => watchlist.includes(t.symbol));
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.sym-wrap')) closeDrop();
+  });
+});
 
-            list.sort((a, b) => {
-                const valA = getSortValue(a, sortKey);
-                const valB = getSortValue(b, sortKey);
-                return sortOrder === 'desc' ? valB - valA : valA - valB;
-            });
+/* ================================================================
+   CLOCK
+   ================================================================ */
+function startClock() {
+  setInterval(() => {
+    document.getElementById('clockDisp').textContent = new Date().toLocaleTimeString('ko-KR');
+  }, 1000);
+}
 
-            if (search) list = list.filter(t => t.symbol.includes(search));
+/* ================================================================
+   LOAD SYMBOLS
+   ================================================================ */
+async function loadSymbols() {
+  try {
+    const data = await apiFetch(`${FAPI}/exchangeInfo`);
+    allSyms = data.symbols
+      .filter(s => s.contractType === 'PERPETUAL' && s.quoteAsset === 'USDT' && s.status === 'TRADING')
+      .map(s => s.symbol)
+      .sort();
+    buildSymList(allSyms);
+    addLog('ok', `바이낸스 USDT-M 선물 심볼 <strong>${allSyms.length}개</strong> 로드 완료`);
+  } catch(e) {
+    // fallback
+    allSyms = ['BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','DOGEUSDT',
+                'ADAUSDT','AVAXUSDT','DOTUSDT','LINKUSDT','MATICUSDT','LTCUSDT',
+                'UNIUSDT','ATOMUSDT','NEARUSDT','APTUSDT','ARBUSDT','OPUSDT'];
+    buildSymList(allSyms);
+    addLog('warn', '심볼 목록 fallback 적용 (직접 API 연결 실패)');
+  }
+}
 
-            tbody.innerHTML = list.slice(0, 50).map(t => {
-                const tc = timeframeCache[t.symbol] || { m15: null, h1: null, h6: null };
-                const isWatched = watchlist.includes(t.symbol);
-                const formatChange = (val) => {
-                    if (val === null) return `<div class="h-4 w-12 mx-auto loading-shimmer rounded"></div>`;
-                    return `<span class="${val >= 0 ? 'status-up' : 'status-down'} font-medium">${val >= 0 ? '+' : ''}${val.toFixed(2)}%</span>`;
-                };
+function buildSymList(list) {
+  document.getElementById('symList').innerHTML = list.map(s =>
+    `<div class="sym-opt ${s===sym?'sel':''}" onclick="selectSym('${s}')">${s}<span style="color:var(--td);font-size:9px">PERP</span></div>`
+  ).join('');
+}
 
-                return `
-                    <tr class="hover:bg-white/5 transition-colors border-b border-[#2b3139]">
-                        <td class="px-6 py-4">
-                            <div class="flex items-center gap-2">
-                                <span class="font-bold text-gray-100">${t.symbol.replace('USDT', '')}</span>
-                                <span class="text-[9px] text-gray-500 px-1 border border-gray-700 rounded">PERP</span>
-                            </div>
-                        </td>
-                        <td class="px-6 py-4 text-right font-mono">${parseFloat(t.lastPrice).toLocaleString()}</td>
-                        <td class="px-6 py-4 text-center font-mono text-sm">${formatChange(tc.m15)}</td>
-                        <td class="px-6 py-4 text-center font-mono text-sm">${formatChange(tc.h1)}</td>
-                        <td class="px-6 py-4 text-center font-mono text-sm">${formatChange(tc.h6)}</td>
-                        <td class="px-6 py-4 text-center font-mono font-bold bg-black/10">${formatChange(parseFloat(t.priceChangePercent))}</td>
-                        <td class="px-6 py-4 text-center font-mono text-xs ${(fundingCache[t.symbol] || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
-                            ${(fundingCache[t.symbol] || 0).toFixed(4)}%
-                        </td>
-                        <td class="px-6 py-4 text-right font-mono text-gray-400 text-xs">${((oiCache[t.symbol] || 0) / 1000000).toFixed(1)}M</td>
-                        <td class="px-6 py-4 text-right text-gray-400 font-mono text-xs">${(parseFloat(t.quoteVolume) / 1000000).toFixed(1)}M</td>
-                        <td class="px-6 py-4 text-center">${getSignalBadge(parseFloat(t.priceChangePercent), tc.m15, tc.h1)}</td>
-                        <td class="px-6 py-4 text-center">
-                            <button onclick="toggleWatchlist('${t.symbol}')" class="text-lg ${isWatched ? 'text-yellow-400' : 'text-gray-600'}">
-                                ${isWatched ? '★' : '☆'}
-                            </button>
-                        </td>
-                    </tr>
-                `;
-            }).join('');
-        }
+function filterSyms(q) {
+  const f = q.trim().toUpperCase();
+  const filtered = allSyms.filter(s => s.includes(f));
+  document.getElementById('symList').innerHTML = filtered.map(s =>
+    `<div class="sym-opt ${s===sym?'sel':''}" onclick="selectSym('${s}')">${s}<span style="color:var(--td);font-size:9px">PERP</span></div>`
+  ).join('');
+}
 
-        async function refreshData() {
-            if (isScanning) return;
-            isScanning = true;
-            document.getElementById('statusText').innerText = "데이터 수집 중...";
-            document.getElementById('statusDot').className = "w-2.5 h-2.5 rounded-full bg-yellow-400 animate-pulse";
-            
-            await fetchBaseTickers();
-            await updateMultiTimeframes();
-            
-            isScanning = false;
-            countdown = 30;
-            document.getElementById('statusText').innerText = "업데이트 완료";
-            document.getElementById('statusDot').className = "w-2.5 h-2.5 rounded-full bg-emerald-500";
-        }
+function toggleDrop() {
+  const d = document.getElementById('symDropdown');
+  d.classList.toggle('open');
+  if (d.classList.contains('open')) {
+    document.getElementById('symSearch').value = '';
+    buildSymList(allSyms);
+    setTimeout(() => document.getElementById('symSearch').focus(), 50);
+  }
+}
+function closeDrop() { document.getElementById('symDropdown').classList.remove('open'); }
 
-        setInterval(() => {
-            if (!isScanning) {
-                countdown--;
-                if (countdown <= 0) refreshData();
-                document.getElementById('nextUpdate').innerText = `00:${countdown.toString().padStart(2, '0')}`;
-            }
-        }, 1000);
+function selectSym(s) {
+  sym = s;
+  document.getElementById('symInput').textContent = s + ' ▾';
+  document.getElementById('symDisp').textContent = s;
+  document.getElementById('chartLabel').textContent = s.replace('USDT','');
+  closeDrop();
+  hriHist = Array(40).fill(0);
+  prevHRI = 0;
+  addLog('info', `심볼 전환 → <strong>${s}</strong>`);
+  fetchAll(true);
+}
 
-        document.getElementById('symbolSearch').addEventListener('input', renderOpportunities);
-        window.onload = refreshData;
-    </script>
+/* ================================================================
+   MAIN DATA FETCH
+   ================================================================ */
+async function fetchAll(showSpin = true) {
+  if (showSpin) {
+    const btn = document.getElementById('refreshBtn');
+    btn.textContent = '⟳ 로딩...';
+    btn.disabled = true;
+  }
+
+  try {
+    const [tickerRes, fundRes, oiRes, lsRes, klinesRes] = await Promise.allSettled([
+      apiFetch(`${FAPI}/ticker/24hr?symbol=${sym}`),
+      apiFetch(`${FAPI}/fundingRate?symbol=${sym}&limit=1`),
+      apiFetch(`${FAPI2}/openInterest?symbol=${sym}`),
+      apiFetch(`${FAPI}/globalLongShortAccountRatio?symbol=${sym}&period=5m&limit=2`),
+      apiFetch(`${FAPI}/klines?symbol=${sym}&interval=1h&limit=24`),
+    ]);
+
+    const ticker = tickerRes.status === 'fulfilled' ? tickerRes.value : null;
+    const fund   = fundRes.status === 'fulfilled'   ? fundRes.value  : null;
+    const oi     = oiRes.status === 'fulfilled'     ? oiRes.value    : null;
+    const ls     = lsRes.status === 'fulfilled'     ? lsRes.value    : null;
+    const klines = klinesRes.status === 'fulfilled' ? klinesRes.value: null;
+
+    if (!ticker) throw new Error('24H 시세 데이터 수신 실패');
+
+    processData(ticker, fund, oi, ls, klines);
+    setConnection(true);
+    document.getElementById('lastUpd').textContent = `마지막 갱신: ${new Date().toLocaleTimeString('ko-KR')}`;
+    fetchTickerStrip(); // async, non-blocking
+  } catch(e) {
+    setConnection(false);
+    addLog('crit', `데이터 오류: ${e.message}`);
+  }
+
+  if (showSpin) {
+    const btn = document.getElementById('refreshBtn');
+    btn.textContent = '↻ 새로고침';
+    btn.disabled = false;
+  }
+}
+
+/* ================================================================
+   PROCESS DATA → COMPUTE HRI
+   ================================================================ */
+function processData(ticker, fundArr, oiData, lsArr, klines) {
+  /* --- Raw values --- */
+  const price   = parseFloat(ticker.lastPrice);
+  const chg24   = parseFloat(ticker.priceChangePercent);   // %
+  const high24  = parseFloat(ticker.highPrice);
+  const low24   = parseFloat(ticker.lowPrice);
+  const vol24   = parseFloat(ticker.quoteVolume);          // USDT
+  const count24 = parseFloat(ticker.count);                // trade count
+
+  const fundRate = fundArr && fundArr[0] ? parseFloat(fundArr[0].fundingRate) * 100 : 0; // %
+  const oiVal    = oiData ? parseFloat(oiData.openInterest) : 0;
+
+  let lsRatio = 1.0;
+  if (lsArr && lsArr.length > 0) lsRatio = parseFloat(lsArr[0].longShortRatio);
+
+  /* --- Derived metrics --- */
+  const spread = low24 > 0 ? ((high24 - low24) / low24) * 100 : 0;  // %
+  const fundAbs = Math.abs(fundRate);
+
+  /* --- Signal Scores [0–100] --- */
+  // 1. Funding: >0.15% = extreme
+  const fundScore  = clamp(fundAbs / 0.15 * 100, 0, 100);
+  // 2. 24H change: >15% = extreme
+  const chgScore   = clamp(Math.abs(chg24) / 15 * 100, 0, 100);
+  // 3. High-Low spread: >10% = extreme
+  const spreadScore= clamp(spread / 10 * 100, 0, 100);
+  // 4. OI proxy (no prev OI available — use chg + funding correlation)
+  const oiScore    = clamp(chgScore * 0.6 + fundScore * 0.4, 0, 100);
+  // 5. Long/Short ratio: deviation from 1.0
+  const lsDev      = Math.abs(lsRatio - 1.0);
+  const lsScore    = clamp(lsDev / 1.2 * 100, 0, 100);
+  // 6. Volume anomaly: proxy via spread * count intensity
+  const volScore   = clamp(spread * 7, 0, 100);
+  // 7. Momentum reversal: from klines
+  const momScore   = klines ? computeMomentum(klines) : chgScore * 0.5;
+  // 8. Composite volatility
+  const liqScore   = clamp((spreadScore + chgScore) / 2, 0, 100);
+
+  const scores = [fundScore, chgScore, spreadScore, oiScore, lsScore, volScore, momScore, liqScore];
+
+  /* --- Weighted HRI [0–100] --- */
+  const wts = SIGS.map(s => s.wt);
+  const totalW = wts.reduce((a,b) => a+b, 0);
+  const hri = Math.round(scores.reduce((sum,s,i) => sum + s * wts[i], 0) / totalW);
+
+  /* --- Pyramid counts (heuristic scaling) --- */
+  const scale  = hri / 10;
+  const base   = Math.round(800 + scale * 1500);
+  const lv4    = Math.round(base * 0.065);
+  const lv3    = Math.round(lv4 * 0.345);
+  const lv2    = Math.max(1, Math.round(lv3 / 10.3));
+  const lv1    = Math.max(1, Math.round(lv2 / 29));
+
+  /* --- Update history --- */
+  hriHist = [...hriHist.slice(1), hri];
+
+  /* --- UI Updates --- */
+  updateStats(price, chg24, fundRate, oiVal, vol24, lsRatio);
+  updateSignals(scores);
+  updateGauge(hri);
+  updatePyramid(lv1, lv2, lv3, lv4, hri, chg24, fundRate, lsRatio);
+  updateHRITrend(hri);
+  generateAlerts(hri, fundRate, chg24, lsRatio, spread);
+
+  prevHRI = hri;
+}
+
+function computeMomentum(klines) {
+  if (!klines || klines.length < 6) return 0;
+  const closes = klines.map(k => parseFloat(k[4]));
+  const n = closes.length;
+  const recentAvg = avg(closes.slice(n-3));
+  const prevAvg   = avg(closes.slice(n-6, n-3));
+  const pct = prevAvg > 0 ? Math.abs((recentAvg - prevAvg) / prevAvg * 100) : 0;
+  return clamp(pct / 5 * 100, 0, 100);
+}
+
+const avg = arr => arr.reduce((a,b)=>a+b,0)/arr.length;
+const clamp = (v,lo,hi) => Math.min(Math.max(v,lo),hi);
+
+/* ================================================================
+   UI UPDATERS
+   ================================================================ */
+function updateStats(price, chg, fund, oi, vol, ls) {
+  setEl('stPrice', fmtPrice(price), 'var(--tp)');
+  setEl('st24h',   (chg>=0?'+':'')+chg.toFixed(2)+'%', chg>=0?'var(--green)':'var(--red)');
+  const fc = fund > 0.08 ? 'var(--red)' : fund < -0.08 ? 'var(--cyan)' : 'var(--green)';
+  setEl('stFund',  (fund>=0?'+':'')+fund.toFixed(4)+'%', fc);
+  setEl('stOI',    fmtBig(oi), 'var(--tp)');
+  setEl('stVol',   '$'+fmtBig(vol), 'var(--tp)');
+  const lc = ls > 1.8 ? 'var(--orange)' : ls < 0.6 ? 'var(--red)' : 'var(--green)';
+  setEl('stLS',    ls.toFixed(2), lc);
+}
+
+function setEl(id, v, color) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = v;
+  if (color) el.style.color = color;
+}
+
+function fmtPrice(p) {
+  if (p >= 10000) return '$'+p.toLocaleString('en-US', {maximumFractionDigits:1});
+  if (p >= 1)     return '$'+p.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:4});
+  return '$'+p.toFixed(6);
+}
+
+function fmtBig(n) {
+  if (n >= 1e9) return (n/1e9).toFixed(2)+'B';
+  if (n >= 1e6) return (n/1e6).toFixed(1)+'M';
+  if (n >= 1e3) return (n/1e3).toFixed(1)+'K';
+  return n.toFixed(0);
+}
+
+function buildSigCards() {
+  document.getElementById('sgrid').innerHTML = SIGS.map(s => `
+    <div class="scard" id="sc_${s.id}">
+      <div class="sicon">${s.icon}</div>
+      <div class="sname">${s.name}</div>
+      <div class="sdesc">${s.desc}</div>
+      <div class="sval" id="sv_${s.id}">—</div>
+      <div class="sbar"><div class="sbar-fill" id="sb_${s.id}" style="width:0%;background:var(--blue)"></div></div>
+    </div>`).join('');
+}
+
+function updateSignals(scores) {
+  let active = 0;
+  SIGS.forEach((s, i) => {
+    const sc = Math.round(clamp(scores[i]||0, 0, 100));
+    const card = document.getElementById('sc_'+s.id);
+    const bar  = document.getElementById('sb_'+s.id);
+    const valEl= document.getElementById('sv_'+s.id);
+    if (!card) return;
+    bar.style.width = sc + '%';
+    if (valEl) valEl.textContent = sc + 'pt';
+    let color = 'var(--blue)';
+    card.classList.remove('active', 'crit');
+    if (sc > 75)      { color='var(--red)';    card.classList.add('crit');   active++; }
+    else if (sc > 45) { color='var(--orange)'; card.classList.add('active'); active++; }
+    else if (sc > 20) { color='var(--yellow)'; }
+    bar.style.background = color;
+  });
+  document.getElementById('sigActive').textContent = active + '/' + SIGS.length + ' SIGNALS';
+}
+
+function updateGauge(score) {
+  const s = clamp(score, 0, 100);
+  document.getElementById('gaugeFill').style.strokeDashoffset = 345 - (345 * s / 100);
+  document.getElementById('gaugeNeedle').style.transform = `rotate(${-90 + (s/100)*180}deg)`;
+  const valEl = document.getElementById('gval');
+  animNum(valEl, parseInt(valEl.textContent)||0, Math.round(s), 1100);
+  let color, label, bg;
+  if      (s < 20) { color='var(--green)';  label='안전 · SAFE';       bg='rgba(0,230,118,.08)'; }
+  else if (s < 40) { color='var(--blue)';   label='주의 · CAUTION';    bg='rgba(41,121,255,.08)'; }
+  else if (s < 60) { color='var(--yellow)'; label='경계 · WARNING';    bg='rgba(255,214,0,.08)'; }
+  else if (s < 80) { color='var(--orange)'; label='위험 · DANGER';     bg='rgba(255,107,0,.08)'; }
+  else             { color='var(--red)';    label='극위험 · CRITICAL'; bg='rgba(255,45,85,.10)'; }
+  valEl.style.color = color;
+  const badge = document.getElementById('rlbadge');
+  badge.textContent = label;
+  badge.style.color = color;
+  badge.style.background = bg;
+  badge.style.borderColor = color;
+}
+
+function updatePyramid(lv1, lv2, lv3, lv4, hri, chg, fund, ls) {
+  document.getElementById('c1').textContent = lv1.toLocaleString();
+  document.getElementById('c2').textContent = lv2.toLocaleString();
+  document.getElementById('c3').textContent = lv3.toLocaleString();
+  document.getElementById('c4').textContent = lv4.toLocaleString();
+  const prob = Math.min(hri * 0.88, 94).toFixed(1);
+  document.getElementById('r1').textContent = `예측 확률: ${prob}%`;
+  document.getElementById('r2').textContent = `중소형 이벤트: ${lv2}건`;
+  document.getElementById('r3').textContent = `아차사고 누적: ${lv3.toLocaleString()}건`;
+  document.getElementById('r4').textContent = `약징후: ${lv4.toLocaleString()}건`;
+  const pa = document.getElementById('pyramidAlert');
+  if (hri > 75) { pa.textContent = '🔴 위험 경보'; pa.style.color = 'var(--red)'; }
+  else if (hri > 50) { pa.textContent = '🟠 경계 발령'; pa.style.color = 'var(--orange)'; }
+  else if (hri > 30) { pa.textContent = '🟡 주의 중'; pa.style.color = 'var(--yellow)'; }
+  else { pa.textContent = '✓ 모니터링'; pa.style.color = 'var(--td)'; }
+}
+
+function updateHRITrend(hri) {
+  const el = document.getElementById('hriTrend');
+  const d = hri - prevHRI;
+  if (d > 3)        { el.textContent = `▲ +${d}`; el.style.color = 'var(--red)'; }
+  else if (d < -3)  { el.textContent = `▼ ${d}`;  el.style.color = 'var(--green)'; }
+  else              { el.textContent = `→ ${hri}`; el.style.color = 'var(--ts)'; }
+}
+
+function generateAlerts(hri, fund, chg, ls, spread) {
+  const alerts = [];
+  if (hri > 80) alerts.push({t:'crit', m:`🔴 <strong>CRITICAL</strong> · HRI ${hri} · 대형 이벤트 고위험`});
+  else if (hri > 60) alerts.push({t:'warn', m:`⚠ <strong>경계</strong> · HRI ${hri} · 복합 이상징후 감지`});
+  else if (hri > 40) alerts.push({t:'info', m:`ℹ <strong>주의</strong> · HRI ${hri} · 선행지표 상승 중`});
+  if (Math.abs(fund) > 0.10) alerts.push({t:'warn', m:`⚠ 펀딩비 <strong>${fund.toFixed(4)}%</strong> · 포지션 편향 극단`});
+  if (Math.abs(chg) > 7)   alerts.push({t:'warn', m:`⚠ 24H 변동 <strong>${chg.toFixed(2)}%</strong> · 고변동성`});
+  if (Math.abs(chg) > 12)  alerts.push({t:'crit', m:`🔴 24H 변동 <strong>${chg.toFixed(2)}%</strong> · 급격한 가격 이동`});
+  if (ls > 2.0) alerts.push({t:'warn', m:`⚠ 롱숏 <strong>${ls.toFixed(2)}</strong> · 롱 과집중 (청산 주의)`});
+  if (ls < 0.5) alerts.push({t:'crit', m:`🔴 롱숏 <strong>${ls.toFixed(2)}</strong> · 숏 우세 (반등 위험)`});
+  if (spread > 6) alerts.push({t:'warn', m:`⚠ 고저 스프레드 <strong>${spread.toFixed(2)}%</strong> · 변동성 극단`});
+  if (alerts.length === 0) alerts.push({t:'ok', m:`✓ <strong>${sym}</strong> 정상 범위 · HRI ${hri}`});
+  alerts.reverse().forEach(a => addLog(a.t, a.m));
+}
+
+function addLog(type, msg) {
+  const log = document.getElementById('alog');
+  const t = new Date().toLocaleTimeString('ko-KR');
+  const div = document.createElement('div');
+  div.className = `aitem ${type}`;
+  div.innerHTML = `<span class="atime">${t}</span><span class="amsg">${msg}</span>`;
+  log.prepend(div);
+  while (log.children.length > 35) log.removeChild(log.lastChild);
+}
+function clearLog() { document.getElementById('alog').innerHTML = ''; }
+
+/* ================================================================
+   TICKER STRIP
+   ================================================================ */
+const TICKER_SYMS = ['BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','DOGEUSDT','AVAXUSDT','ADAUSDT','DOTUSDT','LINKUSDT','MATICUSDT','NEARUSDT'];
+
+async function fetchTickerStrip() {
+  try {
+    const data = await apiFetch(`${FAPI}/ticker/24hr`);
+    const items = TICKER_SYMS
+      .map(s => data.find(d => d.symbol === s))
+      .filter(Boolean)
+      .map(d => {
+        const chg = parseFloat(d.priceChangePercent);
+        const cls = chg >= 0 ? 'up' : 'dn';
+        return `<div class="ticker-item">
+          <span class="ticker-sym">${d.symbol.replace('USDT','')}</span>
+          <span class="ticker-price">${fmtPrice(parseFloat(d.lastPrice))}</span>
+          <span class="${cls}">${chg>=0?'+':''}${chg.toFixed(2)}%</span>
+        </div>`;
+      });
+    const doubled = [...items, ...items].join('');
+    document.getElementById('tickerInner').innerHTML = doubled;
+  } catch(e) { /* silent fail */ }
+}
+
+/* ================================================================
+   CHART
+   ================================================================ */
+function initChart() {
+  chartCtx = document.getElementById('riskChart').getContext('2d');
+}
+
+function drawChart() {
+  const canvas = chartCtx.canvas;
+  const w = canvas.offsetWidth, h = 180;
+  canvas.width = w; canvas.height = h;
+  const ctx = chartCtx;
+  const data = hriHist;
+  const n = data.length;
+  const PL=38, PR=14, PT=14, PB=24;
+  const cw=w-PL-PR, ch=h-PT-PB;
+
+  // Zone fill
+  [
+    [0,20,'rgba(0,230,118,.04)'],[20,40,'rgba(41,121,255,.04)'],
+    [40,60,'rgba(255,214,0,.04)'],[60,80,'rgba(255,107,0,.05)'],[80,100,'rgba(255,45,85,.06)']
+  ].forEach(([y1,y2,c]) => {
+    ctx.fillStyle=c;
+    ctx.fillRect(PL, PT+ch-(y2/100)*ch, cw, (y2-y1)/100*ch);
+  });
+
+  // Grid
+  ctx.strokeStyle='rgba(26,33,64,.8)'; ctx.lineWidth=1;
+  [20,40,60,80].forEach(v => {
+    const y=PT+ch-(v/100)*ch;
+    ctx.beginPath(); ctx.moveTo(PL,y); ctx.lineTo(w-PR,y); ctx.stroke();
+    ctx.fillStyle='rgba(121,134,203,.5)';
+    ctx.font='8px Share Tech Mono'; ctx.textAlign='right';
+    ctx.fillText(v, PL-4, y+3);
+  });
+
+  // Danger threshold line (60)
+  ctx.setLineDash([4,4]); ctx.strokeStyle='rgba(255,107,0,.45)'; ctx.lineWidth=1;
+  const ty = PT+ch-(60/100)*ch;
+  ctx.beginPath(); ctx.moveTo(PL,ty); ctx.lineTo(w-PR,ty); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='rgba(255,107,0,.6)';
+  ctx.font='8px Share Tech Mono'; ctx.textAlign='left';
+  ctx.fillText('경계선 60', PL+3, ty-3);
+
+  // Area gradient
+  const grad = ctx.createLinearGradient(0,PT,0,h-PB);
+  grad.addColorStop(0,'rgba(255,45,85,.38)');
+  grad.addColorStop(.5,'rgba(41,121,255,.15)');
+  grad.addColorStop(1,'rgba(0,230,118,.04)');
+  ctx.beginPath();
+  data.forEach((v,i) => {
+    const x=PL+(i/(n-1))*cw, y=PT+ch-(v/100)*ch;
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.lineTo(PL+cw, h-PB); ctx.lineTo(PL, h-PB); ctx.closePath();
+  ctx.fillStyle=grad; ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  data.forEach((v,i) => {
+    const x=PL+(i/(n-1))*cw, y=PT+ch-(v/100)*ch;
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.strokeStyle='#ff2d55'; ctx.lineWidth=2;
+  ctx.shadowColor='rgba(255,45,85,.55)'; ctx.shadowBlur=8;
+  ctx.stroke(); ctx.shadowBlur=0;
+
+  // Last dot + value
+  const lv=data[n-1];
+  const lx=PL+cw, ly=PT+ch-(lv/100)*ch;
+  ctx.beginPath(); ctx.arc(lx,ly,4,0,Math.PI*2);
+  ctx.fillStyle='#ff2d55'; ctx.fill();
+  ctx.fillStyle='rgba(255,45,85,.9)';
+  ctx.font='bold 9px Share Tech Mono'; ctx.textAlign='right';
+  ctx.fillText(Math.round(lv), lx-2, ly-7);
+
+  // X axis labels
+  ctx.fillStyle='rgba(61,79,124,.5)'; ctx.font='8px Share Tech Mono'; ctx.textAlign='center';
+  for (let i=0; i<n; i+=8) {
+    ctx.fillText(`-${n-1-i}`, PL+(i/(n-1))*cw, h-PB+13);
+  }
+  ctx.fillText('NOW', PL+cw, h-PB+13);
+}
+
+function startChartLoop() {
+  function tick() { drawChart(); animFrame=requestAnimationFrame(tick); }
+  tick();
+}
+
+/* ================================================================
+   API FETCH (with CORS proxy fallback)
+   ================================================================ */
+async function apiFetch(url) {
+  // Try direct first
+  try {
+    const r = await fetch(url, {signal: AbortSignal.timeout(7000)});
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } catch(e) {
+    // Proxy fallback
+    const proxyUrl = PROXY + encodeURIComponent(url);
+    const r2 = await fetch(proxyUrl, {signal: AbortSignal.timeout(10000)});
+    if (!r2.ok) throw new Error(`Proxy HTTP ${r2.status}`);
+    return await r2.json();
+  }
+}
+
+/* ================================================================
+   CONNECTION STATUS
+   ================================================================ */
+function setConnection(ok) {
+  const badge = document.getElementById('connBadge');
+  const dot   = document.getElementById('connDot');
+  const txt   = document.getElementById('connText');
+  if (ok) {
+    badge.className='sbadge'; dot.className='pdot'; txt.textContent='BINANCE LIVE';
+  } else {
+    badge.className='sbadge err'; dot.className='pdot red'; txt.textContent='연결 오류';
+  }
+}
+
+function setLoadText(msg) {
+  document.getElementById('loadText').textContent = msg;
+}
+
+/* ================================================================
+   AUTO REFRESH
+   ================================================================ */
+function startAutoRefresh() {
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(() => fetchAll(false), REFRESH_MS);
+}
+
+/* ================================================================
+   UTILS
+   ================================================================ */
+function animNum(el, from, to, dur) {
+  const s = performance.now();
+  function step(now) {
+    const p = Math.min((now-s)/dur, 1);
+    el.textContent = Math.round(from + (to-from)*p);
+    if (p < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+window.addEventListener('resize', drawChart);
+</script>
 </body>
 </html>
