@@ -4,86 +4,103 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Binance Futures Scanner (240m)</title>
+    <title>Binance Auto Alert System</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; background-color: #0b0e11; color: #eaecef; }
-        .card { background-color: #1e2329; border-radius: 12px; transition: all 0.2s; border: 1px solid #2b3139; }
-        .card:hover { transform: translateY(-4px); border-color: #f0b90b; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+        .card { background-color: #1e2329; border-radius: 12px; border: 1px solid #2b3139; transition: all 0.2s; }
+        .card:hover { border-color: #f0b90b; }
         .binance-yellow { color: #f0b90b; }
         .binance-bg-yellow { background-color: #f0b90b; color: #000; }
-        .indicator-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
-        .pulse { animation: pulse-yellow 2s infinite; }
-        @keyframes pulse-yellow { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: #0b0e11; }
-        ::-webkit-scrollbar-thumb { background: #2b3139; border-radius: 10px; }
+        .input-dark { background-color: #0b0e11; border: 1px solid #474d57; color: white; }
+        .input-dark:focus { border-color: #f0b90b; outline: none; }
+        @keyframes pulse-yellow { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .animate-pulse-slow { animation: pulse-yellow 3s infinite; }
+        .new-badge { background: linear-gradient(45deg, #f0b90b, #f8d33a); color: black; font-weight: 800; padding: 2px 8px; border-radius: 4px; font-size: 10px; }
     </style>
 </head>
 <body class="p-4 md:p-8">
     <div class="max-w-6xl mx-auto">
-        <!-- Header -->
-        <div class="flex flex-col md:flex-row justify-between items-center mb-8 gap-6">
-            <div>
-                <h1 class="text-3xl font-bold binance-yellow flex items-center gap-2">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L4.5 12 12 22l7.5-10L12 2zm0 3.85L16.62 12 12 18.15 7.38 12 12 5.85z"/></svg>
-                    선물 전략 스캐너
-                </h1>
-                <div class="flex flex-wrap items-center gap-3 mt-2">
-                    <span class="text-[11px] bg-gray-800 px-2 py-1 rounded text-gray-400 border border-gray-700">15m 봉 기준</span>
-                    <span class="text-[11px] bg-gray-800 px-2 py-1 rounded text-gray-400 border border-gray-700">이평선: 5 > 10 > 20 > 60 (정배열)</span>
-                    <span class="text-[11px] bg-yellow-900/30 px-2 py-1 rounded text-yellow-500 border border-yellow-700/50 font-bold">최근 240분 내 단일 봉 10%+ 상승</span>
+        <!-- Configuration Section -->
+        <div class="card p-6 mb-8 border-yellow-500/30 bg-yellow-500/5">
+            <h2 class="text-lg font-bold binance-yellow mb-4 flex items-center gap-2 text-sm uppercase tracking-wider">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"></path></svg>
+                알림 수신 설정
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="relative">
+                    <label class="block text-[10px] text-gray-500 mb-1 uppercase font-bold tracking-tighter">Telegram Bot Token</label>
+                    <input type="password" id="tgToken" value="8710131262:AAGxhwh3b8Z_FGf-AxFcIwM4-1_Tmau6su4" class="w-full p-2.5 rounded input-dark text-xs font-mono" readonly>
+                    <span class="absolute right-3 top-8 text-[10px] text-green-500 font-bold uppercase">Locked</span>
+                </div>
+                <div>
+                    <label class="block text-[10px] text-gray-500 mb-1 uppercase font-bold tracking-tighter">Telegram Chat ID (수신자 ID)</label>
+                    <input type="text" id="tgChatId" placeholder="숫자로 된 Chat ID를 입력하세요" class="w-full p-2.5 rounded input-dark text-xs font-mono shadow-inner" onchange="saveChatId(this.value)">
                 </div>
             </div>
-            <div class="flex items-center gap-6 bg-gray-900/50 p-4 rounded-xl border border-gray-800">
+            <div class="mt-4 flex items-center gap-2">
+                <button onclick="testTelegram()" class="text-[10px] bg-gray-800 px-3 py-1.5 rounded hover:bg-gray-700 transition-all font-bold uppercase border border-gray-700">Test Notification</button>
+                <p id="testMsg" class="text-[10px] font-bold uppercase"></p>
+            </div>
+        </div>
+
+        <!-- Header -->
+        <div class="flex flex-col md:flex-row justify-between items-end mb-8 gap-6">
+            <div>
+                <h1 class="text-3xl font-bold binance-yellow flex items-center gap-2">
+                    BINANCE SIGNAL BOT
+                </h1>
+                <div class="flex flex-wrap items-center gap-3 mt-3">
+                    <span class="text-[10px] bg-gray-800 px-2 py-1 rounded text-gray-400 font-bold border border-gray-700">15M INTERVAL</span>
+                    <span class="text-[10px] bg-gray-800 px-2 py-1 rounded text-gray-400 font-bold border border-gray-700">MA 5>10>20>60</span>
+                    <span class="text-[10px] bg-red-900/30 px-2 py-1 rounded text-red-400 border border-red-900/50 font-bold italic underline underline-offset-4">240M WINDOW / 10%+ SPIKE</span>
+                </div>
+            </div>
+            <div class="flex items-center gap-4 bg-gray-900 p-4 rounded-xl border border-gray-800 shadow-2xl">
                 <div class="text-right">
-                    <p class="text-[10px] text-gray-500 uppercase tracking-widest mb-1">Auto-Scan In</p>
+                    <p class="text-[9px] text-gray-500 uppercase tracking-widest mb-1">Update Timer</p>
                     <p id="timer" class="text-2xl font-mono font-bold text-white leading-none">05:00</p>
                 </div>
-                <button onclick="scanMarkets()" id="scanBtn" class="binance-bg-yellow px-8 py-3 rounded-lg font-bold hover:opacity-90 active:scale-95 transition-all shadow-lg text-sm">
-                    지금 스캔
+                <button onclick="scanMarkets()" id="scanBtn" class="binance-bg-yellow px-6 py-3 rounded-lg font-bold hover:opacity-90 active:scale-95 transition-all text-sm uppercase tracking-tighter shadow-lg shadow-yellow-500/10">
+                    Scan Now
                 </button>
             </div>
         </div>
 
-        <!-- Dashboard Stats -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <div class="card p-4 flex flex-col items-center justify-center">
-                <span class="text-gray-500 text-[10px] uppercase mb-1">상태</span>
-                <div class="flex items-center font-bold text-sm" id="scanStatus">
-                    <span class="indicator-dot bg-gray-500"></span>대기 중
-                </div>
+        <!-- Stats -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 text-center">
+            <div class="card p-4 bg-black/20">
+                <p class="text-gray-500 text-[9px] uppercase font-black mb-1">Status</p>
+                <p id="scanStatus" class="font-bold text-xs uppercase tracking-widest">Standby</p>
             </div>
-            <div class="card p-4 flex flex-col items-center justify-center">
-                <span class="text-gray-500 text-[10px] uppercase mb-1">감시 대상</span>
-                <span id="totalSymbols" class="text-xl font-bold">0</span>
+            <div class="card p-4 bg-black/20">
+                <p class="text-gray-500 text-[9px] uppercase font-black mb-1">Last Update</p>
+                <p id="lastScanTime" class="font-bold text-xs">-</p>
             </div>
-            <div class="card p-4 flex flex-col items-center justify-center">
-                <span class="text-gray-500 text-[10px] uppercase mb-1">마지막 업데이트</span>
-                <span id="lastScanTime" class="text-xl font-bold">-</span>
+            <div class="card p-4 bg-black/20">
+                <p class="text-gray-500 text-[9px] uppercase font-black mb-1">Total Hits</p>
+                <p id="matchCount" class="font-bold text-lg text-green-500">0</p>
             </div>
-            <div class="card p-4 flex flex-col items-center justify-center">
-                <span class="text-gray-500 text-[10px] uppercase mb-1">검출된 심볼</span>
-                <span id="matchCount" class="text-xl font-bold text-green-500">0</span>
+            <div class="card p-4 bg-black/20 border-yellow-500/20">
+                <p class="text-gray-500 text-[9px] uppercase font-black mb-1 font-bold">New Alerts</p>
+                <p id="newMatchCount" class="font-bold text-lg text-yellow-500">0</p>
             </div>
         </div>
 
-        <!-- Loading -->
-        <div id="loading" class="hidden flex flex-col items-center justify-center py-20">
-            <div class="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-yellow-500 mb-4"></div>
-            <p id="loadingMsg" class="text-gray-400 animate-pulse text-sm">최근 240분 데이터를 분석 중입니다...</p>
-        </div>
+        <!-- Dashboard -->
+        <div id="results" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-12"></div>
 
-        <!-- Results -->
-        <div id="results" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"></div>
-
-        <div id="emptyState" class="text-center py-20 text-gray-500">
-            <p class="text-lg">조건을 만족하는 심볼이 없습니다.</p>
-            <p class="text-sm mt-2 text-gray-600 italic">240분(4시간) 내에 15분 봉 기준 10% 이상 장대양봉이 발생한 심볼을 찾습니다.</p>
+        <div id="emptyState" class="text-center py-20 text-gray-700 bg-gray-900/20 rounded-3xl border border-dashed border-gray-800">
+            <div class="mb-4 flex justify-center opacity-10">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+            </div>
+            <p class="text-sm font-medium">실시간 시장 데이터를 모니터링 중입니다.</p>
+            <p class="text-[11px] mt-2 opacity-50 uppercase tracking-widest">240분 내 10% 급등 장대양봉 발생 시 알림 전송</p>
         </div>
     </div>
 
+    <!-- Audio for Desktop -->
     <audio id="notifSound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>
 
     <script>
@@ -92,92 +109,92 @@
         
         let countdown = 300;
         let isScanning = false;
+        let knownSymbols = new Set(); // 이전에 이미 알림을 보낸 심볼 집합
+        let firstScan = true;
+
+        // 로컬스토리지에서 Chat ID 불러오기
+        document.getElementById('tgChatId').value = localStorage.getItem('binance_chat_id') || "";
+
+        function saveChatId(val) {
+            localStorage.setItem('binance_chat_id', val);
+        }
 
         function updateTimer() {
             if (isScanning) return;
             const minutes = Math.floor(countdown / 60);
             const seconds = countdown % 60;
             document.getElementById('timer').innerText = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-            
-            if (countdown <= 0) {
-                scanMarkets();
-                countdown = 300;
-            } else {
-                countdown--;
-            }
+            if (countdown <= 0) { scanMarkets(); countdown = 300; } else { countdown--; }
         }
 
-        async function fetchSymbols() {
+        async function sendTelegram(message) {
+            const token = document.getElementById('tgToken').value;
+            const chatId = document.getElementById('tgChatId').value;
+            if (!token || !chatId) return;
+
             try {
-                const response = await fetch(`${PROXY}${encodeURIComponent(API_BASE + '/fapi/v1/exchangeInfo')}`);
-                const data = await response.json();
-                return data.symbols
-                    .filter(s => s.status === "TRADING" && s.quoteAsset === "USDT")
-                    .map(s => s.symbol);
-            } catch (e) {
-                return [];
+                await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'HTML', disable_web_page_preview: false })
+                });
+            } catch (e) { console.error("TG Send Error:", e); }
+        }
+
+        async function testTelegram() {
+            const msgEl = document.getElementById('testMsg');
+            const chatId = document.getElementById('tgChatId').value;
+            if(!chatId) {
+                msgEl.innerText = "CHAT ID REQUIRED";
+                msgEl.className = "text-[10px] font-bold uppercase text-red-500";
+                return;
             }
+            msgEl.innerText = "SENDING...";
+            msgEl.className = "text-[10px] font-bold uppercase text-yellow-500";
+            await sendTelegram("🔔 <b>테스트 알림</b>\n\n시스템이 정상적으로 연결되었습니다.\n신규 심볼 발견 시 이곳으로 알림이 전송됩니다.");
+            msgEl.innerText = "SUCCESS";
+            msgEl.className = "text-[10px] font-bold uppercase text-green-500";
         }
 
         async function analyzeSymbol(symbol) {
             try {
-                // 15분 봉 100개 조회
                 const res = await fetch(`${PROXY}${encodeURIComponent(API_BASE + `/fapi/v1/klines?symbol=${symbol}&interval=15m&limit=100`)}`);
                 const klines = await res.json();
-                
                 if (!Array.isArray(klines) || klines.length < 70) return null;
 
                 const closes = klines.map(k => parseFloat(k[4]));
-                
-                // 1. 이동평균선 (SMA)
-                const getSMA = (data, period) => {
-                    const subset = data.slice(-period);
-                    return subset.reduce((a, b) => a + b, 0) / period;
-                };
+                const getSMA = (data, period) => data.slice(-period).reduce((a, b) => a + b, 0) / period;
 
                 const ma5 = getSMA(closes, 5);
                 const ma10 = getSMA(closes, 10);
                 const ma20 = getSMA(closes, 20);
                 const ma60 = getSMA(closes, 60);
 
-                // 정배열 검증
-                const isBullish = ma5 > ma10 && ma10 > ma20 && ma20 > ma60;
-                if (!isBullish) return null;
+                // 조건1: 정배열
+                if (!(ma5 > ma10 && ma10 > ma20 && ma20 > ma60)) return null;
 
-                // 2. 조건2: 최근 240분(15분 봉 16개) 내 단일 봉 10% 이상 상승
+                // 조건2: 최근 240분(15m * 16봉) 내 단일 봉 10% 상승
                 const recentKlines = klines.slice(-16); 
-                let spikeFound = false;
                 let maxSpike = 0;
+                let found = false;
                 let spikeTime = "";
 
                 recentKlines.forEach(k => {
-                    const low = parseFloat(k[3]);
-                    const high = parseFloat(k[2]);
-                    const spikePercent = ((high - low) / low) * 100;
-                    
-                    if (spikePercent >= 10) {
-                        spikeFound = true;
-                        if (spikePercent > maxSpike) {
-                            maxSpike = spikePercent;
-                            // 봉의 시작 시간을 사람이 읽기 편하게 변환
+                    const spike = ((parseFloat(k[2]) - parseFloat(k[3])) / parseFloat(k[3])) * 100;
+                    if (spike >= 10) { 
+                        found = true; 
+                        if (spike > maxSpike) {
+                            maxSpike = spike;
                             const d = new Date(k[0]);
                             spikeTime = `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
                         }
                     }
                 });
 
-                if (spikeFound) {
-                    return {
-                        symbol,
-                        price: closes[closes.length - 1],
-                        maxSpike: maxSpike.toFixed(2),
-                        spikeTime,
-                        ma: { ma5, ma10, ma20, ma60 }
-                    };
+                if (found) {
+                    return { symbol, price: closes[closes.length - 1], maxSpike: maxSpike.toFixed(2), spikeTime };
                 }
-            } catch (e) {
-                return null;
-            }
+            } catch (e) { return null; }
             return null;
         }
 
@@ -186,103 +203,85 @@
             isScanning = true;
             
             const btn = document.getElementById('scanBtn');
-            const loading = document.getElementById('loading');
             const resultsDiv = document.getElementById('results');
-            const emptyState = document.getElementById('emptyState');
-            const statusIndicator = document.getElementById('scanStatus');
+            const status = document.getElementById('scanStatus');
+            const newCountEl = document.getElementById('newMatchCount');
             
-            statusIndicator.innerHTML = '<span class="indicator-dot bg-yellow-500 pulse"></span>스캔 중...';
+            status.innerHTML = '<span class="text-yellow-500 animate-pulse uppercase tracking-widest">Analyzing...</span>';
             btn.disabled = true;
-            loading.classList.remove('hidden');
-            resultsDiv.innerHTML = "";
-            emptyState.classList.add('hidden');
 
-            const symbols = await fetchSymbols();
-            document.getElementById('totalSymbols').innerText = symbols.length;
+            try {
+                const resInfo = await fetch(`${PROXY}${encodeURIComponent(API_BASE + '/fapi/v1/exchangeInfo')}`);
+                const dataInfo = await resInfo.json();
+                const symbols = dataInfo.symbols.filter(s => s.status === "TRADING" && s.quoteAsset === "USDT").map(s => s.symbol);
 
-            let matches = [];
-            const chunkSize = 20; 
+                let currentMatches = [];
+                let newMatchesInThisTurn = [];
+                const chunkSize = 25;
 
-            for (let i = 0; i < symbols.length; i += chunkSize) {
-                const chunk = symbols.slice(i, i + chunkSize);
-                document.getElementById('loadingMsg').innerText = `최근 240분 데이터 분석: ${Math.round((i/symbols.length)*100)}% 완료...`;
-                
-                const results = await Promise.all(chunk.map(s => analyzeSymbol(s)));
-                const validResults = results.filter(r => r !== null);
-                
-                validResults.forEach(res => {
-                    matches.push(res);
-                    renderCard(res);
+                for (let i = 0; i < symbols.length; i += chunkSize) {
+                    const chunk = symbols.slice(i, i + chunkSize);
+                    const results = await Promise.all(chunk.map(s => analyzeSymbol(s)));
+                    
+                    results.forEach(res => {
+                        if (res) {
+                            currentMatches.push(res);
+                            // 첫 스캔은 알림을 보내지 않고 목록화만 하거나, 원하시면 바로 보낼 수 있습니다.
+                            // 여기서는 신규 등장한 심볼에 대해서만 알림을 보냅니다.
+                            if (!knownSymbols.has(res.symbol)) {
+                                knownSymbols.add(res.symbol);
+                                if (!firstScan) {
+                                    newMatchesInThisTurn.push(res);
+                                    sendTelegram(`🚀 <b>신규 급등 심볼 검출</b>\n\n심볼: <b>#${res.symbol}</b>\n현재가: $${res.price.toLocaleString()}\n최대급등: ${res.maxSpike}%\n발생시간: ${res.spikeTime} (KST)\n\n<a href="https://www.binance.com/en/futures/${res.symbol}">차트 분석하기 🔗</a>`);
+                                }
+                            }
+                        }
+                    }
                 });
-            }
 
-            if (matches.length > 0) {
-                document.getElementById('notifSound').play().catch(e => {});
-                document.getElementById('matchCount').innerText = matches.length;
-                emptyState.classList.add('hidden');
-            } else {
-                emptyState.classList.remove('hidden');
-                document.getElementById('matchCount').innerText = "0";
-            }
+                resultsDiv.innerHTML = "";
+                currentMatches.sort((a,b) => b.maxSpike - a.maxSpike).forEach(m => renderCard(m, newMatchesInThisTurn.some(x => x.symbol === m.symbol)));
 
-            document.getElementById('lastScanTime').innerText = new Date().toLocaleTimeString();
-            statusIndicator.innerHTML = '<span class="indicator-dot bg-green-500"></span>정상';
-            loading.classList.add('hidden');
-            btn.disabled = false;
-            isScanning = false;
-            countdown = 300;
+                if (newMatchesInThisTurn.length > 0) {
+                    document.getElementById('notifSound').play().catch(() => {});
+                    newCountEl.innerText = parseInt(newCountEl.innerText) + newMatchesInThisTurn.length;
+                }
+
+                document.getElementById('matchCount').innerText = currentMatches.length;
+                document.getElementById('lastScanTime').innerText = new Date().toLocaleTimeString();
+                document.getElementById('emptyState').classList.toggle('hidden', currentMatches.length > 0);
+                
+                status.innerHTML = '<span class="text-green-500 uppercase tracking-widest">Online</span>';
+            } catch (err) {
+                status.innerHTML = '<span class="text-red-500 uppercase tracking-widest">Error</span>';
+            } finally {
+                btn.disabled = false;
+                isScanning = false;
+                firstScan = false;
+                countdown = 300;
+            }
         }
 
-        function renderCard(data) {
+        function renderCard(data, isNew) {
             const resultsDiv = document.getElementById('results');
-            const card = document.createElement('div');
-            card.className = "card p-5 flex flex-col gap-4";
-            card.innerHTML = `
-                <div class="flex justify-between items-start">
+            const div = document.createElement('div');
+            div.className = `card p-5 relative overflow-hidden ${isNew ? 'ring-2 ring-yellow-500 border-transparent shadow-lg shadow-yellow-500/10' : ''}`;
+            div.innerHTML = `
+                ${isNew ? '<div class="absolute top-0 right-0 p-2"><span class="new-badge">NEW</span></div>' : ''}
+                <div class="flex justify-between items-start mb-4">
                     <div>
-                        <div class="flex items-center gap-2">
-                            <h3 class="text-xl font-bold binance-yellow">${data.symbol}</h3>
-                            <span class="text-[9px] bg-yellow-900/40 text-yellow-200 px-1.5 py-0.5 rounded border border-yellow-700/30">FUTURES</span>
-                        </div>
-                        <p class="text-2xl font-mono mt-1 font-bold text-white">$${data.price.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                        <span class="text-xl font-black binance-yellow tracking-tighter italic">${data.symbol}</span>
+                        <p class="text-[10px] text-gray-500 font-bold uppercase mt-1">Binance Futures</p>
                     </div>
                     <div class="text-right">
-                        <span class="text-[9px] text-gray-500 block mb-1 uppercase tracking-tighter">Max Candle Jump</span>
-                        <span class="bg-red-900/80 text-red-100 px-2 py-1 rounded text-sm font-bold border border-red-700/50">${data.maxSpike}%</span>
-                        <span class="block text-[10px] text-gray-500 mt-1">at ${data.spikeTime}</span>
+                        <span class="bg-red-900/40 text-red-400 px-2.5 py-1 rounded text-xs font-black border border-red-800/30">${data.maxSpike}%</span>
+                        <p class="text-[9px] text-gray-600 mt-1 uppercase font-bold tracking-tighter">at ${data.spikeTime}</p>
                     </div>
                 </div>
-                
-                <div class="space-y-2 border-t border-gray-800 pt-3">
-                    <div class="flex justify-between text-[10px] mb-2">
-                        <span class="text-gray-400">정배열 상태 (15m)</span>
-                        <span class="text-green-500 font-bold uppercase">Perfect Alignment</span>
-                    </div>
-                    <div class="grid grid-cols-2 gap-x-4 gap-y-1 bg-black/30 p-2 rounded-lg">
-                        <div class="flex justify-between text-[11px]">
-                            <span class="text-gray-500">MA5</span>
-                            <span class="text-gray-300">$${data.ma.ma5.toFixed(2)}</span>
-                        </div>
-                        <div class="flex justify-between text-[11px]">
-                            <span class="text-gray-500">MA10</span>
-                            <span class="text-gray-300">$${data.ma.ma10.toFixed(2)}</span>
-                        </div>
-                        <div class="flex justify-between text-[11px]">
-                            <span class="text-gray-500">MA20</span>
-                            <span class="text-gray-300">$${data.ma.ma20.toFixed(2)}</span>
-                        </div>
-                        <div class="flex justify-between text-[11px]">
-                            <span class="text-gray-500">MA60</span>
-                            <span class="text-gray-300">$${data.ma.ma60.toFixed(2)}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <a href="https://www.binance.com/en/futures/${data.symbol}" target="_blank" class="block w-full text-center text-xs py-3 bg-gray-800 rounded-lg hover:bg-yellow-500 hover:text-black font-bold transition-all uppercase tracking-wider">
-                    Open Chart
-                </a>
+                <div class="text-2xl font-mono mb-6 font-bold text-white tracking-tight">$${data.price.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+                <a href="https://www.binance.com/en/futures/${data.symbol}" target="_blank" class="block w-full py-2.5 bg-gray-800/80 rounded-lg text-center text-[10px] font-black uppercase tracking-widest hover:bg-yellow-500 hover:text-black transition-all border border-gray-700">Open Exchange</a>
             `;
-            resultsDiv.appendChild(card);
+            resultsDiv.appendChild(div);
         }
 
         window.onload = () => {
