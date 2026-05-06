@@ -10,6 +10,7 @@
   :root {
     --blue:#2563eb; --cyan:#06b6d4; --amber:#f59e0b;
     --orange:#f97316; --red:#ef4444; --green:#10b981;
+    --ghost:#7c3aed; --ghost-light:#a78bfa; --ghost-glow:rgba(124,58,237,0.45);
     --bg:#f0f4ff; --surface:#ffffff; --border:#dde4f5;
     --text:#1e293b; --muted:#64748b;
     --joystick-h:200px;
@@ -78,7 +79,7 @@
   /* ── Echo Warning Banner ── */
   #echo-warning{
     position:absolute;top:72px;left:50%;transform:translateX(-50%);
-    background:rgba(249,115,22,.92);border:1.5px solid rgba(255,180,100,.55);
+    background:rgba(124,58,237,.92);border:1.5px solid rgba(167,139,250,.55);
     color:#fff;border-radius:99px;padding:5px 16px;
     font-family:'Space Mono',monospace;font-size:11px;font-weight:700;
     letter-spacing:.06em;white-space:nowrap;
@@ -108,7 +109,6 @@
     color:rgba(100,116,139,.38);text-transform:uppercase;pointer-events:none;
     position:relative;z-index:2;
   }
-  /* idle ring (항상 중앙에 표시) */
   #joystick-idle{
     width:148px;height:148px;border-radius:50%;
     border:1.5px solid rgba(37,99,235,.12);
@@ -129,7 +129,6 @@
     content:'';width:10px;height:10px;border-radius:50%;
     background:rgba(37,99,235,.35);
   }
-  /* floating joystick base — 터치 위치로 이동 */
   #joystick-base{
     width:148px;height:148px;border-radius:50%;
     background:rgba(37,99,235,.05);border:1.5px solid rgba(37,99,235,.16);
@@ -208,6 +207,13 @@
   .btn-primary{ background:var(--blue);color:#fff;box-shadow:0 4px 16px rgba(37,99,235,.35); }
   .btn-primary:active{ box-shadow:0 2px 8px rgba(37,99,235,.25); }
   .btn-dark{ background:var(--text);color:#fff;box-shadow:0 4px 12px rgba(30,41,59,.2);margin-bottom:10px; }
+  .btn-ghost{
+    background:transparent;color:var(--muted);
+    border:1.5px solid var(--border);
+    margin-top:10px;font-size:13px;font-weight:700;
+    box-shadow:none;padding:11px;
+  }
+  .btn-ghost:active{ background:var(--bg); }
   .score-big{
     font-family:'Space Mono',monospace;font-size:48px;font-weight:700;
     color:var(--blue);line-height:1;margin-bottom:4px;letter-spacing:-2px;
@@ -226,6 +232,53 @@
   }
   .tip-box p{ font-size:11px;color:var(--muted);margin:0;line-height:1.5; }
   .tip-box strong{ color:var(--text);font-weight:700; }
+
+  /* ── How-to Panel (slide-up sheet) ── */
+  #howto-sheet{
+    position:absolute;inset:0;display:flex;align-items:flex-end;justify-content:center;
+    z-index:60;padding:0;
+    background:rgba(15,23,42,.45);backdrop-filter:blur(4px);
+    opacity:0;pointer-events:none;
+    transition:opacity .25s;
+  }
+  #howto-sheet.open{ opacity:1;pointer-events:all; }
+  .howto-inner{
+    background:var(--surface);border-radius:24px 24px 0 0;
+    border:1.5px solid var(--border);border-bottom:none;
+    width:100%;max-width:420px;
+    padding:20px 22px 32px;
+    transform:translateY(100%);
+    transition:transform .3s cubic-bezier(.34,1.3,.64,1);
+  }
+  #howto-sheet.open .howto-inner{ transform:translateY(0); }
+  .howto-handle{
+    width:36px;height:4px;border-radius:99px;
+    background:var(--border);margin:0 auto 18px;
+  }
+  .howto-title{
+    font-size:16px;font-weight:900;color:var(--text);
+    letter-spacing:-.4px;margin-bottom:14px;text-align:center;
+  }
+  .howto-row{
+    display:flex;align-items:flex-start;gap:12px;
+    padding:10px 0;border-bottom:1px solid var(--border);
+  }
+  .howto-row:last-child{ border-bottom:none; }
+  .howto-icon{
+    width:34px;height:34px;border-radius:10px;background:var(--bg);
+    display:flex;align-items:center;justify-content:center;
+    font-size:16px;flex-shrink:0;
+  }
+  .howto-text strong{ display:block;font-size:12px;font-weight:800;color:var(--text);margin-bottom:2px; }
+  .howto-text span{ font-size:11px;color:var(--muted);line-height:1.5; }
+  .btn-howto-close{
+    display:block;width:100%;padding:13px;border-radius:14px;
+    font-family:'Syne',sans-serif;font-size:13px;font-weight:800;
+    background:var(--bg);color:var(--text);border:1.5px solid var(--border);
+    cursor:pointer;margin-top:18px;
+    transition:transform .08s;
+  }
+  .btn-howto-close:active{ transform:scale(.96); }
 </style>
 </head>
 <body>
@@ -263,20 +316,22 @@
     <!-- Echo Warning -->
     <div id="echo-warning">
       <span>👻 잔상 출현</span>
-      <span id="echo-countdown" class="warn-count" style="background:rgba(255,255,255,.25);border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;">3</span>
+      <span id="echo-countdown">3</span>
     </div>
 
-    <!-- Overlay -->
+    <!-- ── Overlay ── -->
     <div id="overlay">
+
+      <!-- START SCREEN -->
       <div class="modal" id="start-screen">
         <div class="modal-icon blue">⚡</div>
         <h1>Micro Hunter</h1>
-        <p>그리드 위에서 에너지 코어를 수집하세요.<br>과거의 잔상과 충돌하면 게임 오버.</p>
-        <div class="tip-box">
-          <p><strong>💡 조이스틱</strong> — 하단 패널 아무 곳이나 터치하면 그 자리에 조이스틱이 소환됩니다.<br><strong>👻 잔상</strong> — 출현 3초 전 경고 & 이동 경로가 게임 화면·미니맵에 표시됩니다.</p>
-        </div>
+        <p>에너지 코어를 수집하며<br>과거의 잔상을 피하세요.</p>
         <button class="btn btn-primary" id="btn-start">탐사 시작</button>
+        <button class="btn btn-ghost" id="btn-howto">게임 방법 보기</button>
       </div>
+
+      <!-- GAMEOVER SCREEN -->
       <div class="modal hidden" id="gameover-screen">
         <div class="modal-icon red">💥</div>
         <div class="score-big" id="final-score">0</div>
@@ -297,6 +352,44 @@
         </div>
         <button class="btn btn-dark"    id="btn-reset">다시 도전</button>
         <button class="btn btn-primary" id="btn-share">결과 공유</button>
+      </div>
+
+    </div><!-- /#overlay -->
+
+    <!-- ── How-to Sheet ── -->
+    <div id="howto-sheet">
+      <div class="howto-inner">
+        <div class="howto-handle"></div>
+        <div class="howto-title">게임 방법</div>
+        <div class="howto-row">
+          <div class="howto-icon">🕹️</div>
+          <div class="howto-text">
+            <strong>조이스틱</strong>
+            <span>하단 패널 아무 곳이나 터치하면 그 자리에 조이스틱이 소환됩니다. PC는 WASD / 방향키로 조작하세요.</span>
+          </div>
+        </div>
+        <div class="howto-row">
+          <div class="howto-icon">⚡</div>
+          <div class="howto-text">
+            <strong>에너지 코어 수집</strong>
+            <span>화면의 코어를 먹으면 에너지가 충전되고 점수가 오릅니다. 연속으로 먹으면 콤보 보너스!</span>
+          </div>
+        </div>
+        <div class="howto-row">
+          <div class="howto-icon">👻</div>
+          <div class="howto-text">
+            <strong>잔상 회피</strong>
+            <span>과거 이동 경로를 따라 파란 유령이 출현합니다. 출현 3초 전 경고가 표시되며 미니맵에서도 확인할 수 있습니다.</span>
+          </div>
+        </div>
+        <div class="howto-row">
+          <div class="howto-icon">🗺️</div>
+          <div class="howto-text">
+            <strong>미니맵</strong>
+            <span>우측 하단 미니맵에서 코어·유령 위치와 유령 이동 경로를 미리 확인하세요.</span>
+          </div>
+        </div>
+        <button class="btn-howto-close" id="btn-howto-close">닫기</button>
       </div>
     </div>
 
@@ -358,6 +451,15 @@ let isMobile=/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 let echoCountdownInterval=null;
 
 // ════════════════════════════════════════
+//  Ghost color constants (blue palette)
+// ════════════════════════════════════════
+const GHOST_COLOR   = '#7c3aed';   // violet-blue
+const GHOST_STROKE  = '#a78bfa';
+const GHOST_RGBA    = (a) => `rgba(124,58,237,${a})`;
+const GHOST_PATH_RGBA = (a) => `rgba(109,40,217,${a})`;
+const GHOST_ALERT_RGBA = (a) => `rgba(99,102,241,${a})`;
+
+// ════════════════════════════════════════
 //  Toast
 // ════════════════════════════════════════
 function showToast(msg, dur=1500){
@@ -368,7 +470,7 @@ function showToast(msg, dur=1500){
 }
 
 // ════════════════════════════════════════
-//  Echo Warning: 3초 카운트다운 배너
+//  Echo Warning
 // ════════════════════════════════════════
 function triggerEchoWarning(){
   const banner=document.getElementById('echo-warning');
@@ -384,8 +486,24 @@ function triggerEchoWarning(){
 }
 
 // ════════════════════════════════════════
+//  How-to Sheet
+// ════════════════════════════════════════
+(function setupHowto(){
+  const sheet = document.getElementById('howto-sheet');
+  const btnOpen  = document.getElementById('btn-howto');
+  const btnClose = document.getElementById('btn-howto-close');
+
+  btnOpen.addEventListener('click', () => sheet.classList.add('open'));
+  btnClose.addEventListener('click', () => sheet.classList.remove('open'));
+
+  // tap backdrop to close
+  sheet.addEventListener('click', e => {
+    if (e.target === sheet) sheet.classList.remove('open');
+  });
+})();
+
+// ════════════════════════════════════════
 //  Floating Joystick
-//  패널 어디든 터치 → 그 자리에 베이스 소환
 // ════════════════════════════════════════
 (function setupJoystick(){
   const panel  = document.getElementById('joystick-panel');
@@ -575,7 +693,6 @@ function loop(ts){
 function update(dt){
   frameCount++;
 
-  // Input
   const SPEED=0.7;
   let dx=joystick.dx, dy=joystick.dy;
   if(_keys.up)    dy-=1;
@@ -603,7 +720,6 @@ function update(dt){
 
   core.pulse=(core.pulse+0.07*dt)%(Math.PI*2);
 
-  // Core collect
   if(Math.hypot(player.x-core.x,player.y-core.y)<12){
     const isBonus=core.type==='bonus';
     const sg=isBonus?100:50, eg=isBonus?75:55;
@@ -622,8 +738,7 @@ function update(dt){
   history.push({x:player.x,y:player.y});
   if(history.length>36000) history.shift();
 
-  // ── Echo spawn & 예고 ──
-  const ECHO_IV=240, WARN_F=180; // 4초 간격, 3초 전 경고
+  const ECHO_IV=240, WARN_F=180;
   const nextIn=ECHO_IV-(frameCount-lastEchoSpawn);
   if(nextIn===WARN_F && history.length>60) triggerEchoWarning();
 
@@ -633,7 +748,6 @@ function update(dt){
     if(echoes.length>5) echoes.shift();
   }
 
-  // Echo collision
   for(const echo of echoes){
     const idx=frameCount-echo.offset;
     if(idx<0||idx>=echo.path.length) continue;
@@ -674,11 +788,11 @@ function draw(){
   ctx.fillStyle='#f4f7ff'; ctx.fillRect(0,0,w,h);
   drawGrid(w,h);
   drawPlayerTrail(w,h);
-  drawEchoPaths(w,h);   // 에코 이동경로 예측 (신규)
+  drawEchoPaths(w,h);
   drawEchoes(w,h);
   drawCore(w,h);
   drawPlayer(w,h);
-  drawMinimap(w,h);     // 미니맵 (신규)
+  drawMinimap(w,h);
 }
 
 function drawGrid(w,h){
@@ -716,8 +830,7 @@ function drawPlayerTrail(w,h){
   });
 }
 
-// ── 에코 이동경로 예측선 (신규) ──
-// 각 에코의 앞 1.5초(90프레임) 경로를 주황 점선으로 표시
+// ── 에코 이동경로 예측선 (파란 계열) ──
 function drawEchoPaths(w,h){
   const PREV=90;
   echoes.forEach(echo=>{
@@ -733,24 +846,24 @@ function drawEchoPaths(w,h){
       const p0=echo.path[f], p1=echo.path[f+1];
       if(!p0||!p1) continue;
       const prog=(f-idx)/PREV;
-      ctx.strokeStyle=`rgba(249,115,22,${0.32*(1-prog)})`;
+      ctx.strokeStyle=GHOST_PATH_RGBA(0.32*(1-prog));
       ctx.beginPath();
       ctx.moveTo(p0.x*w/100, p0.y*h/100);
       ctx.lineTo(p1.x*w/100, p1.y*h/100);
       ctx.stroke();
     }
 
-    // 예측 끝점 원
     const ep=echo.path[Math.min(end,echo.path.length-1)];
     if(ep){
       ctx.setLineDash([2,3]); ctx.lineWidth=1;
-      ctx.strokeStyle='rgba(249,115,22,.2)';
+      ctx.strokeStyle=GHOST_PATH_RGBA(0.2);
       ctx.beginPath(); ctx.arc(ep.x*w/100,ep.y*h/100,10,0,Math.PI*2); ctx.stroke();
     }
     ctx.setLineDash([]); ctx.restore();
   });
 }
 
+// ── 에코(유령) 본체: 파란 계열 ──
 function drawEchoes(w,h){
   echoes.forEach((echo,ei)=>{
     const idx=frameCount-echo.offset;
@@ -761,15 +874,18 @@ function drawEchoes(w,h){
     const dd=Math.hypot(player.x-pos.x,player.y-pos.y);
     const da=dd<15?.8:ba;
 
+    // glow halo
     const g=ctx.createRadialGradient(px,py,0,px,py,22);
-    g.addColorStop(0,`rgba(249,115,22,${da})`);
-    g.addColorStop(1,'rgba(249,115,22,0)');
+    g.addColorStop(0, GHOST_RGBA(da));
+    g.addColorStop(1, GHOST_RGBA(0));
     ctx.fillStyle=g; ctx.beginPath(); ctx.arc(px,py,22,0,Math.PI*2); ctx.fill();
 
-    ctx.fillStyle  =`rgba(249,115,22,${da*1.5})`;
+    // core dot
+    ctx.fillStyle  = GHOST_RGBA(da*1.5);
     ctx.strokeStyle='rgba(255,255,255,.85)'; ctx.lineWidth=1.5;
     ctx.beginPath(); ctx.arc(px,py,7,0,Math.PI*2); ctx.fill(); ctx.stroke();
 
+    // danger line — red when close, ghost color when nearby
     if(dd<20){
       ctx.strokeStyle=`rgba(239,68,68,${.8*(1-dd/20)})`;
       ctx.lineWidth=1.5; ctx.setLineDash([3,3]);
@@ -825,27 +941,23 @@ function drawPlayer(w,h){
 }
 
 // ════════════════════════════════════════
-//  Minimap (신규)
-//  우하단 90×90 — 플레이어·코어·에코·경로 표시
+//  Minimap
 // ════════════════════════════════════════
 function drawMinimap(w,h){
   if(state!=='PLAYING') return;
   const MM=90, PAD=12;
   const mx=w-MM-PAD, my=h-MM-PAD;
-  const S=MM/100; // 게임좌표(0-100) → 픽셀
+  const S=MM/100;
 
   ctx.save();
 
-  // 배경 + 테두리
   ctx.fillStyle='rgba(255,255,255,.84)';
   ctx.strokeStyle='rgba(37,99,235,.16)'; ctx.lineWidth=1;
   rrect(ctx,mx,my,MM,MM,10);
   ctx.fill(); ctx.stroke();
 
-  // 클립
   ctx.beginPath(); rrect(ctx,mx,my,MM,MM,10); ctx.clip();
 
-  // 내부 그리드 (4×4)
   ctx.strokeStyle='rgba(37,99,235,.06)'; ctx.lineWidth=.5;
   for(let i=1;i<4;i++){
     const gx=mx+i*(MM/4), gy=my+i*(MM/4);
@@ -853,7 +965,7 @@ function drawMinimap(w,h){
     ctx.beginPath(); ctx.moveTo(mx,gy); ctx.lineTo(mx+MM,gy); ctx.stroke();
   }
 
-  // 에코 경로 (미니맵)
+  // 에코 경로 (미니맵) — 파란 계열
   const PREV=90;
   echoes.forEach(echo=>{
     const idx=frameCount-echo.offset;
@@ -862,7 +974,7 @@ function drawMinimap(w,h){
     for(let f=idx;f<Math.min(idx+PREV,echo.path.length-1);f++){
       const p0=echo.path[f], p1=echo.path[f+1]; if(!p0||!p1) continue;
       const a=.22*(1-(f-idx)/PREV);
-      ctx.strokeStyle=`rgba(249,115,22,${a})`;
+      ctx.strokeStyle=GHOST_PATH_RGBA(a);
       ctx.beginPath();
       ctx.moveTo(mx+p0.x*S,my+p0.y*S);
       ctx.lineTo(mx+p1.x*S,my+p1.y*S); ctx.stroke();
@@ -870,12 +982,12 @@ function drawMinimap(w,h){
     ctx.setLineDash([]); ctx.restore();
   });
 
-  // 에코 현재위치
+  // 에코 현재위치 (미니맵) — 파란 계열
   echoes.forEach(echo=>{
     const idx=frameCount-echo.offset;
     if(idx<0||idx>=echo.path.length) return;
     const pos=echo.path[idx]; if(!pos) return;
-    ctx.fillStyle='rgba(249,115,22,.9)';
+    ctx.fillStyle=GHOST_RGBA(0.9);
     ctx.beginPath(); ctx.arc(mx+pos.x*S,my+pos.y*S,3,0,Math.PI*2); ctx.fill();
   });
 
@@ -895,7 +1007,6 @@ function drawMinimap(w,h){
   ctx.shadowBlur=5; ctx.shadowColor='#2563eb';
   ctx.beginPath(); ctx.arc(ppx,ppy,4,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
 
-  // 이동 방향 화살표
   if(player.trail.length>=2){
     const a=player.trail[player.trail.length-2];
     const b=player.trail[player.trail.length-1];
@@ -909,7 +1020,6 @@ function drawMinimap(w,h){
 
   ctx.restore();
 
-  // 라벨 (클립 밖)
   ctx.fillStyle='rgba(37,99,235,.3)';
   ctx.font='bold 7px "Space Mono",monospace';
   ctx.textAlign='left'; ctx.textBaseline='alphabetic';
