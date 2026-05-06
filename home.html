@@ -2,1707 +2,1071 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FUTURES ORACLE — 바이낸스 선물 분석기</title>
-<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Micro Hunter</title>
 <style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800;900&display=swap');
+
   :root {
-    --bg: #030608;
-    --panel: #080d12;
-    --border: #0d2233;
-    --accent-cyan: #00d4ff;
-    --accent-green: #00ff88;
-    --accent-red: #ff3355;
-    --accent-yellow: #ffd600;
-    --text-primary: #e0f0ff;
-    --text-secondary: #4a7a9b;
-    --text-muted: #1e3a50;
-    --glow-cyan: 0 0 20px rgba(0,212,255,0.4);
-    --glow-green: 0 0 20px rgba(0,255,136,0.4);
-    --glow-red: 0 0 20px rgba(255,51,85,0.4);
-  }
-
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-
-  body {
-    background: var(--bg);
-    color: var(--text-primary);
-    font-family: 'Rajdhani', sans-serif;
-    min-height: 100vh;
-    overflow-x: hidden;
-  }
-
-  /* Scanline overlay */
-  body::before {
-    content: '';
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      rgba(0,212,255,0.015) 2px,
-      rgba(0,212,255,0.015) 4px
-    );
-    pointer-events: none;
-    z-index: 1000;
-  }
-
-  /* Grid background */
-  body::after {
-    content: '';
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background-image:
-      linear-gradient(rgba(0,212,255,0.04) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0,212,255,0.04) 1px, transparent 1px);
-    background-size: 40px 40px;
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  .container {
-    position: relative;
-    z-index: 1;
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 20px;
-  }
-
-  /* ─── Header ─── */
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 20px 0 30px;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 24px;
-  }
-
-  .logo {
-    font-family: 'Orbitron', monospace;
-    font-size: 1.4rem;
-    font-weight: 900;
-    color: var(--accent-cyan);
-    text-shadow: var(--glow-cyan);
-    letter-spacing: 4px;
-  }
-
-  .logo span { color: var(--accent-yellow); }
-
-  .header-right {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-  }
-
-  .update-badge {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.75rem;
-    color: var(--accent-green);
-    padding: 6px 14px;
-    border: 1px solid rgba(0,255,136,0.3);
-    border-radius: 2px;
-  }
-
-  .pulse-dot {
-    width: 6px; height: 6px;
-    background: var(--accent-green);
-    border-radius: 50%;
-    box-shadow: var(--glow-green);
-    animation: pulse 1s ease-in-out infinite;
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.4; transform: scale(0.8); }
-  }
-
-  /* ─── Symbol Selector ─── */
-  .symbol-bar {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 24px;
-    flex-wrap: wrap;
-    align-items: center;
-  }
-
-  .symbol-input-wrap {
-    display: flex;
-    align-items: center;
-    gap: 0;
-    flex: 1;
-    min-width: 200px;
-    max-width: 320px;
-    border: 1px solid var(--accent-cyan);
-    box-shadow: var(--glow-cyan);
-  }
-
-  .symbol-prefix {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.8rem;
-    color: var(--accent-cyan);
-    padding: 0 12px;
-    background: rgba(0,212,255,0.08);
-    height: 42px;
-    display: flex;
-    align-items: center;
-    border-right: 1px solid var(--accent-cyan);
-  }
-
-  .symbol-input {
-    background: rgba(0,212,255,0.03);
-    border: none;
-    outline: none;
-    color: var(--text-primary);
-    font-family: 'Orbitron', monospace;
-    font-size: 1rem;
-    font-weight: 700;
-    padding: 0 14px;
-    height: 42px;
-    flex: 1;
-    text-transform: uppercase;
-  }
-
-  .symbol-input::placeholder { color: var(--text-muted); font-size: 0.7rem; }
-
-  .btn-analyze {
-    height: 42px;
-    padding: 0 24px;
-    background: var(--accent-cyan);
-    color: var(--bg);
-    border: none;
-    font-family: 'Orbitron', monospace;
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 2px;
-    cursor: pointer;
-    transition: all 0.2s;
-    text-transform: uppercase;
-  }
-
-  .btn-analyze:hover {
-    background: #fff;
-    box-shadow: var(--glow-cyan);
-  }
-
-  .quick-symbols {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-
-  .sym-btn {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.75rem;
-    padding: 6px 12px;
-    border: 1px solid var(--text-muted);
-    background: transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: all 0.2s;
-    letter-spacing: 1px;
-  }
-
-  .sym-btn:hover, .sym-btn.active {
-    border-color: var(--accent-cyan);
-    color: var(--accent-cyan);
-    box-shadow: inset 0 0 10px rgba(0,212,255,0.1);
-  }
-
-  /* ─── Interval Selector ─── */
-  .interval-bar {
-    display: flex;
-    gap: 6px;
-    margin-bottom: 24px;
-    align-items: center;
-  }
-
-  .interval-label {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.7rem;
-    color: var(--text-secondary);
-    margin-right: 6px;
-    letter-spacing: 2px;
-  }
-
-  .int-btn {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.7rem;
-    padding: 5px 10px;
-    border: 1px solid var(--text-muted);
-    background: transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .int-btn:hover, .int-btn.active {
-    border-color: var(--accent-yellow);
-    color: var(--accent-yellow);
-    background: rgba(255,214,0,0.06);
-  }
-
-  /* ─── Main Grid ─── */
-  .main-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1.4fr;
-    gap: 16px;
-    margin-bottom: 16px;
-  }
-
-  .side-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 16px;
-    margin-bottom: 16px;
-  }
-
-  /* ─── Panel ─── */
-  .panel {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    padding: 18px;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .panel::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
-    opacity: 0.5;
-  }
-
-  .panel-title {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.65rem;
-    letter-spacing: 3px;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    margin-bottom: 14px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .panel-title::before {
-    content: '//';
-    color: var(--accent-cyan);
-    opacity: 0.6;
-  }
-
-  /* ─── Price Panel ─── */
-  .price-main {
-    font-family: 'Orbitron', monospace;
-    font-size: 2.4rem;
-    font-weight: 900;
-    color: var(--accent-cyan);
-    text-shadow: var(--glow-cyan);
-    letter-spacing: -1px;
-    line-height: 1;
-    margin-bottom: 6px;
-  }
-
-  .price-change {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.9rem;
-    margin-bottom: 16px;
-  }
-
-  .price-change.up { color: var(--accent-green); }
-  .price-change.down { color: var(--accent-red); }
-
-  .price-stats {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-  }
-
-  .stat-item {
-    padding: 8px;
-    background: rgba(255,255,255,0.02);
-    border: 1px solid var(--border);
-  }
-
-  .stat-label {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.6rem;
-    color: var(--text-secondary);
-    letter-spacing: 2px;
-    margin-bottom: 3px;
-  }
-
-  .stat-value {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.85rem;
-    color: var(--text-primary);
-  }
-
-  .stat-value.high { color: var(--accent-green); }
-  .stat-value.low { color: var(--accent-red); }
-
-  /* ─── MA Panel ─── */
-  .ma-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 7px 0;
-    border-bottom: 1px solid rgba(13,34,51,0.8);
-  }
-
-  .ma-row:last-child { border-bottom: none; }
-
-  .ma-name {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.72rem;
-    color: var(--text-secondary);
-  }
-
-  .ma-value {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.82rem;
-  }
-
-  .ma-signal {
-    font-size: 0.65rem;
-    padding: 2px 7px;
-    font-family: 'Share Tech Mono', monospace;
-    letter-spacing: 1px;
-  }
-
-  .ma-signal.bull { background: rgba(0,255,136,0.15); color: var(--accent-green); border: 1px solid rgba(0,255,136,0.3); }
-  .ma-signal.bear { background: rgba(255,51,85,0.15); color: var(--accent-red); border: 1px solid rgba(255,51,85,0.3); }
-  .ma-signal.neutral { background: rgba(255,214,0,0.1); color: var(--accent-yellow); border: 1px solid rgba(255,214,0,0.3); }
-
-  /* ─── Probability Panel ─── */
-  .prob-panel {
-    grid-column: span 1;
-  }
-
-  .prob-display {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .prob-bar-wrap { }
-
-  .prob-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    margin-bottom: 8px;
-  }
-
-  .prob-label {
-    font-family: 'Orbitron', monospace;
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 2px;
-  }
-
-  .prob-label.bull { color: var(--accent-green); }
-  .prob-label.bear { color: var(--accent-red); }
-
-  .prob-pct {
-    font-family: 'Orbitron', monospace;
-    font-size: 1.8rem;
-    font-weight: 900;
-  }
-
-  .prob-pct.bull { color: var(--accent-green); text-shadow: var(--glow-green); }
-  .prob-pct.bear { color: var(--accent-red); text-shadow: var(--glow-red); }
-
-  .prob-bar {
-    height: 8px;
-    background: rgba(255,255,255,0.05);
-    border-radius: 0;
-    overflow: hidden;
-    position: relative;
-  }
-
-  .prob-bar-fill {
-    height: 100%;
-    transition: width 1s cubic-bezier(0.16, 1, 0.3, 1);
-    position: relative;
-  }
-
-  .prob-bar-fill.bull {
-    background: linear-gradient(90deg, rgba(0,255,136,0.3), var(--accent-green));
-    box-shadow: 0 0 10px var(--accent-green);
-  }
-
-  .prob-bar-fill.bear {
-    background: linear-gradient(90deg, rgba(255,51,85,0.3), var(--accent-red));
-    box-shadow: 0 0 10px var(--accent-red);
-  }
-
-  .verdict {
-    margin-top: 12px;
-    padding: 10px 14px;
-    text-align: center;
-    font-family: 'Orbitron', monospace;
-    font-size: 0.9rem;
-    font-weight: 700;
-    letter-spacing: 3px;
-  }
-
-  .verdict.bull { background: rgba(0,255,136,0.08); border: 1px solid rgba(0,255,136,0.4); color: var(--accent-green); }
-  .verdict.bear { background: rgba(255,51,85,0.08); border: 1px solid rgba(255,51,85,0.4); color: var(--accent-red); }
-  .verdict.neutral { background: rgba(255,214,0,0.08); border: 1px solid rgba(255,214,0,0.4); color: var(--accent-yellow); }
-
-  /* ─── Target Panel ─── */
-  .target-section {
-    margin-top: 10px;
-  }
-
-  .target-title {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.62rem;
-    letter-spacing: 3px;
-    color: var(--text-secondary);
-    margin-bottom: 8px;
-  }
-
-  .target-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 5px 0;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .target-row:last-child { border-bottom: none; }
-
-  .target-icon { font-size: 0.7rem; width: 16px; text-align: center; }
-  .target-price {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.82rem;
-    flex: 1;
-  }
-
-  .target-price.tp { color: var(--accent-green); }
-  .target-price.sl { color: var(--accent-red); }
-
-  .target-desc {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.6rem;
-    color: var(--text-secondary);
-  }
-
-  /* ─── Candle Panel ─── */
-  .candle-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-  }
-
-  .candle-item {
-    padding: 10px;
-    border: 1px solid var(--border);
-    background: rgba(0,0,0,0.2);
-  }
-
-  .candle-period {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.6rem;
-    color: var(--text-secondary);
-    letter-spacing: 2px;
-    margin-bottom: 4px;
-  }
-
-  .candle-type {
-    font-family: 'Orbitron', monospace;
-    font-size: 0.8rem;
-    font-weight: 700;
-    margin-bottom: 6px;
-  }
-
-  .candle-type.bull { color: var(--accent-green); }
-  .candle-type.bear { color: var(--accent-red); }
-
-  .candle-hl {
-    display: flex;
-    gap: 10px;
-  }
-
-  .candle-h { font-family: 'Share Tech Mono', monospace; font-size: 0.7rem; color: var(--accent-green); }
-  .candle-l { font-family: 'Share Tech Mono', monospace; font-size: 0.7rem; color: var(--accent-red); }
-
-  /* ─── Volume Panel ─── */
-  .vol-bars {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .vol-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .vol-label {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.62rem;
-    color: var(--text-secondary);
-    width: 50px;
-    flex-shrink: 0;
-  }
-
-  .vol-bar-bg {
-    flex: 1;
-    height: 6px;
-    background: rgba(255,255,255,0.04);
-    position: relative;
-  }
-
-  .vol-bar-inner {
-    height: 100%;
-    transition: width 0.8s ease;
-  }
-
-  .vol-bar-inner.current { background: var(--accent-cyan); }
-  .vol-bar-inner.ma { background: var(--accent-yellow); opacity: 0.7; }
-  .vol-bar-inner.high { background: var(--accent-green); }
-  .vol-bar-inner.low { background: var(--accent-red); }
-
-  .vol-value {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.65rem;
-    color: var(--text-primary);
-    width: 75px;
-    text-align: right;
-    flex-shrink: 0;
-  }
-
-  /* ─── OI & Funding ─── */
-  .metric-big {
-    font-family: 'Orbitron', monospace;
-    font-size: 1.4rem;
-    font-weight: 700;
-    margin: 6px 0 4px;
-  }
-
-  .metric-sub {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.65rem;
-    color: var(--text-secondary);
-  }
-
-  .funding-rate {
-    font-family: 'Orbitron', monospace;
-    font-size: 2rem;
-    font-weight: 700;
-    letter-spacing: -1px;
-  }
-
-  .funding-rate.pos { color: var(--accent-red); }   /* positive funding = longs pay shorts = bearish */
-  .funding-rate.neg { color: var(--accent-green); }
-  .funding-rate.neutral-f { color: var(--accent-yellow); }
-
-  .funding-hint {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.62rem;
-    margin-top: 6px;
-    line-height: 1.6;
-  }
-
-  .oi-change {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 8px;
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.72rem;
-  }
-
-  /* ─── Evidence Section ─── */
-  .evidence-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-    margin-bottom: 16px;
-  }
-
-  .evidence-panel {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    padding: 18px;
-  }
-
-  .evidence-panel.bull-evidence { border-top: 2px solid var(--accent-green); }
-  .evidence-panel.bear-evidence { border-top: 2px solid var(--accent-red); }
-
-  .ev-title {
-    font-family: 'Orbitron', monospace;
-    font-size: 0.8rem;
-    font-weight: 700;
-    letter-spacing: 2px;
-    margin-bottom: 14px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .ev-title.bull { color: var(--accent-green); }
-  .ev-title.bear { color: var(--accent-red); }
-
-  .ev-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .ev-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 8px 10px;
-    border-left: 2px solid;
-    background: rgba(255,255,255,0.02);
-    font-family: 'Rajdhani', sans-serif;
-    font-size: 0.85rem;
-    line-height: 1.4;
-  }
-
-  .ev-item.strong-bull { border-color: var(--accent-green); }
-  .ev-item.weak-bull { border-color: rgba(0,255,136,0.3); }
-  .ev-item.strong-bear { border-color: var(--accent-red); }
-  .ev-item.weak-bear { border-color: rgba(255,51,85,0.3); }
-
-  .ev-icon { flex-shrink: 0; margin-top: 1px; }
-  .ev-score {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.65rem;
-    margin-left: auto;
-    flex-shrink: 0;
-    opacity: 0.6;
-  }
-
-  /* ─── Mini Chart ─── */
-  #mini-chart {
-    width: 100%;
-    height: 80px;
-    margin-top: 10px;
-  }
-
-  /* ─── Countdown ─── */
-  .countdown-bar {
-    position: fixed;
-    bottom: 0; left: 0; right: 0;
-    height: 3px;
-    background: var(--border);
-    z-index: 999;
-  }
-
-  .countdown-fill {
-    height: 100%;
-    background: linear-gradient(90deg, var(--accent-cyan), var(--accent-green));
-    transition: width 1s linear;
-    box-shadow: 0 0 8px var(--accent-cyan);
-  }
-
-  .status-bar {
-    position: fixed;
-    bottom: 6px; right: 16px;
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.6rem;
-    color: var(--text-secondary);
-    z-index: 999;
-    letter-spacing: 2px;
-  }
-
-  /* ─── Loading ─── */
-  .loading-overlay {
-    position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(3,6,8,0.85);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10;
-  }
-
-  .loading-text {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.75rem;
-    color: var(--accent-cyan);
-    letter-spacing: 4px;
-    animation: blink 0.8s step-end infinite;
-  }
-
-  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
-
-  /* ─── Error ─── */
-  .error-msg {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.75rem;
-    color: var(--accent-red);
-    padding: 16px;
-    border: 1px solid rgba(255,51,85,0.3);
-    background: rgba(255,51,85,0.05);
-    text-align: center;
-  }
-
-  /* ─── Responsive ─── */
-  @media (max-width: 900px) {
-    .main-grid { grid-template-columns: 1fr 1fr; }
-    .main-grid > :last-child { grid-column: span 2; }
-    .side-grid { grid-template-columns: 1fr 1fr; }
-    .evidence-grid { grid-template-columns: 1fr; }
-  }
-
-  @media (max-width: 600px) {
-    .main-grid { grid-template-columns: 1fr; }
-    .main-grid > :last-child { grid-column: span 1; }
-    .side-grid { grid-template-columns: 1fr; }
-  }
-
-  /* ─── Flicker animation ─── */
-  @keyframes flicker {
-    0%,100%{opacity:1} 92%{opacity:0.96} 94%{opacity:0.85} 96%{opacity:0.98}
-  }
-
-  .panel { animation: flicker 8s infinite; }
-
-  /* ─── Number change highlight ─── */
-  .changed {
-    animation: highlight 0.6s ease;
-  }
-
-  @keyframes highlight {
-    0% { color: #fff; text-shadow: 0 0 20px #fff; }
-    100% { }
-  }
+    --blue:#2563eb; --cyan:#06b6d4; --amber:#f59e0b;
+    --orange:#f97316; --red:#ef4444; --green:#10b981;
+    --ghost:#7c3aed; --ghost-light:#a78bfa; --ghost-glow:rgba(124,58,237,0.45);
+    --bg:#f0f4ff; --surface:#ffffff; --border:#dde4f5;
+    --text:#1e293b; --muted:#64748b;
+    --joystick-h:200px;
+  }
+  *{ margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent; }
+  html,body{
+    width:100%;height:100%;overflow:hidden;
+    background:var(--bg);font-family:'Syne',sans-serif;
+    user-select:none;touch-action:none;
+  }
+  #app{ display:flex;flex-direction:column;width:100dvw;height:100dvh; }
+
+  /* ── Game Area ── */
+  #game-area{ position:relative;flex:1 1 auto;min-height:0;overflow:hidden; }
+  canvas{ display:block;width:100%;height:100%; }
+  #particle-canvas{ position:absolute;inset:0;pointer-events:none;z-index:10; }
+
+  /* ── HUD ── */
+  #hud{
+    position:absolute;top:0;left:0;width:100%;padding:12px 14px 0;
+    display:flex;align-items:flex-start;gap:8px;
+    pointer-events:none;z-index:30;
+  }
+  .hud-card{
+    background:rgba(255,255,255,0.92);border:1.5px solid var(--border);
+    border-radius:14px;padding:6px 12px;
+    backdrop-filter:blur(12px);box-shadow:0 2px 12px rgba(37,99,235,0.08);
+    min-width:64px;text-align:center;
+  }
+  .hud-label{
+    font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.12em;
+    color:var(--muted);text-transform:uppercase;display:block;margin-bottom:2px;
+  }
+  .hud-value{ font-family:'Space Mono',monospace;font-size:20px;font-weight:700;color:var(--blue);line-height:1; }
+  .hud-value.slate{ color:var(--text); }
+  .hud-value.combo{ color:var(--amber);font-size:16px; }
+  .energy-wrapper{ flex:1;padding-top:6px; }
+  .energy-track{
+    height:8px;background:var(--border);border-radius:99px;overflow:hidden;
+    border:1px solid rgba(255,255,255,.8);box-shadow:inset 0 1px 3px rgba(0,0,0,.06);
+  }
+  .energy-fill{
+    height:100%;border-radius:99px;
+    background:linear-gradient(90deg,var(--blue),var(--cyan));
+    transition:width .08s linear,background .3s;position:relative;
+  }
+  .energy-fill.warn{ background:linear-gradient(90deg,var(--orange),var(--red)); }
+  .energy-fill::after{
+    content:'';position:absolute;right:0;top:0;bottom:0;
+    width:8px;background:rgba(255,255,255,.5);border-radius:99px;
+  }
+  .energy-info{ display:flex;justify-content:space-between;margin-top:4px; }
+  .energy-pct{ font-family:'Space Mono',monospace;font-size:9px;color:var(--blue);font-weight:700; }
+  .energy-pct.warn{ color:var(--red); }
+  .time-display{ font-family:'Space Mono',monospace;font-size:9px;color:var(--muted); }
+
+  /* ── Toast ── */
+  #toast{
+    position:absolute;top:80px;left:50%;transform:translateX(-50%);
+    background:rgba(30,41,59,.9);color:#fff;padding:7px 18px;border-radius:99px;
+    font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;white-space:nowrap;
+    pointer-events:none;z-index:50;opacity:0;transition:opacity .2s;
+  }
+  #toast.show{ opacity:1; }
+
+  /* ── Echo Warning Banner ── */
+  #echo-warning{
+    position:absolute;top:72px;left:50%;transform:translateX(-50%);
+    background:rgba(124,58,237,.92);border:1.5px solid rgba(167,139,250,.55);
+    color:#fff;border-radius:99px;padding:5px 16px;
+    font-family:'Space Mono',monospace;font-size:11px;font-weight:700;
+    letter-spacing:.06em;white-space:nowrap;
+    pointer-events:none;z-index:48;
+    opacity:0;transition:opacity .3s;
+    display:flex;align-items:center;gap:7px;
+  }
+  #echo-warning.show{ opacity:1; }
+  #echo-countdown{
+    background:rgba(255,255,255,.25);border-radius:50%;
+    width:18px;height:18px;display:flex;align-items:center;justify-content:center;
+    font-size:10px;font-weight:900;
+  }
+
+  /* ── Joystick Panel ── */
+  #joystick-panel{
+    flex:0 0 var(--joystick-h);
+    background:rgba(255,255,255,.88);border-top:1.5px solid var(--border);
+    backdrop-filter:blur(16px);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:6px;position:relative;z-index:20;
+    padding-bottom:env(safe-area-inset-bottom,0px);
+    touch-action:none;overflow:hidden;
+  }
+  #joystick-label{
+    font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.12em;
+    color:rgba(100,116,139,.38);text-transform:uppercase;pointer-events:none;
+    position:relative;z-index:2;
+  }
+  #joystick-idle{
+    width:148px;height:148px;border-radius:50%;
+    border:1.5px solid rgba(37,99,235,.12);
+    display:flex;align-items:center;justify-content:center;
+    pointer-events:none;position:relative;
+    transition:opacity .2s;
+  }
+  #joystick-idle::before{
+    content:'';position:absolute;inset:20px;border-radius:50%;
+    border:1px dashed rgba(37,99,235,.1);
+  }
+  #joystick-idle-dot{
+    width:36px;height:36px;border-radius:50%;
+    background:rgba(37,99,235,.1);border:1.5px solid rgba(37,99,235,.2);
+    display:flex;align-items:center;justify-content:center;
+  }
+  #joystick-idle-dot::after{
+    content:'';width:10px;height:10px;border-radius:50%;
+    background:rgba(37,99,235,.35);
+  }
+  #joystick-base{
+    width:148px;height:148px;border-radius:50%;
+    background:rgba(37,99,235,.05);border:1.5px solid rgba(37,99,235,.16);
+    position:absolute;cursor:pointer;touch-action:none;
+    transform:translate(-50%,-50%);
+    display:none;
+    transition:border-color .15s,background .15s;
+  }
+  #joystick-base.visible{ display:block; }
+  #joystick-base.active{
+    border-color:rgba(37,99,235,.35);background:rgba(37,99,235,.08);
+  }
+  #joystick-base::before{
+    content:'';position:absolute;inset:20px;border-radius:50%;
+    border:1px dashed rgba(37,99,235,.14);
+  }
+  #joystick-knob{
+    width:52px;height:52px;border-radius:50%;
+    background:rgba(37,99,235,.18);border:2px solid rgba(37,99,235,.32);
+    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    pointer-events:none;backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;
+    transition:background .12s,border-color .12s;
+  }
+  #joystick-knob.active{ background:rgba(37,99,235,.28);border-color:rgba(37,99,235,.55); }
+  #joystick-knob::after{ content:'';width:12px;height:12px;border-radius:50%;background:rgba(37,99,235,.48); }
+  .js-arrow{
+    position:absolute;display:flex;align-items:center;justify-content:center;
+    width:18px;height:18px;opacity:.2;pointer-events:none;transition:opacity .15s;
+  }
+  .js-arrow.lit{ opacity:.72; }
+  .js-arrow svg{ color:var(--blue); }
+  .js-arrow.top   { top:5px;   left:50%;transform:translateX(-50%); }
+  .js-arrow.bottom{ bottom:5px;left:50%;transform:translateX(-50%); }
+  .js-arrow.left-a{ left:5px;  top:50%; transform:translateY(-50%); }
+  .js-arrow.right-a{ right:5px;top:50%; transform:translateY(-50%); }
+
+  /* ── Keyboard hint ── */
+  #kb-hint{
+    position:absolute;bottom:8px;right:14px;
+    font-family:'Space Mono',monospace;font-size:9px;
+    color:var(--muted);pointer-events:none;z-index:25;opacity:.5;display:none;
+  }
+
+  /* ── Overlay ── */
+  #overlay{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    z-index:40;padding:20px;background:rgba(240,244,255,.65);backdrop-filter:blur(6px);
+  }
+  #overlay.hidden{ display:none; }
+  .modal{
+    background:var(--surface);border:1.5px solid var(--border);border-radius:28px;
+    padding:30px 24px;width:100%;max-width:310px;text-align:center;
+    box-shadow:0 24px 64px rgba(37,99,235,.12),0 4px 16px rgba(0,0,0,.06);
+    animation:modalIn .35s cubic-bezier(.34,1.56,.64,1) both;
+  }
+  @keyframes modalIn{
+    from{transform:scale(.85) translateY(20px);opacity:0;}
+    to{transform:scale(1) translateY(0);opacity:1;}
+  }
+  .modal-icon{
+    width:60px;height:60px;border-radius:18px;
+    display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:26px;
+  }
+  .modal-icon.blue{ background:#eff6ff; }
+  .modal-icon.red { background:#fef2f2; }
+  .modal h1{ font-size:22px;font-weight:900;color:var(--text);letter-spacing:-.5px;margin-bottom:8px; }
+  .modal p{ font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:18px; }
+  .btn{
+    display:block;width:100%;padding:14px;border-radius:16px;
+    font-family:'Syne',sans-serif;font-size:14px;font-weight:800;
+    letter-spacing:.02em;cursor:pointer;border:none;
+    transition:transform .08s,box-shadow .08s;
+  }
+  .btn:active{ transform:scale(.95); }
+  .btn-primary{ background:var(--blue);color:#fff;box-shadow:0 4px 16px rgba(37,99,235,.35); }
+  .btn-primary:active{ box-shadow:0 2px 8px rgba(37,99,235,.25); }
+  .btn-dark{ background:var(--text);color:#fff;box-shadow:0 4px 12px rgba(30,41,59,.2);margin-bottom:10px; }
+  .btn-ghost{
+    background:transparent;color:var(--muted);
+    border:1.5px solid var(--border);
+    margin-top:10px;font-size:13px;font-weight:700;
+    box-shadow:none;padding:11px;
+  }
+  .btn-ghost:active{ background:var(--bg); }
+  .score-big{
+    font-family:'Space Mono',monospace;font-size:48px;font-weight:700;
+    color:var(--blue);line-height:1;margin-bottom:4px;letter-spacing:-2px;
+  }
+  .score-label{ font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;margin-bottom:16px;display:block; }
+  .stats-row{ display:flex;gap:8px;margin-bottom:16px; }
+  .stat-chip{ flex:1;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:8px 6px; }
+  .stat-chip-label{
+    font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;
+    display:block;margin-bottom:3px;font-family:'Space Mono',monospace;
+  }
+  .stat-chip-value{ font-family:'Space Mono',monospace;font-size:15px;font-weight:700;color:var(--text); }
+  .tip-box{
+    background:var(--bg);border:1px solid var(--border);border-radius:12px;
+    padding:10px 12px;text-align:left;margin-top:10px;margin-bottom:16px;
+  }
+  .tip-box p{ font-size:11px;color:var(--muted);margin:0;line-height:1.5; }
+  .tip-box strong{ color:var(--text);font-weight:700; }
+
+  /* ── How-to Panel (slide-up sheet) ── */
+  #howto-sheet{
+    position:absolute;inset:0;display:flex;align-items:flex-end;justify-content:center;
+    z-index:60;padding:0;
+    background:rgba(15,23,42,.45);backdrop-filter:blur(4px);
+    opacity:0;pointer-events:none;
+    transition:opacity .25s;
+  }
+  #howto-sheet.open{ opacity:1;pointer-events:all; }
+  .howto-inner{
+    background:var(--surface);border-radius:24px 24px 0 0;
+    border:1.5px solid var(--border);border-bottom:none;
+    width:100%;max-width:420px;
+    padding:20px 22px 32px;
+    transform:translateY(100%);
+    transition:transform .3s cubic-bezier(.34,1.3,.64,1);
+  }
+  #howto-sheet.open .howto-inner{ transform:translateY(0); }
+  .howto-handle{
+    width:36px;height:4px;border-radius:99px;
+    background:var(--border);margin:0 auto 18px;
+  }
+  .howto-title{
+    font-size:16px;font-weight:900;color:var(--text);
+    letter-spacing:-.4px;margin-bottom:14px;text-align:center;
+  }
+  .howto-row{
+    display:flex;align-items:flex-start;gap:12px;
+    padding:10px 0;border-bottom:1px solid var(--border);
+  }
+  .howto-row:last-child{ border-bottom:none; }
+  .howto-icon{
+    width:34px;height:34px;border-radius:10px;background:var(--bg);
+    display:flex;align-items:center;justify-content:center;
+    font-size:16px;flex-shrink:0;
+  }
+  .howto-text strong{ display:block;font-size:12px;font-weight:800;color:var(--text);margin-bottom:2px; }
+  .howto-text span{ font-size:11px;color:var(--muted);line-height:1.5; }
+  .btn-howto-close{
+    display:block;width:100%;padding:13px;border-radius:14px;
+    font-family:'Syne',sans-serif;font-size:13px;font-weight:800;
+    background:var(--bg);color:var(--text);border:1.5px solid var(--border);
+    cursor:pointer;margin-top:18px;
+    transition:transform .08s;
+  }
+  .btn-howto-close:active{ transform:scale(.96); }
 </style>
 </head>
 <body>
+<div id="app">
 
-<div class="container">
-  <!-- Header -->
-  <header>
-    <div class="logo">FUTURES <span>ORACLE</span></div>
-    <div class="header-right">
-      <div class="update-badge">
-        <div class="pulse-dot"></div>
-        <span id="countdown-label">NEXT UPDATE: 60s</span>
+  <!-- ── Game Area ── -->
+  <div id="game-area">
+    <canvas id="gameCanvas"></canvas>
+    <canvas id="particle-canvas"></canvas>
+
+    <div id="hud">
+      <div class="hud-card">
+        <span class="hud-label">Score</span>
+        <span id="score-display" class="hud-value">0</span>
       </div>
-    </div>
-  </header>
-
-  <!-- Symbol Bar -->
-  <div class="symbol-bar">
-    <div class="symbol-input-wrap">
-      <span class="symbol-prefix">BINANCE:</span>
-      <input class="symbol-input" id="symbol-input" type="text" placeholder="BTCUSDT" value="BTCUSDT" maxlength="20">
-    </div>
-    <button class="btn-analyze" id="btn-analyze">ANALYZE</button>
-    <div class="quick-symbols">
-      <button class="sym-btn active" data-sym="BTCUSDT">BTC</button>
-      <button class="sym-btn" data-sym="ETHUSDT">ETH</button>
-      <button class="sym-btn" data-sym="SOLUSDT">SOL</button>
-      <button class="sym-btn" data-sym="XRPUSDT">XRP</button>
-      <button class="sym-btn" data-sym="BNBUSDT">BNB</button>
-      <button class="sym-btn" data-sym="DOGEUSDT">DOGE</button>
-    </div>
-  </div>
-
-  <!-- Interval Bar -->
-  <div class="interval-bar">
-    <span class="interval-label">INTERVAL:</span>
-    <button class="int-btn active" data-int="1m">1m</button>
-    <button class="int-btn" data-int="3m">3m</button>
-    <button class="int-btn" data-int="5m">5m</button>
-    <button class="int-btn" data-int="15m">15m</button>
-    <button class="int-btn" data-int="1h">1h</button>
-    <button class="int-btn" data-int="4h">4h</button>
-  </div>
-
-  <!-- Main Grid -->
-  <div class="main-grid">
-
-    <!-- Price Panel -->
-    <div class="panel" id="price-panel">
-      <div class="panel-title">가격 정보</div>
-      <div class="price-main" id="price-main">---.--</div>
-      <div class="price-change" id="price-change">-- +0.00%</div>
-      <div class="price-stats">
-        <div class="stat-item">
-          <div class="stat-label">24H HIGH</div>
-          <div class="stat-value high" id="high24">---</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-label">24H LOW</div>
-          <div class="stat-value low" id="low24">---</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-label">PREV HIGH</div>
-          <div class="stat-value high" id="prev-high">---</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-label">PREV LOW</div>
-          <div class="stat-value low" id="prev-low">---</div>
+      <div class="energy-wrapper">
+        <div class="energy-track"><div class="energy-fill" id="energy-fill"></div></div>
+        <div class="energy-info">
+          <span class="energy-pct" id="energy-pct">100%</span>
+          <span class="time-display" id="time-display">0.0s</span>
         </div>
       </div>
-      <canvas id="mini-chart"></canvas>
-    </div>
-
-    <!-- MA Panel -->
-    <div class="panel" id="ma-panel">
-      <div class="panel-title">이동평균선 (MA)</div>
-      <div id="ma-rows">
-        <div class="ma-row"><span class="ma-name">MA 7</span><span class="ma-value" id="ma7">---</span><span class="ma-signal neutral" id="ma7-sig">---</span></div>
-        <div class="ma-row"><span class="ma-name">MA 20</span><span class="ma-value" id="ma20">---</span><span class="ma-signal neutral" id="ma20-sig">---</span></div>
-        <div class="ma-row"><span class="ma-name">MA 50</span><span class="ma-value" id="ma50">---</span><span class="ma-signal neutral" id="ma50-sig">---</span></div>
-        <div class="ma-row"><span class="ma-name">MA 100</span><span class="ma-value" id="ma100">---</span><span class="ma-signal neutral" id="ma100-sig">---</span></div>
-        <div class="ma-row"><span class="ma-name">MA 200</span><span class="ma-value" id="ma200">---</span><span class="ma-signal neutral" id="ma200-sig">---</span></div>
+      <div class="hud-card">
+        <span class="hud-label">Best</span>
+        <span id="best-display" class="hud-value slate">0</span>
       </div>
-      <div style="margin-top:12px">
-        <div class="panel-title" style="margin-bottom:8px">거래량 MA</div>
-        <div class="ma-row"><span class="ma-name">VOL MA7</span><span class="ma-value" id="vol-ma7" style="font-size:0.72rem">---</span><span class="ma-signal neutral" id="vol-ma7-sig">---</span></div>
-        <div class="ma-row"><span class="ma-name">VOL MA20</span><span class="ma-value" id="vol-ma20" style="font-size:0.72rem">---</span><span class="ma-signal neutral" id="vol-ma20-sig">---</span></div>
+      <div class="hud-card" id="combo-card" style="display:none;">
+        <span class="hud-label">Combo</span>
+        <span id="combo-display" class="hud-value combo">×1</span>
       </div>
     </div>
 
-    <!-- Probability Panel -->
-    <div class="panel prob-panel" id="prob-panel">
-      <div class="panel-title">확률 분석</div>
-      <div class="prob-display">
-        <div class="prob-bar-wrap">
-          <div class="prob-header">
-            <span class="prob-label bull">▲ 상승 확률</span>
-            <span class="prob-pct bull" id="bull-pct">50%</span>
+    <div id="toast"></div>
+
+    <!-- Echo Warning -->
+    <div id="echo-warning">
+      <span>👻 잔상 출현</span>
+      <span id="echo-countdown">3</span>
+    </div>
+
+    <!-- ── Overlay ── -->
+    <div id="overlay">
+
+      <!-- START SCREEN -->
+      <div class="modal" id="start-screen">
+        <div class="modal-icon blue">⚡</div>
+        <h1>Micro Hunter</h1>
+        <p>에너지 코어를 수집하며<br>과거의 잔상을 피하세요.</p>
+        <button class="btn btn-primary" id="btn-start">탐사 시작</button>
+        <button class="btn btn-ghost" id="btn-howto">게임 방법 보기</button>
+      </div>
+
+      <!-- GAMEOVER SCREEN -->
+      <div class="modal hidden" id="gameover-screen">
+        <div class="modal-icon red">💥</div>
+        <div class="score-big" id="final-score">0</div>
+        <span class="score-label" id="gameover-reason">에너지 소진</span>
+        <div class="stats-row">
+          <div class="stat-chip">
+            <span class="stat-chip-label">생존 시간</span>
+            <span class="stat-chip-value" id="stat-time">0s</span>
           </div>
-          <div class="prob-bar">
-            <div class="prob-bar-fill bull" id="bull-bar" style="width:50%"></div>
+          <div class="stat-chip">
+            <span class="stat-chip-label">수집 코어</span>
+            <span class="stat-chip-value" id="stat-cores">0</span>
+          </div>
+          <div class="stat-chip">
+            <span class="stat-chip-label">최대 콤보</span>
+            <span class="stat-chip-value" id="stat-combo">0×</span>
           </div>
         </div>
-        <div class="prob-bar-wrap">
-          <div class="prob-header">
-            <span class="prob-label bear">▼ 하락 확률</span>
-            <span class="prob-pct bear" id="bear-pct">50%</span>
+        <button class="btn btn-dark"    id="btn-reset">다시 도전</button>
+        <button class="btn btn-primary" id="btn-share">결과 공유</button>
+      </div>
+
+    </div><!-- /#overlay -->
+
+    <!-- ── How-to Sheet ── -->
+    <div id="howto-sheet">
+      <div class="howto-inner">
+        <div class="howto-handle"></div>
+        <div class="howto-title">게임 방법</div>
+        <div class="howto-row">
+          <div class="howto-icon">🕹️</div>
+          <div class="howto-text">
+            <strong>조이스틱</strong>
+            <span>하단 패널 아무 곳이나 터치하면 그 자리에 조이스틱이 소환됩니다. PC는 WASD / 방향키로 조작하세요.</span>
           </div>
-          <div class="prob-bar">
-            <div class="prob-bar-fill bear" id="bear-bar" style="width:50%"></div>
+        </div>
+        <div class="howto-row">
+          <div class="howto-icon">⚡</div>
+          <div class="howto-text">
+            <strong>에너지 코어 수집</strong>
+            <span>화면의 코어를 먹으면 에너지가 충전되고 점수가 오릅니다. 연속으로 먹으면 콤보 보너스!</span>
           </div>
         </div>
-        <div class="verdict neutral" id="verdict">데이터 로딩 중...</div>
-      </div>
-
-      <div class="target-section">
-        <div class="target-title">// 상승 타겟</div>
-        <div id="bull-targets"></div>
-        <div class="target-title" style="margin-top:12px">// 하락 타겟</div>
-        <div id="bear-targets"></div>
+        <div class="howto-row">
+          <div class="howto-icon">👻</div>
+          <div class="howto-text">
+            <strong>잔상 회피</strong>
+            <span>과거 이동 경로를 따라 파란 유령이 출현합니다. 출현 3초 전 경고가 표시되며 미니맵에서도 확인할 수 있습니다.</span>
+          </div>
+        </div>
+        <div class="howto-row">
+          <div class="howto-icon">🗺️</div>
+          <div class="howto-text">
+            <strong>미니맵</strong>
+            <span>우측 하단 미니맵에서 코어·유령 위치와 유령 이동 경로를 미리 확인하세요.</span>
+          </div>
+        </div>
+        <button class="btn-howto-close" id="btn-howto-close">닫기</button>
       </div>
     </div>
+
+    <div id="kb-hint">WASD / ↑↓←→</div>
   </div>
 
-  <!-- Side Grid -->
-  <div class="side-grid">
-    <!-- OI -->
-    <div class="panel">
-      <div class="panel-title">미체결약정 (OI)</div>
-      <div class="metric-big" id="oi-value" style="color:var(--accent-cyan)">---</div>
-      <div class="metric-sub" id="oi-usd">USD: ---</div>
-      <div class="oi-change" id="oi-change">
-        <span style="color:var(--text-secondary)">변화율:</span>
-        <span id="oi-pct" style="color:var(--accent-yellow)">---</span>
+  <!-- ── Joystick Panel ── -->
+  <div id="joystick-panel">
+    <div id="joystick-idle"><div id="joystick-idle-dot"></div></div>
+    <div id="joystick-base">
+      <div class="js-arrow top"     id="js-up">
+        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 15l7-7 7 7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
-      <div class="metric-sub" style="margin-top:10px; line-height:1.6" id="oi-hint">OI 데이터 로딩 중...</div>
-    </div>
-
-    <!-- Funding -->
-    <div class="panel">
-      <div class="panel-title">펀딩비 (FUNDING)</div>
-      <div class="funding-rate neutral-f" id="funding-rate">---</div>
-      <div class="funding-hint" id="funding-hint" style="color:var(--text-secondary)">펀딩비 로딩 중...</div>
-      <div style="margin-top:12px; padding:8px; border:1px solid var(--border); background:rgba(0,0,0,0.2)">
-        <div class="metric-sub">다음 펀딩까지</div>
-        <div style="font-family:'Share Tech Mono',monospace; font-size:0.9rem; color:var(--accent-yellow); margin-top:4px" id="next-funding">---</div>
+      <div class="js-arrow bottom"  id="js-down">
+        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
-    </div>
-
-    <!-- Volume -->
-    <div class="panel">
-      <div class="panel-title">거래량 분석</div>
-      <div class="vol-bars" id="vol-bars">
-        <div class="vol-row">
-          <span class="vol-label">현재봉</span>
-          <div class="vol-bar-bg"><div class="vol-bar-inner current" id="vol-bar-cur" style="width:0%"></div></div>
-          <span class="vol-value" id="vol-cur">---</span>
-        </div>
-        <div class="vol-row">
-          <span class="vol-label">MA7</span>
-          <div class="vol-bar-bg"><div class="vol-bar-inner ma" id="vol-bar-ma7" style="width:0%"></div></div>
-          <span class="vol-value" id="vol-ma7-val">---</span>
-        </div>
-        <div class="vol-row">
-          <span class="vol-label">MA20</span>
-          <div class="vol-bar-bg"><div class="vol-bar-inner ma" id="vol-bar-ma20" style="width:0%"></div></div>
-          <span class="vol-value" id="vol-ma20-val">---</span>
-        </div>
-        <div class="vol-row">
-          <span class="vol-label">24H최고</span>
-          <div class="vol-bar-bg"><div class="vol-bar-inner high" id="vol-bar-high" style="width:100%"></div></div>
-          <span class="vol-value" id="vol-high">---</span>
-        </div>
+      <div class="js-arrow left-a"  id="js-left">
+        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
-      <div style="margin-top:10px; font-family:'Share Tech Mono',monospace; font-size:0.65rem" id="vol-signal-text">거래량 신호 분석 중...</div>
+      <div class="js-arrow right-a" id="js-right">
+        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div id="joystick-knob"></div>
     </div>
+    <div id="joystick-label">touch anywhere · drag to move</div>
   </div>
 
-  <!-- Candle Panel -->
-  <div class="panel" style="margin-bottom:16px">
-    <div class="panel-title">캔들 정보</div>
-    <div class="candle-grid" id="candle-grid">
-      <div class="candle-item">
-        <div class="candle-period">현재 봉</div>
-        <div class="candle-type bull" id="cur-candle-type">---</div>
-        <div class="candle-hl">
-          <span class="candle-h" id="cur-high">H: ---</span>
-          <span class="candle-l" id="cur-low">L: ---</span>
-        </div>
-      </div>
-      <div class="candle-item">
-        <div class="candle-period">직전 봉</div>
-        <div class="candle-type" id="prev-candle-type">---</div>
-        <div class="candle-hl">
-          <span class="candle-h" id="prev-high2">H: ---</span>
-          <span class="candle-l" id="prev-low2">L: ---</span>
-        </div>
-      </div>
-      <div class="candle-item">
-        <div class="candle-period">2봉 전</div>
-        <div class="candle-type" id="prev2-candle-type">---</div>
-        <div class="candle-hl">
-          <span class="candle-h" id="prev2-high">H: ---</span>
-          <span class="candle-l" id="prev2-low">L: ---</span>
-        </div>
-      </div>
-      <div class="candle-item">
-        <div class="candle-period">3봉 전</div>
-        <div class="candle-type" id="prev3-candle-type">---</div>
-        <div class="candle-hl">
-          <span class="candle-h" id="prev3-high">H: ---</span>
-          <span class="candle-l" id="prev3-low">L: ---</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Evidence Grid -->
-  <div class="evidence-grid">
-    <div class="evidence-panel bull-evidence">
-      <div class="ev-title bull">▲ 상승 근거</div>
-      <div class="ev-list" id="bull-evidence"></div>
-    </div>
-    <div class="evidence-panel bear-evidence">
-      <div class="ev-title bear">▼ 하락 근거</div>
-      <div class="ev-list" id="bear-evidence"></div>
-    </div>
-  </div>
-
-</div><!-- end container -->
-
-<!-- Countdown Bar -->
-<div class="countdown-bar">
-  <div class="countdown-fill" id="countdown-fill" style="width:100%"></div>
-</div>
-<div class="status-bar" id="status-bar">WAITING...</div>
+</div><!-- /#app -->
 
 <script>
-// ═══════════════════════════════════════════════════════
-//  STATE
-// ═══════════════════════════════════════════════════════
-let currentSymbol = 'BTCUSDT';
-let currentInterval = '1m';
-let updateTimer = null;
-let countdown = 60;
-let countdownInterval = null;
-let priceHistory = [];
-let volHistory = [];
-let lastData = null;
+// ════════════════════════════════════════
+//  Canvas
+// ════════════════════════════════════════
+const canvas   = document.getElementById('gameCanvas');
+const ctx      = canvas.getContext('2d');
+const pc       = document.getElementById('particle-canvas');
+const pctx     = pc.getContext('2d');
+const gameArea = document.getElementById('game-area');
 
-// ═══════════════════════════════════════════════════════
-//  UTILS
-// ═══════════════════════════════════════════════════════
-const fmt = (n, d=2) => {
-  if (!n && n !== 0) return '---';
-  const abs = Math.abs(n);
-  if (abs >= 1e9) return (n/1e9).toFixed(2) + 'B';
-  if (abs >= 1e6) return (n/1e6).toFixed(2) + 'M';
-  if (abs >= 1e3) return (n/1e3).toFixed(2) + 'K';
-  return n.toFixed(d);
+function resize(){
+  canvas.width = pc.width  = gameArea.clientWidth;
+  canvas.height= pc.height = gameArea.clientHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ════════════════════════════════════════
+//  State
+// ════════════════════════════════════════
+let state='START';
+let score=0, bestScore=0, frameCount=0;
+let energy=100;
+let combo=1, maxCombo=1, coresCollected=0;
+let player, core, echoes, history, lastEchoSpawn;
+let particles=[];
+let toastTimer=null;
+let joystick={dx:0,dy:0};
+let isMobile=/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+let echoCountdownInterval=null;
+
+// ════════════════════════════════════════
+//  Ghost color constants (blue palette)
+// ════════════════════════════════════════
+const GHOST_COLOR   = '#7c3aed';   // violet-blue
+const GHOST_STROKE  = '#a78bfa';
+const GHOST_RGBA    = (a) => `rgba(124,58,237,${a})`;
+const GHOST_PATH_RGBA = (a) => `rgba(109,40,217,${a})`;
+const GHOST_ALERT_RGBA = (a) => `rgba(99,102,241,${a})`;
+
+// ════════════════════════════════════════
+//  Toast
+// ════════════════════════════════════════
+function showToast(msg, dur=1500){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>el.classList.remove('show'),dur);
+}
+
+// ════════════════════════════════════════
+//  Echo Warning
+// ════════════════════════════════════════
+function triggerEchoWarning(){
+  const banner=document.getElementById('echo-warning');
+  const countEl=document.getElementById('echo-countdown');
+  clearInterval(echoCountdownInterval);
+  let v=3; countEl.textContent=v;
+  banner.classList.add('show');
+  echoCountdownInterval=setInterval(()=>{
+    v--;
+    if(v<=0){ clearInterval(echoCountdownInterval); banner.classList.remove('show'); }
+    else countEl.textContent=v;
+  },1000);
+}
+
+// ════════════════════════════════════════
+//  How-to Sheet
+// ════════════════════════════════════════
+(function setupHowto(){
+  const sheet = document.getElementById('howto-sheet');
+  const btnOpen  = document.getElementById('btn-howto');
+  const btnClose = document.getElementById('btn-howto-close');
+
+  btnOpen.addEventListener('click', () => sheet.classList.add('open'));
+  btnClose.addEventListener('click', () => sheet.classList.remove('open'));
+
+  // tap backdrop to close
+  sheet.addEventListener('click', e => {
+    if (e.target === sheet) sheet.classList.remove('open');
+  });
+})();
+
+// ════════════════════════════════════════
+//  Floating Joystick
+// ════════════════════════════════════════
+(function setupJoystick(){
+  const panel  = document.getElementById('joystick-panel');
+  const base   = document.getElementById('joystick-base');
+  const knob   = document.getElementById('joystick-knob');
+  const idle   = document.getElementById('joystick-idle');
+  const lbl    = document.getElementById('joystick-label');
+  const arrows = {
+    up:   document.getElementById('js-up'),
+    down: document.getElementById('js-down'),
+    left: document.getElementById('js-left'),
+    right:document.getElementById('js-right'),
+  };
+  const RADIUS=50;
+  let pid=null, ox=0, oy=0;
+
+  function pr(){ return panel.getBoundingClientRect(); }
+
+  function activate(cx,cy){
+    const r=pr();
+    ox=cx-r.left; oy=cy-r.top;
+    base.style.left=ox+'px';
+    base.style.top =oy+'px';
+    base.classList.add('visible','active');
+    idle.style.opacity='0';
+    lbl.style.opacity='0';
+    updateKnob(cx,cy);
+  }
+
+  function updateKnob(cx,cy){
+    const r=pr();
+    let dx=(cx-r.left)-ox, dy=(cy-r.top)-oy;
+    const dist=Math.hypot(dx,dy);
+    if(dist>RADIUS){dx=dx/dist*RADIUS;dy=dy/dist*RADIUS;}
+    joystick.dx=dx/RADIUS; joystick.dy=dy/RADIUS;
+    knob.style.transform=`translate(calc(-50% + ${dx}px),calc(-50% + ${dy}px))`;
+    knob.classList.add('active');
+    const t=0.28;
+    arrows.up.classList.toggle('lit',   joystick.dy<-t);
+    arrows.down.classList.toggle('lit', joystick.dy> t);
+    arrows.left.classList.toggle('lit', joystick.dx<-t);
+    arrows.right.classList.toggle('lit',joystick.dx> t);
+  }
+
+  function deactivate(){
+    joystick.dx=0; joystick.dy=0; pid=null;
+    base.classList.remove('visible','active');
+    knob.style.transform='translate(-50%,-50%)';
+    knob.classList.remove('active');
+    Object.values(arrows).forEach(a=>a.classList.remove('lit'));
+    idle.style.opacity='1';
+    lbl.style.opacity='1';
+  }
+
+  panel.addEventListener('touchstart',e=>{
+    e.preventDefault();
+    if(pid!==null) return;
+    const t=e.changedTouches[0]; pid=t.identifier;
+    activate(t.clientX,t.clientY);
+  },{passive:false});
+
+  panel.addEventListener('touchmove',e=>{
+    e.preventDefault();
+    for(const t of e.changedTouches)
+      if(t.identifier===pid){updateKnob(t.clientX,t.clientY);break;}
+  },{passive:false});
+
+  panel.addEventListener('touchend',e=>{
+    for(const t of e.changedTouches)
+      if(t.identifier===pid){deactivate();break;}
+  },{passive:false});
+
+  panel.addEventListener('touchcancel',deactivate,{passive:false});
+
+  panel.addEventListener('mousedown',e=>{
+    e.preventDefault(); pid='mouse'; activate(e.clientX,e.clientY);
+  });
+  window.addEventListener('mousemove',e=>{
+    if(pid!=='mouse') return; updateKnob(e.clientX,e.clientY);
+  });
+  window.addEventListener('mouseup',()=>{ if(pid==='mouse') deactivate(); });
+})();
+
+// ════════════════════════════════════════
+//  Keyboard
+// ════════════════════════════════════════
+const _keys={up:false,down:false,left:false,right:false};
+const keyMap={
+  ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right',
+  w:'up',s:'down',a:'left',d:'right',
+  W:'up',S:'down',A:'left',D:'right'
 };
-
-const fmtPrice = (n) => {
-  if (!n && n !== 0) return '---';
-  if (n >= 10000) return n.toLocaleString('en-US', {minimumFractionDigits:1, maximumFractionDigits:1});
-  if (n >= 100) return n.toFixed(2);
-  if (n >= 1) return n.toFixed(4);
-  return n.toFixed(6);
-};
-
-const ma = (arr, period) => {
-  if (arr.length < period) return null;
-  const slice = arr.slice(arr.length - period);
-  return slice.reduce((a,b) => a+b, 0) / period;
-};
-
-const setEl = (id, val, cls=null) => {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.textContent = val;
-  if (cls) {
-    const baseClasses = el.className
-      .split(' ')
-      .filter(c => c && !/^(up|down|pos|neg|bull|bear|neutral-f)$/.test(c))
-      .join(' ');
-    el.className = (baseClasses + ' ' + cls).trim();
-  }
-};
-
-// ═══════════════════════════════════════════════════════
-//  API CALLS  (참고 코드와 동일 방식 — 직접 fetch)
-// ═══════════════════════════════════════════════════════
-const BASE = 'https://fapi.binance.com';
-
-async function fetchKlines(symbol, interval, limit=220) {
-  const res = await fetch(`${BASE}/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`);
-  if (!res.ok) throw new Error(`klines ${res.status}`);
-  return res.json();
-}
-
-async function fetchTicker(symbol) {
-  const res = await fetch(`${BASE}/fapi/v1/ticker/24hr?symbol=${symbol}`);
-  if (!res.ok) throw new Error(`ticker ${res.status}`);
-  return res.json();
-}
-
-async function fetchFundingRate(symbol) {
-  const res = await fetch(`${BASE}/fapi/v1/premiumIndex?symbol=${symbol}`);
-  if (!res.ok) throw new Error(`funding ${res.status}`);
-  return res.json();
-}
-
-async function fetchOpenInterest(symbol) {
-  const res = await fetch(`${BASE}/fapi/v1/openInterest?symbol=${symbol}`);
-  if (!res.ok) throw new Error(`OI ${res.status}`);
-  return res.json();
-}
-
-// ═══════════════════════════════════════════════════════
-//  MAIN UPDATE
-// ═══════════════════════════════════════════════════════
-async function update() {
-  setStatus('FETCHING...');
-  showPanelError(null);
-  try {
-    const [klines, ticker, funding, oi] = await Promise.all([
-      fetchKlines(currentSymbol, currentInterval, 220),
-      fetchTicker(currentSymbol),
-      fetchFundingRate(currentSymbol),
-      fetchOpenInterest(currentSymbol)
-    ]);
-
-    processData(klines, ticker, funding, oi);
-    setStatus('OK ' + new Date().toTimeString().slice(0,8));
-  } catch(e) {
-    setStatus('⚠ 연결 실패');
-    showPanelError(`Binance API 연결 오류: ${e.message} — 네트워크 상태를 확인하거나 잠시 후 다시 시도하세요.`);
-    console.error(e);
-  }
-}
-
-function showPanelError(msg) {
-  let el = document.getElementById('global-error-msg');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'global-error-msg';
-    el.style.cssText = 'font-family:"Share Tech Mono",monospace;font-size:0.8rem;color:var(--accent-red);padding:14px 18px;border:1px solid rgba(255,51,85,0.4);background:rgba(255,51,85,0.06);margin-bottom:16px;display:none;';
-    document.querySelector('.container').insertBefore(el, document.querySelector('.symbol-bar').nextSibling);
-  }
-  if (msg) { el.textContent = '⚠ ' + msg; el.style.display = 'block'; }
-  else { el.style.display = 'none'; }
-}
-
-function setStatus(msg) {
-  document.getElementById('status-bar').textContent = msg;
-}
-
-// ═══════════════════════════════════════════════════════
-//  PROCESS DATA
-// ═══════════════════════════════════════════════════════
-function processData(klines, ticker, funding, oi) {
-  // Parse klines
-  const candles = klines.map(k => ({
-    t: k[0], o: +k[1], h: +k[2], l: +k[3], c: +k[4], v: +k[5]
-  }));
-
-  const closes = candles.map(c => c.c);
-  const volumes = candles.map(c => c.v);
-  const cur = candles[candles.length - 1];
-  const prev = candles[candles.length - 2];
-  const prev2 = candles[candles.length - 3];
-  const prev3 = candles[candles.length - 4];
-  const price = cur.c;
-
-  // MA
-  const ma7   = ma(closes, 7);
-  const ma20  = ma(closes, 20);
-  const ma50  = ma(closes, 50);
-  const ma100 = ma(closes, 100);
-  const ma200 = ma(closes, 200);
-
-  // Volume MA
-  const volMa7  = ma(volumes, 7);
-  const volMa20 = ma(volumes, 20);
-  const volMax  = Math.max(...volumes.slice(-50));
-
-  // Funding
-  const fundingRate = +funding.lastFundingRate;
-  const nextFunding = new Date(+funding.nextFundingTime);
-  const now = new Date();
-  const msLeft = nextFunding - now;
-  const absMs = Math.abs(msLeft);
-  const hLeft = Math.floor(absMs / 3600000);
-  const mLeft = Math.floor((absMs % 3600000) / 60000);
-
-  // OI
-  const oiVal = +oi.openInterest;
-  const oiUsd = oiVal * price;
-
-  // Price history for sparkline
-  priceHistory = closes.slice(-60);
-
-  // ── Update UI ──
-  // Price
-  const priceChange = +ticker.priceChangePercent;
-  document.getElementById('price-main').textContent = fmtPrice(price);
-  const pcEl = document.getElementById('price-change');
-  pcEl.textContent = `${priceChange >= 0 ? '+' : ''}${priceChange.toFixed(2)}%`;
-  pcEl.className = 'price-change ' + (priceChange >= 0 ? 'up' : 'down');
-  document.getElementById('high24').textContent = fmtPrice(+ticker.highPrice);
-  document.getElementById('low24').textContent = fmtPrice(+ticker.lowPrice);
-  document.getElementById('prev-high').textContent = fmtPrice(prev.h);
-  document.getElementById('prev-low').textContent = fmtPrice(prev.l);
-
-  // MA
-  const updateMA = (id, sigId, maVal) => {
-    if (!maVal) { setEl(id,'---'); setEl(sigId,'N/A'); return; }
-    document.getElementById(id).textContent = fmtPrice(maVal);
-    const sig = document.getElementById(sigId);
-    if (price > maVal * 1.002) { sig.textContent = 'BULL'; sig.className = 'ma-signal bull'; }
-    else if (price < maVal * 0.998) { sig.textContent = 'BEAR'; sig.className = 'ma-signal bear'; }
-    else { sig.textContent = 'NEAR'; sig.className = 'ma-signal neutral'; }
-  };
-  updateMA('ma7','ma7-sig',ma7);
-  updateMA('ma20','ma20-sig',ma20);
-  updateMA('ma50','ma50-sig',ma50);
-  updateMA('ma100','ma100-sig',ma100);
-  updateMA('ma200','ma200-sig',ma200);
-
-  // Volume MA
-  document.getElementById('vol-ma7').textContent = fmt(volMa7,0);
-  document.getElementById('vol-ma20').textContent = fmt(volMa20,0);
-  const vm7sig = document.getElementById('vol-ma7-sig');
-  const vm20sig = document.getElementById('vol-ma20-sig');
-  if (cur.v > volMa7 * 1.5) { vm7sig.textContent = 'HIGH'; vm7sig.className = 'ma-signal bull'; }
-  else if (cur.v < volMa7 * 0.5) { vm7sig.textContent = 'LOW'; vm7sig.className = 'ma-signal bear'; }
-  else { vm7sig.textContent = 'NORM'; vm7sig.className = 'ma-signal neutral'; }
-  if (volMa7 > volMa20) { vm20sig.textContent = 'UP↑'; vm20sig.className = 'ma-signal bull'; }
-  else { vm20sig.textContent = 'DN↓'; vm20sig.className = 'ma-signal bear'; }
-
-  // OI
-  document.getElementById('oi-value').textContent = fmt(oiVal) + ' ' + currentSymbol.replace('USDT','');
-  document.getElementById('oi-usd').textContent = 'USD: $' + fmt(oiUsd);
-
-  // OI change estimate (compare with stored)
-  let oiPct = '---';
-  if (lastData && lastData.oi) {
-    const diff = ((oiVal - lastData.oi) / lastData.oi) * 100;
-    oiPct = (diff >= 0 ? '+' : '') + diff.toFixed(3) + '%';
-    const oiPctEl = document.getElementById('oi-pct');
-    oiPctEl.textContent = oiPct;
-    oiPctEl.style.color = diff > 0 ? 'var(--accent-green)' : diff < 0 ? 'var(--accent-red)' : 'var(--accent-yellow)';
-  } else {
-    document.getElementById('oi-pct').textContent = '---';
-  }
-
-  const oiHint = document.getElementById('oi-hint');
-  if (oiUsd > 5e9) oiHint.textContent = '초대형 미결약정 — 변동성 급증 주의';
-  else if (oiUsd > 1e9) oiHint.textContent = '대형 미결약정 — 추세 신뢰도 ↑';
-  else oiHint.textContent = '소형 미결약정 — 추세 신뢰도 보통';
-
-  // Funding
-  const frEl = document.getElementById('funding-rate');
-  frEl.textContent = (fundingRate * 100).toFixed(4) + '%';
-  frEl.className = 'funding-rate ' + (fundingRate > 0.0001 ? 'pos' : fundingRate < -0.0001 ? 'neg' : 'neutral-f');
-
-  const fhEl = document.getElementById('funding-hint');
-  if (fundingRate > 0.001) fhEl.textContent = '⚠ 롱 과열 — 숏 유리 (롱이 숏에게 지불)';
-  else if (fundingRate > 0.0001) fhEl.textContent = '롱 우세 — 약한 롱 편향';
-  else if (fundingRate < -0.001) fhEl.textContent = '⚠ 숏 과열 — 롱 유리 (숏이 롱에게 지불)';
-  else if (fundingRate < -0.0001) fhEl.textContent = '숏 우세 — 약한 숏 편향';
-  else fhEl.textContent = '중립 — 균형 상태';
-
-  document.getElementById('next-funding').textContent = msLeft > 0 ? `${hLeft}h ${mLeft}m 후` : `갱신 중...`;
-
-  // Volume bars
-  const volPct = v => (v && !isNaN(v)) ? Math.min(100, (v / volMax) * 100) : 0;
-  document.getElementById('vol-bar-cur').style.width = volPct(cur.v) + '%';
-  document.getElementById('vol-bar-ma7').style.width = volPct(volMa7) + '%';
-  document.getElementById('vol-bar-ma20').style.width = volPct(volMa20) + '%';
-  document.getElementById('vol-bar-high').style.width = '100%';
-  document.getElementById('vol-cur').textContent = fmt(cur.v,0);
-  document.getElementById('vol-ma7-val').textContent = fmt(volMa7,0);
-  document.getElementById('vol-ma20-val').textContent = fmt(volMa20,0);
-  document.getElementById('vol-high').textContent = fmt(volMax,0);
-
-  const volRatio = cur.v / (volMa20 || 1);
-  const vsTxt = document.getElementById('vol-signal-text');
-  if (volRatio > 2.5) vsTxt.innerHTML = '<span style="color:var(--accent-green)">🔥 거래량 폭증 (MA20 x' + volRatio.toFixed(1) + ') — 강한 방향성 신호</span>';
-  else if (volRatio > 1.5) vsTxt.innerHTML = '<span style="color:var(--accent-cyan)">거래량 증가 (MA20 x' + volRatio.toFixed(1) + ') — 추세 가속 가능</span>';
-  else if (volRatio < 0.5) vsTxt.innerHTML = '<span style="color:var(--text-secondary)">거래량 부족 (MA20 x' + volRatio.toFixed(1) + ') — 횡보 가능성</span>';
-  else vsTxt.innerHTML = '<span style="color:var(--accent-yellow)">거래량 보통 (MA20 x' + volRatio.toFixed(1) + ') — 중립</span>';
-
-  // Candle types
-  const setCandleUI = (typeId, highId, lowId, candle) => {
-    if (!candle) return;
-    const isBull = candle.c > candle.o;
-    const typeEl = document.getElementById(typeId);
-    typeEl.textContent = isBull ? '▲ 양봉' : '▼ 음봉';
-    typeEl.className = 'candle-type ' + (isBull ? 'bull' : 'bear');
-    document.getElementById(highId).textContent = 'H: ' + fmtPrice(candle.h);
-    document.getElementById(lowId).textContent = 'L: ' + fmtPrice(candle.l);
-  };
-  setCandleUI('cur-candle-type','cur-high','cur-low', cur);
-  setCandleUI('prev-candle-type','prev-high2','prev-low2', prev);
-  setCandleUI('prev2-candle-type','prev2-high','prev2-low', prev2);
-  setCandleUI('prev3-candle-type','prev3-high','prev3-low', prev3);
-
-  // ── PROBABILITY ENGINE ──
-  const analysis = analyzeProbability(candles, price, ma7, ma20, ma50, ma100, ma200,
-                                       volMa7, volMa20, fundingRate, oiVal, lastData?.oi, ticker);
-
-  // Update prob bars
-  document.getElementById('bull-pct').textContent = analysis.bullPct + '%';
-  document.getElementById('bear-pct').textContent = analysis.bearPct + '%';
-  document.getElementById('bull-bar').style.width = analysis.bullPct + '%';
-  document.getElementById('bear-bar').style.width = analysis.bearPct + '%';
-
-  const verd = document.getElementById('verdict');
-  if (analysis.bullPct >= 65) { verd.textContent = '▲  강한 상승 신호'; verd.className = 'verdict bull'; }
-  else if (analysis.bullPct >= 55) { verd.textContent = '▲  약한 상승 우세'; verd.className = 'verdict bull'; }
-  else if (analysis.bearPct >= 65) { verd.textContent = '▼  강한 하락 신호'; verd.className = 'verdict bear'; }
-  else if (analysis.bearPct >= 55) { verd.textContent = '▼  약한 하락 우세'; verd.className = 'verdict bear'; }
-  else { verd.textContent = '◆  중립 / 관망 권장'; verd.className = 'verdict neutral'; }
-
-  // Targets
-  renderTargets(price, ma20, ma50, ma100, ma200, prev.h, prev.l, +ticker.highPrice, +ticker.lowPrice, analysis.bullPct);
-
-  // Evidence
-  renderEvidence(analysis.bullEvidence, analysis.bearEvidence);
-
-  // Sparkline
-  drawSparkline(priceHistory);
-
-  // Store for next cycle
-  lastData = { oi: oiVal, price };
-}
-
-// ═══════════════════════════════════════════════════════
-//  PROBABILITY ENGINE
-// ═══════════════════════════════════════════════════════
-function analyzeProbability(candles, price, ma7, ma20, ma50, ma100, ma200,
-                             volMa7, volMa20, fundingRate, oi, prevOI, ticker) {
-  let bullScore = 50;
-  let bullEvidence = [];
-  let bearEvidence = [];
-
-  const cur   = candles[candles.length - 1];
-  const prev  = candles[candles.length - 2];
-  const prev2 = candles[candles.length - 3];
-  const closes = candles.map(c => c.c);
-
-  // ── 3봉 연속 방향 확인 (prev2 활용) ──
-  if (prev2) {
-    const threeBull = cur.c > cur.o && prev.c > prev.o && prev2.c > prev2.o;
-    const threeBear = cur.c < cur.o && prev.c < prev.o && prev2.c < prev2.o;
-    if (threeBull) {
-      bullScore += 4;
-      bullEvidence.push({ text: `3봉 연속 양봉 — 단기 상승 모멘텀`, strength: 'strong-bull' });
-    } else if (threeBear) {
-      bullScore -= 4;
-      bearEvidence.push({ text: `3봉 연속 음봉 — 단기 하락 모멘텀`, strength: 'strong-bear' });
-    }
-  }
-
-  // ── MA signals ──
-  const maChecks = [
-    { name: 'MA7', val: ma7, w: 3 },
-    { name: 'MA20', val: ma20, w: 4 },
-    { name: 'MA50', val: ma50, w: 5 },
-    { name: 'MA100', val: ma100, w: 6 },
-    { name: 'MA200', val: ma200, w: 8 },
-  ];
-
-  maChecks.forEach(m => {
-    if (!m.val) return;
-    if (price > m.val * 1.001) {
-      bullScore += m.w;
-      bullEvidence.push({ text: `가격이 ${m.name}(${fmtPrice(m.val)}) 위 — 상승 추세 유지`, strength: 'strong-bull' });
-    } else if (price < m.val * 0.999) {
-      bullScore -= m.w;
-      bearEvidence.push({ text: `가격이 ${m.name}(${fmtPrice(m.val)}) 아래 — 하락 추세 우위`, strength: 'strong-bear' });
-    }
-  });
-
-  // MA Golden/Dead Cross
-  if (ma7 && ma20) {
-    if (ma7 > ma20 * 1.001) {
-      bullScore += 5;
-      bullEvidence.push({ text: `MA7(${fmtPrice(ma7)}) > MA20(${fmtPrice(ma20)}) — 단기 골든크로스`, strength: 'strong-bull' });
-    } else if (ma7 < ma20 * 0.999) {
-      bullScore -= 5;
-      bearEvidence.push({ text: `MA7(${fmtPrice(ma7)}) < MA20(${fmtPrice(ma20)}) — 단기 데드크로스`, strength: 'strong-bear' });
-    }
-  }
-
-  // ── Candle patterns ──
-  const curBull = cur.c > cur.o;
-  const prevBull = prev.c > prev.o;
-  const curBody = Math.abs(cur.c - cur.o);
-  const prevBody = Math.abs(prev.c - prev.o);
-  const curRange = cur.h - cur.l;
-  const prevRange = prev.h - prev.l;
-  const curBodyRatio = curRange > 0 ? curBody / curRange : 0;
-
-  if (curBull) {
-    bullScore += 4;
-    bullEvidence.push({ text: `현재 봉 양봉 (시: ${fmtPrice(cur.o)} → 종: ${fmtPrice(cur.c)})`, strength: 'weak-bull' });
-  } else {
-    bullScore -= 4;
-    bearEvidence.push({ text: `현재 봉 음봉 (시: ${fmtPrice(cur.o)} → 종: ${fmtPrice(cur.c)})`, strength: 'weak-bear' });
-  }
-
-  if (!prevBull) {
-    if (curBull && cur.c > prev.o) {
-      bullScore += 5;
-      bullEvidence.push({ text: `장악형 양봉 패턴 — 이전 음봉 완전 반전`, strength: 'strong-bull' });
-    }
-  }
-  if (prevBull) {
-    if (!curBull && cur.c < prev.o) {
-      bullScore -= 5;
-      bearEvidence.push({ text: `장악형 음봉 패턴 — 이전 양봉 완전 반전`, strength: 'strong-bear' });
-    }
-  }
-
-  // Doji
-  if (curBodyRatio < 0.1) {
-    bullEvidence.push({ text: `도지 캔들 감지 — 추세 전환 가능성`, strength: 'weak-bull' });
-    bearEvidence.push({ text: `도지 캔들 감지 — 방향성 불확실`, strength: 'weak-bear' });
-  }
-
-  // Long lower wick
-  const lowerWick = Math.min(cur.o, cur.c) - cur.l;
-  const upperWick = cur.h - Math.max(cur.o, cur.c);
-  if (curRange > 0) {
-    if (lowerWick / curRange > 0.5) {
-      bullScore += 4;
-      bullEvidence.push({ text: `긴 하락 꼬리 — 강한 매수세 방어 확인`, strength: 'strong-bull' });
-    }
-    if (upperWick / curRange > 0.5) {
-      bullScore -= 4;
-      bearEvidence.push({ text: `긴 상승 꼬리 — 상단 저항 및 매도세 확인`, strength: 'strong-bear' });
-    }
-  }
-
-  // ── Volume signals ──
-  const volRatio = cur.v / (volMa20 || 1);
-  if (volRatio > 2 && curBull) {
-    bullScore += 7;
-    bullEvidence.push({ text: `거래량 폭증(x${volRatio.toFixed(1)}) + 양봉 — 강한 매수 확신`, strength: 'strong-bull' });
-  } else if (volRatio > 2 && !curBull) {
-    bullScore -= 7;
-    bearEvidence.push({ text: `거래량 폭증(x${volRatio.toFixed(1)}) + 음봉 — 강한 매도 압력`, strength: 'strong-bear' });
-  } else if (volRatio > 1.3) {
-    if (curBull) {
-      bullScore += 3;
-      bullEvidence.push({ text: `거래량 증가(x${volRatio.toFixed(1)}) + 양봉 — 매수세 증가`, strength: 'weak-bull' });
-    } else {
-      bullScore -= 3;
-      bearEvidence.push({ text: `거래량 증가(x${volRatio.toFixed(1)}) + 음봉 — 매도세 증가`, strength: 'weak-bear' });
-    }
-  }
-
-  // ── Funding Rate ──
-  if (fundingRate > 0.001) {
-    bullScore -= 6;
-    bearEvidence.push({ text: `펀딩비 과열(+${(fundingRate*100).toFixed(4)}%) — 롱 과매수, 숏스퀴즈 후 조정 가능`, strength: 'strong-bear' });
-  } else if (fundingRate > 0.0001) {
-    bullScore -= 2;
-    bearEvidence.push({ text: `펀딩비 양수(+${(fundingRate*100).toFixed(4)}%) — 롱 편향, 주의 필요`, strength: 'weak-bear' });
-  } else if (fundingRate < -0.001) {
-    bullScore += 6;
-    bullEvidence.push({ text: `펀딩비 극음(${(fundingRate*100).toFixed(4)}%) — 숏 과매도, 반등 가능성`, strength: 'strong-bull' });
-  } else if (fundingRate < -0.0001) {
-    bullScore += 2;
-    bullEvidence.push({ text: `펀딩비 음수(${(fundingRate*100).toFixed(4)}%) — 숏 편향, 반등 주시`, strength: 'weak-bull' });
-  }
-
-  // ── OI Change ──
-  if (prevOI) {
-    const oiChange = (oi - prevOI) / prevOI * 100;
-    if (oiChange > 1 && curBull) {
-      bullScore += 5;
-      bullEvidence.push({ text: `OI 증가(+${oiChange.toFixed(2)}%) + 상승 — 신규 롱 유입, 추세 강화`, strength: 'strong-bull' });
-    } else if (oiChange > 1 && !curBull) {
-      bullScore -= 5;
-      bearEvidence.push({ text: `OI 증가(+${oiChange.toFixed(2)}%) + 하락 — 신규 숏 유입, 하락 가속`, strength: 'strong-bear' });
-    } else if (oiChange < -1 && !curBull) {
-      bearEvidence.push({ text: `OI 감소(${oiChange.toFixed(2)}%) + 하락 — 롱 청산, 투항 매도`, strength: 'weak-bear' });
-    } else if (oiChange < -1 && curBull) {
-      bullEvidence.push({ text: `OI 감소(${oiChange.toFixed(2)}%) + 상승 — 숏 청산 스퀴즈`, strength: 'weak-bull' });
-    }
-  }
-
-  // ── Support / Resistance ──
-  const ph = +ticker.highPrice;
-  const pl = +ticker.lowPrice;
-  const nearHigh = (ph - price) / ph < 0.01;
-  const nearLow  = (price - pl) / pl < 0.01;
-  if (nearHigh) {
-    bearEvidence.push({ text: `24H 고점(${fmtPrice(ph)}) 근접 — 저항 구간`, strength: 'weak-bear' });
-    bullScore -= 3;
-  }
-  if (nearLow) {
-    bullEvidence.push({ text: `24H 저점(${fmtPrice(pl)}) 근접 — 지지 구간`, strength: 'weak-bull' });
-    bullScore += 3;
-  }
-
-  // Prev candle H/L as S/R
-  if (price > prev.h) {
-    bullScore += 4;
-    bullEvidence.push({ text: `직전봉 고점(${fmtPrice(prev.h)}) 돌파 — 단기 저항 돌파`, strength: 'strong-bull' });
-  }
-  if (price < prev.l) {
-    bullScore -= 4;
-    bearEvidence.push({ text: `직전봉 저점(${fmtPrice(prev.l)}) 이탈 — 단기 지지 붕괴`, strength: 'strong-bear' });
-  }
-
-  // Clamp
-  bullScore = Math.min(90, Math.max(10, bullScore));
-  const bearScore = 100 - bullScore;
-
-  return {
-    bullPct: Math.round(bullScore),
-    bearPct: Math.round(bearScore),
-    bullEvidence,
-    bearEvidence
-  };
-}
-
-// ═══════════════════════════════════════════════════════
-//  TARGETS
-// ═══════════════════════════════════════════════════════
-function renderTargets(price, ma20, ma50, ma100, ma200, prevH, prevL, high24, low24, bullPct) {
-  const bullTgts = [];
-  const bearTgts = [];
-
-  const addBull = (p, label) => { if (p && !isNaN(p) && p > price) bullTgts.push({p, label}); };
-  const addBear = (p, label) => { if (p && !isNaN(p) && p < price) bearTgts.push({p, label}); };
-
-  addBull(prevH * 1.002, '직전봉 고점 돌파');
-  addBull(high24 * 1.001, '24H 고점 돌파');
-  if (ma20) addBull(ma20, 'MA20 저항');
-  if (ma50) addBull(ma50, 'MA50 저항');
-  if (ma100) addBull(ma100, 'MA100 저항');
-  if (ma200) addBull(ma200, 'MA200 저항');
-
-  addBear(prevL * 0.998, '직전봉 저점 이탈');
-  addBear(low24 * 0.999, '24H 저점 이탈');
-  if (ma20) addBear(ma20, 'MA20 지지');
-  if (ma50) addBear(ma50, 'MA50 지지');
-  if (ma100) addBear(ma100, 'MA100 지지');
-  if (ma200) addBear(ma200, 'MA200 지지');
-
-  bullTgts.sort((a,b) => a.p - b.p);
-  bearTgts.sort((a,b) => b.p - a.p);
-
-  const renderTgts = (id, tgts, cls) => {
-    const el = document.getElementById(id);
-    el.innerHTML = tgts.slice(0,3).map(t => `
-      <div class="target-row">
-        <span class="target-icon">${cls === 'tp' ? '▲' : '▼'}</span>
-        <span class="target-price ${cls}">${fmtPrice(t.p)}</span>
-        <span class="target-desc">${t.label}</span>
-        <span class="target-desc">${((Math.abs(t.p - price)/price)*100).toFixed(2)}%</span>
-      </div>
-    `).join('') || '<div style="color:var(--text-muted);font-size:0.7rem;font-family:\'Share Tech Mono\',monospace">데이터 부족</div>';
-  };
-
-  renderTgts('bull-targets', bullTgts, 'tp');
-  renderTgts('bear-targets', bearTgts, 'sl');
-}
-
-// ═══════════════════════════════════════════════════════
-//  EVIDENCE
-// ═══════════════════════════════════════════════════════
-function renderEvidence(bullEv, bearEv) {
-  const render = (id, items, defaultCls) => {
-    const el = document.getElementById(id);
-    if (!items.length) {
-      el.innerHTML = `<div class="ev-item ${defaultCls}"><span class="ev-icon">—</span><span>현재 조건 해당 없음</span></div>`;
-      return;
-    }
-    el.innerHTML = items.map(e => `
-      <div class="ev-item ${e.strength}">
-        <span class="ev-icon">${e.strength.includes('strong') ? '●' : '○'}</span>
-        <span>${e.text}</span>
-      </div>
-    `).join('');
-  };
-  render('bull-evidence', bullEv, 'weak-bull');
-  render('bear-evidence', bearEv, 'weak-bear');
-}
-
-// ═══════════════════════════════════════════════════════
-//  SPARKLINE
-// ═══════════════════════════════════════════════════════
-function drawSparkline(data) {
-  const canvas = document.getElementById('mini-chart');
-  if (!canvas || data.length < 2) return;
-  const ctx = canvas.getContext('2d');
-  // offsetWidth가 0이면 부모 너비로 대체
-  const computedWidth = canvas.offsetWidth || canvas.parentElement?.offsetWidth || 300;
-  canvas.width = computedWidth;
-  canvas.height = 80;
-  const W = canvas.width, H = canvas.height;
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const range = max - min || 1;
-  ctx.clearRect(0,0,W,H);
-
-  // Gradient fill
-  const grad = ctx.createLinearGradient(0,0,0,H);
-  const lastPrice = data[data.length - 1];
-  const firstPrice = data[0];
-  const isUp = lastPrice >= firstPrice;
-  const color = isUp ? '#00ff88' : '#ff3355';
-
-  grad.addColorStop(0, isUp ? 'rgba(0,255,136,0.18)' : 'rgba(255,51,85,0.18)');
-  grad.addColorStop(1, 'rgba(0,0,0,0)');
-
-  ctx.beginPath();
-  data.forEach((v, i) => {
-    const x = (i / (data.length - 1)) * W;
-    const y = H - ((v - min) / range) * (H - 8) - 4;
-    i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
-  });
-  ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath();
-  ctx.fillStyle = grad; ctx.fill();
-
-  // Line
-  ctx.beginPath();
-  data.forEach((v, i) => {
-    const x = (i / (data.length - 1)) * W;
-    const y = H - ((v - min) / range) * (H - 8) - 4;
-    i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
-  });
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 1.5;
-  ctx.shadowColor = color;
-  ctx.shadowBlur = 6;
-  ctx.stroke();
-}
-
-// ═══════════════════════════════════════════════════════
-//  COUNTDOWN
-// ═══════════════════════════════════════════════════════
-function startCountdown() {
-  if (countdownInterval) clearInterval(countdownInterval);
-  countdown = 60;
-  document.getElementById('countdown-label').textContent = `NEXT UPDATE: ${countdown}s`;
-  document.getElementById('countdown-fill').style.width = '100%';
-  countdownInterval = setInterval(() => {
-    countdown--;
-    if (countdown <= 0) {
-      countdown = 60;
-      document.getElementById('countdown-label').textContent = `NEXT UPDATE: ${countdown}s`;
-      document.getElementById('countdown-fill').style.width = '100%';
-      update();
-    } else {
-      document.getElementById('countdown-label').textContent = `NEXT UPDATE: ${countdown}s`;
-      document.getElementById('countdown-fill').style.width = (countdown / 60 * 100) + '%';
-    }
-  }, 1000);
-}
-
-// ═══════════════════════════════════════════════════════
-//  EVENT HANDLERS
-// ═══════════════════════════════════════════════════════
-document.getElementById('btn-analyze').addEventListener('click', () => {
-  const val = document.getElementById('symbol-input').value.trim().toUpperCase();
-  if (val) {
-    currentSymbol = val.includes('USDT') ? val : val + 'USDT';
-    document.getElementById('symbol-input').value = currentSymbol;
-    // Update quick buttons
-    document.querySelectorAll('.sym-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.sym-btn').forEach(b => {
-      if (b.dataset.sym === currentSymbol) b.classList.add('active');
-    });
-    lastData = null;
-    update();
-    startCountdown();
-  }
+window.addEventListener('keydown',e=>{
+  const d=keyMap[e.key]; if(d){_keys[d]=true;e.preventDefault();}
+  if(!isMobile) document.getElementById('kb-hint').style.display='block';
+});
+window.addEventListener('keyup',e=>{ const d=keyMap[e.key]; if(d) _keys[d]=false; });
+
+// ════════════════════════════════════════
+//  Buttons
+// ════════════════════════════════════════
+document.getElementById('btn-start').addEventListener('click',startGame);
+document.getElementById('btn-reset').addEventListener('click',()=>{
+  document.getElementById('gameover-screen').classList.add('hidden');
+  startGame();
+});
+document.getElementById('btn-share').addEventListener('click',()=>{
+  const t=`🎮 Micro Hunter: ${Math.floor(score)}점!\n생존:${(frameCount/60).toFixed(1)}s | 코어:${coresCollected} | 콤보:${maxCombo}×`;
+  if(navigator.share) navigator.share({title:'Micro Hunter',text:t});
+  else if(navigator.clipboard) navigator.clipboard.writeText(t).then(()=>showToast('📋 복사됨!'));
 });
 
-document.getElementById('symbol-input').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') document.getElementById('btn-analyze').click();
-});
-
-document.querySelectorAll('.sym-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.sym-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentSymbol = btn.dataset.sym;
-    document.getElementById('symbol-input').value = currentSymbol;
-    lastData = null;
-    update();
-    startCountdown();
+// ════════════════════════════════════════
+//  Particles
+// ════════════════════════════════════════
+function spawnParticles(wx,wy,color,count=8){
+  for(let i=0;i<count;i++){
+    const angle=(Math.PI*2/count)*i+Math.random()*.3;
+    const speed=1.5+Math.random()*3;
+    particles.push({x:wx,y:wy,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,
+      r:3+Math.random()*4,color,alpha:1,life:1});
+  }
+}
+function updateParticles(){
+  particles=particles.filter(p=>p.life>0);
+  particles.forEach(p=>{
+    p.x+=p.vx; p.y+=p.vy; p.vy+=.05;
+    p.vx*=.97; p.vy*=.97;
+    p.life-=.04; p.alpha=p.life; p.r=Math.max(.1,p.r*.98);
   });
-});
-
-document.querySelectorAll('.int-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.int-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentInterval = btn.dataset.int;
-    lastData = null;
-    update();
-    startCountdown();
+}
+function drawParticles(){
+  pctx.clearRect(0,0,pc.width,pc.height);
+  particles.forEach(p=>{
+    pctx.save(); pctx.globalAlpha=Math.max(0,p.alpha);
+    pctx.fillStyle=p.color;
+    pctx.beginPath(); pctx.arc(p.x,p.y,p.r,0,Math.PI*2); pctx.fill();
+    pctx.restore();
   });
-});
+}
 
-// ═══════════════════════════════════════════════════════
-//  INIT
-// ═══════════════════════════════════════════════════════
-window.addEventListener('resize', () => {
-  if (priceHistory.length) drawSparkline(priceHistory);
-});
+// ════════════════════════════════════════
+//  Core spawn
+// ════════════════════════════════════════
+function spawnCore(){
+  let at=0;
+  do{
+    core.x=3+Math.random()*94;
+    core.y=3+Math.random()*94;
+    at++;
+  }while(Math.hypot(player.x-core.x,player.y-core.y)<20&&at<30);
+  core.pulse=0;
+  core.type=Math.random()<.3?'bonus':'normal';
+}
 
-update();
-startCountdown();
+// ════════════════════════════════════════
+//  Start
+// ════════════════════════════════════════
+function startGame(){
+  state='PLAYING'; score=0; frameCount=0; lastEchoSpawn=0;
+  energy=100; combo=1; maxCombo=1; coresCollected=0;
+  history=[]; echoes=[]; particles=[];
+  player={x:50,y:50,r:9,trail:[]};
+  core={x:0,y:0,r:7,pulse:0,type:'normal'};
+  spawnCore();
+  clearInterval(echoCountdownInterval);
+  document.getElementById('echo-warning').classList.remove('show');
+  document.getElementById('overlay').classList.add('hidden');
+  document.getElementById('combo-card').style.display='none';
+  updateHUD(); lastTime=0; requestAnimationFrame(loop);
+}
+
+// ════════════════════════════════════════
+//  Loop
+// ════════════════════════════════════════
+let lastTime=0;
+function loop(ts){
+  if(state!=='PLAYING') return;
+  const dt=Math.min((ts-lastTime)/(1000/60),3);
+  lastTime=ts; update(dt); draw(); drawParticles();
+  requestAnimationFrame(loop);
+}
+
+// ════════════════════════════════════════
+//  Update
+// ════════════════════════════════════════
+function update(dt){
+  frameCount++;
+
+  const SPEED=0.7;
+  let dx=joystick.dx, dy=joystick.dy;
+  if(_keys.up)    dy-=1;
+  if(_keys.down)  dy+=1;
+  if(_keys.left)  dx-=1;
+  if(_keys.right) dx+=1;
+  const mag=Math.hypot(dx,dy);
+  if(mag>1){dx/=mag;dy/=mag;}
+  const DEAD=0.08;
+  if(Math.abs(dx)<DEAD&&!(_keys.left||_keys.right)) dx=0;
+  if(Math.abs(dy)<DEAD&&!(_keys.up  ||_keys.down))  dy=0;
+
+  player.x+=dx*SPEED*dt; player.y+=dy*SPEED*dt;
+  if(player.x<0)   player.x+=100;
+  if(player.x>100) player.x-=100;
+  if(player.y<0)   player.y+=100;
+  if(player.y>100) player.y-=100;
+
+  player.trail.push({x:player.x,y:player.y});
+  if(player.trail.length>20) player.trail.shift();
+
+  const drainRate=0.018+score*0.00005;
+  energy=Math.max(0,Math.min(100,energy-drainRate*dt));
+  if(energy<=0){endGame('에너지 소진');return;}
+
+  core.pulse=(core.pulse+0.07*dt)%(Math.PI*2);
+
+  if(Math.hypot(player.x-core.x,player.y-core.y)<12){
+    const isBonus=core.type==='bonus';
+    const sg=isBonus?100:50, eg=isBonus?75:55;
+    score+=sg*combo; energy=Math.min(100,energy+eg);
+    coresCollected++; combo++;
+    if(combo>maxCombo) maxCombo=combo;
+    const wx=core.x*canvas.width/100, wy=core.y*canvas.height/100;
+    spawnParticles(wx,wy,isBonus?'#f97316':'#06b6d4',isBonus?16:10);
+    if(isBonus) showToast(`🌟 보너스! +${sg*combo}`);
+    else if(combo>2) showToast(`⚡ ${combo}× 콤보!`);
+    document.getElementById('combo-display').textContent=`×${combo}`;
+    document.getElementById('combo-card').style.display=combo>1?'':'none';
+    spawnCore();
+  }
+
+  history.push({x:player.x,y:player.y});
+  if(history.length>36000) history.shift();
+
+  const ECHO_IV=240, WARN_F=180;
+  const nextIn=ECHO_IV-(frameCount-lastEchoSpawn);
+  if(nextIn===WARN_F && history.length>60) triggerEchoWarning();
+
+  if(frameCount-lastEchoSpawn>=ECHO_IV && history.length>60){
+    echoes.push({path:history.slice(),offset:frameCount});
+    lastEchoSpawn=frameCount;
+    if(echoes.length>5) echoes.shift();
+  }
+
+  for(const echo of echoes){
+    const idx=frameCount-echo.offset;
+    if(idx<0||idx>=echo.path.length) continue;
+    const pos=echo.path[idx]; if(!pos) continue;
+    if(Math.hypot(player.x-pos.x,player.y-pos.y)<6){
+      spawnParticles(player.x*canvas.width/100,player.y*canvas.height/100,'#ef4444',20);
+      endGame('시간 역설'); return;
+    }
+  }
+
+  if(combo>1&&frameCount%300===0){
+    combo=1; document.getElementById('combo-card').style.display='none';
+  }
+  updateHUD(); updateParticles();
+}
+
+// ════════════════════════════════════════
+//  HUD
+// ════════════════════════════════════════
+function updateHUD(){
+  document.getElementById('score-display').textContent=Math.floor(score);
+  document.getElementById('time-display').textContent=(frameCount/60).toFixed(1)+'s';
+  const fill=document.getElementById('energy-fill');
+  const pctEl=document.getElementById('energy-pct');
+  fill.style.width=energy+'%';
+  const warn=energy<30;
+  fill.className ='energy-fill'+(warn?' warn':'');
+  pctEl.className='energy-pct' +(warn?' warn':'');
+  pctEl.textContent=Math.round(energy)+'%';
+}
+
+// ════════════════════════════════════════
+//  Draw
+// ════════════════════════════════════════
+function draw(){
+  const w=canvas.width,h=canvas.height;
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle='#f4f7ff'; ctx.fillRect(0,0,w,h);
+  drawGrid(w,h);
+  drawPlayerTrail(w,h);
+  drawEchoPaths(w,h);
+  drawEchoes(w,h);
+  drawCore(w,h);
+  drawPlayer(w,h);
+  drawMinimap(w,h);
+}
+
+function drawGrid(w,h){
+  const C=30, lowE=energy<30;
+  ctx.lineWidth=0.5;
+  for(let i=0;i<=C;i++){
+    const x=i*(w/C),y=i*(h/C);
+    const px=player.x/100*w,py=player.y/100*h;
+    const nX=Math.abs(px-x)/w<0.08, nY=Math.abs(py-y)/h<0.08;
+    ctx.strokeStyle=nX||nY
+      ?(lowE?'rgba(239,68,68,.35)':'rgba(37,99,235,.25)')
+      :(lowE?'rgba(239,68,68,.08)':'#dde4f5');
+    ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();
+  }
+  if(!lowE){
+    ctx.fillStyle='rgba(37,99,235,.12)';
+    const px=player.x/100*w,py=player.y/100*h;
+    for(let i=0;i<=C;i++) for(let j=0;j<=C;j++){
+      const gx=i*(w/C),gy=j*(h/C);
+      if(Math.hypot(px-gx,py-gy)<w*.12){
+        ctx.beginPath();ctx.arc(gx,gy,1.2,0,Math.PI*2);ctx.fill();
+      }
+    }
+  }
+}
+
+function drawPlayerTrail(w,h){
+  player.trail.forEach((pt,i)=>{
+    const a=(i/player.trail.length)*.35;
+    const r=(i/player.trail.length)*7;
+    ctx.beginPath();
+    ctx.arc(pt.x*w/100,pt.y*h/100,Math.max(.1,r),0,Math.PI*2);
+    ctx.fillStyle=`rgba(37,99,235,${a})`;ctx.fill();
+  });
+}
+
+// ── 에코 이동경로 예측선 (파란 계열) ──
+function drawEchoPaths(w,h){
+  const PREV=90;
+  echoes.forEach(echo=>{
+    const idx=frameCount-echo.offset;
+    if(idx<0||idx>=echo.path.length) return;
+    const end=Math.min(idx+PREV, echo.path.length-1);
+
+    ctx.save();
+    ctx.setLineDash([3,5]);
+    ctx.lineWidth=1.2;
+
+    for(let f=idx;f<end;f++){
+      const p0=echo.path[f], p1=echo.path[f+1];
+      if(!p0||!p1) continue;
+      const prog=(f-idx)/PREV;
+      ctx.strokeStyle=GHOST_PATH_RGBA(0.32*(1-prog));
+      ctx.beginPath();
+      ctx.moveTo(p0.x*w/100, p0.y*h/100);
+      ctx.lineTo(p1.x*w/100, p1.y*h/100);
+      ctx.stroke();
+    }
+
+    const ep=echo.path[Math.min(end,echo.path.length-1)];
+    if(ep){
+      ctx.setLineDash([2,3]); ctx.lineWidth=1;
+      ctx.strokeStyle=GHOST_PATH_RGBA(0.2);
+      ctx.beginPath(); ctx.arc(ep.x*w/100,ep.y*h/100,10,0,Math.PI*2); ctx.stroke();
+    }
+    ctx.setLineDash([]); ctx.restore();
+  });
+}
+
+// ── 에코(유령) 본체: 파란 계열 ──
+function drawEchoes(w,h){
+  echoes.forEach((echo,ei)=>{
+    const idx=frameCount-echo.offset;
+    if(idx<0||idx>=echo.path.length) return;
+    const pos=echo.path[idx]; if(!pos) return;
+    const ba=0.12+(ei/Math.max(echoes.length,1))*.35;
+    const px=pos.x*w/100, py=pos.y*h/100;
+    const dd=Math.hypot(player.x-pos.x,player.y-pos.y);
+    const da=dd<15?.8:ba;
+
+    // glow halo
+    const g=ctx.createRadialGradient(px,py,0,px,py,22);
+    g.addColorStop(0, GHOST_RGBA(da));
+    g.addColorStop(1, GHOST_RGBA(0));
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(px,py,22,0,Math.PI*2); ctx.fill();
+
+    // core dot
+    ctx.fillStyle  = GHOST_RGBA(da*1.5);
+    ctx.strokeStyle='rgba(255,255,255,.85)'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.arc(px,py,7,0,Math.PI*2); ctx.fill(); ctx.stroke();
+
+    // danger line — red when close, ghost color when nearby
+    if(dd<20){
+      ctx.strokeStyle=`rgba(239,68,68,${.8*(1-dd/20)})`;
+      ctx.lineWidth=1.5; ctx.setLineDash([3,3]);
+      ctx.beginPath();
+      ctx.moveTo(player.x*w/100,player.y*h/100);
+      ctx.lineTo(px,py); ctx.stroke(); ctx.setLineDash([]);
+    }
+  });
+}
+
+function drawCore(w,h){
+  const cx=core.x*w/100, cy=core.y*h/100;
+  const pulse=Math.sin(core.pulse)*.3+1;
+  const isB=core.type==='bonus';
+  const col=isB?'#f97316':'#f59e0b';
+  const gc =isB?'rgba(249,115,22,':'rgba(245,158,11,';
+  const g=ctx.createRadialGradient(cx,cy,0,cx,cy,28*pulse);
+  g.addColorStop(0,gc+'.35)'); g.addColorStop(1,gc+'0)');
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(cx,cy,28*pulse,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle=col; ctx.shadowBlur=12; ctx.shadowColor=col;
+  ctx.beginPath(); ctx.arc(cx,cy,8*pulse,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
+  ctx.fillStyle='rgba(255,255,255,.7)';
+  ctx.beginPath(); ctx.arc(cx-2,cy-2,2.5,0,Math.PI*2); ctx.fill();
+  if(isB){
+    ctx.strokeStyle='rgba(249,115,22,.5)'; ctx.lineWidth=1.5; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.arc(cx,cy,16*pulse,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+    const s=5*pulse;
+    ctx.strokeStyle='rgba(249,115,22,.7)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(cx-s,cy); ctx.lineTo(cx+s,cy);
+    ctx.moveTo(cx,cy-s); ctx.lineTo(cx,cy+s); ctx.stroke();
+  }
+}
+
+function drawPlayer(w,h){
+  const px=player.x*w/100, py=player.y*h/100;
+  const lowE=energy<30;
+  const col=lowE?'#ef4444':'#2563eb', gl=lowE?'#ef4444':'#3b82f6';
+  const g=ctx.createRadialGradient(px,py,0,px,py,20);
+  g.addColorStop(0,lowE?'rgba(239,68,68,.3)':'rgba(37,99,235,.25)');
+  g.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(px,py,20,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle=col; ctx.shadowBlur=10; ctx.shadowColor=gl;
+  ctx.beginPath(); ctx.arc(px,py,player.r,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='#fff'; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.arc(px,py,player.r,0,Math.PI*2); ctx.stroke(); ctx.shadowBlur=0;
+  ctx.fillStyle='rgba(255,255,255,.6)';
+  ctx.beginPath(); ctx.arc(px-2.5,py-2.5,2,0,Math.PI*2); ctx.fill();
+  if(lowE){
+    const ring=(frameCount*.05)%1;
+    ctx.strokeStyle=`rgba(239,68,68,${1-ring})`; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.arc(px,py,player.r+ring*20,0,Math.PI*2); ctx.stroke();
+  }
+}
+
+// ════════════════════════════════════════
+//  Minimap
+// ════════════════════════════════════════
+function drawMinimap(w,h){
+  if(state!=='PLAYING') return;
+  const MM=90, PAD=12;
+  const mx=w-MM-PAD, my=h-MM-PAD;
+  const S=MM/100;
+
+  ctx.save();
+
+  ctx.fillStyle='rgba(255,255,255,.84)';
+  ctx.strokeStyle='rgba(37,99,235,.16)'; ctx.lineWidth=1;
+  rrect(ctx,mx,my,MM,MM,10);
+  ctx.fill(); ctx.stroke();
+
+  ctx.beginPath(); rrect(ctx,mx,my,MM,MM,10); ctx.clip();
+
+  ctx.strokeStyle='rgba(37,99,235,.06)'; ctx.lineWidth=.5;
+  for(let i=1;i<4;i++){
+    const gx=mx+i*(MM/4), gy=my+i*(MM/4);
+    ctx.beginPath(); ctx.moveTo(gx,my); ctx.lineTo(gx,my+MM); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(mx,gy); ctx.lineTo(mx+MM,gy); ctx.stroke();
+  }
+
+  // 에코 경로 (미니맵) — 파란 계열
+  const PREV=90;
+  echoes.forEach(echo=>{
+    const idx=frameCount-echo.offset;
+    if(idx<0||idx>=echo.path.length) return;
+    ctx.save(); ctx.setLineDash([1,2]); ctx.lineWidth=0.8;
+    for(let f=idx;f<Math.min(idx+PREV,echo.path.length-1);f++){
+      const p0=echo.path[f], p1=echo.path[f+1]; if(!p0||!p1) continue;
+      const a=.22*(1-(f-idx)/PREV);
+      ctx.strokeStyle=GHOST_PATH_RGBA(a);
+      ctx.beginPath();
+      ctx.moveTo(mx+p0.x*S,my+p0.y*S);
+      ctx.lineTo(mx+p1.x*S,my+p1.y*S); ctx.stroke();
+    }
+    ctx.setLineDash([]); ctx.restore();
+  });
+
+  // 에코 현재위치 (미니맵) — 파란 계열
+  echoes.forEach(echo=>{
+    const idx=frameCount-echo.offset;
+    if(idx<0||idx>=echo.path.length) return;
+    const pos=echo.path[idx]; if(!pos) return;
+    ctx.fillStyle=GHOST_RGBA(0.9);
+    ctx.beginPath(); ctx.arc(mx+pos.x*S,my+pos.y*S,3,0,Math.PI*2); ctx.fill();
+  });
+
+  // 코어
+  const isB=core.type==='bonus';
+  ctx.fillStyle=isB?'#f97316':'#f59e0b';
+  const ccx=mx+core.x*S, ccy=my+core.y*S;
+  ctx.beginPath(); ctx.arc(ccx,ccy,3.5,0,Math.PI*2); ctx.fill();
+  if(isB){
+    ctx.strokeStyle='rgba(249,115,22,.4)'; ctx.lineWidth=1; ctx.setLineDash([2,2]);
+    ctx.beginPath(); ctx.arc(ccx,ccy,6,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  // 플레이어
+  const ppx=mx+player.x*S, ppy=my+player.y*S;
+  ctx.fillStyle='#2563eb';
+  ctx.shadowBlur=5; ctx.shadowColor='#2563eb';
+  ctx.beginPath(); ctx.arc(ppx,ppy,4,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
+
+  if(player.trail.length>=2){
+    const a=player.trail[player.trail.length-2];
+    const b=player.trail[player.trail.length-1];
+    const ddx=b.x-a.x, ddy=b.y-a.y, m=Math.hypot(ddx,ddy);
+    if(m>.1){
+      ctx.strokeStyle='rgba(37,99,235,.65)'; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.moveTo(ppx,ppy);
+      ctx.lineTo(ppx+(ddx/m)*7, ppy+(ddy/m)*7); ctx.stroke();
+    }
+  }
+
+  ctx.restore();
+
+  ctx.fillStyle='rgba(37,99,235,.3)';
+  ctx.font='bold 7px "Space Mono",monospace';
+  ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+  ctx.fillText('MAP', mx+5, my+MM-5);
+}
+
+function rrect(c,x,y,w,h,r){
+  c.beginPath();
+  c.moveTo(x+r,y);
+  c.lineTo(x+w-r,y);   c.arcTo(x+w,y,   x+w,y+r,   r);
+  c.lineTo(x+w,y+h-r); c.arcTo(x+w,y+h, x+w-r,y+h, r);
+  c.lineTo(x+r,y+h);   c.arcTo(x,y+h,   x,y+h-r,   r);
+  c.lineTo(x,y+r);     c.arcTo(x,y,     x+r,y,     r);
+  c.closePath();
+}
+
+// ════════════════════════════════════════
+//  Game Over
+// ════════════════════════════════════════
+function endGame(reason){
+  state='GAMEOVER';
+  clearInterval(echoCountdownInterval);
+  document.getElementById('echo-warning').classList.remove('show');
+  const final=Math.floor(score);
+  if(final>bestScore){
+    bestScore=final;
+    document.getElementById('best-display').textContent=bestScore;
+  }
+  document.getElementById('final-score').textContent    =final;
+  document.getElementById('gameover-reason').textContent=reason;
+  document.getElementById('stat-time').textContent      =(frameCount/60).toFixed(1)+'s';
+  document.getElementById('stat-cores').textContent     =coresCollected;
+  document.getElementById('stat-combo').textContent     =maxCombo+'×';
+  document.getElementById('gameover-screen').classList.remove('hidden');
+  document.getElementById('start-screen').classList.add('hidden');
+  document.getElementById('overlay').classList.remove('hidden');
+  spawnParticles(player.x*canvas.width/100,player.y*canvas.height/100,'#ef4444',30);
+  (function fd(){
+    if(!particles.length) return;
+    updateParticles(); drawParticles(); requestAnimationFrame(fd);
+  })();
+}
+
+// ════════════════════════════════════════
+//  Init
+// ════════════════════════════════════════
+if(!isMobile) document.getElementById('kb-hint').style.display='block';
 </script>
 </body>
 </html>
