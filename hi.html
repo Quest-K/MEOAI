@@ -2,685 +2,460 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Futures Signal Scanner</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;600;700&family=IBM+Plex+Sans+KR:wght@300;400;600;700&display=swap');
 
 :root {
-  --bg:      #080c10;
-  --surface: #0d1117;
-  --panel:   #111827;
-  --border:  #1f2937;
-  --border2: #374151;
+  --bg:      #060a0f;
+  --surface: #0b1018;
+  --panel:   #0f1823;
+  --border:  #1a2535;
+  --border2: #2a3a50;
   --pump:    #00d97e;
   --dump:    #ff3d5a;
   --neutral: #6b7280;
   --amber:   #f59e0b;
   --blue:    #3b82f6;
-  --text:    #e5e7eb;
-  --dim:     #6b7280;
+  --violet:  #8b5cf6;
+  --text:    #dde3ed;
+  --dim:     #5a6a7f;
   --mono: 'IBM Plex Mono', monospace;
   --sans: 'IBM Plex Sans KR', sans-serif;
+  --sidebar-w: 300px;
 }
 
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%}
-
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--sans);
-  font-size: 13px;
-  line-height: 1.5;
+html{height:100%}
+body{
+  height:100%;overflow:hidden;
+  background:var(--bg);color:var(--text);
+  font-family:var(--sans);font-size:13px;line-height:1.5;
 }
 
-/* ── LAYOUT ── */
-.app {
-  display: grid;
-  grid-template-rows: 52px 1fr;
-  height: 100vh;
-  overflow: hidden;
+/* ══ APP SHELL ══ */
+.app{display:grid;grid-template-rows:48px 1fr;height:100dvh;overflow:hidden}
+
+/* ══ TOPBAR ══ */
+.topbar{
+  display:flex;align-items:center;gap:10px;
+  padding:0 16px;
+  background:var(--surface);
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;min-width:0;
+}
+.menu-btn{
+  display:none;background:none;
+  border:1px solid var(--border2);color:var(--text);
+  font-size:15px;padding:4px 9px;border-radius:3px;
+  cursor:pointer;flex-shrink:0;
+}
+.logo{
+  font-family:var(--mono);font-size:12px;font-weight:700;
+  letter-spacing:2px;color:var(--amber);white-space:nowrap;flex-shrink:0;
+}
+.logo span{color:var(--dim);font-weight:300}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-shrink:0}
+.stat-pill{
+  font-family:var(--mono);font-size:10px;
+  padding:3px 8px;border-radius:3px;
+  border:1px solid var(--border2);color:var(--dim);white-space:nowrap;
+}
+.stat-pill.live{border-color:var(--pump);color:var(--pump)}
+.live-dot{
+  display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:var(--pump);margin-right:4px;
+  animation:blink 1.4s ease-in-out infinite;
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ══ MAIN ══ */
+.main{
+  display:grid;
+  grid-template-columns:var(--sidebar-w) minmax(0,1fr);
+  overflow:hidden;width:100%;min-width:0;position:relative;
 }
 
-/* ── TOPBAR ── */
-.topbar {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 0 20px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
+/* ══ SIDEBAR ══ */
+.sidebar{
+  width:var(--sidebar-w);min-width:var(--sidebar-w);max-width:var(--sidebar-w);
+  background:var(--surface);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;overflow:hidden;
+  transition:transform .25s ease;z-index:10;
+}
+.sidebar-header{padding:12px 14px 10px;border-bottom:1px solid var(--border);flex-shrink:0}
+.sidebar-title{font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--dim);text-transform:uppercase;margin-bottom:10px}
+
+select,input[type=number]{
+  background:var(--panel);border:1px solid var(--border2);color:var(--text);
+  padding:6px 8px;font-family:var(--mono);font-size:11px;border-radius:3px;
+  outline:none;flex:1;min-width:0;
+}
+select:focus,input:focus{border-color:var(--amber)}
+.controls-row{display:flex;gap:5px;margin-bottom:7px}
+.threshold-row{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.threshold-label{font-family:var(--mono);font-size:10px;color:var(--dim);white-space:nowrap}
+
+.scan-btn{
+  width:100%;padding:9px;background:var(--amber);color:#000;
+  border:none;font-family:var(--mono);font-size:12px;font-weight:700;
+  letter-spacing:1px;border-radius:3px;cursor:pointer;transition:opacity .15s;
+}
+.scan-btn:hover{opacity:.85}
+.scan-btn:disabled{opacity:.4;cursor:not-allowed}
+.scan-btn.scanning{background:var(--border2);color:var(--amber);border:1px solid var(--amber)}
+
+.sort-tabs{display:flex;gap:3px;margin-bottom:8px}
+.sort-tab{
+  flex:1;padding:4px 0;background:var(--panel);border:1px solid var(--border);
+  border-radius:3px;font-family:var(--mono);font-size:9px;color:var(--dim);
+  cursor:pointer;text-align:center;transition:all .15s;
+}
+.sort-tab:hover{border-color:var(--border2);color:var(--text)}
+.sort-tab.active{background:var(--amber);border-color:var(--amber);color:#000;font-weight:700}
+
+.result-list{flex:1;overflow-y:auto;overflow-x:hidden;padding:5px}
+.result-list::-webkit-scrollbar{width:3px}
+.result-list::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+/* sym cards */
+.sym-card{
+  padding:9px 11px;border-radius:4px;border:1px solid var(--border);
+  margin-bottom:4px;cursor:pointer;transition:border-color .15s,background .15s;
+  background:var(--panel);
+}
+.sym-card:hover{border-color:var(--amber)}
+.sym-card.active{border-color:var(--amber);background:rgba(245,158,11,.05)}
+.sym-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:5px}
+.sym-name{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--text)}
+.sym-signal{font-family:var(--mono);font-size:10px;font-weight:700;padding:2px 6px;border-radius:2px}
+.sym-signal.pump{background:rgba(0,217,126,.15);color:var(--pump)}
+.sym-signal.dump{background:rgba(255,61,90,.15);color:var(--dump)}
+.sym-signal.neutral{background:rgba(107,114,128,.15);color:var(--neutral)}
+
+.prob-bars{display:flex;flex-direction:column;gap:3px}
+.prob-row{display:flex;align-items:center;gap:5px}
+.prob-label{font-family:var(--mono);font-size:9px;color:var(--dim);width:28px;flex-shrink:0}
+.bar-track{flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden;min-width:0}
+.bar-fill{height:100%;border-radius:2px;transition:width .5s ease}
+.bar-fill.pump{background:var(--pump)}
+.bar-fill.dump{background:var(--dump)}
+.prob-pct{font-family:var(--mono);font-size:9px;width:28px;text-align:right;flex-shrink:0}
+.prob-pct.pump{color:var(--pump)}
+.prob-pct.dump{color:var(--dump)}
+
+/* funding mini badge in list */
+.sym-meta-row{display:flex;gap:4px;margin-top:5px;flex-wrap:wrap;align-items:center}
+.meta-tag{font-family:var(--mono);font-size:9px;padding:1px 6px;border-radius:2px}
+.meta-tag.fund-pos{background:rgba(255,61,90,.12);color:var(--dump)}
+.meta-tag.fund-neg{background:rgba(0,217,126,.12);color:var(--pump)}
+.meta-tag.fund-neu{background:rgba(107,114,128,.1);color:var(--dim)}
+.meta-tag.oi-up{background:rgba(245,158,11,.1);color:var(--amber)}
+.meta-tag.oi-dn{background:rgba(139,92,246,.1);color:var(--violet)}
+.meta-tag.poc{background:rgba(245,158,11,.1);color:var(--amber)}
+.meta-tag.sup{background:rgba(0,217,126,.1);color:var(--pump)}
+.meta-tag.res{background:rgba(255,61,90,.1);color:var(--dump)}
+
+.scan-status{
+  padding:7px 14px;font-family:var(--mono);font-size:10px;color:var(--dim);
+  border-top:1px solid var(--border);flex-shrink:0;
+  display:flex;justify-content:space-between;
+}
+.scan-progress{padding:6px 14px;display:none}
+.progress-track{height:2px;background:var(--border);border-radius:1px;overflow:hidden}
+.progress-fill{height:100%;background:var(--amber);border-radius:1px;transition:width .3s ease}
+.error-msg{color:var(--dump);font-family:var(--mono);font-size:11px;padding:8px 14px;display:none}
+.empty-list{padding:20px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:11px}
+
+/* sidebar overlay */
+.sidebar-overlay{display:none;position:absolute;inset:0;background:rgba(0,0,0,.6);z-index:9}
+.sidebar-overlay.active{display:block}
+
+/* ══ DETAIL PANEL ══ */
+.detail{display:flex;flex-direction:column;overflow:hidden;background:var(--bg);min-width:0;width:100%}
+.detail-inner{
+  flex:1;overflow-y:auto;overflow-x:hidden;
+  padding:16px;min-width:0;width:100%;max-width:100%;
+}
+.detail-inner::-webkit-scrollbar{width:3px}
+.detail-inner::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.placeholder{
+  height:100%;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;color:var(--dim);font-family:var(--mono);font-size:12px;gap:10px;
+}
+.placeholder-icon{font-size:36px;opacity:.25}
+
+/* ══ DETAIL HEADER ══ */
+.detail-header{
+  display:flex;align-items:flex-start;justify-content:space-between;
+  margin-bottom:14px;flex-wrap:wrap;gap:10px;min-width:0;width:100%;
+}
+.detail-sym{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--text)}
+.detail-price{font-family:var(--mono);font-size:16px;font-weight:600;margin-top:2px}
+.detail-price.up{color:var(--pump)}
+.detail-price.down{color:var(--dump)}
+.detail-meta{font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:4px;word-break:break-word}
+
+/* ══ SECTION CARD ══ */
+.section-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:6px;padding:14px;margin-bottom:12px;
+  min-width:0;overflow:hidden;width:100%;
+}
+.section-heading{
+  font-family:var(--mono);font-size:9px;letter-spacing:2px;
+  color:var(--dim);text-transform:uppercase;
+  margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;
 }
 
-.logo {
-  font-family: var(--mono);
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 3px;
-  color: var(--amber);
-  white-space: nowrap;
+/* ══ GAUGE ROW ══ */
+.gauge-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin-bottom:12px;width:100%}
+.gauge-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:6px;
+  padding:14px;text-align:center;position:relative;overflow:hidden;min-width:0;
 }
+.gauge-card::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px}
+.gauge-card.pump-card::after{background:var(--pump)}
+.gauge-card.dump-card::after{background:var(--dump)}
+.gauge-title{font-family:var(--mono);font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:6px}
+.gauge-card.pump-card .gauge-title{color:var(--pump)}
+.gauge-card.dump-card .gauge-title{color:var(--dump)}
+.gauge-pct{font-family:var(--mono);font-size:32px;font-weight:700;line-height:1;margin-bottom:3px}
+.gauge-card.pump-card .gauge-pct{color:var(--pump)}
+.gauge-card.dump-card .gauge-pct{color:var(--dump)}
+.gauge-sub{font-family:var(--mono);font-size:10px;color:var(--dim)}
+.arc-wrap{position:relative;width:80px;height:44px;margin:4px auto;overflow:hidden}
+.arc-bg{position:absolute;width:80px;height:80px;top:0;left:0;border-radius:50%;background:var(--border);clip-path:inset(0 0 50% 0)}
+.arc-fg{position:absolute;width:80px;height:80px;top:0;left:0;border-radius:50%;transform-origin:center center;clip-path:inset(0 0 50% 0);transition:transform .6s cubic-bezier(.34,1.56,.64,1)}
+.pump-card .arc-fg{background:var(--pump)}
+.dump-card .arc-fg{background:var(--dump)}
 
-.logo span { color: var(--dim); font-weight: 300; }
-
-.topbar-right {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
+/* ══ FUNDING + OI CARDS ══ */
+.fi-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:12px}
+.fi-card{
+  background:var(--panel);border:1px solid var(--border);border-radius:5px;
+  padding:10px 12px;text-align:center;position:relative;overflow:hidden;
 }
+.fi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.fi-card.pump-accent::before{background:linear-gradient(90deg,var(--pump),transparent)}
+.fi-card.dump-accent::before{background:linear-gradient(90deg,var(--dump),transparent)}
+.fi-card.amber-accent::before{background:linear-gradient(90deg,var(--amber),transparent)}
+.fi-card.violet-accent::before{background:linear-gradient(90deg,var(--violet),transparent)}
+.fi-card.neu-accent::before{background:linear-gradient(90deg,var(--dim),transparent)}
+.fi-label{font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:1px;margin-bottom:5px;text-transform:uppercase}
+.fi-val{font-family:var(--mono);font-size:16px;font-weight:700;line-height:1;margin-bottom:2px}
+.fi-val.pos{color:var(--pump)}
+.fi-val.neg{color:var(--dump)}
+.fi-val.neu{color:var(--dim)}
+.fi-val.amber{color:var(--amber)}
+.fi-val.violet{color:var(--violet)}
+.fi-sub{font-family:var(--mono);font-size:9px;color:var(--dim)}
 
-.stat-pill {
-  font-family: var(--mono);
-  font-size: 10px;
-  padding: 3px 10px;
-  border-radius: 3px;
-  border: 1px solid var(--border2);
-  color: var(--dim);
-  white-space: nowrap;
+/* ══ FUNDING RATE CHART ══ */
+.fr-bar-row{display:flex;align-items:center;gap:0;height:28px;margin-bottom:6px;border-radius:3px;overflow:hidden;background:var(--panel)}
+.fr-long{height:100%;background:rgba(255,61,90,.4);transition:width .4s ease}
+.fr-short{height:100%;background:rgba(0,217,126,.4);transition:width .4s ease}
+.fr-divider{width:1px;height:100%;background:var(--border2);flex-shrink:0}
+.fr-labels{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--dim)}
+
+/* ══ ORDERBOOK WALL ══ */
+.ob-container{width:100%;min-width:0}
+.ob-header{display:grid;grid-template-columns:80px 1fr 70px;gap:6px;margin-bottom:6px}
+.ob-hcell{font-family:var(--mono);font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:1px}
+.ob-hcell:last-child{text-align:right}
+
+.ob-side{margin-bottom:4px}
+.ob-row{
+  display:grid;grid-template-columns:80px 1fr 70px;
+  gap:6px;align-items:center;margin-bottom:2px;
+  padding:2px 0;position:relative;
 }
-
-.stat-pill.live { border-color: var(--pump); color: var(--pump); }
-.live-dot {
-  display: inline-block;
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: var(--pump);
-  margin-right: 5px;
-  animation: blink 1.4s ease-in-out infinite;
+.ob-price{font-family:var(--mono);font-size:10px;font-weight:600}
+.ob-price.ask{color:var(--dump)}
+.ob-price.bid{color:var(--pump)}
+.ob-bar-wrap{height:12px;position:relative;overflow:hidden;border-radius:1px;background:transparent}
+.ob-bar{position:absolute;top:0;height:100%;border-radius:1px;transition:width .4s ease}
+.ob-bar.ask{background:rgba(255,61,90,.25);right:0}
+.ob-bar.bid{background:rgba(0,217,126,.25);left:0}
+.ob-bar.wall-ask{background:rgba(255,61,90,.7)}
+.ob-bar.wall-bid{background:rgba(0,217,126,.7)}
+.ob-qty{font-family:var(--mono);font-size:9px;color:var(--dim);text-align:right}
+.ob-wall-tag{
+  position:absolute;right:4px;top:50%;transform:translateY(-50%);
+  font-family:var(--mono);font-size:8px;font-weight:700;
+  padding:1px 4px;border-radius:2px;
 }
-@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+.ob-wall-tag.ask{background:rgba(255,61,90,.3);color:var(--dump)}
+.ob-wall-tag.bid{background:rgba(0,217,126,.3);color:var(--pump)}
 
-/* ── MAIN AREA ── */
-.main {
-  display: grid;
-  grid-template-columns: 320px 1fr;
-  overflow: hidden;
+.ob-spread{
+  text-align:center;padding:4px 0;
+  font-family:var(--mono);font-size:9px;color:var(--dim);
+  border-top:1px solid var(--border);border-bottom:1px solid var(--border);
+  margin:3px 0;
 }
-
-/* ── SIDEBAR ── */
-.sidebar {
-  background: var(--surface);
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+.ob-imbalance{
+  display:flex;gap:8px;margin-top:8px;align-items:center;
+  padding:8px 10px;background:var(--panel);border-radius:4px;
+  border:1px solid var(--border);
 }
+.ob-imb-label{font-family:var(--mono);font-size:10px;color:var(--dim);flex-shrink:0}
+.ob-imb-bar{flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden;position:relative}
+.ob-imb-fill{height:100%;border-radius:4px;transition:width .5s ease}
+.ob-imb-val{font-family:var(--mono);font-size:11px;font-weight:700;flex-shrink:0;min-width:36px;text-align:right}
 
-.sidebar-header {
-  padding: 14px 16px 10px;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
+/* ══ VOLUME PROFILE ══ */
+.vp-key-levels{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}
+.vp-level-card{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:8px;text-align:center}
+.vp-level-label{font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:3px}
+.vp-level-val{font-family:var(--mono);font-size:11px;font-weight:700}
+.vp-level-val.poc{color:var(--amber)}
+.vp-level-val.vah{color:var(--dump)}
+.vp-level-val.val{color:var(--pump)}
+.vp-level-val.cur{color:var(--text)}
+.vp-chart{display:flex;flex-direction:column;gap:2px;max-height:280px;overflow-y:auto;overflow-x:hidden}
+.vp-chart::-webkit-scrollbar{width:3px}
+.vp-chart::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.vp-row{display:flex;align-items:center;gap:5px;min-width:0;position:relative}
+.vp-price{font-family:var(--mono);font-size:9px;color:var(--dim);width:76px;flex-shrink:0;text-align:right;white-space:nowrap}
+.vp-bar-wrap{flex:1;height:14px;position:relative;min-width:0;overflow:hidden}
+.vp-bar{position:absolute;top:2px;left:0;height:10px;border-radius:2px;transition:width .4s ease}
+.vp-bar.normal{background:rgba(59,130,246,.3)}
+.vp-bar.poc-bar{background:rgba(245,158,11,.8)}
+.vp-bar.sup-bar{background:rgba(0,217,126,.5)}
+.vp-bar.res-bar{background:rgba(255,61,90,.5)}
+.vp-vol{font-family:var(--mono);font-size:9px;color:var(--dim);width:46px;flex-shrink:0;text-align:right}
+.vp-tag{font-family:var(--mono);font-size:8px;font-weight:700;padding:1px 5px;border-radius:2px;flex-shrink:0;width:38px;text-align:center}
+.vp-tag.poc{background:rgba(245,158,11,.2);color:var(--amber)}
+.vp-tag.sup{background:rgba(0,217,126,.15);color:var(--pump)}
+.vp-tag.res{background:rgba(255,61,90,.15);color:var(--dump)}
+.vp-tag.cur{background:rgba(255,255,255,.08);color:var(--text)}
+.vp-tag.empty{opacity:0}
+
+/* ══ BREAKDOWN ══ */
+.breakdown-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin-bottom:12px;width:100%;min-width:0}
+.breakdown-card{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px;min-width:0;overflow:hidden;width:100%}
+.breakdown-heading{font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--dim);text-transform:uppercase;margin-bottom:8px;padding-bottom:7px;border-bottom:1px solid var(--border)}
+.factor-row{display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(26,37,53,.8);min-width:0}
+.factor-row:last-child{border-bottom:none}
+.factor-name{font-size:11px;color:var(--dim);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.factor-val{font-family:var(--mono);font-size:11px;font-weight:600;margin-left:6px;white-space:nowrap;flex-shrink:0}
+.factor-val.pos{color:var(--pump)}
+.factor-val.neg{color:var(--dump)}
+.factor-val.neu{color:var(--dim)}
+.factor-score{font-family:var(--mono);font-size:10px;padding:1px 5px;border-radius:2px;margin-left:6px;min-width:34px;text-align:right;flex-shrink:0}
+.factor-score.pos{background:rgba(0,217,126,.12);color:var(--pump)}
+.factor-score.neg{background:rgba(255,61,90,.12);color:var(--dump)}
+.factor-score.zero{color:var(--dim)}
+
+.ind-table{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed;max-width:100%}
+.ind-table th{background:var(--surface);color:var(--dim);font-family:var(--mono);font-size:9px;letter-spacing:1px;padding:6px 7px;text-align:left;border-bottom:1px solid var(--border);text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ind-table td{padding:6px 7px;border-bottom:1px solid rgba(26,37,53,.6);font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ind-table tr:hover td{background:rgba(255,255,255,.015)}
+.badge{display:inline-block;padding:1px 6px;border-radius:2px;font-size:10px;font-family:var(--mono)}
+.badge.pump{background:rgba(0,217,126,.15);color:var(--pump)}
+.badge.dump{background:rgba(255,61,90,.15);color:var(--dump)}
+.badge.neu{background:rgba(107,114,128,.12);color:var(--dim)}
+
+.disclaimer{font-size:10px;color:var(--dim);font-family:var(--mono);border-top:1px solid var(--border);padding:10px 0 0;line-height:1.6;word-break:break-word}
+
+/* ══ MOBILE ══ */
+@media (max-width:680px){
+  :root{--sidebar-w:100%}
+  .menu-btn{display:block}
+  .main{grid-template-columns:1fr;position:relative}
+  .sidebar{
+    position:absolute;top:0;left:0;height:100%;
+    width:100%!important;min-width:unset!important;max-width:100%!important;
+    transform:translateX(-100%);box-shadow:4px 0 24px rgba(0,0,0,.6);
+  }
+  .sidebar.open{transform:translateX(0)}
+  .detail{width:100%;grid-column:1}
+  .breakdown-grid{grid-template-columns:1fr}
+  .gauge-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .fi-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .vp-key-levels{grid-template-columns:repeat(2,1fr)}
+  .detail-inner{padding:12px}
+  .logo{font-size:10px;letter-spacing:1px}
 }
-
-.sidebar-title {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 2px;
-  color: var(--dim);
-  text-transform: uppercase;
-  margin-bottom: 10px;
-}
-
-.controls-row {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-select, input[type=number] {
-  background: var(--panel);
-  border: 1px solid var(--border2);
-  color: var(--text);
-  padding: 6px 8px;
-  font-family: var(--mono);
-  font-size: 11px;
-  border-radius: 3px;
-  outline: none;
-  flex: 1;
-  min-width: 0;
-}
-
-select:focus, input:focus { border-color: var(--amber); }
-
-.threshold-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.threshold-label {
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--dim);
-  white-space: nowrap;
-}
-
-.scan-btn {
-  width: 100%;
-  padding: 9px;
-  background: var(--amber);
-  color: #000;
-  border: none;
-  font-family: var(--mono);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  border-radius: 3px;
-  cursor: pointer;
-  transition: opacity .15s;
-}
-
-.scan-btn:hover { opacity: .85; }
-.scan-btn:disabled { opacity: .4; cursor: not-allowed; }
-
-.scan-btn.scanning {
-  background: var(--border2);
-  color: var(--amber);
-  border: 1px solid var(--amber);
-}
-
-/* ── RESULT LIST ── */
-.result-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 6px;
-}
-
-.result-list::-webkit-scrollbar { width: 4px; }
-.result-list::-webkit-scrollbar-track { background: transparent; }
-.result-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-
-.sym-card {
-  padding: 10px 12px;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  margin-bottom: 5px;
-  cursor: pointer;
-  transition: border-color .15s, background .15s;
-  background: var(--panel);
-}
-
-.sym-card:hover { border-color: var(--amber); }
-.sym-card.active { border-color: var(--amber); background: rgba(245,158,11,.06); }
-
-.sym-card-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 6px;
-}
-
-.sym-name {
-  font-family: var(--mono);
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text);
-}
-
-.sym-signal {
-  font-family: var(--mono);
-  font-size: 10px;
-  font-weight: 700;
-  padding: 2px 7px;
-  border-radius: 2px;
-}
-
-.sym-signal.pump { background: rgba(0,217,126,.15); color: var(--pump); }
-.sym-signal.dump { background: rgba(255,61,90,.15); color: var(--dump); }
-.sym-signal.neutral { background: rgba(107,114,128,.15); color: var(--neutral); }
-
-/* Dual probability bars */
-.prob-bars { display: flex; flex-direction: column; gap: 3px; }
-
-.prob-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.prob-label {
-  font-family: var(--mono);
-  font-size: 9px;
-  color: var(--dim);
-  width: 32px;
-  flex-shrink: 0;
-}
-
-.bar-track {
-  flex: 1;
-  height: 4px;
-  background: var(--border);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.bar-fill {
-  height: 100%;
-  border-radius: 2px;
-  transition: width .5s ease;
-}
-
-.bar-fill.pump { background: var(--pump); }
-.bar-fill.dump { background: var(--dump); }
-
-.prob-pct {
-  font-family: var(--mono);
-  font-size: 9px;
-  width: 30px;
-  text-align: right;
-  flex-shrink: 0;
-}
-
-.prob-pct.pump { color: var(--pump); }
-.prob-pct.dump { color: var(--dump); }
-
-/* scan status */
-.scan-status {
-  padding: 8px 16px;
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--dim);
-  border-top: 1px solid var(--border);
-  flex-shrink: 0;
-  display: flex;
-  justify-content: space-between;
-}
-
-/* ── DETAIL PANEL ── */
-.detail {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: var(--bg);
-}
-
-.detail-inner {
-  flex: 1;
-  overflow-y: auto;
-  padding: 20px;
-}
-
-.detail-inner::-webkit-scrollbar { width: 4px; }
-.detail-inner::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-
-.placeholder {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: var(--dim);
-  font-family: var(--mono);
-  font-size: 12px;
-  gap: 10px;
-}
-
-.placeholder-icon { font-size: 40px; opacity: .3; }
-
-/* ── DETAIL HEADER ── */
-.detail-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.detail-sym {
-  font-family: var(--mono);
-  font-size: 24px;
-  font-weight: 700;
-  color: var(--text);
-}
-
-.detail-price {
-  font-family: var(--mono);
-  font-size: 18px;
-  font-weight: 600;
-  margin-top: 2px;
-}
-
-.detail-price.up { color: var(--pump); }
-.detail-price.down { color: var(--dump); }
-
-.detail-meta {
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--dim);
-  margin-top: 4px;
-}
-
-/* ── PROBABILITY GAUGES ── */
-.gauge-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.gauge-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 16px;
-  text-align: center;
-  position: relative;
-  overflow: hidden;
-}
-
-.gauge-card::after {
-  content: '';
-  position: absolute;
-  bottom: 0; left: 0; right: 0;
-  height: 2px;
-}
-
-.gauge-card.pump-card::after { background: var(--pump); }
-.gauge-card.dump-card::after { background: var(--dump); }
-
-.gauge-title {
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  margin-bottom: 8px;
-}
-
-.gauge-card.pump-card .gauge-title { color: var(--pump); }
-.gauge-card.dump-card .gauge-title { color: var(--dump); }
-
-.gauge-pct {
-  font-family: var(--mono);
-  font-size: 38px;
-  font-weight: 700;
-  line-height: 1;
-  margin-bottom: 4px;
-}
-
-.gauge-card.pump-card .gauge-pct { color: var(--pump); }
-.gauge-card.dump-card .gauge-pct { color: var(--dump); }
-
-.gauge-sub {
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--dim);
-}
-
-/* Arc gauge */
-.arc-wrap { position: relative; width: 90px; height: 50px; margin: 6px auto 4px; }
-.arc-bg, .arc-fg {
-  position: absolute;
-  width: 90px; height: 45px;
-  top: 0; left: 0;
-  border-radius: 90px 90px 0 0;
-  overflow: hidden;
-}
-
-.arc-bg { background: var(--border); }
-.arc-fg {
-  transform-origin: bottom center;
-  transition: transform .6s cubic-bezier(.34,1.56,.64,1);
-}
-
-.pump-card .arc-fg { background: var(--pump); }
-.dump-card .arc-fg { background: var(--dump); }
-
-/* ── SIGNAL BREAKDOWN ── */
-.breakdown-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-@media (max-width: 900px) { .breakdown-grid { grid-template-columns: 1fr; } }
-
-.breakdown-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 14px;
-}
-
-.breakdown-heading {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 2px;
-  color: var(--dim);
-  text-transform: uppercase;
-  margin-bottom: 10px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border);
-}
-
-.factor-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 5px 0;
-  border-bottom: 1px solid rgba(31,41,55,.6);
-}
-
-.factor-row:last-child { border-bottom: none; }
-
-.factor-name {
-  font-size: 11px;
-  color: var(--dim);
-  flex: 1;
-}
-
-.factor-val {
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 600;
-  margin-left: 8px;
-  white-space: nowrap;
-}
-
-.factor-val.pos { color: var(--pump); }
-.factor-val.neg { color: var(--dump); }
-.factor-val.neu { color: var(--dim); }
-
-.factor-score {
-  font-family: var(--mono);
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 2px;
-  margin-left: 8px;
-  min-width: 36px;
-  text-align: right;
-}
-
-.factor-score.pos { background: rgba(0,217,126,.12); color: var(--pump); }
-.factor-score.neg { background: rgba(255,61,90,.12); color: var(--dump); }
-.factor-score.zero { color: var(--dim); }
-
-/* ── RAW INDICATORS TABLE ── */
-.ind-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 11px;
-  margin-bottom: 20px;
-}
-
-.ind-table th {
-  background: var(--surface);
-  color: var(--dim);
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 1px;
-  padding: 7px 10px;
-  text-align: left;
-  border-bottom: 1px solid var(--border);
-  text-transform: uppercase;
-}
-
-.ind-table td {
-  padding: 7px 10px;
-  border-bottom: 1px solid rgba(31,41,55,.5);
-  font-family: var(--mono);
-}
-
-.ind-table tr:hover td { background: rgba(255,255,255,.02); }
-
-.badge {
-  display: inline-block;
-  padding: 1px 6px;
-  border-radius: 2px;
-  font-size: 10px;
-  font-family: var(--mono);
-}
-
-.badge.pump { background: rgba(0,217,126,.15); color: var(--pump); }
-.badge.dump { background: rgba(255,61,90,.15); color: var(--dump); }
-.badge.neu  { background: rgba(107,114,128,.15); color: var(--dim); }
-
-/* ── LOADING / ERROR ── */
-.scan-progress {
-  padding: 8px 16px;
-  display: none;
-}
-
-.progress-track {
-  height: 2px;
-  background: var(--border);
-  border-radius: 1px;
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  background: var(--amber);
-  border-radius: 1px;
-  transition: width .3s ease;
-}
-
-.error-msg {
-  color: var(--dump);
-  font-family: var(--mono);
-  font-size: 11px;
-  padding: 10px 16px;
-  display: none;
-}
-
-.empty-list {
-  padding: 20px;
-  text-align: center;
-  color: var(--dim);
-  font-family: var(--mono);
-  font-size: 11px;
-}
-
-/* ── SORT TABS ── */
-.sort-tabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 8px;
-}
-
-.sort-tab {
-  flex: 1;
-  padding: 4px 0;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--dim);
-  cursor: pointer;
-  text-align: center;
-  transition: all .15s;
-}
-
-.sort-tab:hover { border-color: var(--border2); color: var(--text); }
-.sort-tab.active { background: var(--amber); border-color: var(--amber); color: #000; font-weight: 700; }
-
-.disclaimer {
-  font-size: 10px;
-  color: var(--dim);
-  font-family: var(--mono);
-  border-top: 1px solid var(--border);
-  padding: 12px 0 0;
-  line-height: 1.6;
+.mobile-back-btn{display:none}
+@media (max-width:680px){
+  .mobile-back-btn{
+    display:flex;align-items:center;gap:8px;background:none;
+    border:1px solid var(--border2);color:var(--dim);
+    font-family:var(--mono);font-size:10px;padding:5px 10px;
+    border-radius:3px;cursor:pointer;margin-bottom:10px;width:100%;
+  }
+  .sidebar-overlay{display:none;position:absolute;inset:0;background:rgba(0,0,0,.6);z-index:9}
+  .sidebar-overlay.active{display:block}
 }
 </style>
 </head>
 <body>
 <div class="app">
-
-  <!-- TOPBAR -->
   <header class="topbar">
-    <div class="logo">FUTURES <span>/</span> SIGNAL SCANNER</div>
+    <button class="menu-btn" id="menuBtn" onclick="toggleSidebar()">☰</button>
+    <div class="logo">FUTURES <span>/</span> SCANNER</div>
     <div class="topbar-right">
       <div class="stat-pill" id="scanTime">--</div>
-      <div class="stat-pill live" id="liveStatus"><span class="live-dot"></span>BINANCE FUTURES</div>
+      <div class="stat-pill live"><span class="live-dot"></span>BINANCE</div>
     </div>
   </header>
 
-  <div class="main">
+  <div class="main" id="mainArea">
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
 
-    <!-- SIDEBAR -->
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
       <div class="sidebar-header">
+        <button class="mobile-back-btn" onclick="closeSidebar()">← 닫기</button>
         <div class="sidebar-title">스캔 설정</div>
-
         <div class="controls-row">
           <select id="intervalSel">
-            <option value="5m" selected>5분봉</option>
-            <option value="15m">15분봉</option>
+            <option value="15m" selected>15분봉</option>
             <option value="1h">1시간봉</option>
+            <option value="4h">4시간봉</option>
+            <option value="12h">12시간봉</option>
+            <option value="1d">24시간봉</option>
           </select>
           <select id="limitSel">
-            <option value="20">상위 20종목</option>
-            <option value="50" selected>상위 50종목</option>
-            <option value="100">상위 100종목</option>
+            <option value="20">상위 20</option>
+            <option value="50" selected>상위 50</option>
+            <option value="100">상위 100</option>
           </select>
         </div>
-
         <div class="threshold-row">
           <span class="threshold-label">최소확률</span>
-          <input type="number" id="thresholdInput" value="40" min="0" max="99" step="5" style="width:70px;flex:none">
-          <span class="threshold-label">% 이상</span>
+          <input type="number" id="thresholdInput" value="40" min="0" max="99" step="5" style="width:60px;flex:none">
+          <span class="threshold-label">%</span>
           <select id="filterSel" style="flex:1;margin-left:4px">
             <option value="all">전체</option>
-            <option value="pump">폭등만</option>
-            <option value="dump">폭락만</option>
+            <option value="pump">폭등</option>
+            <option value="dump">폭락</option>
           </select>
         </div>
-
         <div class="sort-tabs">
           <div class="sort-tab active" data-sort="pump" onclick="setSort('pump')">폭등↑</div>
           <div class="sort-tab" data-sort="dump" onclick="setSort('dump')">폭락↑</div>
-          <div class="sort-tab" data-sort="max" onclick="setSort('max')">최고확률</div>
+          <div class="sort-tab" data-sort="max" onclick="setSort('max')">최고↑</div>
           <div class="sort-tab" data-sort="vol" onclick="setSort('vol')">거래량↑</div>
         </div>
-
         <button class="scan-btn" id="scanBtn" onclick="startScan()">▶ 스캔 시작</button>
       </div>
-
       <div class="scan-progress" id="scanProgress">
-        <div class="progress-track">
-          <div class="progress-fill" id="progressFill" style="width:0%"></div>
-        </div>
+        <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
       </div>
       <div class="error-msg" id="errorMsg"></div>
-
       <div class="result-list" id="resultList">
         <div class="empty-list">스캔 시작 버튼을 눌러주세요</div>
       </div>
-
       <div class="scan-status">
         <span id="statusLeft">대기중</span>
         <span id="statusRight">--</span>
       </div>
     </aside>
 
-    <!-- DETAIL PANEL -->
     <section class="detail">
       <div class="detail-inner" id="detailInner">
         <div class="placeholder">
@@ -689,478 +464,552 @@ select:focus, input:focus { border-color: var(--amber); }
         </div>
       </div>
     </section>
-
   </div>
 </div>
 
 <script>
-// ═══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════
 // CONFIG
-// ═══════════════════════════════════════════════════════════════
-const BASE = 'https://fapi.binance.com';
-const CONCURRENCY = 5; // 동시 요청 수 (rate limit 대응)
-const KLINE_LIMIT = 100; // 봉 개수
+// ════════════════════════════════════════════
+const BASE        = 'https://fapi.binance.com';
+const CONCURRENCY = 5;
+const KLINE_LIMIT = 100;
+const VP_BINS     = 30;
+const OB_DEPTH    = 20;   // 오더북 레벨 수
+const WALL_MULT   = 3.0;  // 평균 대비 WALL_MULT배 이상 = 매물벽
 
-let currentSort = 'pump';
-let scanResults = [];
+let currentSort  = 'pump';
+let scanResults  = [];
 let activeSymbol = null;
+let isMobile     = false;
 
-// ═══════════════════════════════════════════════════════════════
+function checkMobile(){ isMobile = window.innerWidth <= 680; }
+checkMobile();
+window.addEventListener('resize', checkMobile);
+
+function toggleSidebar(){
+  const sb=document.getElementById('sidebar'), ov=document.getElementById('sidebarOverlay');
+  sb.classList.toggle('open'); ov.classList.toggle('active');
+}
+function closeSidebar(){
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarOverlay').classList.remove('active');
+}
+
+// ════════════════════════════════════════════
 // UTILITY
-// ═══════════════════════════════════════════════════════════════
-async function apiFetch(path, retries = 2) {
-  for (let i = 0; i <= retries; i++) {
-    try {
-      const r = await fetch(BASE + path, { signal: AbortSignal.timeout(8000) });
-      if (r.status === 429) { await sleep(1200); continue; }
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+// ════════════════════════════════════════════
+function makeAbortSignal(ms){
+  if(typeof AbortSignal!=='undefined'&&AbortSignal.timeout) return AbortSignal.timeout(ms);
+  const c=new AbortController(); setTimeout(()=>c.abort(),ms); return c.signal;
+}
+async function apiFetch(path, retries=2){
+  for(let i=0;i<=retries;i++){
+    try{
+      const r=await fetch(BASE+path,{signal:makeAbortSignal(10000)});
+      if(r.status===429){await sleep(1500);continue;}
+      if(!r.ok) throw new Error(`HTTP ${r.status}`);
       return await r.json();
-    } catch (e) {
-      if (i === retries) throw e;
-      await sleep(600);
+    }catch(e){
+      if(i===retries) throw e;
+      await sleep(700);
     }
   }
 }
-
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-async function batchRun(tasks, concurrency) {
-  const results = new Array(tasks.length);
-  let idx = 0;
-  async function worker() {
-    while (idx < tasks.length) {
-      const i = idx++;
-      try { results[i] = await tasks[i](); }
-      catch (e) { results[i] = null; }
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function batchRun(tasks,concurrency){
+  const results=new Array(tasks.length).fill(null);
+  let idx=0;
+  async function worker(){
+    while(true){
+      const i=idx++; if(i>=tasks.length) break;
+      try{results[i]=await tasks[i]();}catch(e){results[i]=null;}
     }
   }
-  await Promise.all(Array.from({ length: concurrency }, worker));
+  await Promise.all(Array.from({length:Math.min(concurrency,tasks.length)},worker));
   return results;
 }
+function fmtPrice(p){
+  if(p==null) return '—';
+  if(p>=1000)  return p.toLocaleString(undefined,{maximumFractionDigits:2});
+  if(p>=1)     return p.toFixed(4);
+  if(p>=0.01)  return p.toFixed(5);
+  return p.toFixed(6);
+}
+function fmtVol(v){
+  if(v>=1e9) return (v/1e9).toFixed(2)+'B';
+  if(v>=1e6) return (v/1e6).toFixed(2)+'M';
+  if(v>=1e3) return (v/1e3).toFixed(1)+'K';
+  return v.toFixed(0);
+}
 
-// ═══════════════════════════════════════════════════════════════
-// MATH HELPERS
-// ═══════════════════════════════════════════════════════════════
-function ema(arr, n) {
-  if (!arr.length) return 0;
-  const k = 2 / (n + 1);
-  let e = arr[0];
-  for (let i = 1; i < arr.length; i++) e = arr[i] * k + e * (1 - k);
+// ════════════════════════════════════════════
+// MATH
+// ════════════════════════════════════════════
+function ema(arr,n){
+  if(!arr||!arr.length) return 0;
+  const k=2/(n+1); let e=arr[0];
+  for(let i=1;i<arr.length;i++) e=arr[i]*k+e*(1-k);
   return e;
 }
-
-function sma(arr, n) {
-  const s = arr.slice(-n);
-  return s.reduce((a, b) => a + b, 0) / s.length;
+function sma(arr,n){
+  const s=arr.slice(-Math.min(n,arr.length));
+  if(!s.length) return 0;
+  return s.reduce((a,b)=>a+b,0)/s.length;
 }
-
-function stdev(arr) {
-  const m = arr.reduce((a, b) => a + b, 0) / arr.length;
-  return Math.sqrt(arr.reduce((a, b) => a + (b - m) ** 2, 0) / arr.length);
+function stdev(arr){
+  if(!arr.length) return 0;
+  const m=arr.reduce((a,b)=>a+b,0)/arr.length;
+  return Math.sqrt(arr.reduce((a,b)=>a+(b-m)**2,0)/arr.length);
 }
-
-function calcRSI(closes, n = 14) {
-  if (closes.length < n + 1) return 50;
-  let gains = 0, losses = 0;
-  for (let i = closes.length - n; i < closes.length; i++) {
-    const d = closes[i] - closes[i - 1];
-    d > 0 ? (gains += d) : (losses -= d);
+function calcRSI(closes,n=14){
+  if(closes.length<n+1) return 50;
+  let gains=0,losses=0;
+  for(let i=closes.length-n;i<closes.length;i++){
+    const d=closes[i]-closes[i-1];
+    d>0?(gains+=d):(losses-=d);
   }
-  if (losses === 0) return 100;
-  return 100 - 100 / (1 + gains / losses);
+  if(losses===0) return gains>0?100:50;
+  return 100-100/(1+gains/losses);
 }
-
-function calcMACD(closes) {
-  if (closes.length < 26) return { line: 0, signal: 0, hist: 0 };
-  const e12 = ema(closes.slice(-12), 12);
-  const e26 = ema(closes.slice(-26), 26);
-  const line = e12 - e26;
-  const prevE12 = ema(closes.slice(-13, -1), 12);
-  const prevE26 = ema(closes.slice(-27, -1), 26);
-  const prevLine = prevE12 - prevE26;
-  const signal = ema([prevLine * 0.8 + line * 0.2], 1); // simplified signal
-  return { line, signal, hist: line - signal };
-}
-
-function calcBB(closes, n = 20) {
-  if (closes.length < n) return { upper: 0, lower: 0, mid: 0, width: 0, pct: 50 };
-  const s = closes.slice(-n);
-  const mid = s.reduce((a, b) => a + b, 0) / n;
-  const sd = stdev(s);
-  const upper = mid + 2 * sd;
-  const lower = mid - 2 * sd;
-  const last = closes[closes.length - 1];
-  const width = (upper - lower) / mid;
-  const pct = (last - lower) / (upper - lower) * 100;
-  return { upper, lower, mid, width, pct };
-}
-
-function calcATR(highs, lows, closes, n = 14) {
-  const trs = [];
-  for (let i = 1; i < closes.length; i++) {
-    trs.push(Math.max(
-      highs[i] - lows[i],
-      Math.abs(highs[i] - closes[i - 1]),
-      Math.abs(lows[i] - closes[i - 1])
-    ));
+function calcMACD(closes){
+  if(closes.length<26) return {line:0,signal:0,hist:0};
+  const k12=2/13,k26=2/27;
+  let e12=closes[0],e26=closes[0];
+  const macdLines=[];
+  for(let i=1;i<closes.length;i++){
+    e12=closes[i]*k12+e12*(1-k12);
+    e26=closes[i]*k26+e26*(1-k26);
+    if(i>=25) macdLines.push(e12-e26);
   }
-  return trs.length >= n ? sma(trs, n) : sma(trs, trs.length);
+  const line=macdLines[macdLines.length-1]||0;
+  const signal=ema(macdLines.slice(-9),9);
+  return{line,signal,hist:line-signal};
+}
+function calcBB(closes,n=20){
+  if(closes.length<n) return{upper:0,lower:0,mid:0,width:0,pct:50};
+  const s=closes.slice(-n);
+  const mid=s.reduce((a,b)=>a+b,0)/n;
+  const sd=stdev(s);
+  const upper=mid+2*sd,lower=mid-2*sd;
+  const last=closes[closes.length-1];
+  const range=upper-lower;
+  return{upper,lower,mid,width:mid>0?range/mid:0,pct:range>0?(last-lower)/range*100:50};
+}
+function calcATR(highs,lows,closes,n=14){
+  const trs=[];
+  for(let i=1;i<closes.length;i++)
+    trs.push(Math.max(highs[i]-lows[i],Math.abs(highs[i]-closes[i-1]),Math.abs(lows[i]-closes[i-1])));
+  if(!trs.length) return 0;
+  return sma(trs,Math.min(n,trs.length));
 }
 
-// ═══════════════════════════════════════════════════════════════
-// SIGNAL ENGINE — Pump / Dump 확률 계산
-// ═══════════════════════════════════════════════════════════════
-/*
-  각 지표를 [-1, +1] 범위의 "신호 강도"로 정규화
-  양수 = 폭등 신호, 음수 = 폭락 신호
-  가중치 합산 후 시그모이드 변환으로 [0,100]% 확률 도출
-*/
-
-function sigmoid(x) { return 1 / (1 + Math.exp(-x)); }
-
-function computeSignals(klines) {
-  const opens   = klines.map(k => +k[1]);
-  const highs   = klines.map(k => +k[2]);
-  const lows    = klines.map(k => +k[3]);
-  const closes  = klines.map(k => +k[4]);
-  const vols    = klines.map(k => +k[5]);
-  const n = closes.length;
-  if (n < 30) return null;
-
-  const last = closes[n - 1];
-  const prev = closes[n - 2];
-
-  // ── RSI ──────────────────────────────────────────────────────
-  const rsi = calcRSI(closes, 14);
-  const rsiPrev = calcRSI(closes.slice(0, -1), 14);
-  // 과매도→반등=펌프, 과매수→조정=덤프
-  const rsiPumpScore = rsi < 30 ? (30 - rsi) / 30        // 0~1
-                     : rsi < 45 ? (45 - rsi) / 45 * 0.4
-                     : rsi > 70 ? -(rsi - 70) / 30
-                     : rsi > 55 ? -(rsi - 55) / 55 * 0.4
-                     : 0;
-
-  // RSI 모멘텀 (방향성)
-  const rsiMomentum = (rsi - rsiPrev) / 10; // 빠른 변화 = 방향 확신
-
-  // ── MACD ─────────────────────────────────────────────────────
-  const macd = calcMACD(closes);
-  const macdScore = Math.tanh(macd.hist / (last * 0.001)); // 정규화
-
-  // ── Bollinger Band ───────────────────────────────────────────
-  const bb = calcBB(closes, 20);
-  // pct<20: 과매도(펌프신호), pct>80: 과매수(덤프신호)
-  const bbScore = bb.pct < 20 ? (20 - bb.pct) / 20
-                : bb.pct > 80 ? -(bb.pct - 80) / 20
-                : (50 - bb.pct) / 100;
-
-  // BB 밴드폭 (수축=임박, 확장=이미 이동 중)
-  const bbWidthAvg = (() => {
-    let sum = 0, cnt = 0;
-    for (let i = 20; i < n; i++) {
-      const s = closes.slice(i - 20, i);
-      const m = s.reduce((a,b)=>a+b,0)/20;
-      const sd2 = stdev(s);
-      sum += (4 * sd2 / m); cnt++;
-    }
-    return cnt ? sum / cnt : bb.width;
-  })();
-  const bbSqueeze = bb.width < bbWidthAvg * 0.75; // 수축 중
-
-  // ── Volume ───────────────────────────────────────────────────
-  const avgVol20 = sma(vols.slice(-21, -1), 20);
-  const volRatio = avgVol20 > 0 ? vols[n - 1] / avgVol20 : 1;
-  const volTrend = (() => {
-    const v = vols.slice(-6);
-    return (v[5] - v[0]) / (v[0] || 1);
-  })();
-  // 거래량 폭증 + 가격 상승 = 펌프 확신, 폭증 + 하락 = 덤프 확신
-  const priceDir = (last - prev) / (prev || 1);
-  const volScore = Math.min(volRatio - 1, 3) * Math.sign(priceDir) * 0.4;
-
-  // ── Moving Average ──────────────────────────────────────────
-  const ma5  = sma(closes, 5);
-  const ma20 = sma(closes, 20);
-  const ma60 = closes.length >= 60 ? sma(closes, 60) : ma20;
-  // 가격이 MA 위 = 상승세, 아래 = 하락세
-  const maScore = ((last - ma20) / (ma20 || 1)) * 5; // 정규화
-  const maTrend = ma5 > ma20 ? 0.3 : ma5 < ma20 ? -0.3 : 0;
-  const maLong  = ma20 > ma60 ? 0.2 : -0.2;
-
-  // ── Price Momentum ──────────────────────────────────────────
-  const ret3  = (last - closes[n - 4]) / (closes[n - 4] || 1);
-  const ret6  = (last - closes[n - 7]) / (closes[n - 7] || 1);
-  const ret12 = (last - closes[n - 13]) / (closes[n - 13] || 1);
-  const momentum = (ret3 * 0.5 + ret6 * 0.3 + ret12 * 0.2) * 8;
-
-  // ── ATR (변동성) ─────────────────────────────────────────────
-  const atr = calcATR(highs, lows, closes, 14);
-  const atrRatio = atr / (last || 1); // 변동성 비율
-  // 변동성 높을 때 방향 신호 증폭
-  const atrAmplify = Math.min(atrRatio * 50, 1.5);
-
-  // ── Candle Pattern ───────────────────────────────────────────
-  const body = Math.abs(last - opens[n - 1]);
-  const totalRange = highs[n - 1] - lows[n - 1] || 0.0001;
-  const bodyRatio = body / totalRange;
-  const upperShadow = highs[n - 1] - Math.max(last, opens[n - 1]);
-  const lowerShadow = Math.min(last, opens[n - 1]) - lows[n - 1];
-  // 망치: 긴 아래꼬리 = 펌프, 역망치: 긴 위꼬리 = 덤프
-  const candleScore = (lowerShadow - upperShadow) / totalRange;
-
-  // ── Consecutive Candles ──────────────────────────────────────
-  let bullRun = 0, bearRun = 0;
-  for (let i = n - 1; i >= n - 8; i--) {
-    if (closes[i] > opens[i]) { bullRun++; if (bearRun > 0) break; }
-    else if (closes[i] < opens[i]) { bearRun++; if (bullRun > 0) break; }
+// ════════════════════════════════════════════
+// VOLUME PROFILE (매물대)
+// ════════════════════════════════════════════
+function calcVolumeProfile(klines,bins=VP_BINS){
+  const highs =klines.map(k=>+k[2]);
+  const lows  =klines.map(k=>+k[3]);
+  const closes=klines.map(k=>+k[4]);
+  const vols  =klines.map(k=>+k[5]);
+  const priceHigh=Math.max(...highs), priceLow=Math.min(...lows);
+  const range=priceHigh-priceLow;
+  if(range<=0) return null;
+  const binSize=range/bins;
+  const buckets=Array.from({length:bins},(_,i)=>({
+    priceMin:priceLow+i*binSize, priceMax:priceLow+(i+1)*binSize,
+    priceMid:priceLow+(i+0.5)*binSize, vol:0,
+  }));
+  klines.forEach((_,i)=>{
+    const hi=highs[i],lo=lows[i],v=vols[i],span=hi-lo||binSize;
+    buckets.forEach(b=>{
+      const overlap=Math.min(hi,b.priceMax)-Math.max(lo,b.priceMin);
+      if(overlap>0) b.vol+=v*(overlap/span);
+    });
+  });
+  const totalVol=buckets.reduce((s,b)=>s+b.vol,0);
+  const poc=buckets.reduce((a,b)=>b.vol>a.vol?b:a);
+  const pocIdx=buckets.indexOf(poc);
+  let vaVol=poc.vol,vaLow=pocIdx,vaHigh=pocIdx;
+  while(vaVol<totalVol*0.70&&(vaLow>0||vaHigh<bins-1)){
+    const addL=vaLow>0?buckets[vaLow-1].vol:-1;
+    const addH=vaHigh<bins-1?buckets[vaHigh+1].vol:-1;
+    if(addL>=addH&&addL>=0){vaVol+=addL;vaLow--;}
+    else if(addH>=0){vaVol+=addH;vaHigh++;}
     else break;
   }
-  const runScore = bullRun > 0 ? Math.min(bullRun * 0.15, 0.6)
-                 : bearRun > 0 ? -Math.min(bearRun * 0.15, 0.6)
-                 : 0;
+  const VAH=buckets[vaHigh].priceMax, VAL=buckets[vaLow].priceMin;
+  const maxVol=poc.vol;
+  const lastPrice=closes[closes.length-1];
+  const volThreshold=maxVol*0.4;
+  const supports=buckets.filter(b=>b.priceMid<lastPrice&&b.vol>=volThreshold).sort((a,b)=>b.priceMid-a.priceMid).slice(0,2);
+  const resists =buckets.filter(b=>b.priceMid>lastPrice&&b.vol>=volThreshold).sort((a,b)=>a.priceMid-b.priceMid).slice(0,2);
+  const vpPumpScore=lastPrice<VAL?Math.min((VAL-lastPrice)/VAL*8,1.0):lastPrice<poc.priceMid?0.3:0;
+  const vpDumpScore=lastPrice>VAH?Math.min((lastPrice-VAH)/VAH*8,1.0):lastPrice>poc.priceMid?0.3:0;
+  const nearSupport=supports[0]?supports[0].priceMid:null;
+  const nearResist =resists[0] ?resists[0].priceMid :null;
+  const supportDist=nearSupport?((lastPrice-nearSupport)/lastPrice*100):null;
+  const resistDist =nearResist ?((nearResist-lastPrice)/lastPrice*100) :null;
+  return{buckets,poc:poc.priceMid,VAH,VAL,supports,resists,maxVol,totalVol,
+    vpPumpScore,vpDumpScore,pocDist:(lastPrice-poc.priceMid)/poc.priceMid,
+    nearSupport,nearResist,supportDist,resistDist,priceHigh,priceLow,lastPrice};
+}
 
-  // ── Divergence (RSI vs Price) ────────────────────────────────
-  const rsi10 = calcRSI(closes.slice(0, -10), 14);
-  const priceDelta = last - closes[n - 11];
-  const rsiDelta = rsi - rsi10;
-  let divergenceScore = 0;
-  if (priceDelta < 0 && rsiDelta > 2) divergenceScore = 0.5;  // 강세 다이버전스 = 펌프
-  if (priceDelta > 0 && rsiDelta < -2) divergenceScore = -0.5; // 약세 다이버전스 = 덤프
+// ════════════════════════════════════════════
+// ORDERBOOK ANALYSIS (매물벽)
+// ════════════════════════════════════════════
+function analyzeOrderbook(ob){
+  // ob = {bids:[[price,qty],...], asks:[[price,qty],...]}
+  if(!ob||!ob.bids||!ob.asks) return null;
+  const bids=ob.bids.map(r=>[+r[0],+r[1]]).sort((a,b)=>b[0]-a[0]).slice(0,OB_DEPTH);
+  const asks=ob.asks.map(r=>[+r[0],+r[1]]).sort((a,b)=>a[0]-b[0]).slice(0,OB_DEPTH);
+  if(!bids.length||!asks.length) return null;
 
-  // ── Funding Rate (already fetched) / OI will be added where available ──
-  // (펀딩비는 별도 처리)
+  const bidQtys=bids.map(r=>r[1]);
+  const askQtys=asks.map(r=>r[1]);
+  const avgBid=sma(bidQtys,bidQtys.length);
+  const avgAsk=sma(askQtys,askQtys.length);
 
-  // ═══════════════════════════════════════════════════════════
-  // PUMP PROBABILITY
-  // 각 요소를 가중 합산 → sigmoid → %
-  // ═══════════════════════════════════════════════════════════
-  const factors = {
-    rsi:         { pump: rsiPumpScore,     dump: -rsiPumpScore,    w: 2.0 },
-    rsiMomentum: { pump: rsiMomentum,      dump: -rsiMomentum,     w: 0.8 },
-    macd:        { pump: macdScore,        dump: -macdScore,       w: 1.5 },
-    bb:          { pump: bbScore,          dump: -bbScore,         w: 1.5 },
-    volume:      { pump: volScore,         dump: -volScore,        w: 1.2 },
-    ma:          { pump: maScore,          dump: -maScore,         w: 1.0 },
-    maTrend:     { pump: maTrend,          dump: -maTrend,         w: 0.8 },
-    maLong:      { pump: maLong,           dump: -maLong,          w: 0.6 },
-    momentum:    { pump: momentum,         dump: -momentum,        w: 1.2 },
-    candle:      { pump: candleScore,      dump: -candleScore,     w: 0.8 },
-    run:         { pump: runScore,         dump: -runScore,        w: 0.7 },
-    divergence:  { pump: divergenceScore,  dump: -divergenceScore, w: 1.0 },
-  };
+  // 매물벽 감지 (평균 대비 WALL_MULT배)
+  const bidWalls=bids.filter(r=>r[1]>=avgBid*WALL_MULT);
+  const askWalls=asks.filter(r=>r[1]>=avgAsk*WALL_MULT);
 
-  let pumpRaw = 0, dumpRaw = 0, totalW = 0;
-  for (const [, f] of Object.entries(factors)) {
-    pumpRaw += f.pump * f.w;
-    dumpRaw += f.dump * f.w;
-    totalW += f.w;
-  }
+  const totalBidVol=bidQtys.reduce((a,b)=>a+b,0);
+  const totalAskVol=askQtys.reduce((a,b)=>a+b,0);
+  const totalVol=totalBidVol+totalAskVol;
+  const bidRatio=totalVol>0?totalBidVol/totalVol*100:50;
 
-  // 변동성 증폭
-  pumpRaw *= atrAmplify;
-  dumpRaw *= atrAmplify;
+  // 호가 불균형 신호: 매수벽 크면 펌프, 매도벽 크면 덤프
+  const imbalance=totalVol>0?(totalBidVol-totalAskVol)/totalVol:0; // -1~+1
+  const obPumpScore=Math.max(0,imbalance)*1.5;
+  const obDumpScore=Math.max(0,-imbalance)*1.5;
 
-  // BB 수축 시 양쪽 확률 증폭 (어느 방향이든 이동 임박)
-  if (bbSqueeze) { pumpRaw *= 1.2; dumpRaw *= 1.2; }
+  const bestBid=bids[0]?bids[0][0]:0;
+  const bestAsk=asks[0]?asks[0][0]:0;
+  const spread=bestAsk>0&&bestBid>0?(bestAsk-bestBid)/bestBid*100:0;
+  const maxBidVol=Math.max(...bidQtys,1);
+  const maxAskVol=Math.max(...askQtys,1);
+  const maxVol=Math.max(maxBidVol,maxAskVol);
 
-  // sigmoid 변환: raw가 0이면 50%, 양수면 높음, 음수면 낮음
-  const SCALE = 1.5;
-  const pumpProb = Math.round(sigmoid(pumpRaw * SCALE) * 100);
-  const dumpProb = Math.round(sigmoid(dumpRaw * SCALE) * 100);
-
-  // ── 개별 factor 상세 (UI 표시용) ────────────────────────────
-  const breakdown = [
-    { name: 'RSI',          val: rsi.toFixed(1),           pumpS: factors.rsi.pump,        dumpS: factors.rsi.dump },
-    { name: 'RSI 모멘텀',   val: (rsiMomentum*10).toFixed(2), pumpS: factors.rsiMomentum.pump, dumpS: factors.rsiMomentum.dump },
-    { name: 'MACD 히스토',  val: macd.hist.toFixed(4),     pumpS: factors.macd.pump,       dumpS: factors.macd.dump },
-    { name: '볼린저 %B',    val: bb.pct.toFixed(1)+'%',    pumpS: factors.bb.pump,         dumpS: factors.bb.dump },
-    { name: 'BB 밴드폭',    val: (bb.width*100).toFixed(2)+'%'+(bbSqueeze?' 🔻':''), pumpS: bbSqueeze?0.3:0, dumpS: bbSqueeze?0.3:0 },
-    { name: '거래량 비율',  val: volRatio.toFixed(2)+'x',  pumpS: factors.volume.pump,     dumpS: factors.volume.dump },
-    { name: 'MA5/MA20',     val: (ma5/ma20).toFixed(4),    pumpS: factors.maTrend.pump,    dumpS: factors.maTrend.dump },
-    { name: '가격 모멘텀',  val: (ret6*100).toFixed(2)+'%', pumpS: factors.momentum.pump,  dumpS: factors.momentum.dump },
-    { name: '캔들 패턴',    val: bodyRatio.toFixed(2),     pumpS: factors.candle.pump,     dumpS: factors.candle.dump },
-    { name: '연속봉',       val: bullRun > 0 ? `+${bullRun}` : bearRun > 0 ? `-${bearRun}` : '0', pumpS: factors.run.pump, dumpS: factors.run.dump },
-    { name: '다이버전스',   val: divergenceScore > 0 ? '강세' : divergenceScore < 0 ? '약세' : 'None', pumpS: factors.divergence.pump, dumpS: factors.divergence.dump },
-    { name: 'ATR 변동성',   val: (atrRatio*100).toFixed(3)+'%', pumpS: 0, dumpS: 0 },
-  ];
-
-  return {
-    pumpProb, dumpProb,
-    rsi, macd, bb, volRatio, ma5, ma20,
-    atrRatio, bbSqueeze, momentum: ret6,
-    breakdown,
-    lastPrice: last,
-    change24h: 0, // filled later
-    volume24h: 0,
+  return{
+    bids,asks,bidWalls,askWalls,
+    totalBidVol,totalAskVol,bidRatio,
+    imbalance,obPumpScore,obDumpScore,
+    bestBid,bestAsk,spread,
+    maxBidVol,maxAskVol,maxVol,
+    avgBid,avgAsk,
   };
 }
 
-// ═══════════════════════════════════════════════════════════════
-// SCAN LOGIC
-// ═══════════════════════════════════════════════════════════════
-let scanning = false;
+// ════════════════════════════════════════════
+// SIGNAL ENGINE
+// ════════════════════════════════════════════
+function sigmoid(x){return 1/(1+Math.exp(-x))}
 
-async function startScan() {
-  if (scanning) return;
-  scanning = true;
+function computeSignals(klines, obData, frData, oiData){
+  const opens =klines.map(k=>+k[1]);
+  const highs =klines.map(k=>+k[2]);
+  const lows  =klines.map(k=>+k[3]);
+  const closes=klines.map(k=>+k[4]);
+  const vols  =klines.map(k=>+k[5]);
+  const n=closes.length;
+  if(n<30) return null;
+  const last=closes[n-1], prev=closes[n-2];
 
-  const btn = document.getElementById('scanBtn');
-  btn.disabled = true;
-  btn.textContent = '⏳ 스캔 중...';
-  btn.classList.add('scanning');
+  // RSI
+  const rsi    =calcRSI(closes,14);
+  const rsiPrev=calcRSI(closes.slice(0,-1),14);
+  const rsiPumpScore=rsi<30?(30-rsi)/30:rsi<45?(45-rsi)/45*0.4:rsi>70?-(rsi-70)/30:rsi>55?-(rsi-55)/55*0.4:0;
+  const rsiMomentum=(rsi-rsiPrev)/10;
 
-  document.getElementById('scanProgress').style.display = 'block';
-  document.getElementById('errorMsg').style.display = 'none';
-  document.getElementById('resultList').innerHTML = '<div class="empty-list">종목 목록 로드 중...</div>';
+  // MACD
+  const macd=calcMACD(closes);
+  const macdScore=last>0?Math.tanh(macd.hist/(last*0.001)):0;
 
+  // BB
+  const bb=calcBB(closes,20);
+  const bbScore=bb.pct<20?(20-bb.pct)/20:bb.pct>80?-(bb.pct-80)/20:(50-bb.pct)/100;
+  const bbWidthAvg=(()=>{
+    if(n<21) return bb.width;
+    let sum=0,cnt=0;
+    for(let i=20;i<n;i++){const sl=closes.slice(i-20,i),m=sl.reduce((a,b)=>a+b,0)/20,sd=stdev(sl);sum+=m>0?(4*sd/m):0;cnt++;}
+    return cnt?sum/cnt:bb.width;
+  })();
+  const bbSqueeze=bb.width<bbWidthAvg*0.75;
+
+  // Volume
+  const avgVol20=sma(vols.slice(-21,-1),20);
+  const volRatio=avgVol20>0?vols[n-1]/avgVol20:1;
+  const priceDir=prev>0?(last-prev)/prev:0;
+  const volScore=Math.min(volRatio-1,3)*Math.sign(priceDir)*0.4;
+
+  // MA
+  const ma5 =sma(closes,5);
+  const ma20=sma(closes,20);
+  const ma60=n>=60?sma(closes,60):ma20;
+  const maScore=ma20>0?((last-ma20)/ma20)*5:0;
+  const maTrend=ma5>ma20?0.3:ma5<ma20?-0.3:0;
+  const maLong =ma20>ma60?0.2:ma20<ma60?-0.2:0;
+
+  // Momentum
+  const c4=n>=4?closes[n-4]:closes[0];
+  const c7=n>=7?closes[n-7]:closes[0];
+  const c13=n>=13?closes[n-13]:closes[0];
+  const ret3=c4>0?(last-c4)/c4:0;
+  const ret6=c7>0?(last-c7)/c7:0;
+  const ret12=c13>0?(last-c13)/c13:0;
+  const momentum=(ret3*0.5+ret6*0.3+ret12*0.2)*8;
+
+  // ATR
+  const atr=calcATR(highs,lows,closes,14);
+  const atrRatio=last>0?atr/last:0;
+  const atrAmplify=Math.min(atrRatio*50,1.5);
+
+  // Candle
+  const body=Math.abs(last-opens[n-1]);
+  const totalRange=Math.max(highs[n-1]-lows[n-1],0.0001);
+  const bodyRatio=body/totalRange;
+  const upperShadow=highs[n-1]-Math.max(last,opens[n-1]);
+  const lowerShadow=Math.min(last,opens[n-1])-lows[n-1];
+  const candleScore=(lowerShadow-upperShadow)/totalRange;
+
+  // Consecutive
+  let bullRun=0,bearRun=0;
+  for(let i=n-1;i>=Math.max(0,n-8);i--){
+    if(closes[i]>opens[i]){if(bearRun>0)break;bullRun++;}
+    else if(closes[i]<opens[i]){if(bullRun>0)break;bearRun++;}
+    else break;
+  }
+  const runScore=bullRun>0?Math.min(bullRun*0.15,0.6):bearRun>0?-Math.min(bearRun*0.15,0.6):0;
+
+  // Divergence
+  const lookback=Math.min(10,n-1);
+  const rsi10=calcRSI(closes.slice(0,n-lookback),14);
+  const priceDelta=last-closes[n-1-lookback];
+  const rsiDelta=rsi-rsi10;
+  let divergenceScore=0;
+  if(priceDelta<0&&rsiDelta>2) divergenceScore=0.5;
+  if(priceDelta>0&&rsiDelta<-2) divergenceScore=-0.5;
+
+  // Volume Profile
+  const vp=calcVolumeProfile(klines,VP_BINS);
+  const vpPumpScore=vp?vp.vpPumpScore:0;
+  const vpDumpScore=vp?vp.vpDumpScore:0;
+
+  // Orderbook
+  const ob=analyzeOrderbook(obData);
+  const obPumpScore=ob?ob.obPumpScore:0;
+  const obDumpScore=ob?ob.obDumpScore:0;
+
+  // Funding Rate
+  // frData = {fundingRate: "0.0001", ...}
+  const fr=frData?+frData.lastFundingRate:0;
+  // 양수 펀딩 = 롱 과부하 = 덤프 신호, 음수 = 숏 과부하 = 펌프 신호
+  const frPumpScore=fr<0?Math.min(-fr*1000,1.0):fr>0?-Math.min(fr*500,0.6):0;
+  const frDumpScore=fr>0?Math.min(fr*1000,1.0):fr<0?-Math.min(-fr*500,0.6):0;
+
+  // Open Interest
+  const oiNow=oiData?+oiData.openInterest:0;
+
+  // ── 가중 합산 ──────────────────────────────────
+  const factors={
+    rsi:        {pump:rsiPumpScore,   dump:-rsiPumpScore,   w:2.0},
+    rsiMom:     {pump:rsiMomentum,    dump:-rsiMomentum,    w:0.8},
+    macd:       {pump:macdScore,      dump:-macdScore,      w:1.5},
+    bb:         {pump:bbScore,        dump:-bbScore,        w:1.5},
+    volume:     {pump:volScore,       dump:-volScore,       w:1.2},
+    ma:         {pump:maScore,        dump:-maScore,        w:1.0},
+    maTrend:    {pump:maTrend,        dump:-maTrend,        w:0.8},
+    maLong:     {pump:maLong,         dump:-maLong,         w:0.6},
+    momentum:   {pump:momentum,       dump:-momentum,       w:1.2},
+    candle:     {pump:candleScore,    dump:-candleScore,    w:0.8},
+    run:        {pump:runScore,       dump:-runScore,       w:0.7},
+    divergence: {pump:divergenceScore,dump:-divergenceScore,w:1.0},
+    vp:         {pump:vpPumpScore,    dump:vpDumpScore,     w:1.3},
+    ob:         {pump:obPumpScore,    dump:obDumpScore,     w:1.5},
+    funding:    {pump:frPumpScore,    dump:frDumpScore,     w:1.2},
+  };
+
+  let pumpRaw=0,dumpRaw=0;
+  for(const f of Object.values(factors)){pumpRaw+=f.pump*f.w;dumpRaw+=f.dump*f.w;}
+  pumpRaw*=atrAmplify; dumpRaw*=atrAmplify;
+  if(bbSqueeze){pumpRaw*=1.2;dumpRaw*=1.2;}
+
+  const SCALE=1.5;
+  const pumpProb=Math.round(sigmoid(pumpRaw*SCALE)*100);
+  const dumpProb=Math.round(sigmoid(dumpRaw*SCALE)*100);
+
+  const breakdown=[
+    {name:'RSI',         val:rsi.toFixed(1),                      pumpS:factors.rsi.pump,      dumpS:factors.rsi.dump},
+    {name:'RSI 모멘텀',  val:(rsiMomentum*10).toFixed(2),         pumpS:factors.rsiMom.pump,   dumpS:factors.rsiMom.dump},
+    {name:'MACD 히스토', val:macd.hist.toFixed(5),                pumpS:factors.macd.pump,     dumpS:factors.macd.dump},
+    {name:'BB %B',       val:bb.pct.toFixed(1)+'%',               pumpS:factors.bb.pump,       dumpS:factors.bb.dump},
+    {name:'BB 밴드폭',   val:(bb.width*100).toFixed(2)+'%'+(bbSqueeze?' 🔻':''), pumpS:bbSqueeze?0.3:0, dumpS:bbSqueeze?0.3:0},
+    {name:'거래량비율',  val:volRatio.toFixed(2)+'x',             pumpS:factors.volume.pump,   dumpS:factors.volume.dump},
+    {name:'MA5/MA20',    val:ma20>0?(ma5/ma20).toFixed(4):'-',    pumpS:factors.maTrend.pump,  dumpS:factors.maTrend.dump},
+    {name:'가격모멘텀',  val:(ret6*100).toFixed(2)+'%',           pumpS:factors.momentum.pump, dumpS:factors.momentum.dump},
+    {name:'캔들패턴',    val:bodyRatio.toFixed(2),                pumpS:factors.candle.pump,   dumpS:factors.candle.dump},
+    {name:'연속봉',      val:bullRun>0?`+${bullRun}`:bearRun>0?`-${bearRun}`:'0', pumpS:factors.run.pump, dumpS:factors.run.dump},
+    {name:'다이버전스',  val:divergenceScore>0?'강세':divergenceScore<0?'약세':'None', pumpS:factors.divergence.pump, dumpS:factors.divergence.dump},
+    {name:'매물대위치',  val:vp?(last<vp.VAL?'VAL하단':last>vp.VAH?'VAH상단':'VA내부'):'—', pumpS:factors.vp.pump, dumpS:factors.vp.dump},
+    {name:'호가불균형',  val:ob?(ob.bidRatio.toFixed(1)+'% 매수'):'—',  pumpS:factors.ob.pump,    dumpS:factors.ob.dump},
+    {name:'펀딩비율',    val:fr!==0?(fr*100).toFixed(4)+'%':'—',  pumpS:factors.funding.pump,  dumpS:factors.funding.dump},
+    {name:'ATR 변동성',  val:(atrRatio*100).toFixed(3)+'%',       pumpS:0, dumpS:0},
+  ];
+
+  return{
+    pumpProb,dumpProb,rsi,macd,bb,volRatio,ma5,ma20,
+    atrRatio,bbSqueeze,momentum:ret6,breakdown,
+    vp,ob,
+    fundingRate:fr,
+    openInterest:oiNow,
+    lastPrice:last,change24h:0,volume24h:0,
+  };
+}
+
+// ════════════════════════════════════════════
+// SCAN
+// ════════════════════════════════════════════
+let scanning=false;
+
+async function startScan(){
+  if(scanning) return;
+  scanning=true;
+  const btn=document.getElementById('scanBtn');
+  btn.disabled=true; btn.textContent='⏳ 스캔 중...'; btn.classList.add('scanning');
+  document.getElementById('scanProgress').style.display='block';
+  document.getElementById('errorMsg').style.display='none';
+  document.getElementById('resultList').innerHTML='<div class="empty-list">종목 목록 로드 중...</div>';
   setProgress(0);
 
-  const interval = document.getElementById('intervalSel').value;
-  const topN = parseInt(document.getElementById('limitSel').value);
-  const threshold = parseInt(document.getElementById('thresholdInput').value) || 40;
-  const filter = document.getElementById('filterSel').value;
+  const interval =document.getElementById('intervalSel').value;
+  const topN     =parseInt(document.getElementById('limitSel').value);
+  const threshold=parseInt(document.getElementById('thresholdInput').value)||40;
+  const filter   =document.getElementById('filterSel').value;
 
-  try {
-    // 1. 거래량 상위 종목 로드
-    const [exchangeInfo, tickers] = await Promise.all([
+  try{
+    const [exchangeInfo,tickers]=await Promise.all([
       apiFetch('/fapi/v1/exchangeInfo'),
       apiFetch('/fapi/v1/ticker/24hr'),
     ]);
 
-    const activeSymbols = new Set(
-      exchangeInfo.symbols
-        .filter(s => s.quoteAsset === 'USDT' && s.status === 'TRADING')
-        .map(s => s.symbol)
+    const activeSymbols=new Set(
+      exchangeInfo.symbols.filter(s=>s.quoteAsset==='USDT'&&s.status==='TRADING').map(s=>s.symbol)
     );
+    const tickerMap={};
+    tickers.forEach(t=>{tickerMap[t.symbol]=t;});
 
-    const tickerMap = {};
-    tickers.forEach(t => { tickerMap[t.symbol] = t; });
-
-    // 거래량 기준 상위 N개
-    const topSymbols = Object.values(tickerMap)
-      .filter(t => activeSymbols.has(t.symbol))
-      .sort((a, b) => +b.quoteVolume - +a.quoteVolume)
-      .slice(0, topN)
-      .map(t => t.symbol);
+    const topSymbols=Object.values(tickerMap)
+      .filter(t=>activeSymbols.has(t.symbol))
+      .sort((a,b)=>+b.quoteVolume-+a.quoteVolume)
+      .slice(0,topN).map(t=>t.symbol);
 
     setProgress(10);
-    document.getElementById('resultList').innerHTML =
-      `<div class="empty-list">${topSymbols.length}개 종목 분석 중...</div>`;
+    document.getElementById('resultList').innerHTML=`<div class="empty-list">${topSymbols.length}개 분석 중...</div>`;
 
-    // 2. 병렬 kline 수집
-    const tasks = topSymbols.map((sym, i) => async () => {
-      const klines = await apiFetch(
-        `/fapi/v1/klines?symbol=${sym}&interval=${interval}&limit=${KLINE_LIMIT}`
-      );
-      const sig = computeSignals(klines);
-      if (!sig) return null;
-      const t = tickerMap[sym] || {};
-      sig.symbol = sym;
-      sig.change24h = +t.priceChangePercent || 0;
-      sig.volume24h = +t.quoteVolume || 0;
-      sig.lastPrice = +t.lastPrice || sig.lastPrice;
+    let done=0;
+    const tasks=topSymbols.map(sym=>async()=>{
+      // klines + orderbook + funding + OI 병렬 로드
+      const [klines,obData,frData,oiData]=await Promise.all([
+        apiFetch(`/fapi/v1/klines?symbol=${sym}&interval=${interval}&limit=${KLINE_LIMIT}`),
+        apiFetch(`/fapi/v1/depth?symbol=${sym}&limit=${OB_DEPTH}`).catch(()=>null),
+        apiFetch(`/fapi/v1/premiumIndex?symbol=${sym}`).catch(()=>null),
+        apiFetch(`/fapi/v1/openInterest?symbol=${sym}`).catch(()=>null),
+      ]);
+      const sig=computeSignals(klines,obData,frData,oiData);
+      done++;
+      setProgress(10+Math.round(done/topSymbols.length*85));
+      if(!sig) return null;
+      const t=tickerMap[sym]||{};
+      sig.symbol=sym;
+      sig.change24h=+t.priceChangePercent||0;
+      sig.volume24h=+t.quoteVolume||0;
+      sig.lastPrice=+t.lastPrice||sig.lastPrice;
       return sig;
     });
 
-    let done = 0;
-    const raw = await batchRun(tasks.map(task => async () => {
-      const r = await task();
-      done++;
-      setProgress(10 + Math.round(done / topSymbols.length * 85));
-      return r;
-    }), CONCURRENCY);
-
+    const raw=await batchRun(tasks,CONCURRENCY);
     setProgress(98);
 
-    // 3. 필터 + 정렬
-    let results = raw.filter(r =>
-      r !== null &&
-      (filter === 'all'  || (filter === 'pump' && r.pumpProb >= threshold)
-                         || (filter === 'dump' && r.dumpProb >= threshold))
-      && (r.pumpProb >= threshold || r.dumpProb >= threshold)
-    );
-
-    results = sortResults(results, currentSort);
-    scanResults = results;
-
+    let results=raw.filter(r=>{
+      if(!r) return false;
+      if(filter==='pump') return r.pumpProb>=threshold;
+      if(filter==='dump') return r.dumpProb>=threshold;
+      return r.pumpProb>=threshold||r.dumpProb>=threshold;
+    });
+    results=sortResults(results,currentSort);
+    scanResults=results;
     renderList(results);
 
-    const now = new Date();
-    document.getElementById('scanTime').textContent =
-      `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')} 업데이트`;
-    document.getElementById('statusLeft').textContent =
-      `${results.length}개 신호 감지`;
-    document.getElementById('statusRight').textContent =
-      `${topSymbols.length}개 스캔 완료`;
+    const now=new Date();
+    document.getElementById('scanTime').textContent=
+      `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+    document.getElementById('statusLeft').textContent=`${results.length}개 감지`;
+    document.getElementById('statusRight').textContent=`${topSymbols.length}개 완료`;
 
-  } catch (e) {
-    const err = document.getElementById('errorMsg');
-    err.style.display = 'block';
-    err.textContent = '❌ ' + e.message;
-    document.getElementById('resultList').innerHTML =
-      '<div class="empty-list">오류 발생 — 재시도해주세요</div>';
+  }catch(e){
+    const err=document.getElementById('errorMsg');
+    err.style.display='block'; err.textContent='❌ '+e.message;
+    document.getElementById('resultList').innerHTML='<div class="empty-list">오류 발생 — 재시도해주세요</div>';
   }
 
   setProgress(100);
-  setTimeout(() => {
-    document.getElementById('scanProgress').style.display = 'none';
-    setProgress(0);
-  }, 500);
-
-  btn.disabled = false;
-  btn.textContent = '▶ 재스캔';
-  btn.classList.remove('scanning');
-  scanning = false;
+  setTimeout(()=>{document.getElementById('scanProgress').style.display='none';setProgress(0);},500);
+  btn.disabled=false; btn.textContent='▶ 재스캔'; btn.classList.remove('scanning');
+  scanning=false;
 }
 
-function setProgress(pct) {
-  document.getElementById('progressFill').style.width = pct + '%';
+function setProgress(p){document.getElementById('progressFill').style.width=p+'%'}
+function setSort(s){
+  currentSort=s;
+  document.querySelectorAll('.sort-tab').forEach(t=>t.classList.toggle('active',t.dataset.sort===s));
+  if(scanResults.length) renderList(sortResults([...scanResults],s));
 }
-
-function setSort(s) {
-  currentSort = s;
-  document.querySelectorAll('.sort-tab').forEach(t => {
-    t.classList.toggle('active', t.dataset.sort === s);
-  });
-  if (scanResults.length) {
-    const sorted = sortResults([...scanResults], s);
-    renderList(sorted);
-  }
-}
-
-function sortResults(arr, sort) {
-  if (sort === 'pump') return arr.sort((a, b) => b.pumpProb - a.pumpProb);
-  if (sort === 'dump') return arr.sort((a, b) => b.dumpProb - a.dumpProb);
-  if (sort === 'max')  return arr.sort((a, b) => Math.max(b.pumpProb, b.dumpProb) - Math.max(a.pumpProb, a.dumpProb));
-  if (sort === 'vol')  return arr.sort((a, b) => b.volume24h - a.volume24h);
+function sortResults(arr,sort){
+  if(sort==='pump') return arr.sort((a,b)=>b.pumpProb-a.pumpProb);
+  if(sort==='dump') return arr.sort((a,b)=>b.dumpProb-a.dumpProb);
+  if(sort==='max')  return arr.sort((a,b)=>Math.max(b.pumpProb,b.dumpProb)-Math.max(a.pumpProb,a.dumpProb));
+  if(sort==='vol')  return arr.sort((a,b)=>b.volume24h-a.volume24h);
   return arr;
 }
 
-// ═══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════
 // RENDER LIST
-// ═══════════════════════════════════════════════════════════════
-function renderList(results) {
-  const el = document.getElementById('resultList');
-  if (!results.length) {
-    el.innerHTML = '<div class="empty-list">조건을 충족하는 종목 없음<br>임계값을 낮추거나 재스캔 해주세요</div>';
+// ════════════════════════════════════════════
+function renderList(results){
+  const el=document.getElementById('resultList');
+  if(!results.length){
+    el.innerHTML='<div class="empty-list">조건을 충족하는 종목 없음<br>임계값을 낮추거나 재스캔 해주세요</div>';
     return;
   }
+  el.innerHTML=results.map(r=>{
+    const sig=r.pumpProb>r.dumpProb?'pump':r.dumpProb>r.pumpProb?'dump':'neutral';
+    const sigLabel=sig==='pump'?'▲ 폭등':sig==='dump'?'▼ 폭락':'— 중립';
+    const base=r.symbol.replace('USDT','');
+    const chgClass=r.change24h>=0?'pos':'neg';
+    const chgStr=(r.change24h>=0?'+':'')+r.change24h.toFixed(2)+'%';
 
-  el.innerHTML = results.map(r => {
-    const max = Math.max(r.pumpProb, r.dumpProb);
-    const sig = r.pumpProb > r.dumpProb ? 'pump' : r.dumpProb > r.pumpProb ? 'dump' : 'neutral';
-    const sigLabel = sig === 'pump' ? '▲ 폭등' : sig === 'dump' ? '▼ 폭락' : '— 중립';
-    const base = r.symbol.replace('USDT', '');
-    const isActive = r.symbol === activeSymbol;
-    const chgClass = r.change24h >= 0 ? 'pos' : 'neg';
-    const chgStr = (r.change24h >= 0 ? '+' : '') + r.change24h.toFixed(2) + '%';
+    // 펀딩비 태그
+    const fr=r.fundingRate||0;
+    const frClass=fr>0.0002?'fund-pos':fr<-0.0002?'fund-neg':'fund-neu';
+    const frLabel=fr!==0?`FR ${(fr*100).toFixed(3)}%`:'FR —';
+
+    // OI 태그
+    const oiLabel=r.openInterest>0?`OI ${fmtVol(r.openInterest)}`:'';
+
+    // VP 태그
+    const vpLabel=r.vp?`POC $${fmtPrice(r.vp.poc)}`:'';
+
+    // OB 불균형 태그
+    const obClass=r.ob&&r.ob.bidRatio>55?'oi-up':r.ob&&r.ob.bidRatio<45?'oi-dn':'fund-neu';
+    const obLabel=r.ob?`OB ${r.ob.bidRatio.toFixed(0)}%매수`:'';
 
     return `
-    <div class="sym-card ${isActive ? 'active' : ''}" onclick="showDetail('${r.symbol}')">
+    <div class="sym-card ${r.symbol===activeSymbol?'active':''}" onclick="showDetail('${r.symbol}')">
       <div class="sym-card-top">
         <div>
           <span class="sym-name">${base}</span>
-          <span class="factor-val ${chgClass}" style="font-size:10px;margin-left:6px">${chgStr}</span>
+          <span class="factor-val ${chgClass}" style="font-size:10px;margin-left:5px">${chgStr}</span>
         </div>
         <span class="sym-signal ${sig}">${sigLabel}</span>
       </div>
@@ -1176,92 +1025,266 @@ function renderList(results) {
           <span class="prob-pct dump">${r.dumpProb}%</span>
         </div>
       </div>
+      <div class="sym-meta-row">
+        <span class="meta-tag ${frClass}">${frLabel}</span>
+        ${oiLabel?`<span class="meta-tag oi-up">${oiLabel}</span>`:''}
+        ${obLabel?`<span class="meta-tag ${obClass}">${obLabel}</span>`:''}
+        ${vpLabel?`<span class="meta-tag poc">${vpLabel}</span>`:''}
+      </div>
     </div>`;
   }).join('');
 }
 
-// ═══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════
 // SHOW DETAIL
-// ═══════════════════════════════════════════════════════════════
-function showDetail(symbol) {
-  activeSymbol = symbol;
-  // re-render list to update active state
-  const sorted = sortResults([...scanResults], currentSort);
-  renderList(sorted);
+// ════════════════════════════════════════════
+function showDetail(symbol){
+  activeSymbol=symbol;
+  renderList(sortResults([...scanResults],currentSort));
+  if(isMobile) closeSidebar();
 
-  const r = scanResults.find(x => x.symbol === symbol);
-  if (!r) return;
+  const r=scanResults.find(x=>x.symbol===symbol);
+  if(!r) return;
 
-  const base = symbol.replace('USDT', '');
-  const sigType = r.pumpProb > r.dumpProb ? 'pump' : 'dump';
-  const priceClass = r.change24h >= 0 ? 'up' : 'down';
-  const chgStr = (r.change24h >= 0 ? '+' : '') + r.change24h.toFixed(2) + '%';
+  const base=symbol.replace('USDT','');
+  const sigType=r.pumpProb>=r.dumpProb?'pump':'dump';
+  const priceClass=r.change24h>=0?'up':'down';
+  const chgStr=(r.change24h>=0?'+':'')+r.change24h.toFixed(2)+'%';
+  const pumpRot=(r.pumpProb/100)*180-90;
+  const dumpRot=(r.dumpProb/100)*180-90;
+  const interval=document.getElementById('intervalSel').value;
+  const fr=r.fundingRate||0;
+  const ob=r.ob;
+  const vp=r.vp;
 
-  // Arc gauge rotation: 0% → -90deg, 100% → +90deg
-  const pumpRot = (r.pumpProb / 100) * 180 - 90;
-  const dumpRot = (r.dumpProb / 100) * 180 - 90;
+  // ── 펀딩비 / OI 섹션 HTML ──────────────────
+  const frPct=(fr*100).toFixed(4);
+  const frClass=fr>0.0002?'neg':fr<-0.0002?'pos':'neu';
+  const frAccent=fr>0.0002?'dump-accent':fr<-0.0002?'pump-accent':'neu-accent';
+  const frDesc=fr>0.0003?'롱 과열 ⚠ 덤프 주의':fr>0?'롱 소폭 우세':fr<-0.0003?'숏 과열 ⚠ 펌프 주의':fr<0?'숏 소폭 우세':'중립';
 
-  // Breakdown table
-  const bRows = r.breakdown.map(f => {
-    const ps = (f.pumpS * 100).toFixed(1);
-    const ds = (f.dumpS * 100).toFixed(1);
-    const pClass = f.pumpS > 0.05 ? 'pos' : f.pumpS < -0.05 ? 'neg' : 'zero';
-    const dClass = f.dumpS > 0.05 ? 'pos' : f.dumpS < -0.05 ? 'neg' : 'zero';
-    const valClass = f.pumpS > f.dumpS ? 'pos' : f.pumpS < f.dumpS ? 'neg' : 'neu';
-    return `
-    <tr>
+  // OI
+  const oiStr=r.openInterest>0?'$'+fmtVol(r.openInterest*r.lastPrice):'—';
+
+  // 롱/숏 비율 (펀딩비 기반 추정)
+  // 양수 펀딩 = 롱 우세, 음수 = 숏 우세
+  const longEst=fr>=0?50+Math.min(fr*5000,30):50-Math.min(-fr*5000,30);
+  const shortEst=100-longEst;
+
+  const fiHtml=`
+  <div class="section-card">
+    <div class="section-heading">
+      <span>📡 펀딩비 · 미결제약정</span>
+      <span style="font-family:var(--mono);font-size:9px;color:var(--dim)">${interval}</span>
+    </div>
+    <div class="fi-grid">
+      <div class="fi-card ${frAccent}">
+        <div class="fi-label">펀딩비율</div>
+        <div class="fi-val ${frClass}">${frPct}%</div>
+        <div class="fi-sub">${frDesc}</div>
+      </div>
+      <div class="fi-card amber-accent">
+        <div class="fi-label">미결제약정</div>
+        <div class="fi-val amber">${oiStr}</div>
+        <div class="fi-sub">Open Interest</div>
+      </div>
+      <div class="fi-card ${longEst>55?'dump-accent':longEst<45?'pump-accent':'neu-accent'}">
+        <div class="fi-label">롱/숏 비율</div>
+        <div class="fi-val ${longEst>55?'neg':longEst<45?'pos':'neu'}">${longEst.toFixed(0)}/${shortEst.toFixed(0)}</div>
+        <div class="fi-sub">추정 (펀딩 기반)</div>
+      </div>
+    </div>
+    <!-- 롱숏 바 -->
+    <div class="fr-bar-row">
+      <div class="fr-long" style="width:${longEst}%"></div>
+      <div class="fr-divider"></div>
+      <div class="fr-short" style="width:${shortEst}%"></div>
+    </div>
+    <div class="fr-labels">
+      <span style="color:var(--dump)">롱 ${longEst.toFixed(1)}%</span>
+      <span style="color:var(--pump)">숏 ${shortEst.toFixed(1)}%</span>
+    </div>
+  </div>`;
+
+  // ── 오더북 매물벽 HTML ──────────────────────
+  let obHtml='';
+  if(ob){
+    const {bids,asks,bidWalls,askWalls,maxVol,bidRatio,totalBidVol,totalAskVol,bestBid,bestAsk,spread,avgBid,avgAsk}=ob;
+
+    // asks: 낮은 가격부터 → 뒤집어서 높은 가격이 위
+    const askRows=[...asks].reverse().map(([price,qty])=>{
+      const pct=maxVol>0?(qty/maxVol*100):0;
+      const isWall=qty>=avgAsk*WALL_MULT;
+      return `
+      <div class="ob-row">
+        <span class="ob-price ask">${fmtPrice(price)}</span>
+        <div class="ob-bar-wrap">
+          <div class="ob-bar ask ${isWall?'wall-ask':''}" style="width:${Math.max(pct,0.5)}%"></div>
+          ${isWall?`<span class="ob-wall-tag ask">WALL ${fmtVol(qty)}</span>`:''}
+        </div>
+        <span class="ob-qty">${fmtVol(qty)}</span>
+      </div>`;
+    }).join('');
+
+    const bidRows=bids.map(([price,qty])=>{
+      const pct=maxVol>0?(qty/maxVol*100):0;
+      const isWall=qty>=avgBid*WALL_MULT;
+      return `
+      <div class="ob-row">
+        <span class="ob-price bid">${fmtPrice(price)}</span>
+        <div class="ob-bar-wrap">
+          <div class="ob-bar bid ${isWall?'wall-bid':''}" style="width:${Math.max(pct,0.5)}%"></div>
+          ${isWall?`<span class="ob-wall-tag bid">WALL ${fmtVol(qty)}</span>`:''}
+        </div>
+        <span class="ob-qty">${fmtVol(qty)}</span>
+      </div>`;
+    }).join('');
+
+    const imbalancePct=bidRatio;
+    const imbColor=imbalancePct>55?'var(--pump)':imbalancePct<45?'var(--dump)':'var(--dim)';
+    const imbDesc=imbalancePct>60?'매수벽 압도 ⚡ 펌프 신호':imbalancePct>52?'매수 우세':imbalancePct<40?'매도벽 압도 ⚡ 덤프 신호':imbalancePct<48?'매도 우세':'균형';
+
+    obHtml=`
+    <div class="section-card">
+      <div class="section-heading">
+        <span>📋 오더북 매물벽</span>
+        <div style="display:flex;gap:10px;font-family:var(--mono);font-size:9px">
+          <span style="color:var(--dim)">스프레드 ${spread.toFixed(4)}%</span>
+          <span style="color:var(--dump)">매도 ${fmtVol(totalAskVol)}</span>
+          <span style="color:var(--pump)">매수 ${fmtVol(totalBidVol)}</span>
+        </div>
+      </div>
+      <div class="ob-container">
+        <div class="ob-header">
+          <span class="ob-hcell">호가</span>
+          <span class="ob-hcell">잔량 (상대비교)</span>
+          <span class="ob-hcell">수량</span>
+        </div>
+        <div class="ob-side">${askRows}</div>
+        <div class="ob-spread">
+          현재가 $${fmtPrice(r.lastPrice)} · 스프레드 ${spread.toFixed(4)}%
+        </div>
+        <div class="ob-side">${bidRows}</div>
+        <div class="ob-imbalance">
+          <span class="ob-imb-label">호가 불균형</span>
+          <div class="ob-imb-bar">
+            <div class="ob-imb-fill" style="width:${imbalancePct}%;background:${imbColor}"></div>
+          </div>
+          <span class="ob-imb-val" style="color:${imbColor}">${imbalancePct.toFixed(1)}%</span>
+        </div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:6px;text-align:center">${imbDesc}</div>
+        ${bidWalls.length||askWalls.length?`
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+          ${bidWalls.map(w=>`<span class="meta-tag sup">매수벽 $${fmtPrice(w[0])} (${fmtVol(w[1])})</span>`).join('')}
+          ${askWalls.map(w=>`<span class="meta-tag res">매도벽 $${fmtPrice(w[0])} (${fmtVol(w[1])})</span>`).join('')}
+        </div>`:''}
+      </div>
+    </div>`;
+  }
+
+  // ── 매물대 HTML ──────────────────────────────
+  let vpHtml='';
+  if(vp){
+    const rows=[...vp.buckets].reverse().map(b=>{
+      const isPoc=Math.abs(b.priceMid-vp.poc)<(vp.priceHigh-vp.priceLow)/VP_BINS/2;
+      const isSupport=vp.supports.some(s=>Math.abs(s.priceMid-b.priceMid)<0.0001);
+      const isResist =vp.resists.some(s=>Math.abs(s.priceMid-b.priceMid)<0.0001);
+      const isCurrent=b.priceMin<=vp.lastPrice&&vp.lastPrice<=b.priceMax;
+      const pct=vp.maxVol>0?(b.vol/vp.maxVol*100).toFixed(1):0;
+      const barClass=isPoc?'poc-bar':isSupport?'sup-bar':isResist?'res-bar':'normal';
+      const tag=isPoc?'poc':isCurrent?'cur':isSupport?'sup':isResist?'res':'empty';
+      const tagLabel=isPoc?'POC':isCurrent?'▶NOW':isSupport?'SUP':isResist?'RES':'';
+      return `
+      <div class="vp-row" style="${isCurrent?'background:rgba(255,255,255,.03);border-radius:2px':''}">
+        <span class="vp-price">${fmtPrice(b.priceMid)}</span>
+        <div class="vp-bar-wrap">
+          <div class="vp-bar ${barClass}" style="width:${Math.max(+pct,0.5)}%"></div>
+        </div>
+        <span class="vp-vol">${fmtVol(b.vol)}</span>
+        <span class="vp-tag ${tag}">${tagLabel}</span>
+      </div>`;
+    }).join('');
+
+    vpHtml=`
+    <div class="section-card">
+      <div class="section-heading">
+        <span>📊 매물대 (Volume Profile)</span>
+        <span style="font-family:var(--mono);font-size:9px;color:var(--dim)">최근 ${KLINE_LIMIT}봉</span>
+      </div>
+      <div class="vp-key-levels">
+        <div class="vp-level-card"><div class="vp-level-label">POC</div><div class="vp-level-val poc">$${fmtPrice(vp.poc)}</div></div>
+        <div class="vp-level-card"><div class="vp-level-label">VAH</div><div class="vp-level-val vah">$${fmtPrice(vp.VAH)}</div></div>
+        <div class="vp-level-card"><div class="vp-level-label">VAL</div><div class="vp-level-val val">$${fmtPrice(vp.VAL)}</div></div>
+        <div class="vp-level-card">
+          <div class="vp-level-label">현재가 위치</div>
+          <div class="vp-level-val cur" style="font-size:10px">${vp.lastPrice<vp.VAL?'VAL 하단 🟢':vp.lastPrice>vp.VAH?'VAH 상단 🔴':'VA 내부 ⚪'}</div>
+        </div>
+      </div>
+      <div class="vp-chart">${rows}</div>
+      ${(vp.supportDist!==null||vp.resistDist!==null)?`
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+        ${vp.supportDist!==null?`<span class="meta-tag sup">지지까지 -${vp.supportDist.toFixed(2)}%</span>`:''}
+        ${vp.resistDist !==null?`<span class="meta-tag res">저항까지 +${vp.resistDist.toFixed(2)}%</span>`:''}
+      </div>`:''}
+    </div>`;
+  }
+
+  // ── breakdown ───────────────────────────────
+  const bbSqText=r.bbSqueeze?'<span class="badge pump">수축중 ⚡</span>':'<span class="badge neu">정상</span>';
+  const bRows=r.breakdown.map(f=>{
+    const ps=(f.pumpS*100).toFixed(1);
+    const ds=(f.dumpS*100).toFixed(1);
+    const pClass=f.pumpS>0.05?'pos':f.pumpS<-0.05?'neg':'zero';
+    const dClass=f.dumpS>0.05?'pos':f.dumpS<-0.05?'neg':'zero';
+    const valClass=f.pumpS>f.dumpS?'pos':f.pumpS<f.dumpS?'neg':'neu';
+    return `<tr>
       <td style="color:var(--text)">${f.name}</td>
       <td class="factor-val ${valClass}">${f.val}</td>
-      <td><span class="factor-score ${pClass}">${f.pumpS > 0 ? '+' : ''}${ps}</span></td>
-      <td><span class="factor-score ${dClass}">${f.dumpS > 0 ? '+' : ''}${ds}</span></td>
+      <td><span class="factor-score ${pClass}">${f.pumpS>0?'+':''}${ps}</span></td>
+      <td><span class="factor-score ${dClass}">${f.dumpS>0?'+':''}${ds}</span></td>
     </tr>`;
   }).join('');
 
-  const bbSqText = r.bbSqueeze ? '<span class="badge pump">수축중 ⚡</span>' : '<span class="badge neu">정상</span>';
-
-  document.getElementById('detailInner').innerHTML = `
+  document.getElementById('detailInner').innerHTML=`
     <div class="detail-header">
-      <div>
-        <div class="detail-sym">${base}<span style="color:var(--dim);font-size:14px">/USDT</span></div>
-        <div class="detail-price ${priceClass}">$${r.lastPrice.toLocaleString(undefined,{maximumFractionDigits:6})} <span style="font-size:13px">${chgStr}</span></div>
-        <div class="detail-meta">바이낸스 선물 · ${document.getElementById('intervalSel').value} · RSI ${r.rsi.toFixed(1)} · 거래량 비율 ${r.volRatio.toFixed(2)}x</div>
+      <div style="min-width:0;flex:1">
+        <div class="detail-sym">${base}<span style="color:var(--dim);font-size:13px">/USDT</span></div>
+        <div class="detail-price ${priceClass}">$${r.lastPrice.toLocaleString(undefined,{maximumFractionDigits:6})} <span style="font-size:12px">${chgStr}</span></div>
+        <div class="detail-meta">바이낸스 선물 · ${interval} · RSI ${r.rsi.toFixed(1)} · 거래량 ${r.volRatio.toFixed(2)}x</div>
       </div>
-      <div style="text-align:right">
-        <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:4px">24H 거래량</div>
-        <div style="font-family:var(--mono);font-size:14px;font-weight:700">
-          $${(r.volume24h / 1e6).toFixed(1)}M
-        </div>
-        <div style="margin-top:6px">${bbSqText}</div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:3px">24H 거래량</div>
+        <div style="font-family:var(--mono);font-size:14px;font-weight:700">$${(r.volume24h/1e6).toFixed(1)}M</div>
+        <div style="margin-top:5px">${bbSqText}</div>
       </div>
     </div>
 
-    <!-- GAUGE ROW -->
+    <!-- GAUGE -->
     <div class="gauge-row">
       <div class="gauge-card pump-card">
         <div class="gauge-title">▲ 폭등 확률</div>
-        <div class="arc-wrap">
-          <div class="arc-bg"></div>
-          <div class="arc-fg" style="transform:rotate(${pumpRot}deg)"></div>
-        </div>
-        <div class="gauge-pct">${r.pumpProb}<span style="font-size:18px">%</span></div>
-        <div class="gauge-sub">${r.pumpProb >= 70 ? '⚡ 강한 펌프 신호' : r.pumpProb >= 55 ? '📈 중간 상승 신호' : '─ 약한 신호'}</div>
+        <div class="arc-wrap"><div class="arc-bg"></div><div class="arc-fg" style="transform:rotate(${pumpRot}deg)"></div></div>
+        <div class="gauge-pct">${r.pumpProb}<span style="font-size:16px">%</span></div>
+        <div class="gauge-sub">${r.pumpProb>=70?'⚡ 강한 펌프':r.pumpProb>=55?'📈 중간 상승':'─ 약한 신호'}</div>
       </div>
       <div class="gauge-card dump-card">
         <div class="gauge-title">▼ 폭락 확률</div>
-        <div class="arc-wrap">
-          <div class="arc-bg"></div>
-          <div class="arc-fg" style="transform:rotate(${dumpRot}deg)"></div>
-        </div>
-        <div class="gauge-pct">${r.dumpProb}<span style="font-size:18px">%</span></div>
-        <div class="gauge-sub">${r.dumpProb >= 70 ? '⚡ 강한 덤프 신호' : r.dumpProb >= 55 ? '📉 중간 하락 신호' : '─ 약한 신호'}</div>
+        <div class="arc-wrap"><div class="arc-bg"></div><div class="arc-fg" style="transform:rotate(${dumpRot}deg)"></div></div>
+        <div class="gauge-pct">${r.dumpProb}<span style="font-size:16px">%</span></div>
+        <div class="gauge-sub">${r.dumpProb>=70?'⚡ 강한 덤프':r.dumpProb>=55?'📉 중간 하락':'─ 약한 신호'}</div>
       </div>
     </div>
+
+    ${fiHtml}
+    ${obHtml}
+    ${vpHtml}
 
     <!-- BREAKDOWN -->
     <div class="breakdown-grid">
       <div class="breakdown-card">
         <div class="breakdown-heading">지표별 신호 기여도</div>
         <table class="ind-table">
+          <colgroup><col style="width:36%"><col style="width:30%"><col style="width:17%"><col style="width:17%"></colgroup>
           <thead>
             <tr>
               <th>지표</th><th>현재값</th>
@@ -1272,58 +1295,29 @@ function showDetail(symbol) {
           <tbody>${bRows}</tbody>
         </table>
       </div>
-
       <div class="breakdown-card">
         <div class="breakdown-heading">주요 지표 스냅샷</div>
-        <div class="factor-row">
-          <span class="factor-name">RSI (14)</span>
-          <span class="factor-val ${r.rsi < 30 ? 'pos' : r.rsi > 70 ? 'neg' : 'neu'}">${r.rsi.toFixed(2)}</span>
-        </div>
-        <div class="factor-row">
-          <span class="factor-name">MACD 히스토그램</span>
-          <span class="factor-val ${r.macd.hist > 0 ? 'pos' : 'neg'}">${r.macd.hist.toFixed(6)}</span>
-        </div>
-        <div class="factor-row">
-          <span class="factor-name">BB %B</span>
-          <span class="factor-val ${r.bb.pct < 30 ? 'pos' : r.bb.pct > 70 ? 'neg' : 'neu'}">${r.bb.pct.toFixed(2)}%</span>
-        </div>
-        <div class="factor-row">
-          <span class="factor-name">BB 밴드폭</span>
-          <span class="factor-val neu">${(r.bb.width * 100).toFixed(3)}%</span>
-        </div>
-        <div class="factor-row">
-          <span class="factor-name">거래량 비율 (vs 20봉)</span>
-          <span class="factor-val ${r.volRatio > 1.5 ? 'pos' : r.volRatio < 0.7 ? 'neg' : 'neu'}">${r.volRatio.toFixed(3)}x</span>
-        </div>
-        <div class="factor-row">
-          <span class="factor-name">MA5 / MA20</span>
-          <span class="factor-val ${r.ma5 > r.ma20 ? 'pos' : 'neg'}">${(r.ma5 / r.ma20).toFixed(5)}</span>
-        </div>
-        <div class="factor-row">
-          <span class="factor-name">ATR 변동성</span>
-          <span class="factor-val neu">${(r.atrRatio * 100).toFixed(4)}%</span>
-        </div>
-        <div class="factor-row">
-          <span class="factor-name">6봉 모멘텀</span>
-          <span class="factor-val ${r.momentum > 0 ? 'pos' : 'neg'}">${(r.momentum * 100).toFixed(3)}%</span>
-        </div>
-        <div class="factor-row">
-          <span class="factor-name">BB 수축 상태</span>
-          ${bbSqText}
-        </div>
+        <div class="factor-row"><span class="factor-name">RSI (14)</span><span class="factor-val ${r.rsi<30?'pos':r.rsi>70?'neg':'neu'}">${r.rsi.toFixed(2)}</span></div>
+        <div class="factor-row"><span class="factor-name">MACD 히스토</span><span class="factor-val ${r.macd.hist>0?'pos':'neg'}">${r.macd.hist.toFixed(6)}</span></div>
+        <div class="factor-row"><span class="factor-name">BB %B</span><span class="factor-val ${r.bb.pct<30?'pos':r.bb.pct>70?'neg':'neu'}">${r.bb.pct.toFixed(2)}%</span></div>
+        <div class="factor-row"><span class="factor-name">BB 밴드폭</span><span class="factor-val neu">${(r.bb.width*100).toFixed(3)}%</span></div>
+        <div class="factor-row"><span class="factor-name">거래량 비율</span><span class="factor-val ${r.volRatio>1.5?'pos':r.volRatio<0.7?'neg':'neu'}">${r.volRatio.toFixed(3)}x</span></div>
+        <div class="factor-row"><span class="factor-name">MA5/MA20</span><span class="factor-val ${r.ma5>r.ma20?'pos':'neg'}">${r.ma20>0?(r.ma5/r.ma20).toFixed(5):'-'}</span></div>
+        <div class="factor-row"><span class="factor-name">ATR 변동성</span><span class="factor-val neu">${(r.atrRatio*100).toFixed(4)}%</span></div>
+        <div class="factor-row"><span class="factor-name">6봉 모멘텀</span><span class="factor-val ${r.momentum>0?'pos':'neg'}">${(r.momentum*100).toFixed(3)}%</span></div>
+        <div class="factor-row"><span class="factor-name">펀딩비율</span><span class="factor-val ${fr>0.0002?'neg':fr<-0.0002?'pos':'neu'}">${(fr*100).toFixed(4)}%</span></div>
+        <div class="factor-row"><span class="factor-name">호가 불균형</span><span class="factor-val ${ob&&ob.bidRatio>55?'pos':ob&&ob.bidRatio<45?'neg':'neu'}">${ob?ob.bidRatio.toFixed(1)+'% 매수':'—'}</span></div>
+        <div class="factor-row"><span class="factor-name">BB 수축</span>${bbSqText}</div>
         <div class="factor-row">
           <span class="factor-name">최종 신호</span>
-          <span class="sym-signal ${sigType}" style="font-size:11px">
-            ${sigType === 'pump' ? '▲ 폭등 우세' : '▼ 폭락 우세'}
-          </span>
+          <span class="sym-signal ${sigType}" style="font-size:10px">${sigType==='pump'?'▲ 폭등 우세':'▼ 폭락 우세'}</span>
         </div>
       </div>
     </div>
 
     <div class="disclaimer">
-      ⚠ 본 확률 수치는 기술적 지표 기반 통계 추정값이며 미래 가격을 보장하지 않습니다.<br>
-      폭등/폭락 확률은 RSI·MACD·볼린저밴드·거래량·모멘텀·캔들패턴·다이버전스 등 12개 인자를<br>
-      가중 합산 후 시그모이드 함수로 0~100% 변환한 값입니다. 실제 거래 시 반드시 추가 분석 필요.
+      ⚠ 본 수치는 RSI·MACD·BB·거래량·모멘텀·캔들·다이버전스·매물대·오더북·펀딩비·미결제약정 15개 인자
+      기반 통계 추정값이며 미래 가격을 보장하지 않습니다. 실제 거래 시 반드시 추가 분석 필요.
     </div>
   `;
 }
