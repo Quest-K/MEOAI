@@ -316,6 +316,25 @@
   }
   .nick-skip:active{ opacity:.6; }
 
+
+  /* ── Ranking Tabs ── */
+  .rank-tabs{
+    display:flex;gap:6px;margin-bottom:12px;
+    background:var(--bg);border-radius:12px;padding:4px;
+  }
+  .rank-tab{
+    flex:1;padding:7px 4px;border-radius:9px;border:none;cursor:pointer;
+    font-family:'Space Mono',monospace;font-size:10px;font-weight:700;
+    color:var(--muted);background:transparent;letter-spacing:.04em;
+    transition:background .15s,color .15s;
+  }
+  .rank-tab.active{
+    background:var(--surface);color:var(--blue);
+    box-shadow:0 1px 4px rgba(37,99,235,.12);
+  }
+  .rank-tab:active{ opacity:.7; }
+  .rank-sub{ font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);margin-left:4px; }
+
   /* ── Ranking Sheet ── */
   #ranking-sheet{
     position:absolute;inset:0;display:flex;align-items:flex-end;justify-content:center;
@@ -388,6 +407,7 @@
 <body>
 <div id="app">
 
+  <!-- ── Game Area ── -->
   <div id="game-area">
     <canvas id="gameCanvas"></canvas>
     <canvas id="particle-canvas"></canvas>
@@ -416,13 +436,16 @@
 
     <div id="toast"></div>
 
+    <!-- Echo Warning -->
     <div id="echo-warning">
       <span>👻 잔상 출현</span>
       <span id="echo-countdown">3</span>
     </div>
 
+    <!-- ── Overlay ── -->
     <div id="overlay">
 
+      <!-- START SCREEN -->
       <div class="modal" id="start-screen">
         <div class="modal-icon blue">⚡</div>
         <h1>Micro Hunter</h1>
@@ -431,6 +454,7 @@
         <button class="btn btn-ghost" id="btn-howto">게임 방법 보기</button>
       </div>
 
+      <!-- GAMEOVER SCREEN -->
       <div class="modal hidden" id="gameover-screen">
         <div class="modal-icon red">💥</div>
         <div class="score-big" id="final-score">0</div>
@@ -456,7 +480,11 @@
         </div>
       </div>
 
-    </div><div id="nickname-sheet">
+    </div><!-- /#overlay -->
+
+
+    <!-- ── Nickname Input Sheet ── -->
+    <div id="nickname-sheet">
       <div class="nick-modal">
         <div class="nick-score-preview" id="nick-score-preview">0</div>
         <span class="nick-label">점수 등록</span>
@@ -466,12 +494,18 @@
       </div>
     </div>
 
+    <!-- ── Ranking Sheet ── -->
     <div id="ranking-sheet">
       <div class="rank-inner">
         <div class="rank-handle"></div>
         <div class="rank-header">
           <span class="rank-title">🏆 글로벌 랭킹</span>
           <button class="rank-refresh" id="btn-rank-refresh">↻ 새로고침</button>
+        </div>
+        <div class="rank-tabs">
+          <button class="rank-tab active" data-tab="score">🏅 점수</button>
+          <button class="rank-tab" data-tab="time">⏱ 시간</button>
+          <button class="rank-tab" data-tab="cores">⚡ 코어</button>
         </div>
         <div class="rank-list" id="rank-list">
           <div class="rank-loading">불러오는 중...</div>
@@ -481,6 +515,7 @@
       </div>
     </div>
 
+    <!-- ── How-to Sheet ── -->
     <div id="howto-sheet">
       <div class="howto-inner">
         <div class="howto-handle"></div>
@@ -520,6 +555,7 @@
     <div id="kb-hint">WASD / ↑↓←→</div>
   </div>
 
+  <!-- ── Joystick Panel ── -->
   <div id="joystick-panel">
     <div id="joystick-idle"><div id="joystick-idle-dot"></div></div>
     <div id="joystick-base">
@@ -540,7 +576,9 @@
     <div id="joystick-label">touch anywhere · drag to move</div>
   </div>
 
-</div><script>
+</div><!-- /#app -->
+
+<script>
 
 // ════════════════════════════════════════
 //  Supabase
@@ -581,8 +619,14 @@ async function saveScore(nickname, scoreVal, survivalTime, cores, combo){
   });
 }
 
-async function fetchRanking(){
-  return sbFetch('/rest/v1/scores?select=nickname,score,survival_time,cores_collected,max_combo,created_at&order=score.desc&limit=20');
+async function fetchRanking(tab='score'){
+  const orderMap = {
+    score: 'score.desc',
+    time:  'survival_time.desc',
+    cores: 'cores_collected.desc'
+  };
+  const order = orderMap[tab] || 'score.desc';
+  return sbFetch(`/rest/v1/scores?select=nickname,score,survival_time,cores_collected,max_combo,created_at&order=${order}&limit=20`);
 }
 
 async function fetchMyRank(scoreVal){
@@ -651,20 +695,24 @@ document.getElementById('btn-nick-skip').addEventListener('click', ()=>{
 // ════════════════════════════════════════
 //  Ranking Sheet
 // ════════════════════════════════════════
-async function openRankingSheet(highlightScore=null){
+async function openRankingSheet(highlightScore=null, tab='score'){
   const sheet = document.getElementById('ranking-sheet');
   sheet.classList.add('open');
-  await loadRanking(highlightScore);
+  // 탭 활성화
+  document.querySelectorAll('.rank-tab').forEach(t=>{
+    t.classList.toggle('active', t.dataset.tab===tab);
+  });
+  await loadRanking(highlightScore, tab);
 }
 
-async function loadRanking(highlightScore=null){
+async function loadRanking(highlightScore=null, tab='score'){
   const list = document.getElementById('rank-list');
   const myRankEl = document.getElementById('rank-myrank');
   list.innerHTML = '<div class="rank-loading">불러오는 중...</div>';
   myRankEl.classList.add('hidden');
 
   try{
-    const data = await fetchRanking();
+    const data = await fetchRanking(tab);
     if(!data || data.length===0){
       list.innerHTML = '<div class="rank-empty">아직 기록이 없어요.<br>첫 번째 등록자가 되어보세요! 🚀</div>';
       return;
@@ -674,17 +722,28 @@ async function loadRanking(highlightScore=null){
     const posClass = ['gold','silver','bronze'];
     const savedNick = localStorage.getItem('mh_nickname')||'';
 
+    const curTab = document.querySelector('.rank-tab.active')?.dataset.tab || 'score';
     list.innerHTML = data.map((r,i)=>{
-      const pos   = i < 3 ? `<span class="rank-pos ${posClass[i]}">${medals[i]}</span>`
-                           : `<span class="rank-pos">${i+1}</span>`;
+      const pos = i < 3 ? `<span class="rank-pos ${posClass[i]}">${medals[i]}</span>`
+                        : `<span class="rank-pos">${i+1}</span>`;
       const isMine = highlightScore && r.score===highlightScore && r.nickname===savedNick;
-      const t = r.survival_time ? r.survival_time.toFixed(1)+'s' : '';
+      let mainVal='', subVal='';
+      if(curTab==='score'){
+        mainVal = Math.floor(r.score).toLocaleString()+'점';
+        subVal  = (r.survival_time||0).toFixed(1)+'s';
+      } else if(curTab==='time'){
+        mainVal = (r.survival_time||0).toFixed(1)+'s';
+        subVal  = Math.floor(r.score).toLocaleString()+'점';
+      } else {
+        mainVal = (r.cores_collected||0)+'개';
+        subVal  = Math.floor(r.score).toLocaleString()+'점';
+      }
       return `<div class="rank-row${isMine?' mine':''}">
         ${pos}
         <span class="rank-nick">${escHtml(r.nickname)}</span>
         <div style="text-align:right">
-          <div class="rank-score">${Math.floor(r.score).toLocaleString()}</div>
-          <div class="rank-time">${t}</div>
+          <div class="rank-score">${mainVal}</div>
+          <div class="rank-time">${subVal}</div>
         </div>
       </div>`;
     }).join('');
@@ -715,7 +774,17 @@ document.getElementById('ranking-sheet').addEventListener('click', e=>{
     document.getElementById('ranking-sheet').classList.remove('open');
 });
 document.getElementById('btn-rank-refresh').addEventListener('click', ()=>{
-  loadRanking(null);
+  const tab = document.querySelector('.rank-tab.active')?.dataset.tab||'score';
+  loadRanking(null, tab);
+});
+
+// 랭킹 탭 전환
+document.querySelectorAll('.rank-tab').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.rank-tab').forEach(t=>t.classList.remove('active'));
+    btn.classList.add('active');
+    loadRanking(null, btn.dataset.tab);
+  });
 });
 document.getElementById('btn-ranking').addEventListener('click', ()=>{
   openRankingSheet(null);
@@ -747,6 +816,7 @@ let score=0, bestScore=0, frameCount=0;
 let energy=100;
 let combo=1, maxCombo=1, coresCollected=0;
 let player, core, echoes, history, lastEchoSpawn;
+let obstacles=[], lastObstacleSpawn=0;
 let particles=[];
 let toastTimer=null;
 let joystick={dx:0,dy:0};
@@ -968,7 +1038,7 @@ function spawnCore(){
 function startGame(){
   state='PLAYING'; score=0; frameCount=0; lastEchoSpawn=0;
   energy=100; combo=1; maxCombo=1; coresCollected=0;
-  history=[]; echoes=[]; particles=[];
+  history=[]; echoes=[]; particles=[]; obstacles=[]; lastObstacleSpawn=0;
   player={x:50,y:50,r:9,trail:[]};
   core={x:0,y:0,r:7,pulse:0,type:'normal'};
   spawnCore();
@@ -1028,6 +1098,45 @@ function update(dt){
   const timeScore = (2 + timeSec * 0.08) * dt;
   score += timeScore;
 
+
+  // ── 장애물 스폰 (10초마다 최대 8개) ──
+  const OBS_IV = 600; // 10초
+  if(frameCount - lastObstacleSpawn >= OBS_IV && obstacles.length < 8){
+    const types = ['spike','roam','roam'];
+    const t = types[Math.floor(Math.random()*types.length)];
+    let ox, oy, tries=0;
+    do {
+      ox = 5 + Math.random()*90;
+      oy = 5 + Math.random()*90;
+      tries++;
+    } while(Math.hypot(player.x-ox, player.y-oy)<20 && tries<30);
+    const angle = Math.random()*Math.PI*2;
+    const spd = t==='roam' ? 0.18+Math.random()*0.14 : 0;
+    obstacles.push({x:ox, y:oy, r:6, vx:Math.cos(angle)*spd, vy:Math.sin(angle)*spd, type:t, pulse:Math.random()*Math.PI*2});
+    lastObstacleSpawn = frameCount;
+  }
+
+  // ── 장애물 이동 & 충돌 ──
+  for(const ob of obstacles){
+    ob.pulse = (ob.pulse + 0.06*dt) % (Math.PI*2);
+    if(ob.type==='roam'){
+      ob.x += ob.vx*dt; ob.y += ob.vy*dt;
+      if(ob.x<2||ob.x>98) ob.vx*=-1;
+      if(ob.y<2||ob.y>98) ob.vy*=-1;
+      ob.x=Math.max(2,Math.min(98,ob.x));
+      ob.y=Math.max(2,Math.min(98,ob.y));
+    }
+    if(Math.hypot(player.x-ob.x, player.y-ob.y) < ob.r+player.r*0.6){
+      energy = Math.max(0, energy - 20);
+      spawnParticles(player.x*canvas.width/100, player.y*canvas.height/100, '#f97316', 10);
+      showToast('⚠️ 장애물 충돌! -20 에너지');
+      // 충돌한 장애물 제거
+      obstacles.splice(obstacles.indexOf(ob), 1);
+      if(energy<=0){ endGame('에너지 소진'); return; }
+      break;
+    }
+  }
+
   core.pulse=(core.pulse+0.07*dt)%(Math.PI*2);
 
   if(Math.hypot(player.x-core.x,player.y-core.y)<12){
@@ -1048,14 +1157,14 @@ function update(dt){
   history.push({x:player.x,y:player.y});
   if(history.length>36000) history.shift();
 
-  const ECHO_IV=240, WARN_F=180;
+  const ECHO_IV=120, WARN_F=90;
   const nextIn=ECHO_IV-(frameCount-lastEchoSpawn);
   if(nextIn===WARN_F && history.length>60) triggerEchoWarning();
 
   if(frameCount-lastEchoSpawn>=ECHO_IV && history.length>60){
     echoes.push({path:history.slice(),offset:frameCount});
     lastEchoSpawn=frameCount;
-    if(echoes.length>5) echoes.shift();
+    if(echoes.length>10) echoes.shift();
   }
 
   for(const echo of echoes){
@@ -1102,6 +1211,7 @@ function draw(){
   drawPlayerTrail(w,h);
   drawEchoPaths(w,h);
   drawEchoes(w,h);
+  drawObstacles(w,h);
   drawCore(w,h);
   drawPlayer(w,h);
   drawMinimap(w,h);
@@ -1208,6 +1318,55 @@ function drawEchoes(w,h){
   });
 }
 
+
+// ════════════════════════════════════════
+//  Obstacles
+// ════════════════════════════════════════
+function drawObstacles(w,h){
+  obstacles.forEach(ob=>{
+    const px=ob.x*w/100, py=ob.y*h/100;
+    const pulse=Math.sin(ob.pulse)*.25+1;
+    const isRoam=ob.type==='roam';
+    const col  = isRoam ? '#ef4444' : '#f97316';
+    const rgba = isRoam
+      ? (a=>`rgba(239,68,68,${a})`)
+      : (a=>`rgba(249,115,22,${a})`);
+
+    // 글로우 헤일로
+    const g=ctx.createRadialGradient(px,py,0,px,py,20*pulse);
+    g.addColorStop(0, rgba(.25)); g.addColorStop(1, rgba(0));
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(px,py,20*pulse,0,Math.PI*2); ctx.fill();
+
+    // 본체
+    ctx.save();
+    if(isRoam){
+      // 이동형: 회전 다이아몬드
+      ctx.translate(px,py); ctx.rotate(ob.pulse);
+      ctx.fillStyle=col; ctx.strokeStyle='#fff'; ctx.lineWidth=1.5;
+      ctx.beginPath();
+      const s=ob.r*pulse;
+      ctx.moveTo(0,-s); ctx.lineTo(s,0); ctx.lineTo(0,s); ctx.lineTo(-s,0);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    } else {
+      // 고정형: 뾰족 별
+      ctx.translate(px,py);
+      ctx.fillStyle=col; ctx.strokeStyle='#fff'; ctx.lineWidth=1.5;
+      ctx.beginPath();
+      for(let i=0;i<8;i++){
+        const angle=(Math.PI/4)*i;
+        const r2=i%2===0 ? ob.r*pulse : ob.r*pulse*0.45;
+        i===0 ? ctx.moveTo(Math.cos(angle)*r2, Math.sin(angle)*r2)
+              : ctx.lineTo(Math.cos(angle)*r2, Math.sin(angle)*r2);
+      }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+    ctx.restore();
+
+    // 미니맵에도 표시 (별도 처리 — 좌표만 저장)
+    ob._px=px; ob._py=py;
+  });
+}
+
 function drawCore(w,h){
   const cx=core.x*w/100, cy=core.y*h/100;
   const pulse=Math.sin(core.pulse)*.3+1;
@@ -1218,7 +1377,7 @@ function drawCore(w,h){
   g.addColorStop(0,gc+'.35)'); g.addColorStop(1,gc+'0)');
   ctx.fillStyle=g; ctx.beginPath(); ctx.arc(cx,cy,28*pulse,0,Math.PI*2); ctx.fill();
   ctx.fillStyle=col; ctx.shadowBlur=12; ctx.shadowColor=col;
-  ctx.beginPath(); ctx.arc(cx,cy,8*pulse,0,Math.PI*2); ctx.fill(); shadowBlur=0;
+  ctx.beginPath(); ctx.arc(cx,cy,8*pulse,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
   ctx.fillStyle='rgba(255,255,255,.7)';
   ctx.beginPath(); ctx.arc(cx-2,cy-2,2.5,0,Math.PI*2); ctx.fill();
   if(isB){
@@ -1301,6 +1460,13 @@ function drawMinimap(w,h){
     const pos=echo.path[idx]; if(!pos) return;
     ctx.fillStyle=GHOST_RGBA(0.9);
     ctx.beginPath(); ctx.arc(mx+pos.x*S,my+pos.y*S,3,0,Math.PI*2); ctx.fill();
+  });
+
+
+  // 장애물 (미니맵)
+  obstacles.forEach(ob=>{
+    ctx.fillStyle = ob.type==='roam' ? 'rgba(239,68,68,.85)' : 'rgba(249,115,22,.85)';
+    ctx.beginPath(); ctx.arc(mx+ob.x*S, my+ob.y*S, 2.5, 0, Math.PI*2); ctx.fill();
   });
 
   // 코어
