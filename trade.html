@@ -177,6 +177,20 @@
   .val-up { color:var(--long); }
   .val-dn { color:var(--short); }
 
+  /* ── PnL cell ── */
+  .pnl-block { display:flex; flex-direction:column; gap:2px; }
+  .pnl-entry { font-size:9px; color:var(--dim); letter-spacing:1px; }
+  .pnl-entry span { color:var(--text); }
+  .pnl-now   { font-size:9px; color:var(--dim); letter-spacing:1px; }
+  .pnl-now span { color:var(--text); }
+  .pnl-rate  {
+    font-family:'Rajdhani',sans-serif; font-weight:700; font-size:16px;
+    display:flex; align-items:center; gap:4px;
+  }
+  .pnl-rate.gain { color:var(--long); }
+  .pnl-rate.loss { color:var(--short); }
+  .pnl-rate.zero { color:var(--dim); }
+
   .new-tag { font-size:8px; letter-spacing:2px; padding:2px 5px; margin-left:6px; animation:blink 1s step-end 4; }
   .new-tag.up { background:var(--long);  color:var(--bg); }
   .new-tag.dn { background:var(--short); color:#fff; }
@@ -221,7 +235,7 @@
     .stats-bar   { grid-template-columns:repeat(3,1fr); }
     header { flex-direction:column; gap:14px; }
     .timer-display { margin-left:0; }
-    .results-table th:nth-child(n+5), .results-table td:nth-child(n+5) { display:none; }
+    .results-table th:nth-child(n+6), .results-table td:nth-child(n+6) { display:none; }
   }
   @media (max-width:600px) {
     .stats-bar { grid-template-columns:repeat(2,1fr); }
@@ -240,7 +254,7 @@
   <header>
     <div>
       <div class="logo">FUTURES<span class="up">▲</span><span class="dn">▼</span>SCAN</div>
-      <div class="logo-sub">BINANCE PERPETUAL · 15M CHART · v3.1  |  LONG &amp; SHORT SIGNAL</div>
+      <div class="logo-sub">BINANCE PERPETUAL · 15M CHART · v3.3  |  LONG &amp; SHORT SIGNAL  |  실시간 손익 추적</div>
     </div>
     <div class="status-panel">
       <div class="status-row"><div class="dot" id="apiDot"></div><span id="apiStatus">STANDBY</span></div>
@@ -280,7 +294,6 @@
 
   <!-- Signal set descriptions -->
   <div class="signal-grid">
-    <!-- LONG -->
     <div class="signal-box long-box">
       <div class="signal-title up">🟢 급등 LONG 신호 — 3개 조건 AND</div>
       <div class="cond-list">
@@ -289,13 +302,12 @@
         <div class="cond-item up">L3 · OI 240분 평균 대비 +10% 이상 &amp; 최근 3봉 연속 OI 증가</div>
       </div>
     </div>
-    <!-- SHORT -->
     <div class="signal-box short-box">
       <div class="signal-title dn">🔴 급락 SHORT 신호 — 3개 조건 AND</div>
       <div class="cond-list">
         <div class="cond-item dn">S1 · 현재 거래량 ≤ 급등 최대 거래량의 30% (거래량 급감)</div>
         <div class="cond-item dn">S2 · 현재 OI ≤ 최근 20봉 최고 OI의 85% (자금 유출 15%↑)</div>
-        <div class="cond-item dn">S3 · 종가 &lt; MA5 이탈 + 위꼬리가 몸통의 2배 이상</div>
+        <div class="cond-item dn">S3 · 볼린저밴드 상단(15M, 기간20 σ2) 3봉 연속 하향</div>
       </div>
     </div>
   </div>
@@ -313,7 +325,13 @@
   <table class="results-table">
     <thead>
       <tr>
-        <th>SYMBOL</th><th>CONDITIONS</th><th>MAX SPIKE</th><th>SPIKE 봉</th><th>OI/평균</th><th>PRICE</th><th>DETECTED</th>
+        <th>SYMBOL</th>
+        <th>CONDITIONS</th>
+        <th>MAX SPIKE</th>
+        <th>SPIKE 봉</th>
+        <th>OI/평균</th>
+        <th>진입가 / 현재가 / 등락률</th>
+        <th>DETECTED</th>
       </tr>
     </thead>
     <tbody id="longBody">
@@ -326,7 +344,13 @@
   <table class="results-table">
     <thead>
       <tr>
-        <th>SYMBOL</th><th>CONDITIONS</th><th>VOL 비율</th><th>OI 비율</th><th>위꼬리 비율</th><th>PRICE</th><th>DETECTED</th>
+        <th>SYMBOL</th>
+        <th>CONDITIONS</th>
+        <th>VOL 비율</th>
+        <th>OI 비율</th>
+        <th>BB상단 하향</th>
+        <th>진입가 / 현재가 / 등락률</th>
+        <th>DETECTED</th>
       </tr>
     </thead>
     <tbody id="shortBody">
@@ -355,6 +379,9 @@ let isScanning = false;
 let longMatched  = {};
 let shortMatched = {};
 
+// 현재가 실시간 업데이트 캐시
+let currentPrices = {};
+
 // ═══════════════════════════════════
 //  INIT
 // ═══════════════════════════════════
@@ -362,6 +389,9 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('tgToken').value  = localStorage.getItem('tgToken')  || DEFAULT_TOKEN;
   document.getElementById('tgChatId').value = localStorage.getItem('tgChatId') || DEFAULT_CHAT_ID;
   updateTgDot();
+  // 10초마다 테이블 재렌더 (현재가/등락률 갱신)
+  setInterval(() => { updateCurrentPrices(); }, 10000);
+  setInterval(() => { renderLong(); renderShort(); }, 10000);
 });
 
 const getTgToken  = () => document.getElementById('tgToken').value.trim();
@@ -374,6 +404,78 @@ function updateTgDot() {
   const ok = getTgToken() && getTgChatId();
   document.getElementById('tgDot').className      = ok ? 'dot blue' : 'dot red';
   document.getElementById('tgStatus').textContent  = ok ? 'TG READY' : 'TG DISCONNECTED';
+}
+
+// ═══════════════════════════════════
+//  현재가 실시간 조회
+// ═══════════════════════════════════
+async function updateCurrentPrices() {
+  const symbols = [
+    ...Object.keys(longMatched),
+    ...Object.keys(shortMatched)
+  ];
+  if (!symbols.length) return;
+
+  // 배치로 가격 조회 (Binance ticker/price API)
+  await Promise.all(symbols.map(async sym => {
+    try {
+      const d = await apiFetch(`${BASE}/fapi/v1/ticker/price?symbol=${sym}`);
+      currentPrices[sym] = +d.price;
+    } catch {}
+  }));
+}
+
+// 등락률 계산 (long: 현재가가 높을수록 수익)
+function calcPnl(entryPrice, currentPrice, direction) {
+  if (!entryPrice || !currentPrice) return null;
+  if (direction === 'long') {
+    return (currentPrice - entryPrice) / entryPrice * 100;
+  } else {
+    // short: 현재가가 낮을수록 수익
+    return (entryPrice - currentPrice) / entryPrice * 100;
+  }
+}
+
+function pnlHtml(entryPrice, currentPrice, direction) {
+  const cur  = currentPrices[direction === 'long'
+    ? Object.keys(longMatched).find(s => longMatched[s].entryPrice === entryPrice)
+    : Object.keys(shortMatched).find(s => shortMatched[s].entryPrice === entryPrice)
+  ] || currentPrice;
+
+  const pnl = calcPnl(entryPrice, cur, direction);
+  let rateClass = 'zero', sign = '', arrow = '—';
+  if (pnl !== null) {
+    if (pnl > 0)      { rateClass = 'gain'; sign = '+'; arrow = direction === 'long' ? '▲' : '▼'; }
+    else if (pnl < 0) { rateClass = 'loss'; sign = '';  arrow = direction === 'long' ? '▼' : '▲'; }
+    else              { rateClass = 'zero'; sign = ''; arrow = '—'; }
+  }
+  return `
+    <div class="pnl-block">
+      <div class="pnl-entry">진입 <span>${fmtPrice(entryPrice)}</span></div>
+      <div class="pnl-now">현재 <span>${fmtPrice(cur)}</span></div>
+      <div class="pnl-rate ${rateClass}">${arrow} ${pnl !== null ? sign + pnl.toFixed(2) + '%' : '—'}</div>
+    </div>`;
+}
+
+// 심볼별 pnl html (심볼 직접 전달 버전)
+function pnlHtmlBySymbol(sym, direction) {
+  const map   = direction === 'long' ? longMatched : shortMatched;
+  const entry = map[sym]?.entryPrice;
+  const cur   = currentPrices[sym] || map[sym]?.price;
+  if (!entry || !cur) return '<div class="pnl-block"><div class="pnl-entry">—</div></div>';
+
+  const pnl = calcPnl(entry, cur, direction);
+  let rateClass = 'zero', sign = '', arrow = '—';
+  if (pnl !== null) {
+    if (pnl > 0.001)       { rateClass = 'gain'; sign = '+'; arrow = '▲'; }
+    else if (pnl < -0.001) { rateClass = 'loss'; sign = '';  arrow = '▼'; }
+  }
+  return `
+    <div class="pnl-block">
+      <div class="pnl-entry">진입 <span>${fmtPrice(entry)}</span></div>
+      <div class="pnl-now">현재 <span>${fmtPrice(cur)}</span></div>
+      <div class="pnl-rate ${rateClass}">${arrow} ${pnl !== null ? sign + pnl.toFixed(2) + '%' : '—'}</div>
+    </div>`;
 }
 
 // ═══════════════════════════════════
@@ -409,7 +511,7 @@ async function testTelegram() {
   saveTgConfig(); updateTgDot();
   const el = document.getElementById('tgTestStatus');
   el.className = 'tg-status'; el.textContent = '전송 중...';
-  const ok = await sendTelegram(`✅ <b>FuturesScan v3.1 연결 성공</b>\n📡 LONG/SHORT 스캐너 작동 중\n🕐 ${new Date().toLocaleString('ko-KR')}`);
+  const ok = await sendTelegram(`✅ <b>FuturesScan v3.2 연결 성공</b>\n📡 LONG/SHORT 스캐너 작동 중\n🕐 ${new Date().toLocaleString('ko-KR')}`);
   if (ok) {
     el.className='tg-status ok'; el.textContent='✓ 전송 성공';
     document.getElementById('tgDot').className='dot blue';
@@ -423,13 +525,13 @@ async function testTelegram() {
 }
 
 async function notifyLong(r) {
-  const price = fmtPrice(r.price);
+  const entryPrice = fmtPrice(r.entryPrice);
   const text =
     `🟢 <b>[LONG 신호] ${r.symbol}</b>\n` +
     `━━━━━━━━━━━━━━━━\n` +
     `📈 급등폭:  <b>+${r.maxSpike.toFixed(2)}%</b>  (${r.minsAgo??'?'}분 전 봉)\n` +
     `📊 OI/평균: <b>${r.oiRatio.toFixed(2)}x</b>  (OI ↑↑↑ 3봉 연속)\n` +
-    `💰 현재가:  <b>${price} USDT</b>\n` +
+    `💰 진입가:  <b>${entryPrice} USDT</b>\n` +
     `━━━━━━━━━━━━━━━━\n` +
     `✅ L1 MA 정배열 3봉 연속\n` +
     `✅ L2 저가→종가 +7% 이상\n` +
@@ -441,18 +543,18 @@ async function notifyLong(r) {
 }
 
 async function notifyShort(r) {
-  const price = fmtPrice(r.price);
+  const entryPrice = fmtPrice(r.entryPrice);
   const text =
     `🔴 <b>[SHORT 신호] ${r.symbol}</b>\n` +
     `━━━━━━━━━━━━━━━━\n` +
     `📉 거래량:  최대 대비 <b>${r.volRatio.toFixed(1)}%</b>\n` +
     `📊 OI:      최고 대비 <b>${r.oiDropPct.toFixed(1)}%</b> 수준\n` +
-    `🕯 위꼬리:  몸통의 <b>${r.wickRatio.toFixed(2)}배</b>\n` +
-    `💰 현재가:  <b>${price} USDT</b>\n` +
+    `📉 BB상단:  <b>${r.bbDeclining}봉 연속 하향</b>  (현재 ${fmtPrice(r.bbUpper)})\n` +
+    `💰 진입가:  <b>${entryPrice} USDT</b>\n` +
     `━━━━━━━━━━━━━━━━\n` +
     `✅ S1 거래량 급등 최대치의 30% 이하\n` +
     `✅ S2 OI 최고치 대비 15% 이상 감소\n` +
-    `✅ S3 MA5 이탈 + 위꼬리≥몸통×2\n` +
+    `✅ S3 볼린저밴드 상단 3봉 연속 하향\n` +
     `🕐 ${new Date().toLocaleString('ko-KR')}`;
   const ok = await sendTelegram(text);
   if (ok) { tgSentCount++; document.getElementById('statTgSent').textContent=tgSentCount; log(`📨 TG SHORT: ${r.symbol}`,'tg'); }
@@ -488,8 +590,6 @@ async function getOI(sym) {
 // ═══════════════════════════════════
 //  ── LONG CHECKS ──
 // ═══════════════════════════════════
-
-// L1: MA5>MA10>MA20>MA60 최근 3봉 연속
 function checkMA(klines) {
   if (klines.length < 62) return {ok:false};
   const cl = klines.map(k=>k.c);
@@ -502,7 +602,6 @@ function checkMA(klines) {
   return {ok:true, m5:ma(5), m10:ma(10), m20:ma(20), m60:ma(60)};
 }
 
-// L2: 최근 16봉(240분) 저가→종가 +7% 이상
 function checkSpike(klines) {
   const recent = klines.slice(-16);
   let maxSpike=0, spikeCandle=null;
@@ -515,44 +614,30 @@ function checkSpike(klines) {
   return { ok:maxSpike>=7, maxSpike, minsAgo };
 }
 
-// L3 (수정): OI 240분 평균 대비 +10% 이상 AND 최근 3봉 연속 OI 증가
 function checkOI_long(oiData) {
   if (!oiData || oiData.length < 4) return { ok:false, ratio:0, consecutive:0 };
-
   const sorted = [...oiData].sort((a,b) => a.timestamp - b.timestamp);
   const values = sorted.map(d => +d.sumOpenInterest);
-
-  // 현재 OI vs 240분 평균 (1.10x 이상)
   const cutoff = Date.now() - 240 * 60 * 1000;
   let recent = sorted.filter(d => d.timestamp >= cutoff);
   if (recent.length < 2) recent = sorted;
-
   const cur  = values[values.length - 1];
   const prev = values.slice(0, -1);
   const avg  = prev.reduce((a,b) => a+b, 0) / prev.length;
   if (avg === 0) return { ok:false, ratio:0, consecutive:0 };
   const ratio = cur / avg;
-
-  // 최근 3봉 연속 OI 증가 체크 (4개 값 필요)
   const len = values.length;
   const consecutive3 =
     len >= 4 &&
     values[len-1] > values[len-2] &&
     values[len-2] > values[len-3] &&
     values[len-3] > values[len-4];
-
-  return {
-    ok: ratio >= 1.10 && consecutive3,
-    ratio,
-    consecutive: consecutive3 ? 3 : 0
-  };
+  return { ok: ratio >= 1.10 && consecutive3, ratio, consecutive: consecutive3 ? 3 : 0 };
 }
 
 // ═══════════════════════════════════
 //  ── SHORT CHECKS ──
 // ═══════════════════════════════════
-
-// S1: 현재 거래량 ≤ 최근 20봉 최대 거래량의 30%
 function checkVolDrop(klines) {
   const recent20 = klines.slice(-20);
   const lastVol  = recent20[recent20.length-1].v;
@@ -562,7 +647,6 @@ function checkVolDrop(klines) {
   return { ok:ratio<=30, ratio };
 }
 
-// S2: 현재 OI ≤ 최근 20봉 최고 OI의 85% (15% 이상 감소)
 function checkOI_short(oiData) {
   if (!oiData||oiData.length<2) return {ok:false, dropPct:0};
   const values  = oiData.map(d=>+d.sumOpenInterest);
@@ -573,27 +657,48 @@ function checkOI_short(oiData) {
   return { ok:dropPct<=85, dropPct };
 }
 
-// S3: 종가 < MA5 이탈 AND 위꼬리 ≥ 몸통 × 2
-function checkCandleShort(klines) {
-  const cl = klines.map(k=>k.c);
-  const n  = cl.length;
-  const ma5 = cl.slice(n-5).reduce((a,b)=>a+b,0)/5;
+// S3: 볼린저밴드 상단(기간 20, σ2) 3봉 연속 하향
+function calcBBUpper(klines, period=20, mult=2) {
+  // klines 배열의 각 인덱스에서 BB 상단 값을 계산해 배열로 반환
+  const cl = klines.map(k => k.c);
+  const result = [];
+  for (let i = period - 1; i < cl.length; i++) {
+    const slice = cl.slice(i - period + 1, i + 1);
+    const mean  = slice.reduce((a, b) => a + b, 0) / period;
+    const variance = slice.reduce((a, b) => a + (b - mean) ** 2, 0) / period;
+    const std   = Math.sqrt(variance);
+    result.push({ idx: i, upper: mean + mult * std });
+  }
+  return result; // [{idx, upper}, ...]
+}
 
-  const last = klines[n-1];
-  const body   = Math.abs(last.c - last.o);
-  const wick   = last.h - Math.max(last.c, last.o);
+function checkBBShort(klines) {
+  if (klines.length < 23) return { ok: false, bbUpper: 0, declining: 0 };
+  const bb = calcBBUpper(klines, 20, 2);
+  if (bb.length < 4) return { ok: false, bbUpper: 0, declining: 0 };
 
-  const ma5Break   = last.c < ma5;
-  const wickDouble = body > 0 && wick >= body * 2;
+  // 최근 4개의 BB 상단값 (bb[n-1]이 가장 최근)
+  const len = bb.length;
+  const u0 = bb[len - 4].upper; // 3봉 전
+  const u1 = bb[len - 3].upper; // 2봉 전
+  const u2 = bb[len - 2].upper; // 1봉 전
+  const u3 = bb[len - 1].upper; // 현재
 
-  const wickRatio = body > 0 ? wick/body : 0;
-  return { ok: ma5Break && wickDouble, ma5, wickRatio };
+  // 3봉 연속 하향: u0 > u1 > u2 > u3
+  const declining3 = u0 > u1 && u1 > u2 && u2 > u3;
+
+  return {
+    ok: declining3,
+    bbUpper: u3,
+    declining: declining3 ? 3 : 0
+  };
 }
 
 // ═══════════════════════════════════
 //  RENDER
 // ═══════════════════════════════════
 function fmtPrice(p) {
+  if (!p && p !== 0) return '—';
   return p<0.01?p.toFixed(6):p<1?p.toFixed(5):p<100?p.toFixed(4):p.toFixed(2);
 }
 
@@ -613,7 +718,7 @@ function renderLong() {
       <td class="val-up">+${r.maxSpike.toFixed(2)}%</td>
       <td style="color:var(--dim);font-size:10px">${r.minsAgo!=null?r.minsAgo+'분 전':'-'}</td>
       <td class="val-up">${r.oiRatio.toFixed(2)}x <span class="oi-arrows">↑↑↑</span></td>
-      <td>${fmtPrice(r.price)}</td>
+      <td>${pnlHtmlBySymbol(r.symbol, 'long')}</td>
       <td style="color:var(--dim)">${ageStr}</td>
     </tr>`;
   }).join('');
@@ -634,8 +739,8 @@ function renderShort() {
       <td><span class="badge dn">S1</span><span class="badge dn">S2</span><span class="badge dn">S3</span></td>
       <td class="val-dn">${r.volRatio.toFixed(1)}%</td>
       <td class="val-dn">${r.oiDropPct.toFixed(1)}%</td>
-      <td class="val-dn">${r.wickRatio.toFixed(2)}x</td>
-      <td>${fmtPrice(r.price)}</td>
+      <td class="val-dn">↓↓↓ ${r.bbDeclining}봉</td>
+      <td>${pnlHtmlBySymbol(r.symbol, 'short')}</td>
       <td style="color:var(--dim)">${ageStr}</td>
     </tr>`;
   }).join('');
@@ -723,6 +828,10 @@ async function runScan() {
           getOI(sym).catch(()=>null)
         ]);
 
+        const currentPrice = klines[klines.length-1].c;
+        // 현재가 캐시 업데이트
+        currentPrices[sym] = currentPrice;
+
         // ── LONG check ──
         const l1 = checkMA(klines);
         const l2 = checkSpike(klines);
@@ -730,18 +839,23 @@ async function runScan() {
 
         if (l1.ok && l2.ok && l3.ok) {
           const isNew = !prevLong.has(sym);
+          // 신규 신호일 때만 진입가 기록, 기존 신호는 진입가 유지
+          const entryPrice = isNew ? currentPrice : (longMatched[sym]?.entryPrice ?? currentPrice);
           const result = {
-            symbol:sym, price:klines[klines.length-1].c,
+            symbol:sym,
+            price:currentPrice,
+            entryPrice,          // ← 신호 포착 시점 가격 (고정)
             maxSpike:l2.maxSpike, minsAgo:l2.minsAgo,
             oiRatio:l3.ratio, consecutive:l3.consecutive,
-            ts:Date.now(), isNew
+            ts: isNew ? Date.now() : (longMatched[sym]?.ts ?? Date.now()),
+            isNew
           };
           longMatched[sym]=result; thisLong.add(sym);
           renderLong();
           document.getElementById('statLong').textContent=Object.keys(longMatched).length;
           if (isNew) {
-            log(`▲ LONG ${sym}  +${l2.maxSpike.toFixed(1)}%  OI×${l3.ratio.toFixed(2)} OI↑${l3.consecutive}연속  (${l2.minsAgo??'?'}분 전)`,'up');
-            showToast(sym,'up',`+${l2.maxSpike.toFixed(1)}%  OI ×${l3.ratio.toFixed(2)}  ↑↑↑연속`);
+            log(`▲ LONG ${sym}  진입가:${fmtPrice(entryPrice)}  +${l2.maxSpike.toFixed(1)}%  OI×${l3.ratio.toFixed(2)} OI↑${l3.consecutive}연속  (${l2.minsAgo??'?'}분 전)`,'up');
+            showToast(sym,'up',`진입 ${fmtPrice(entryPrice)}  +${l2.maxSpike.toFixed(1)}%  OI ×${l3.ratio.toFixed(2)}`);
             playAlert('up');
             notifyLong(result);
           }
@@ -749,6 +863,7 @@ async function runScan() {
           if (longMatched[sym]) {
             log(`${sym} LONG 해제`,'');
             delete longMatched[sym];
+            delete currentPrices[sym];
             renderLong();
             document.getElementById('statLong').textContent=Object.keys(longMatched).length;
           }
@@ -757,21 +872,26 @@ async function runScan() {
         // ── SHORT check ──
         const s1 = checkVolDrop(klines);
         const s2 = checkOI_short(oiData);
-        const s3 = checkCandleShort(klines);
+        const s3 = checkBBShort(klines);
 
         if (s1.ok && s2.ok && s3.ok) {
           const isNew = !prevShort.has(sym);
+          const entryPrice = isNew ? currentPrice : (shortMatched[sym]?.entryPrice ?? currentPrice);
           const result = {
-            symbol:sym, price:klines[klines.length-1].c,
-            volRatio:s1.ratio, oiDropPct:s2.dropPct, wickRatio:s3.wickRatio,
-            ts:Date.now(), isNew
+            symbol:sym,
+            price:currentPrice,
+            entryPrice,          // ← 신호 포착 시점 가격 (고정)
+            volRatio:s1.ratio, oiDropPct:s2.dropPct,
+            bbUpper:s3.bbUpper, bbDeclining:s3.declining,
+            ts: isNew ? Date.now() : (shortMatched[sym]?.ts ?? Date.now()),
+            isNew
           };
           shortMatched[sym]=result; thisShort.add(sym);
           renderShort();
           document.getElementById('statShort').textContent=Object.keys(shortMatched).length;
           if (isNew) {
-            log(`▼ SHORT ${sym}  VOL${s1.ratio.toFixed(0)}%  OI${s2.dropPct.toFixed(0)}%  위꼬리×${s3.wickRatio.toFixed(1)}`,'dn');
-            showToast(sym,'dn',`VOL ${s1.ratio.toFixed(0)}%  OI ${s2.dropPct.toFixed(0)}%  위꼬리 ×${s3.wickRatio.toFixed(1)}`);
+            log(`▼ SHORT ${sym}  진입가:${fmtPrice(entryPrice)}  VOL${s1.ratio.toFixed(0)}%  OI${s2.dropPct.toFixed(0)}%  BB상단↓${s3.declining}봉연속`,'dn');
+            showToast(sym,'dn',`진입 ${fmtPrice(entryPrice)}  VOL ${s1.ratio.toFixed(0)}%  OI ${s2.dropPct.toFixed(0)}%  BB↓↓↓`);
             playAlert('dn');
             notifyShort(result);
           }
@@ -798,8 +918,8 @@ async function runScan() {
   }
 
   // 잔류 정리
-  for (const sym of prevLong)  if (!thisLong.has(sym)  && longMatched[sym])  delete longMatched[sym];
-  for (const sym of prevShort) if (!thisShort.has(sym) && shortMatched[sym]) delete shortMatched[sym];
+  for (const sym of prevLong)  if (!thisLong.has(sym)  && longMatched[sym])  { delete longMatched[sym]; delete currentPrices[sym]; }
+  for (const sym of prevShort) if (!thisShort.has(sym) && shortMatched[sym]) { delete shortMatched[sym]; }
   renderLong(); renderShort();
 
   const now=new Date().toLocaleTimeString('ko-KR',{hour12:false});
@@ -848,7 +968,6 @@ function stopScanner() {
 }
 
 function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }
-setInterval(()=>{ renderLong(); renderShort(); },10000);
 </script>
 </body>
 </html>
