@@ -12,8 +12,8 @@
     --surface: #090f18;
     --border:  #0d2035;
     --accent:  #00d4ff;
-    --long:    #00ff88;   /* 급등 */
-    --short:   #ff4466;   /* 급락 */
+    --long:    #00ff88;
+    --short:   #ff4466;
     --warn:    #ff6b35;
     --muted:   #1e3a52;
     --text:    #b8d4e8;
@@ -182,6 +182,8 @@
   .new-tag.dn { background:var(--short); color:#fff; }
   @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
 
+  .oi-arrows { font-size:10px; color:var(--long); letter-spacing:-1px; }
+
   .empty-state { text-align:center; padding:40px 20px; color:var(--dim); }
   .empty-icon  { font-size:32px; margin-bottom:12px; opacity:.25; }
   .empty-text  { font-size:11px; letter-spacing:2px; }
@@ -238,7 +240,7 @@
   <header>
     <div>
       <div class="logo">FUTURES<span class="up">▲</span><span class="dn">▼</span>SCAN</div>
-      <div class="logo-sub">BINANCE PERPETUAL · 15M CHART · v3.0  |  LONG &amp; SHORT SIGNAL</div>
+      <div class="logo-sub">BINANCE PERPETUAL · 15M CHART · v3.1  |  LONG &amp; SHORT SIGNAL</div>
     </div>
     <div class="status-panel">
       <div class="status-row"><div class="dot" id="apiDot"></div><span id="apiStatus">STANDBY</span></div>
@@ -284,7 +286,7 @@
       <div class="cond-list">
         <div class="cond-item up">L1 · MA5 &gt; MA10 &gt; MA20 &gt; MA60 정배열 (3봉 연속)</div>
         <div class="cond-item up">L2 · 최근 240분(16봉) 내 저가→종가 +7% 이상 급등</div>
-        <div class="cond-item up">L3 · 현재 OI &gt; 240분 평균 × 1.25배 (자금 유입)</div>
+        <div class="cond-item up">L3 · OI 240분 평균 대비 +10% 이상 &amp; 최근 3봉 연속 OI 증가</div>
       </div>
     </div>
     <!-- SHORT -->
@@ -350,7 +352,7 @@ const BASE = 'https://fapi.binance.com';
 let scanInterval = null, countdownInterval = null;
 let scanCount = 0, nextScanIn = 0, tgSentCount = 0;
 let isScanning = false;
-let longMatched  = {};   // symbol → result
+let longMatched  = {};
 let shortMatched = {};
 
 // ═══════════════════════════════════
@@ -370,8 +372,8 @@ function saveTgConfig() {
 }
 function updateTgDot() {
   const ok = getTgToken() && getTgChatId();
-  document.getElementById('tgDot').className     = ok ? 'dot blue' : 'dot red';
-  document.getElementById('tgStatus').textContent = ok ? 'TG READY' : 'TG DISCONNECTED';
+  document.getElementById('tgDot').className      = ok ? 'dot blue' : 'dot red';
+  document.getElementById('tgStatus').textContent  = ok ? 'TG READY' : 'TG DISCONNECTED';
 }
 
 // ═══════════════════════════════════
@@ -395,7 +397,7 @@ async function sendTelegram(text) {
   const token = getTgToken(), chatId = getTgChatId();
   if (!token || !chatId) return false;
   try {
-    const res  = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ chat_id:chatId, text, parse_mode:'HTML' })
     });
@@ -407,7 +409,7 @@ async function testTelegram() {
   saveTgConfig(); updateTgDot();
   const el = document.getElementById('tgTestStatus');
   el.className = 'tg-status'; el.textContent = '전송 중...';
-  const ok = await sendTelegram(`✅ <b>FuturesScan v3 연결 성공</b>\n📡 LONG/SHORT 스캐너 작동 중\n🕐 ${new Date().toLocaleString('ko-KR')}`);
+  const ok = await sendTelegram(`✅ <b>FuturesScan v3.1 연결 성공</b>\n📡 LONG/SHORT 스캐너 작동 중\n🕐 ${new Date().toLocaleString('ko-KR')}`);
   if (ok) {
     el.className='tg-status ok'; el.textContent='✓ 전송 성공';
     document.getElementById('tgDot').className='dot blue';
@@ -426,12 +428,12 @@ async function notifyLong(r) {
     `🟢 <b>[LONG 신호] ${r.symbol}</b>\n` +
     `━━━━━━━━━━━━━━━━\n` +
     `📈 급등폭:  <b>+${r.maxSpike.toFixed(2)}%</b>  (${r.minsAgo??'?'}분 전 봉)\n` +
-    `📊 OI/평균: <b>${r.oiRatio.toFixed(2)}x</b>\n` +
+    `📊 OI/평균: <b>${r.oiRatio.toFixed(2)}x</b>  (OI ↑↑↑ 3봉 연속)\n` +
     `💰 현재가:  <b>${price} USDT</b>\n` +
     `━━━━━━━━━━━━━━━━\n` +
     `✅ L1 MA 정배열 3봉 연속\n` +
     `✅ L2 저가→종가 +7% 이상\n` +
-    `✅ L3 OI 평균 대비 1.25배↑\n` +
+    `✅ L3 OI 평균 대비 +10%↑ + 3봉 연속 증가\n` +
     `🕐 ${new Date().toLocaleString('ko-KR')}`;
   const ok = await sendTelegram(text);
   if (ok) { tgSentCount++; document.getElementById('statTgSent').textContent=tgSentCount; log(`📨 TG LONG: ${r.symbol}`,'tg'); }
@@ -513,18 +515,37 @@ function checkSpike(klines) {
   return { ok:maxSpike>=7, maxSpike, minsAgo };
 }
 
-// L3: 현재 OI > 240분 평균 × 1.25
+// L3 (수정): OI 240분 평균 대비 +10% 이상 AND 최근 3봉 연속 OI 증가
 function checkOI_long(oiData) {
-  if (!oiData||oiData.length<2) return {ok:false,ratio:0};
-  const cutoff = Date.now()-240*60*1000;
-  let recent = oiData.filter(d=>d.timestamp>=cutoff);
-  if (recent.length<2) recent=oiData;
-  const cur  = +recent[recent.length-1].sumOpenInterest;
-  const prev = recent.slice(0,-1).map(d=>+d.sumOpenInterest);
-  const avg  = prev.reduce((a,b)=>a+b,0)/prev.length;
-  if (avg===0) return {ok:false,ratio:0};
-  const ratio = cur/avg;
-  return { ok:ratio>=1.25, ratio };
+  if (!oiData || oiData.length < 4) return { ok:false, ratio:0, consecutive:0 };
+
+  const sorted = [...oiData].sort((a,b) => a.timestamp - b.timestamp);
+  const values = sorted.map(d => +d.sumOpenInterest);
+
+  // 현재 OI vs 240분 평균 (1.10x 이상)
+  const cutoff = Date.now() - 240 * 60 * 1000;
+  let recent = sorted.filter(d => d.timestamp >= cutoff);
+  if (recent.length < 2) recent = sorted;
+
+  const cur  = values[values.length - 1];
+  const prev = values.slice(0, -1);
+  const avg  = prev.reduce((a,b) => a+b, 0) / prev.length;
+  if (avg === 0) return { ok:false, ratio:0, consecutive:0 };
+  const ratio = cur / avg;
+
+  // 최근 3봉 연속 OI 증가 체크 (4개 값 필요)
+  const len = values.length;
+  const consecutive3 =
+    len >= 4 &&
+    values[len-1] > values[len-2] &&
+    values[len-2] > values[len-3] &&
+    values[len-3] > values[len-4];
+
+  return {
+    ok: ratio >= 1.10 && consecutive3,
+    ratio,
+    consecutive: consecutive3 ? 3 : 0
+  };
 }
 
 // ═══════════════════════════════════
@@ -537,7 +558,7 @@ function checkVolDrop(klines) {
   const lastVol  = recent20[recent20.length-1].v;
   const maxVol   = Math.max(...recent20.map(k=>k.v));
   if (maxVol===0) return {ok:false, ratio:0};
-  const ratio = lastVol/maxVol*100;   // 최대 대비 %
+  const ratio = lastVol/maxVol*100;
   return { ok:ratio<=30, ratio };
 }
 
@@ -548,7 +569,7 @@ function checkOI_short(oiData) {
   const maxOI   = Math.max(...values);
   const curOI   = values[values.length-1];
   if (maxOI===0) return {ok:false, dropPct:0};
-  const dropPct = curOI/maxOI*100;   // 최고 대비 현재 %
+  const dropPct = curOI/maxOI*100;
   return { ok:dropPct<=85, dropPct };
 }
 
@@ -559,11 +580,11 @@ function checkCandleShort(klines) {
   const ma5 = cl.slice(n-5).reduce((a,b)=>a+b,0)/5;
 
   const last = klines[n-1];
-  const body   = Math.abs(last.c - last.o);           // 몸통 크기
-  const wick   = last.h - Math.max(last.c, last.o);   // 위꼬리 크기
+  const body   = Math.abs(last.c - last.o);
+  const wick   = last.h - Math.max(last.c, last.o);
 
-  const ma5Break   = last.c < ma5;                    // 종가 < MA5
-  const wickDouble = body > 0 && wick >= body * 2;    // 위꼬리 ≥ 몸통×2
+  const ma5Break   = last.c < ma5;
+  const wickDouble = body > 0 && wick >= body * 2;
 
   const wickRatio = body > 0 ? wick/body : 0;
   return { ok: ma5Break && wickDouble, ma5, wickRatio };
@@ -591,7 +612,7 @@ function renderLong() {
       <td><span class="badge up">L1</span><span class="badge up">L2</span><span class="badge up">L3</span></td>
       <td class="val-up">+${r.maxSpike.toFixed(2)}%</td>
       <td style="color:var(--dim);font-size:10px">${r.minsAgo!=null?r.minsAgo+'분 전':'-'}</td>
-      <td class="val-up">${r.oiRatio.toFixed(2)}x</td>
+      <td class="val-up">${r.oiRatio.toFixed(2)}x <span class="oi-arrows">↑↑↑</span></td>
       <td>${fmtPrice(r.price)}</td>
       <td style="color:var(--dim)">${ageStr}</td>
     </tr>`;
@@ -711,15 +732,16 @@ async function runScan() {
           const isNew = !prevLong.has(sym);
           const result = {
             symbol:sym, price:klines[klines.length-1].c,
-            maxSpike:l2.maxSpike, minsAgo:l2.minsAgo, oiRatio:l3.ratio,
+            maxSpike:l2.maxSpike, minsAgo:l2.minsAgo,
+            oiRatio:l3.ratio, consecutive:l3.consecutive,
             ts:Date.now(), isNew
           };
           longMatched[sym]=result; thisLong.add(sym);
           renderLong();
           document.getElementById('statLong').textContent=Object.keys(longMatched).length;
           if (isNew) {
-            log(`▲ LONG ${sym}  +${l2.maxSpike.toFixed(1)}%  OI×${l3.ratio.toFixed(2)}  (${l2.minsAgo??'?'}분 전)`,'up');
-            showToast(sym,'up',`+${l2.maxSpike.toFixed(1)}%  OI ×${l3.ratio.toFixed(2)}`);
+            log(`▲ LONG ${sym}  +${l2.maxSpike.toFixed(1)}%  OI×${l3.ratio.toFixed(2)} OI↑${l3.consecutive}연속  (${l2.minsAgo??'?'}분 전)`,'up');
+            showToast(sym,'up',`+${l2.maxSpike.toFixed(1)}%  OI ×${l3.ratio.toFixed(2)}  ↑↑↑연속`);
             playAlert('up');
             notifyLong(result);
           }
