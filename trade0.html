@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FUTURES SCANNER v3</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;500;700&display=swap');
+
+  :root {
+    --bg:      #050a0f;
+    --surface: #090f18;
+    --border:  #0d2035;
+    --accent:  #00d4ff;
+    --long:    #00ff88;   /* 급등 */
+    --short:   #ff4466;   /* 급락 */
+    --warn:    #ff6b35;
+    --muted:   #1e3a52;
+    --text:    #b8d4e8;
+    --dim:     #3d5a6e;
+    --tg:      #229ED9;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  body::before {
+    content:''; position:fixed; inset:0;
+    background:
+      radial-gradient(ellipse at 15% 0%,  rgba(0,255,136,0.03) 0%, transparent 55%),
+      radial-gradient(ellipse at 85% 0%,  rgba(255,68,102,0.03) 0%, transparent 55%),
+      radial-gradient(ellipse at 50% 100%,rgba(0,212,255,0.03)  0%, transparent 55%);
+    pointer-events:none; z-index:0;
+  }
+  body::after {
+    content:''; position:fixed; inset:0;
+    background: repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.07) 2px,rgba(0,0,0,0.07) 4px);
+    pointer-events:none; z-index:1;
+  }
+
+  .container { position:relative; z-index:2; max-width:1600px; margin:0 auto; padding:24px 20px; }
+
+  /* ── Header ── */
+  header {
+    display:flex; align-items:flex-start; justify-content:space-between;
+    margin-bottom:24px; padding-bottom:18px; border-bottom:1px solid var(--border);
+  }
+  .logo { font-family:'Rajdhani',sans-serif; font-weight:700; font-size:26px; letter-spacing:6px; color:var(--accent); text-shadow:0 0 18px rgba(0,212,255,0.5); line-height:1; }
+  .logo .up   { color:var(--long); }
+  .logo .dn   { color:var(--short); }
+  .logo-sub { font-size:9px; color:var(--dim); letter-spacing:3px; margin-top:5px; }
+
+  .status-panel { display:flex; flex-direction:column; align-items:flex-end; gap:7px; }
+  .status-row   { display:flex; align-items:center; gap:9px; font-size:11px; color:var(--dim); }
+  .dot { width:7px; height:7px; border-radius:50%; background:var(--dim); flex-shrink:0; }
+  .dot.green  { background:var(--long);   box-shadow:0 0 8px var(--long);   animation:pulse 2s infinite; }
+  .dot.red    { background:var(--short);  box-shadow:0 0 8px var(--short); }
+  .dot.yellow { background:#ffd700;       box-shadow:0 0 8px #ffd700;       animation:pulse 1s infinite; }
+  .dot.blue   { background:var(--tg);     box-shadow:0 0 8px var(--tg);     animation:pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+  /* ── Telegram panel ── */
+  .tg-panel {
+    background:var(--surface); border:1px solid var(--tg);
+    padding:14px 18px; margin-bottom:18px;
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    box-shadow:0 0 14px rgba(34,158,217,0.07);
+  }
+  .tg-label { font-size:10px; letter-spacing:2px; color:var(--tg); white-space:nowrap; display:flex; align-items:center; gap:7px; }
+  .tg-input {
+    font-family:'Share Tech Mono',monospace; font-size:11px;
+    background:var(--bg); border:1px solid var(--muted); color:var(--text);
+    padding:7px 11px; outline:none; transition:border-color .2s; letter-spacing:1px;
+    width:300px;
+  }
+  .tg-input.narrow { width:150px; }
+  .tg-input:focus { border-color:var(--tg); }
+  .btn-tg {
+    font-family:'Share Tech Mono',monospace; font-size:11px; letter-spacing:2px;
+    padding:7px 14px; border:1px solid var(--tg); background:transparent; color:var(--tg);
+    cursor:pointer; transition:all .2s; position:relative; overflow:hidden; white-space:nowrap;
+  }
+  .btn-tg::before { content:''; position:absolute; inset:0; background:var(--tg); transform:translateX(-100%); transition:transform .2s; }
+  .btn-tg:hover::before { transform:translateX(0); }
+  .btn-tg:hover { color:#fff; }
+  .btn-tg span { position:relative; z-index:1; }
+  .tg-status { font-size:10px; color:var(--dim); white-space:nowrap; }
+  .tg-status.ok   { color:var(--long); }
+  .tg-status.fail { color:var(--short); }
+
+  /* ── Controls ── */
+  .controls { display:flex; align-items:center; gap:10px; margin-bottom:20px; flex-wrap:wrap; }
+  .btn {
+    font-family:'Share Tech Mono',monospace; font-size:11px; letter-spacing:2px;
+    padding:9px 18px; border:1px solid var(--accent); background:transparent; color:var(--accent);
+    cursor:pointer; transition:all .2s; text-transform:uppercase; position:relative; overflow:hidden;
+  }
+  .btn::before { content:''; position:absolute; inset:0; background:var(--accent); transform:translateX(-100%); transition:transform .2s; }
+  .btn:hover::before { transform:translateX(0); }
+  .btn:hover { color:var(--bg); }
+  .btn:disabled { border-color:var(--muted); color:var(--muted); cursor:not-allowed; }
+  .btn:disabled::before { display:none; }
+  .btn span { position:relative; z-index:1; }
+  .btn.danger { border-color:var(--warn); color:var(--warn); }
+  .btn.danger::before { background:var(--warn); }
+  .timer-display { margin-left:auto; font-size:12px; color:var(--accent); display:flex; align-items:center; gap:8px; }
+  .countdown { font-size:22px; font-family:'Rajdhani',sans-serif; font-weight:700; color:var(--long); min-width:38px; text-align:right; }
+
+  /* ── Stats ── */
+  .stats-bar { display:grid; grid-template-columns:repeat(7,1fr); gap:1px; margin-bottom:22px; background:var(--border); border:1px solid var(--border); }
+  .stat-cell { background:var(--surface); padding:12px 14px; }
+  .stat-label { font-size:9px; letter-spacing:2px; color:var(--dim); margin-bottom:3px; text-transform:uppercase; }
+  .stat-value { font-size:20px; font-family:'Rajdhani',sans-serif; font-weight:700; color:var(--accent); }
+  .stat-value.up   { color:var(--long); }
+  .stat-value.dn   { color:var(--short); }
+  .stat-value.warn { color:var(--warn); }
+  .stat-value.blue { color:var(--tg); }
+
+  /* ── Signal set tabs ── */
+  .signal-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:20px; }
+
+  .signal-box {
+    border:1px solid; padding:14px 16px;
+  }
+  .signal-box.long-box  { border-color:rgba(0,255,136,0.3);  background:rgba(0,255,136,0.02); }
+  .signal-box.short-box { border-color:rgba(255,68,102,0.3); background:rgba(255,68,102,0.02); }
+
+  .signal-title {
+    font-size:11px; letter-spacing:3px; text-transform:uppercase; margin-bottom:10px;
+    display:flex; align-items:center; gap:10px;
+  }
+  .signal-title.up { color:var(--long); }
+  .signal-title.dn { color:var(--short); }
+  .signal-title::after { content:''; flex:1; height:1px; }
+  .signal-title.up::after  { background:rgba(0,255,136,0.2); }
+  .signal-title.dn::after  { background:rgba(255,68,102,0.2); }
+
+  .cond-list { display:flex; flex-direction:column; gap:5px; }
+  .cond-item { font-size:9px; letter-spacing:1px; padding:3px 8px; border:1px solid; color:var(--dim); text-transform:uppercase; }
+  .cond-item.up { border-color:rgba(0,255,136,0.2); }
+  .cond-item.dn { border-color:rgba(255,68,102,0.2); }
+
+  /* ── Scanning bar ── */
+  .scanning-bar { display:none; align-items:center; gap:12px; padding:9px 14px; background:rgba(0,212,255,0.04); border:1px solid rgba(0,212,255,0.15); margin-bottom:14px; font-size:11px; color:var(--accent); letter-spacing:2px; }
+  .scanning-bar.visible { display:flex; }
+  .spin { width:13px; height:13px; border:1px solid var(--accent); border-top-color:transparent; border-radius:50%; animation:spin .8s linear infinite; flex-shrink:0; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .progress-bar { flex:1; height:2px; background:var(--border); overflow:hidden; }
+  .progress-fill { height:100%; background:var(--accent); width:0%; transition:width .3s; }
+
+  /* ── Section title ── */
+  .section-title { font-size:10px; letter-spacing:3px; color:var(--dim); text-transform:uppercase; margin-bottom:10px; display:flex; align-items:center; gap:10px; }
+  .section-title::after { content:''; flex:1; height:1px; background:var(--border); }
+  .section-title .badge-up  { font-size:9px; padding:2px 8px; background:rgba(0,255,136,0.12);  color:var(--long);  border:1px solid rgba(0,255,136,0.3);  letter-spacing:2px; }
+  .section-title .badge-dn  { font-size:9px; padding:2px 8px; background:rgba(255,68,102,0.12); color:var(--short); border:1px solid rgba(255,68,102,0.3); letter-spacing:2px; }
+
+  /* ── Table ── */
+  .results-table { width:100%; border-collapse:collapse; font-size:12px; margin-bottom:24px; }
+  .results-table th { text-align:left; font-size:9px; letter-spacing:2px; color:var(--dim); padding:7px 11px; border-bottom:1px solid var(--border); font-weight:normal; white-space:nowrap; }
+  .results-table td { padding:9px 11px; border-bottom:1px solid rgba(13,32,53,0.5); vertical-align:middle; }
+  .results-table tr:hover td { background:rgba(0,212,255,0.025); }
+
+  .symbol-cell { font-family:'Rajdhani',sans-serif; font-weight:700; font-size:15px; }
+  .symbol-cell.up { color:var(--long); }
+  .symbol-cell.dn { color:var(--short); }
+
+  .badge { display:inline-block; font-size:8px; letter-spacing:1px; padding:2px 5px; border:1px solid; white-space:nowrap; margin-right:3px; }
+  .badge.up { border-color:var(--long);  color:var(--long); }
+  .badge.dn { border-color:var(--short); color:var(--short); }
+
+  .val-up { color:var(--long); }
+  .val-dn { color:var(--short); }
+
+  .new-tag { font-size:8px; letter-spacing:2px; padding:2px 5px; margin-left:6px; animation:blink 1s step-end 4; }
+  .new-tag.up { background:var(--long);  color:var(--bg); }
+  .new-tag.dn { background:var(--short); color:#fff; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+  .empty-state { text-align:center; padding:40px 20px; color:var(--dim); }
+  .empty-icon  { font-size:32px; margin-bottom:12px; opacity:.25; }
+  .empty-text  { font-size:11px; letter-spacing:2px; }
+
+  /* ── Log ── */
+  .log-box { background:var(--surface); border:1px solid var(--border); padding:12px; height:160px; overflow-y:auto; font-size:11px; line-height:1.8; }
+  .log-box::-webkit-scrollbar { width:3px; }
+  .log-box::-webkit-scrollbar-thumb { background:var(--muted); }
+  .log-line { display:flex; gap:12px; }
+  .log-time { color:var(--dim); flex-shrink:0; }
+  .log-msg        { color:var(--text); }
+  .log-msg.up     { color:var(--long); }
+  .log-msg.dn     { color:var(--short); }
+  .log-msg.info   { color:var(--accent); }
+  .log-msg.warn   { color:var(--warn); }
+  .log-msg.tg     { color:var(--tg); }
+
+  /* ── Toast ── */
+  .toast-container { position:fixed; top:20px; right:20px; z-index:100; display:flex; flex-direction:column; gap:8px; }
+  .toast { background:var(--surface); padding:13px 16px; min-width:270px; animation:slideIn .3s ease; }
+  .toast.up { border:1px solid var(--long);  box-shadow:0 0 18px rgba(0,255,136,0.2); }
+  .toast.dn { border:1px solid var(--short); box-shadow:0 0 18px rgba(255,68,102,0.2); }
+  .toast.removing { animation:slideOut .3s ease forwards; }
+  @keyframes slideIn { from{transform:translateX(120%);opacity:0} to{transform:translateX(0);opacity:1} }
+  @keyframes slideOut { to{transform:translateX(120%);opacity:0} }
+  .toast-title { font-size:10px; letter-spacing:2px; margin-bottom:5px; }
+  .toast-title.up { color:var(--long); }
+  .toast-title.dn { color:var(--short); }
+  .toast-body { font-family:'Rajdhani',sans-serif; font-weight:700; font-size:17px; color:var(--text); }
+  .toast-sub  { font-size:9px; color:var(--dim); margin-top:3px; }
+
+  @media (max-width:1200px) { .stats-bar { grid-template-columns:repeat(4,1fr); } }
+  @media (max-width:900px)  {
+    .signal-grid { grid-template-columns:1fr; }
+    .stats-bar   { grid-template-columns:repeat(3,1fr); }
+    header { flex-direction:column; gap:14px; }
+    .timer-display { margin-left:0; }
+    .results-table th:nth-child(n+5), .results-table td:nth-child(n+5) { display:none; }
+  }
+  @media (max-width:600px) {
+    .stats-bar { grid-template-columns:repeat(2,1fr); }
+    .tg-panel  { flex-direction:column; align-items:flex-start; }
+    .tg-input, .tg-input.narrow { width:100%; }
+  }
+</style>
+</head>
+<body>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<div class="container">
+
+  <!-- Header -->
+  <header>
+    <div>
+      <div class="logo">FUTURES<span class="up">▲</span><span class="dn">▼</span>SCAN</div>
+      <div class="logo-sub">BINANCE PERPETUAL · 15M CHART · v3.0  |  LONG &amp; SHORT SIGNAL</div>
+    </div>
+    <div class="status-panel">
+      <div class="status-row"><div class="dot" id="apiDot"></div><span id="apiStatus">STANDBY</span></div>
+      <div class="status-row"><div class="dot" id="scanDot"></div><span id="scanStatus">IDLE</span></div>
+      <div class="status-row"><div class="dot" id="tgDot"></div><span id="tgStatus">TG DISCONNECTED</span></div>
+      <div class="status-row" id="lastScanRow" style="display:none"><span id="lastScanTime" style="color:var(--dim)"></span></div>
+    </div>
+  </header>
+
+  <!-- Telegram -->
+  <div class="tg-panel">
+    <div class="tg-label">✈ TELEGRAM</div>
+    <input class="tg-input"        id="tgToken"  type="text" placeholder="Bot Token" spellcheck="false"/>
+    <input class="tg-input narrow" id="tgChatId" type="text" placeholder="Chat ID"   spellcheck="false"/>
+    <button class="btn-tg" onclick="testTelegram()"><span>⚡ TEST</span></button>
+    <span class="tg-status" id="tgTestStatus">—</span>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <button class="btn" id="startBtn"  onclick="startScanner()"><span>▶ START</span></button>
+    <button class="btn danger" id="stopBtn" onclick="stopScanner()" disabled><span>■ STOP</span></button>
+    <button class="btn" id="manualBtn" onclick="runScan()"><span>⟳ MANUAL SCAN</span></button>
+    <div class="timer-display">NEXT SCAN <div class="countdown" id="countdown">—</div><span>s</span></div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-bar">
+    <div class="stat-cell"><div class="stat-label">Total Symbols</div><div class="stat-value" id="statTotal">0</div></div>
+    <div class="stat-cell"><div class="stat-label">Scanned</div><div class="stat-value" id="statScanned">0</div></div>
+    <div class="stat-cell"><div class="stat-label">🟢 LONG 신호</div><div class="stat-value up" id="statLong">0</div></div>
+    <div class="stat-cell"><div class="stat-label">🔴 SHORT 신호</div><div class="stat-value dn" id="statShort">0</div></div>
+    <div class="stat-cell"><div class="stat-label">Errors</div><div class="stat-value warn" id="statErrors">0</div></div>
+    <div class="stat-cell"><div class="stat-label">TG Sent</div><div class="stat-value blue" id="statTgSent">0</div></div>
+    <div class="stat-cell"><div class="stat-label">Scan Count</div><div class="stat-value" id="statRuns">0</div></div>
+  </div>
+
+  <!-- Signal set descriptions -->
+  <div class="signal-grid">
+    <!-- LONG -->
+    <div class="signal-box long-box">
+      <div class="signal-title up">🟢 급등 LONG 신호 — 3개 조건 AND</div>
+      <div class="cond-list">
+        <div class="cond-item up">L1 · MA5 &gt; MA10 &gt; MA20 &gt; MA60 정배열 (3봉 연속)</div>
+        <div class="cond-item up">L2 · 최근 240분(16봉) 내 저가→종가 +7% 이상 급등</div>
+        <div class="cond-item up">L3 · 현재 OI &gt; 240분 평균 × 1.25배 (자금 유입)</div>
+      </div>
+    </div>
+    <!-- SHORT -->
+    <div class="signal-box short-box">
+      <div class="signal-title dn">🔴 급락 SHORT 신호 — 3개 조건 AND</div>
+      <div class="cond-list">
+        <div class="cond-item dn">S1 · 현재 거래량 ≤ 급등 최대 거래량의 30% (거래량 급감)</div>
+        <div class="cond-item dn">S2 · 현재 OI ≤ 최근 20봉 최고 OI의 85% (자금 유출 15%↑)</div>
+        <div class="cond-item dn">S3 · 종가 &lt; MA5 이탈 + 위꼬리가 몸통의 2배 이상</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scanning progress -->
+  <div class="scanning-bar" id="scanningBar">
+    <div class="spin"></div>
+    <span id="scanningSymbol">SCANNING</span>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    <span id="progressText">0%</span>
+  </div>
+
+  <!-- LONG Results -->
+  <div class="section-title"><span class="badge-up">LONG</span> 급등 신호 심볼</div>
+  <table class="results-table">
+    <thead>
+      <tr>
+        <th>SYMBOL</th><th>CONDITIONS</th><th>MAX SPIKE</th><th>SPIKE 봉</th><th>OI/평균</th><th>PRICE</th><th>DETECTED</th>
+      </tr>
+    </thead>
+    <tbody id="longBody">
+      <tr><td colspan="7"><div class="empty-state"><div class="empty-icon">▲</div><div class="empty-text">NO LONG SIGNALS</div></div></td></tr>
+    </tbody>
+  </table>
+
+  <!-- SHORT Results -->
+  <div class="section-title"><span class="badge-dn">SHORT</span> 급락 신호 심볼</div>
+  <table class="results-table">
+    <thead>
+      <tr>
+        <th>SYMBOL</th><th>CONDITIONS</th><th>VOL 비율</th><th>OI 비율</th><th>위꼬리 비율</th><th>PRICE</th><th>DETECTED</th>
+      </tr>
+    </thead>
+    <tbody id="shortBody">
+      <tr><td colspan="7"><div class="empty-state"><div class="empty-icon">▼</div><div class="empty-text">NO SHORT SIGNALS</div></div></td></tr>
+    </tbody>
+  </table>
+
+  <!-- Log -->
+  <div class="section-title">SYSTEM LOG</div>
+  <div class="log-box" id="logBox"></div>
+
+</div>
+
+<script>
+// ═══════════════════════════════════
+//  CONFIG & STATE
+// ═══════════════════════════════════
+const DEFAULT_TOKEN   = '8710131262:AAGxhwh3b8Z_FGf-AxFcIwM4-1_Tmau6su4';
+const DEFAULT_CHAT_ID = '7947167026';
+const SCAN_INTERVAL_SEC = 300;
+const BASE = 'https://fapi.binance.com';
+
+let scanInterval = null, countdownInterval = null;
+let scanCount = 0, nextScanIn = 0, tgSentCount = 0;
+let isScanning = false;
+let longMatched  = {};   // symbol → result
+let shortMatched = {};
+
+// ═══════════════════════════════════
+//  INIT
+// ═══════════════════════════════════
+window.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('tgToken').value  = localStorage.getItem('tgToken')  || DEFAULT_TOKEN;
+  document.getElementById('tgChatId').value = localStorage.getItem('tgChatId') || DEFAULT_CHAT_ID;
+  updateTgDot();
+});
+
+const getTgToken  = () => document.getElementById('tgToken').value.trim();
+const getTgChatId = () => document.getElementById('tgChatId').value.trim();
+function saveTgConfig() {
+  localStorage.setItem('tgToken',  getTgToken());
+  localStorage.setItem('tgChatId', getTgChatId());
+}
+function updateTgDot() {
+  const ok = getTgToken() && getTgChatId();
+  document.getElementById('tgDot').className     = ok ? 'dot blue' : 'dot red';
+  document.getElementById('tgStatus').textContent = ok ? 'TG READY' : 'TG DISCONNECTED';
+}
+
+// ═══════════════════════════════════
+//  LOG
+// ═══════════════════════════════════
+function log(msg, type='') {
+  const box = document.getElementById('logBox');
+  const now = new Date().toLocaleTimeString('ko-KR',{hour12:false});
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.innerHTML = `<span class="log-time">${now}</span><span class="log-msg ${type}">${msg}</span>`;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+  while (box.children.length > 400) box.removeChild(box.firstChild);
+}
+
+// ═══════════════════════════════════
+//  TELEGRAM
+// ═══════════════════════════════════
+async function sendTelegram(text) {
+  const token = getTgToken(), chatId = getTgChatId();
+  if (!token || !chatId) return false;
+  try {
+    const res  = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ chat_id:chatId, text, parse_mode:'HTML' })
+    });
+    return (await res.json()).ok === true;
+  } catch { return false; }
+}
+
+async function testTelegram() {
+  saveTgConfig(); updateTgDot();
+  const el = document.getElementById('tgTestStatus');
+  el.className = 'tg-status'; el.textContent = '전송 중...';
+  const ok = await sendTelegram(`✅ <b>FuturesScan v3 연결 성공</b>\n📡 LONG/SHORT 스캐너 작동 중\n🕐 ${new Date().toLocaleString('ko-KR')}`);
+  if (ok) {
+    el.className='tg-status ok'; el.textContent='✓ 전송 성공';
+    document.getElementById('tgDot').className='dot blue';
+    document.getElementById('tgStatus').textContent='TG CONNECTED';
+    log('텔레그램 테스트 성공','tg');
+  } else {
+    el.className='tg-status fail'; el.textContent='✗ 실패 — 토큰/Chat ID 확인';
+    document.getElementById('tgDot').className='dot red';
+    log('텔레그램 전송 실패','warn');
+  }
+}
+
+async function notifyLong(r) {
+  const price = fmtPrice(r.price);
+  const text =
+    `🟢 <b>[LONG 신호] ${r.symbol}</b>\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `📈 급등폭:  <b>+${r.maxSpike.toFixed(2)}%</b>  (${r.minsAgo??'?'}분 전 봉)\n` +
+    `📊 OI/평균: <b>${r.oiRatio.toFixed(2)}x</b>\n` +
+    `💰 현재가:  <b>${price} USDT</b>\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `✅ L1 MA 정배열 3봉 연속\n` +
+    `✅ L2 저가→종가 +7% 이상\n` +
+    `✅ L3 OI 평균 대비 1.25배↑\n` +
+    `🕐 ${new Date().toLocaleString('ko-KR')}`;
+  const ok = await sendTelegram(text);
+  if (ok) { tgSentCount++; document.getElementById('statTgSent').textContent=tgSentCount; log(`📨 TG LONG: ${r.symbol}`,'tg'); }
+  else log(`TG 전송 실패: ${r.symbol}`,'warn');
+}
+
+async function notifyShort(r) {
+  const price = fmtPrice(r.price);
+  const text =
+    `🔴 <b>[SHORT 신호] ${r.symbol}</b>\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `📉 거래량:  최대 대비 <b>${r.volRatio.toFixed(1)}%</b>\n` +
+    `📊 OI:      최고 대비 <b>${r.oiDropPct.toFixed(1)}%</b> 수준\n` +
+    `🕯 위꼬리:  몸통의 <b>${r.wickRatio.toFixed(2)}배</b>\n` +
+    `💰 현재가:  <b>${price} USDT</b>\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `✅ S1 거래량 급등 최대치의 30% 이하\n` +
+    `✅ S2 OI 최고치 대비 15% 이상 감소\n` +
+    `✅ S3 MA5 이탈 + 위꼬리≥몸통×2\n` +
+    `🕐 ${new Date().toLocaleString('ko-KR')}`;
+  const ok = await sendTelegram(text);
+  if (ok) { tgSentCount++; document.getElementById('statTgSent').textContent=tgSentCount; log(`📨 TG SHORT: ${r.symbol}`,'tg'); }
+  else log(`TG 전송 실패: ${r.symbol}`,'warn');
+}
+
+// ═══════════════════════════════════
+//  API HELPERS
+// ═══════════════════════════════════
+async function apiFetch(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+async function getSymbols() {
+  const d = await apiFetch(`${BASE}/fapi/v1/exchangeInfo`);
+  return d.symbols
+    .filter(s => s.quoteAsset==='USDT' && s.status==='TRADING' && s.contractType==='PERPETUAL')
+    .map(s => s.symbol);
+}
+
+async function getKlines(sym) {
+  const d = await apiFetch(`${BASE}/fapi/v1/klines?symbol=${sym}&interval=15m&limit=80`);
+  return d.map(k=>({ o:+k[1], h:+k[2], l:+k[3], c:+k[4], v:+k[5], t:k[0] }));
+}
+
+async function getOI(sym) {
+  const d = await apiFetch(`${BASE}/futures/data/openInterestHist?symbol=${sym}&period=15m&limit=20`);
+  return d.sort((a,b)=>a.timestamp-b.timestamp);
+}
+
+// ═══════════════════════════════════
+//  ── LONG CHECKS ──
+// ═══════════════════════════════════
+
+// L1: MA5>MA10>MA20>MA60 최근 3봉 연속
+function checkMA(klines) {
+  if (klines.length < 62) return {ok:false};
+  const cl = klines.map(k=>k.c);
+  for (let off=0; off<3; off++) {
+    const end = cl.length - off;
+    const ma  = n => cl.slice(end-n,end).reduce((a,b)=>a+b,0)/n;
+    if (!(ma(5)>ma(10) && ma(10)>ma(20) && ma(20)>ma(60))) return {ok:false};
+  }
+  const n=cl.length, ma=k=>cl.slice(n-k).reduce((a,b)=>a+b,0)/k;
+  return {ok:true, m5:ma(5), m10:ma(10), m20:ma(20), m60:ma(60)};
+}
+
+// L2: 최근 16봉(240분) 저가→종가 +7% 이상
+function checkSpike(klines) {
+  const recent = klines.slice(-16);
+  let maxSpike=0, spikeCandle=null;
+  for (const k of recent) {
+    if (k.l===0) continue;
+    const spike = (k.c-k.l)/k.l*100;
+    if (spike>maxSpike) { maxSpike=spike; spikeCandle=k; }
+  }
+  const minsAgo = spikeCandle ? Math.round((Date.now()-spikeCandle.t)/60000) : null;
+  return { ok:maxSpike>=7, maxSpike, minsAgo };
+}
+
+// L3: 현재 OI > 240분 평균 × 1.25
+function checkOI_long(oiData) {
+  if (!oiData||oiData.length<2) return {ok:false,ratio:0};
+  const cutoff = Date.now()-240*60*1000;
+  let recent = oiData.filter(d=>d.timestamp>=cutoff);
+  if (recent.length<2) recent=oiData;
+  const cur  = +recent[recent.length-1].sumOpenInterest;
+  const prev = recent.slice(0,-1).map(d=>+d.sumOpenInterest);
+  const avg  = prev.reduce((a,b)=>a+b,0)/prev.length;
+  if (avg===0) return {ok:false,ratio:0};
+  const ratio = cur/avg;
+  return { ok:ratio>=1.25, ratio };
+}
+
+// ═══════════════════════════════════
+//  ── SHORT CHECKS ──
+// ═══════════════════════════════════
+
+// S1: 현재 거래량 ≤ 최근 20봉 최대 거래량의 30%
+function checkVolDrop(klines) {
+  const recent20 = klines.slice(-20);
+  const lastVol  = recent20[recent20.length-1].v;
+  const maxVol   = Math.max(...recent20.map(k=>k.v));
+  if (maxVol===0) return {ok:false, ratio:0};
+  const ratio = lastVol/maxVol*100;   // 최대 대비 %
+  return { ok:ratio<=30, ratio };
+}
+
+// S2: 현재 OI ≤ 최근 20봉 최고 OI의 85% (15% 이상 감소)
+function checkOI_short(oiData) {
+  if (!oiData||oiData.length<2) return {ok:false, dropPct:0};
+  const values  = oiData.map(d=>+d.sumOpenInterest);
+  const maxOI   = Math.max(...values);
+  const curOI   = values[values.length-1];
+  if (maxOI===0) return {ok:false, dropPct:0};
+  const dropPct = curOI/maxOI*100;   // 최고 대비 현재 %
+  return { ok:dropPct<=85, dropPct };
+}
+
+// S3: 종가 < MA5 이탈 AND 위꼬리 ≥ 몸통 × 2
+function checkCandleShort(klines) {
+  const cl = klines.map(k=>k.c);
+  const n  = cl.length;
+  const ma5 = cl.slice(n-5).reduce((a,b)=>a+b,0)/5;
+
+  const last = klines[n-1];
+  const body   = Math.abs(last.c - last.o);           // 몸통 크기
+  const wick   = last.h - Math.max(last.c, last.o);   // 위꼬리 크기
+
+  const ma5Break   = last.c < ma5;                    // 종가 < MA5
+  const wickDouble = body > 0 && wick >= body * 2;    // 위꼬리 ≥ 몸통×2
+
+  const wickRatio = body > 0 ? wick/body : 0;
+  return { ok: ma5Break && wickDouble, ma5, wickRatio };
+}
+
+// ═══════════════════════════════════
+//  RENDER
+// ═══════════════════════════════════
+function fmtPrice(p) {
+  return p<0.01?p.toFixed(6):p<1?p.toFixed(5):p<100?p.toFixed(4):p.toFixed(2);
+}
+
+function renderLong() {
+  const tbody  = document.getElementById('longBody');
+  const results = Object.values(longMatched).sort((a,b)=>b.ts-a.ts);
+  if (!results.length) {
+    tbody.innerHTML=`<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">▲</div><div class="empty-text">NO LONG SIGNALS</div></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = results.map(r=>{
+    const age=Math.round((Date.now()-r.ts)/1000);
+    const ageStr=age<60?`${age}s ago`:`${Math.round(age/60)}m ago`;
+    return `<tr>
+      <td class="symbol-cell up">${r.symbol}${r.isNew?'<span class="new-tag up">NEW</span>':''}</td>
+      <td><span class="badge up">L1</span><span class="badge up">L2</span><span class="badge up">L3</span></td>
+      <td class="val-up">+${r.maxSpike.toFixed(2)}%</td>
+      <td style="color:var(--dim);font-size:10px">${r.minsAgo!=null?r.minsAgo+'분 전':'-'}</td>
+      <td class="val-up">${r.oiRatio.toFixed(2)}x</td>
+      <td>${fmtPrice(r.price)}</td>
+      <td style="color:var(--dim)">${ageStr}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderShort() {
+  const tbody  = document.getElementById('shortBody');
+  const results = Object.values(shortMatched).sort((a,b)=>b.ts-a.ts);
+  if (!results.length) {
+    tbody.innerHTML=`<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">▼</div><div class="empty-text">NO SHORT SIGNALS</div></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = results.map(r=>{
+    const age=Math.round((Date.now()-r.ts)/1000);
+    const ageStr=age<60?`${age}s ago`:`${Math.round(age/60)}m ago`;
+    return `<tr>
+      <td class="symbol-cell dn">${r.symbol}${r.isNew?'<span class="new-tag dn">NEW</span>':''}</td>
+      <td><span class="badge dn">S1</span><span class="badge dn">S2</span><span class="badge dn">S3</span></td>
+      <td class="val-dn">${r.volRatio.toFixed(1)}%</td>
+      <td class="val-dn">${r.oiDropPct.toFixed(1)}%</td>
+      <td class="val-dn">${r.wickRatio.toFixed(2)}x</td>
+      <td>${fmtPrice(r.price)}</td>
+      <td style="color:var(--dim)">${ageStr}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════
+//  TOAST + AUDIO
+// ═══════════════════════════════════
+function showToast(symbol, type, sub) {
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.innerHTML =
+    `<div class="toast-title ${type}">${type==='up'?'🟢 LONG 신호':'🔴 SHORT 신호'}</div>` +
+    `<div class="toast-body">${symbol}</div>` +
+    `<div class="toast-sub">${sub}</div>`;
+  c.appendChild(t);
+  setTimeout(()=>{ t.classList.add('removing'); setTimeout(()=>t.remove(),300); },7000);
+}
+
+function playAlert(type) {
+  try {
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const seq = type==='up'
+      ? [[660,.12],[880,.12],[1100,.10]]
+      : [[880,.12],[660,.12],[440,.10]];
+    seq.forEach(([freq,vol],i)=>{
+      const o=ctx.createOscillator(), g=ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value=freq; o.type='sine';
+      const t=ctx.currentTime+i*.18;
+      g.gain.setValueAtTime(vol,t);
+      g.gain.exponentialRampToValueAtTime(0.001,t+.18);
+      o.start(t); o.stop(t+.18);
+    });
+  } catch {}
+}
+
+// ═══════════════════════════════════
+//  MAIN SCAN
+// ═══════════════════════════════════
+async function runScan() {
+  if (isScanning) return;
+  isScanning = true;
+
+  document.getElementById('scanningBar').classList.add('visible');
+  document.getElementById('scanDot').className='dot yellow';
+  document.getElementById('scanStatus').textContent='SCANNING';
+  document.getElementById('manualBtn').disabled=true;
+  document.getElementById('startBtn').disabled=true;
+  log('── SCAN STARTED ──','info');
+
+  let symbols=[];
+  try {
+    symbols = await getSymbols();
+    document.getElementById('statTotal').textContent=symbols.length;
+    document.getElementById('apiDot').className='dot green';
+    document.getElementById('apiStatus').textContent='CONNECTED';
+    log(`심볼 ${symbols.length}개 로드`,'info');
+  } catch(e) {
+    log(`심볼 로드 실패: ${e.message}`,'warn');
+    document.getElementById('apiDot').className='dot red';
+    document.getElementById('apiStatus').textContent='ERROR';
+    finishScan(); return;
+  }
+
+  scanCount++;
+  document.getElementById('statRuns').textContent=scanCount;
+
+  let scanned=0, errorCount=0;
+  const prevLong  = new Set(Object.keys(longMatched));
+  const prevShort = new Set(Object.keys(shortMatched));
+  const thisLong  = new Set();
+  const thisShort = new Set();
+
+  const BATCH=5;
+  for (let i=0; i<symbols.length; i+=BATCH) {
+    const batch=symbols.slice(i,i+BATCH);
+
+    await Promise.all(batch.map(async sym => {
+      try {
+        document.getElementById('scanningSymbol').textContent=`SCANNING  ${sym}`;
+        const [klines, oiData] = await Promise.all([
+          getKlines(sym),
+          getOI(sym).catch(()=>null)
+        ]);
+
+        // ── LONG check ──
+        const l1 = checkMA(klines);
+        const l2 = checkSpike(klines);
+        const l3 = checkOI_long(oiData);
+
+        if (l1.ok && l2.ok && l3.ok) {
+          const isNew = !prevLong.has(sym);
+          const result = {
+            symbol:sym, price:klines[klines.length-1].c,
+            maxSpike:l2.maxSpike, minsAgo:l2.minsAgo, oiRatio:l3.ratio,
+            ts:Date.now(), isNew
+          };
+          longMatched[sym]=result; thisLong.add(sym);
+          renderLong();
+          document.getElementById('statLong').textContent=Object.keys(longMatched).length;
+          if (isNew) {
+            log(`▲ LONG ${sym}  +${l2.maxSpike.toFixed(1)}%  OI×${l3.ratio.toFixed(2)}  (${l2.minsAgo??'?'}분 전)`,'up');
+            showToast(sym,'up',`+${l2.maxSpike.toFixed(1)}%  OI ×${l3.ratio.toFixed(2)}`);
+            playAlert('up');
+            notifyLong(result);
+          }
+        } else {
+          if (longMatched[sym]) {
+            log(`${sym} LONG 해제`,'');
+            delete longMatched[sym];
+            renderLong();
+            document.getElementById('statLong').textContent=Object.keys(longMatched).length;
+          }
+        }
+
+        // ── SHORT check ──
+        const s1 = checkVolDrop(klines);
+        const s2 = checkOI_short(oiData);
+        const s3 = checkCandleShort(klines);
+
+        if (s1.ok && s2.ok && s3.ok) {
+          const isNew = !prevShort.has(sym);
+          const result = {
+            symbol:sym, price:klines[klines.length-1].c,
+            volRatio:s1.ratio, oiDropPct:s2.dropPct, wickRatio:s3.wickRatio,
+            ts:Date.now(), isNew
+          };
+          shortMatched[sym]=result; thisShort.add(sym);
+          renderShort();
+          document.getElementById('statShort').textContent=Object.keys(shortMatched).length;
+          if (isNew) {
+            log(`▼ SHORT ${sym}  VOL${s1.ratio.toFixed(0)}%  OI${s2.dropPct.toFixed(0)}%  위꼬리×${s3.wickRatio.toFixed(1)}`,'dn');
+            showToast(sym,'dn',`VOL ${s1.ratio.toFixed(0)}%  OI ${s2.dropPct.toFixed(0)}%  위꼬리 ×${s3.wickRatio.toFixed(1)}`);
+            playAlert('dn');
+            notifyShort(result);
+          }
+        } else {
+          if (shortMatched[sym]) {
+            log(`${sym} SHORT 해제`,'');
+            delete shortMatched[sym];
+            renderShort();
+            document.getElementById('statShort').textContent=Object.keys(shortMatched).length;
+          }
+        }
+
+      } catch { errorCount++; }
+    }));
+
+    scanned+=batch.length;
+    const pct=Math.round(scanned/symbols.length*100);
+    document.getElementById('progressFill').style.width=pct+'%';
+    document.getElementById('progressText').textContent=pct+'%';
+    document.getElementById('statScanned').textContent=scanned;
+    document.getElementById('statErrors').textContent=errorCount;
+
+    if (i+BATCH<symbols.length) await sleep(250);
+  }
+
+  // 잔류 정리
+  for (const sym of prevLong)  if (!thisLong.has(sym)  && longMatched[sym])  delete longMatched[sym];
+  for (const sym of prevShort) if (!thisShort.has(sym) && shortMatched[sym]) delete shortMatched[sym];
+  renderLong(); renderShort();
+
+  const now=new Date().toLocaleTimeString('ko-KR',{hour12:false});
+  document.getElementById('lastScanRow').style.display='flex';
+  document.getElementById('lastScanTime').textContent=`마지막 스캔: ${now}  |  에러: ${errorCount}개`;
+  log(`── COMPLETE: LONG ${Object.keys(longMatched).length}개  SHORT ${Object.keys(shortMatched).length}개  에러 ${errorCount}개 ──`,'info');
+  finishScan();
+}
+
+function finishScan() {
+  isScanning=false;
+  document.getElementById('scanningBar').classList.remove('visible');
+  document.getElementById('scanDot').className='dot green';
+  document.getElementById('scanStatus').textContent='COMPLETE';
+  document.getElementById('manualBtn').disabled=false;
+  if (!scanInterval) document.getElementById('startBtn').disabled=false;
+}
+
+// ═══════════════════════════════════
+//  TIMER / CONTROLS
+// ═══════════════════════════════════
+function startScanner() {
+  document.getElementById('startBtn').disabled=true;
+  document.getElementById('stopBtn').disabled=false;
+  saveTgConfig(); updateTgDot();
+  log('자동 스캔 시작 (5분 간격)','info');
+  runScan();
+  nextScanIn=SCAN_INTERVAL_SEC;
+  countdownInterval=setInterval(()=>{
+    nextScanIn--;
+    document.getElementById('countdown').textContent=nextScanIn;
+    if (nextScanIn<=0) nextScanIn=SCAN_INTERVAL_SEC;
+  },1000);
+  scanInterval=setInterval(()=>{ nextScanIn=SCAN_INTERVAL_SEC; runScan(); }, SCAN_INTERVAL_SEC*1000);
+}
+
+function stopScanner() {
+  clearInterval(scanInterval); clearInterval(countdownInterval);
+  scanInterval=null;
+  document.getElementById('startBtn').disabled=false;
+  document.getElementById('stopBtn').disabled=true;
+  document.getElementById('countdown').textContent='—';
+  document.getElementById('scanDot').className='dot';
+  document.getElementById('scanStatus').textContent='IDLE';
+  log('자동 스캔 중지','warn');
+}
+
+function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }
+setInterval(()=>{ renderLong(); renderShort(); },10000);
+</script>
+</body>
+</html>
