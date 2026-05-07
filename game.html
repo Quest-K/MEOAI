@@ -233,32 +233,6 @@
   .tip-box p{ font-size:11px;color:var(--muted);margin:0;line-height:1.5; }
   .tip-box strong{ color:var(--text);font-weight:700; }
 
-
-
-  /* ── Ad Slots ── */
-  .ad-slot{
-    width:100%;margin:10px 0 0;border-radius:12px;overflow:hidden;
-    background:var(--bg);border:1px dashed var(--border);
-    min-height:100px;display:flex;align-items:center;justify-content:center;
-    position:relative;
-  }
-  .ad-slot-label{
-    position:absolute;top:4px;left:8px;
-    font-family:'Space Mono',monospace;font-size:7px;
-    color:var(--border);letter-spacing:.08em;text-transform:uppercase;
-    pointer-events:none;
-  }
-  .ad-slot ins{ display:block;width:100%; }
-
-  /* ── Play Count Badge ── */
-  .play-count-badge{
-    display:inline-flex;align-items:center;gap:5px;
-    background:rgba(37,99,235,.07);border:1px solid rgba(37,99,235,.15);
-    border-radius:99px;padding:4px 12px;margin-bottom:14px;
-    font-family:'Space Mono',monospace;font-size:10px;color:var(--blue);font-weight:700;
-  }
-  .play-count-badge span{ color:var(--muted);font-weight:400; }
-
   /* ── How-to Panel (slide-up sheet) ── */
   #howto-sheet{
     position:absolute;inset:0;display:flex;align-items:flex-end;justify-content:center;
@@ -429,11 +403,6 @@
   }
   .btn-rank-close:active{ transform:scale(.96); }
 </style>
-
-  <!-- ── Google AdSense ── -->
-  <!-- ⚠️ ca-pub-XXXXXXXXXXXXXXXX 를 실제 게시자 ID로 교체하세요 -->
-  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX"
-       crossorigin="anonymous"></script>
 </head>
 <body>
 <div id="app">
@@ -480,9 +449,6 @@
       <div class="modal" id="start-screen">
         <div class="modal-icon blue">⚡</div>
         <h1>Micro Hunter</h1>
-        <div class="play-count-badge" id="start-play-count" style="display:none">
-          🎮 <span>총 플레이</span> <strong id="start-play-num">0</strong>회
-        </div>
         <p>에너지 코어를 수집하며<br>과거의 잔상을 피하세요.</p>
         <button class="btn btn-primary" id="btn-start">탐사 시작</button>
         <button class="btn btn-ghost" id="btn-howto">게임 방법 보기</button>
@@ -507,24 +473,8 @@
             <span class="stat-chip-value" id="stat-combo">0×</span>
           </div>
         </div>
-        <div style="text-align:center;margin:-8px 0 12px;font-family:'Space Mono',monospace;font-size:10px;color:var(--muted)">
-          🎮 누적 플레이 <strong id="gameover-play-count" style="color:var(--blue)">0</strong>회
-        </div>
         <button class="btn btn-dark"    id="btn-reset">다시 도전</button>
-
-        <!-- 게임오버 광고 (in-article) -->
-        <!-- ⚠️ data-ad-client / data-ad-slot 값을 AdSense 대시보드에서 발급받아 교체하세요 -->
-        <div class="ad-slot" id="ad-gameover">
-          <span class="ad-slot-label">Advertisement</span>
-          <ins class="adsbygoogle"
-               style="display:block;text-align:center;"
-               data-ad-layout="in-article"
-               data-ad-format="fluid"
-               data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
-               data-ad-slot="XXXXXXXXXX"></ins>
-        </div>
-
-        <div style="display:flex;gap:8px;margin-top:8px;">
+        <div style="display:flex;gap:8px;margin-top:0;">
           <button class="btn btn-primary" style="flex:1" id="btn-share">공유</button>
           <button class="btn btn-primary" style="flex:1;background:#7c3aed;box-shadow:0 4px 16px rgba(124,58,237,.35)" id="btn-ranking">랭킹</button>
         </div>
@@ -561,18 +511,6 @@
           <div class="rank-loading">불러오는 중...</div>
         </div>
         <div class="rank-myrank hidden" id="rank-myrank"></div>
-
-        <!-- 랭킹 광고 배너 -->
-        <!-- ⚠️ data-ad-client / data-ad-slot 값을 AdSense 대시보드에서 발급받아 교체하세요 -->
-        <div class="ad-slot" id="ad-ranking" style="margin-bottom:0;min-height:80px;">
-          <span class="ad-slot-label">Advertisement</span>
-          <ins class="adsbygoogle"
-               style="display:block;"
-               data-ad-format="auto"
-               data-full-width-responsive="true"
-               data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
-               data-ad-slot="XXXXXXXXXX"></ins>
-        </div>
         <button class="btn-rank-close" id="btn-rank-close">닫기</button>
       </div>
     </div>
@@ -680,3 +618,935 @@ async function saveScore(nickname, scoreVal, survivalTime, cores, combo){
     })
   });
 }
+
+async function fetchRanking(tab='score'){
+  const orderMap = {
+    score: 'score.desc',
+    time:  'survival_time.desc',
+    cores: 'cores_collected.desc'
+  };
+  const order = orderMap[tab] || 'score.desc';
+  return sbFetch(`/rest/v1/scores?select=nickname,score,survival_time,cores_collected,max_combo,created_at&order=${order}&limit=20`);
+}
+
+async function fetchMyRank(scoreVal){
+  // count rows where score > my score → my rank = count + 1
+  const data = await sbFetch(`/rest/v1/scores?select=id&score=gt.${scoreVal}`);
+  return (data ? data.length : 0) + 1;
+}
+
+// ════════════════════════════════════════
+//  Nickname Sheet
+// ════════════════════════════════════════
+let _pendingScore = null;
+
+function openNicknameSheet(finalScore){
+  _pendingScore = finalScore;
+  document.getElementById('nick-score-preview').textContent = finalScore.toLocaleString();
+  const sheet = document.getElementById('nickname-sheet');
+  const input = document.getElementById('nick-input');
+  // restore saved nickname
+  const saved = localStorage.getItem('mh_nickname') || '';
+  input.value = saved;
+  sheet.classList.add('open');
+  setTimeout(()=>input.focus(),350);
+}
+
+function closeNicknameSheet(){
+  document.getElementById('nickname-sheet').classList.remove('open');
+}
+
+document.getElementById('btn-nick-submit').addEventListener('click', async ()=>{
+  const nick = document.getElementById('nick-input').value.trim();
+  if(!nick){ document.getElementById('nick-input').focus(); return; }
+  localStorage.setItem('mh_nickname', nick);
+
+  const btn = document.getElementById('btn-nick-submit');
+  btn.textContent = '저장 중...'; btn.disabled = true;
+
+  try{
+    await saveScore(
+      nick,
+      _pendingScore,
+      parseFloat(document.getElementById('stat-time').textContent),
+      parseInt(document.getElementById('stat-cores').textContent),
+      parseInt(document.getElementById('stat-combo').textContent)
+    );
+    closeNicknameSheet();
+    showToast('🏆 랭킹에 등록됐어요!');
+    // auto-open ranking
+    setTimeout(()=>openRankingSheet(_pendingScore), 600);
+  } catch(e){
+    showToast('❌ 저장 실패 — 다시 시도해주세요');
+    console.error(e);
+  } finally{
+    btn.textContent = '랭킹에 등록하기'; btn.disabled = false;
+  }
+});
+
+document.getElementById('nick-input').addEventListener('keydown', e=>{
+  if(e.key==='Enter') document.getElementById('btn-nick-submit').click();
+});
+
+document.getElementById('btn-nick-skip').addEventListener('click', ()=>{
+  closeNicknameSheet();
+});
+
+// ════════════════════════════════════════
+//  Ranking Sheet
+// ════════════════════════════════════════
+async function openRankingSheet(highlightScore=null, tab='score'){
+  const sheet = document.getElementById('ranking-sheet');
+  sheet.classList.add('open');
+  // 탭 활성화
+  document.querySelectorAll('.rank-tab').forEach(t=>{
+    t.classList.toggle('active', t.dataset.tab===tab);
+  });
+  await loadRanking(highlightScore, tab);
+}
+
+async function loadRanking(highlightScore=null, tab='score'){
+  const list = document.getElementById('rank-list');
+  const myRankEl = document.getElementById('rank-myrank');
+  list.innerHTML = '<div class="rank-loading">불러오는 중...</div>';
+  myRankEl.classList.add('hidden');
+
+  try{
+    const data = await fetchRanking(tab);
+    if(!data || data.length===0){
+      list.innerHTML = '<div class="rank-empty">아직 기록이 없어요.<br>첫 번째 등록자가 되어보세요! 🚀</div>';
+      return;
+    }
+
+    const medals = ['🥇','🥈','🥉'];
+    const posClass = ['gold','silver','bronze'];
+    const savedNick = localStorage.getItem('mh_nickname')||'';
+
+    const curTab = document.querySelector('.rank-tab.active')?.dataset.tab || 'score';
+    list.innerHTML = data.map((r,i)=>{
+      const pos = i < 3 ? `<span class="rank-pos ${posClass[i]}">${medals[i]}</span>`
+                        : `<span class="rank-pos">${i+1}</span>`;
+      const isMine = highlightScore && r.score===highlightScore && r.nickname===savedNick;
+      let mainVal='', subVal='';
+      if(curTab==='score'){
+        mainVal = Math.floor(r.score).toLocaleString()+'점';
+        subVal  = (r.survival_time||0).toFixed(1)+'s';
+      } else if(curTab==='time'){
+        mainVal = (r.survival_time||0).toFixed(1)+'s';
+        subVal  = Math.floor(r.score).toLocaleString()+'점';
+      } else {
+        mainVal = (r.cores_collected||0)+'개';
+        subVal  = Math.floor(r.score).toLocaleString()+'점';
+      }
+      return `<div class="rank-row${isMine?' mine':''}">
+        ${pos}
+        <span class="rank-nick">${escHtml(r.nickname)}</span>
+        <div style="text-align:right">
+          <div class="rank-score">${mainVal}</div>
+          <div class="rank-time">${subVal}</div>
+        </div>
+      </div>`;
+    }).join('');
+
+    // my rank badge
+    if(highlightScore){
+      try{
+        const rank = await fetchMyRank(highlightScore);
+        myRankEl.textContent = `내 순위: ${rank}위`;
+        myRankEl.classList.remove('hidden');
+      } catch(_){}
+    }
+  } catch(e){
+    list.innerHTML = '<div class="rank-empty">불러오기 실패.<br>네트워크를 확인해주세요.</div>';
+    console.error(e);
+  }
+}
+
+function escHtml(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+document.getElementById('btn-rank-close').addEventListener('click', ()=>{
+  document.getElementById('ranking-sheet').classList.remove('open');
+});
+document.getElementById('ranking-sheet').addEventListener('click', e=>{
+  if(e.target===document.getElementById('ranking-sheet'))
+    document.getElementById('ranking-sheet').classList.remove('open');
+});
+document.getElementById('btn-rank-refresh').addEventListener('click', ()=>{
+  const tab = document.querySelector('.rank-tab.active')?.dataset.tab||'score';
+  loadRanking(null, tab);
+});
+
+// 랭킹 탭 전환
+document.querySelectorAll('.rank-tab').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.rank-tab').forEach(t=>t.classList.remove('active'));
+    btn.classList.add('active');
+    loadRanking(null, btn.dataset.tab);
+  });
+});
+document.getElementById('btn-ranking').addEventListener('click', ()=>{
+  openRankingSheet(null);
+});
+
+// 시작화면 랭킹 버튼 (start-screen에 추가 예정 — 현재는 gameover에서만)
+
+// ════════════════════════════════════════
+//  Canvas
+// ════════════════════════════════════════
+const canvas   = document.getElementById('gameCanvas');
+const ctx      = canvas.getContext('2d');
+const pc       = document.getElementById('particle-canvas');
+const pctx     = pc.getContext('2d');
+const gameArea = document.getElementById('game-area');
+
+function resize(){
+  canvas.width = pc.width  = gameArea.clientWidth;
+  canvas.height= pc.height = gameArea.clientHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ════════════════════════════════════════
+//  State
+// ════════════════════════════════════════
+let state='START';
+let score=0, bestScore=0, frameCount=0;
+let energy=100;
+let combo=1, maxCombo=1, coresCollected=0;
+let player, core, echoes, history, lastEchoSpawn;
+let obstacles=[], lastObstacleSpawn=0;
+let particles=[];
+let toastTimer=null;
+let joystick={dx:0,dy:0};
+let isMobile=/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+let echoCountdownInterval=null;
+
+// ════════════════════════════════════════
+//  Ghost color constants (blue palette)
+// ════════════════════════════════════════
+const GHOST_COLOR   = '#7c3aed';   // violet-blue
+const GHOST_STROKE  = '#a78bfa';
+const GHOST_RGBA    = (a) => `rgba(124,58,237,${a})`;
+const GHOST_PATH_RGBA = (a) => `rgba(109,40,217,${a})`;
+const GHOST_ALERT_RGBA = (a) => `rgba(99,102,241,${a})`;
+
+// ════════════════════════════════════════
+//  Toast
+// ════════════════════════════════════════
+function showToast(msg, dur=1500){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>el.classList.remove('show'),dur);
+}
+
+// ════════════════════════════════════════
+//  Echo Warning
+// ════════════════════════════════════════
+function triggerEchoWarning(){
+  const banner=document.getElementById('echo-warning');
+  const countEl=document.getElementById('echo-countdown');
+  clearInterval(echoCountdownInterval);
+  let v=3; countEl.textContent=v;
+  banner.classList.add('show');
+  echoCountdownInterval=setInterval(()=>{
+    v--;
+    if(v<=0){ clearInterval(echoCountdownInterval); banner.classList.remove('show'); }
+    else countEl.textContent=v;
+  },1000);
+}
+
+// ════════════════════════════════════════
+//  How-to Sheet
+// ════════════════════════════════════════
+(function setupHowto(){
+  const sheet = document.getElementById('howto-sheet');
+  const btnOpen  = document.getElementById('btn-howto');
+  const btnClose = document.getElementById('btn-howto-close');
+
+  btnOpen.addEventListener('click', () => sheet.classList.add('open'));
+  btnClose.addEventListener('click', () => sheet.classList.remove('open'));
+
+  // tap backdrop to close
+  sheet.addEventListener('click', e => {
+    if (e.target === sheet) sheet.classList.remove('open');
+  });
+})();
+
+// ════════════════════════════════════════
+//  Floating Joystick
+// ════════════════════════════════════════
+(function setupJoystick(){
+  const panel  = document.getElementById('joystick-panel');
+  const base   = document.getElementById('joystick-base');
+  const knob   = document.getElementById('joystick-knob');
+  const idle   = document.getElementById('joystick-idle');
+  const lbl    = document.getElementById('joystick-label');
+  const arrows = {
+    up:   document.getElementById('js-up'),
+    down: document.getElementById('js-down'),
+    left: document.getElementById('js-left'),
+    right:document.getElementById('js-right'),
+  };
+  const RADIUS=50;
+  let pid=null, ox=0, oy=0;
+
+  function pr(){ return panel.getBoundingClientRect(); }
+
+  function activate(cx,cy){
+    const r=pr();
+    ox=cx-r.left; oy=cy-r.top;
+    base.style.left=ox+'px';
+    base.style.top =oy+'px';
+    base.classList.add('visible','active');
+    idle.style.opacity='0';
+    lbl.style.opacity='0';
+    updateKnob(cx,cy);
+  }
+
+  function updateKnob(cx,cy){
+    const r=pr();
+    let dx=(cx-r.left)-ox, dy=(cy-r.top)-oy;
+    const dist=Math.hypot(dx,dy);
+    if(dist>RADIUS){dx=dx/dist*RADIUS;dy=dy/dist*RADIUS;}
+    joystick.dx=dx/RADIUS; joystick.dy=dy/RADIUS;
+    knob.style.transform=`translate(calc(-50% + ${dx}px),calc(-50% + ${dy}px))`;
+    knob.classList.add('active');
+    const t=0.28;
+    arrows.up.classList.toggle('lit',   joystick.dy<-t);
+    arrows.down.classList.toggle('lit', joystick.dy> t);
+    arrows.left.classList.toggle('lit', joystick.dx<-t);
+    arrows.right.classList.toggle('lit',joystick.dx> t);
+  }
+
+  function deactivate(){
+    joystick.dx=0; joystick.dy=0; pid=null;
+    base.classList.remove('visible','active');
+    knob.style.transform='translate(-50%,-50%)';
+    knob.classList.remove('active');
+    Object.values(arrows).forEach(a=>a.classList.remove('lit'));
+    idle.style.opacity='1';
+    lbl.style.opacity='1';
+  }
+
+  panel.addEventListener('touchstart',e=>{
+    e.preventDefault();
+    if(pid!==null) return;
+    const t=e.changedTouches[0]; pid=t.identifier;
+    activate(t.clientX,t.clientY);
+  },{passive:false});
+
+  panel.addEventListener('touchmove',e=>{
+    e.preventDefault();
+    for(const t of e.changedTouches)
+      if(t.identifier===pid){updateKnob(t.clientX,t.clientY);break;}
+  },{passive:false});
+
+  panel.addEventListener('touchend',e=>{
+    for(const t of e.changedTouches)
+      if(t.identifier===pid){deactivate();break;}
+  },{passive:false});
+
+  panel.addEventListener('touchcancel',deactivate,{passive:false});
+
+  panel.addEventListener('mousedown',e=>{
+    e.preventDefault(); pid='mouse'; activate(e.clientX,e.clientY);
+  });
+  window.addEventListener('mousemove',e=>{
+    if(pid!=='mouse') return; updateKnob(e.clientX,e.clientY);
+  });
+  window.addEventListener('mouseup',()=>{ if(pid==='mouse') deactivate(); });
+})();
+
+// ════════════════════════════════════════
+//  Keyboard
+// ════════════════════════════════════════
+const _keys={up:false,down:false,left:false,right:false};
+const keyMap={
+  ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right',
+  w:'up',s:'down',a:'left',d:'right',
+  W:'up',S:'down',A:'left',D:'right'
+};
+window.addEventListener('keydown',e=>{
+  const d=keyMap[e.key]; if(d){_keys[d]=true;e.preventDefault();}
+  if(!isMobile) document.getElementById('kb-hint').style.display='block';
+});
+window.addEventListener('keyup',e=>{ const d=keyMap[e.key]; if(d) _keys[d]=false; });
+
+// ════════════════════════════════════════
+//  Buttons
+// ════════════════════════════════════════
+document.getElementById('btn-start').addEventListener('click',startGame);
+document.getElementById('btn-reset').addEventListener('click',()=>{
+  document.getElementById('gameover-screen').classList.add('hidden');
+  startGame();
+});
+document.getElementById('btn-share').addEventListener('click',()=>{
+  const t=`🎮 Micro Hunter: ${Math.floor(score)}점!\n생존:${(frameCount/60).toFixed(1)}s | 코어:${coresCollected} | 콤보:${maxCombo}×`;
+  if(navigator.share) navigator.share({title:'Micro Hunter',text:t});
+  else if(navigator.clipboard) navigator.clipboard.writeText(t).then(()=>showToast('📋 복사됨!'));
+});
+
+// ════════════════════════════════════════
+//  Particles
+// ════════════════════════════════════════
+function spawnParticles(wx,wy,color,count=8){
+  for(let i=0;i<count;i++){
+    const angle=(Math.PI*2/count)*i+Math.random()*.3;
+    const speed=1.5+Math.random()*3;
+    particles.push({x:wx,y:wy,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,
+      r:3+Math.random()*4,color,alpha:1,life:1});
+  }
+}
+function updateParticles(){
+  particles=particles.filter(p=>p.life>0);
+  particles.forEach(p=>{
+    p.x+=p.vx; p.y+=p.vy; p.vy+=.05;
+    p.vx*=.97; p.vy*=.97;
+    p.life-=.04; p.alpha=p.life; p.r=Math.max(.1,p.r*.98);
+  });
+}
+function drawParticles(){
+  pctx.clearRect(0,0,pc.width,pc.height);
+  particles.forEach(p=>{
+    pctx.save(); pctx.globalAlpha=Math.max(0,p.alpha);
+    pctx.fillStyle=p.color;
+    pctx.beginPath(); pctx.arc(p.x,p.y,p.r,0,Math.PI*2); pctx.fill();
+    pctx.restore();
+  });
+}
+
+// ════════════════════════════════════════
+//  Core spawn
+// ════════════════════════════════════════
+function spawnCore(){
+  let at=0;
+  do{
+    core.x=3+Math.random()*94;
+    core.y=3+Math.random()*94;
+    at++;
+  }while(Math.hypot(player.x-core.x,player.y-core.y)<20&&at<30);
+  core.pulse=0;
+  core.type=Math.random()<.3?'bonus':'normal';
+}
+
+// ════════════════════════════════════════
+//  Start
+// ════════════════════════════════════════
+function startGame(){
+  state='PLAYING'; score=0; frameCount=0; lastEchoSpawn=0;
+  energy=100; combo=1; maxCombo=1; coresCollected=0;
+  history=[]; echoes=[]; particles=[]; obstacles=[]; lastObstacleSpawn=0;
+  player={x:50,y:50,r:9,trail:[]};
+  core={x:0,y:0,r:7,pulse:0,type:'normal'};
+  spawnCore();
+  clearInterval(echoCountdownInterval);
+  document.getElementById('echo-warning').classList.remove('show');
+  document.getElementById('overlay').classList.add('hidden');
+  document.getElementById('combo-card').style.display='none';
+  updateHUD(); lastTime=0; requestAnimationFrame(loop);
+}
+
+// ════════════════════════════════════════
+//  Loop
+// ════════════════════════════════════════
+let lastTime=0;
+function loop(ts){
+  if(state!=='PLAYING') return;
+  const dt=Math.min((ts-lastTime)/(1000/60),3);
+  lastTime=ts; update(dt); draw(); drawParticles();
+  requestAnimationFrame(loop);
+}
+
+// ════════════════════════════════════════
+//  Update
+// ════════════════════════════════════════
+function update(dt){
+  frameCount++;
+
+  const SPEED=0.7;
+  let dx=joystick.dx, dy=joystick.dy;
+  if(_keys.up)    dy-=1;
+  if(_keys.down)  dy+=1;
+  if(_keys.left)  dx-=1;
+  if(_keys.right) dx+=1;
+  const mag=Math.hypot(dx,dy);
+  if(mag>1){dx/=mag;dy/=mag;}
+  const DEAD=0.08;
+  if(Math.abs(dx)<DEAD&&!(_keys.left||_keys.right)) dx=0;
+  if(Math.abs(dy)<DEAD&&!(_keys.up  ||_keys.down))  dy=0;
+
+  player.x+=dx*SPEED*dt; player.y+=dy*SPEED*dt;
+  if(player.x<0)   player.x+=100;
+  if(player.x>100) player.x-=100;
+  if(player.y<0)   player.y+=100;
+  if(player.y>100) player.y-=100;
+
+  player.trail.push({x:player.x,y:player.y});
+  if(player.trail.length>20) player.trail.shift();
+
+  // 에너지 소모: 고정값 (score 연동 제거 — score 급증으로 인한 조기 고갈 버그 수정)
+  // 0.028/frame → 코어 미수집 시 약 60초에 소진, 코어 수집으로 연장
+  const drainRate = 0.028;
+  energy=Math.max(0,Math.min(100,energy-drainRate*dt));
+  if(energy<=0){endGame('에너지 소진');return;}
+
+  // ── 시간 경과 점수: 초당 2pt + 생존 시간에 비례 가속 ──
+  const timeSec = frameCount / 60;
+  const timeScore = (2 + timeSec * 0.08) * dt;
+  score += timeScore;
+
+
+  // ── 장애물 스폰 (10초마다 최대 8개) ──
+  const OBS_IV = 600; // 10초
+  if(frameCount - lastObstacleSpawn >= OBS_IV && obstacles.length < 8){
+    const types = ['spike','roam','roam'];
+    const t = types[Math.floor(Math.random()*types.length)];
+    let ox, oy, tries=0;
+    do {
+      ox = 5 + Math.random()*90;
+      oy = 5 + Math.random()*90;
+      tries++;
+    } while(Math.hypot(player.x-ox, player.y-oy)<20 && tries<30);
+    const angle = Math.random()*Math.PI*2;
+    const spd = t==='roam' ? 0.18+Math.random()*0.14 : 0;
+    obstacles.push({x:ox, y:oy, r:6, vx:Math.cos(angle)*spd, vy:Math.sin(angle)*spd, type:t, pulse:Math.random()*Math.PI*2});
+    lastObstacleSpawn = frameCount;
+  }
+
+  // ── 장애물 이동 & 충돌 ──
+  for(const ob of obstacles){
+    ob.pulse = (ob.pulse + 0.06*dt) % (Math.PI*2);
+    if(ob.type==='roam'){
+      ob.x += ob.vx*dt; ob.y += ob.vy*dt;
+      if(ob.x<2||ob.x>98) ob.vx*=-1;
+      if(ob.y<2||ob.y>98) ob.vy*=-1;
+      ob.x=Math.max(2,Math.min(98,ob.x));
+      ob.y=Math.max(2,Math.min(98,ob.y));
+    }
+    if(Math.hypot(player.x-ob.x, player.y-ob.y) < ob.r+player.r*0.6){
+      energy = Math.max(0, energy - 20);
+      spawnParticles(player.x*canvas.width/100, player.y*canvas.height/100, '#f97316', 10);
+      showToast('⚠️ 장애물 충돌! -20 에너지');
+      // 충돌한 장애물 제거
+      obstacles.splice(obstacles.indexOf(ob), 1);
+      if(energy<=0){ endGame('에너지 소진'); return; }
+      break;
+    }
+  }
+
+  core.pulse=(core.pulse+0.07*dt)%(Math.PI*2);
+
+  if(Math.hypot(player.x-core.x,player.y-core.y)<12){
+    const isBonus=core.type==='bonus';
+    const sg=isBonus?100:50, eg=isBonus?75:55;
+    score+=sg*combo; energy=Math.min(100,energy+eg);
+    coresCollected++; combo++;
+    if(combo>maxCombo) maxCombo=combo;
+    const wx=core.x*canvas.width/100, wy=core.y*canvas.height/100;
+    spawnParticles(wx,wy,isBonus?'#f97316':'#06b6d4',isBonus?16:10);
+    if(isBonus) showToast(`🌟 보너스! +${sg*combo}`);
+    else if(combo>2) showToast(`⚡ ${combo}× 콤보!`);
+    document.getElementById('combo-display').textContent=`×${combo}`;
+    document.getElementById('combo-card').style.display=combo>1?'':'none';
+    spawnCore();
+  }
+
+  history.push({x:player.x,y:player.y});
+  if(history.length>36000) history.shift();
+
+  const ECHO_IV=120, WARN_F=90;
+  const nextIn=ECHO_IV-(frameCount-lastEchoSpawn);
+  if(nextIn===WARN_F && history.length>60) triggerEchoWarning();
+
+  if(frameCount-lastEchoSpawn>=ECHO_IV && history.length>60){
+    echoes.push({path:history.slice(),offset:frameCount});
+    lastEchoSpawn=frameCount;
+    if(echoes.length>10) echoes.shift();
+  }
+
+  for(const echo of echoes){
+    const idx=frameCount-echo.offset;
+    if(idx<0||idx>=echo.path.length) continue;
+    const pos=echo.path[idx]; if(!pos) continue;
+    if(Math.hypot(player.x-pos.x,player.y-pos.y)<6){
+      spawnParticles(player.x*canvas.width/100,player.y*canvas.height/100,'#ef4444',20);
+      endGame('시간 역설'); return;
+    }
+  }
+
+  if(combo>1&&frameCount%300===0){
+    combo=1; document.getElementById('combo-card').style.display='none';
+  }
+  updateHUD(); updateParticles();
+}
+
+// ════════════════════════════════════════
+//  HUD
+// ════════════════════════════════════════
+function updateHUD(){
+  document.getElementById('score-display').textContent=Math.floor(score);
+  const timeSec = frameCount / 60;
+  const ratePerSec = (2 + timeSec * 0.08).toFixed(1);
+  document.getElementById('time-display').textContent=timeSec.toFixed(1)+'s  +'+ratePerSec+'/s';
+  const fill=document.getElementById('energy-fill');
+  const pctEl=document.getElementById('energy-pct');
+  fill.style.width=energy+'%';
+  const warn=energy<30;
+  fill.className ='energy-fill'+(warn?' warn':'');
+  pctEl.className='energy-pct' +(warn?' warn':'');
+  pctEl.textContent=Math.round(energy)+'%';
+}
+
+// ════════════════════════════════════════
+//  Draw
+// ════════════════════════════════════════
+function draw(){
+  const w=canvas.width,h=canvas.height;
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle='#f4f7ff'; ctx.fillRect(0,0,w,h);
+  drawGrid(w,h);
+  drawPlayerTrail(w,h);
+  drawEchoPaths(w,h);
+  drawEchoes(w,h);
+  drawObstacles(w,h);
+  drawCore(w,h);
+  drawPlayer(w,h);
+  drawMinimap(w,h);
+}
+
+function drawGrid(w,h){
+  const C=30, lowE=energy<30;
+  ctx.lineWidth=0.5;
+  for(let i=0;i<=C;i++){
+    const x=i*(w/C),y=i*(h/C);
+    const px=player.x/100*w,py=player.y/100*h;
+    const nX=Math.abs(px-x)/w<0.08, nY=Math.abs(py-y)/h<0.08;
+    ctx.strokeStyle=nX||nY
+      ?(lowE?'rgba(239,68,68,.35)':'rgba(37,99,235,.25)')
+      :(lowE?'rgba(239,68,68,.08)':'#dde4f5');
+    ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();
+  }
+  if(!lowE){
+    ctx.fillStyle='rgba(37,99,235,.12)';
+    const px=player.x/100*w,py=player.y/100*h;
+    for(let i=0;i<=C;i++) for(let j=0;j<=C;j++){
+      const gx=i*(w/C),gy=j*(h/C);
+      if(Math.hypot(px-gx,py-gy)<w*.12){
+        ctx.beginPath();ctx.arc(gx,gy,1.2,0,Math.PI*2);ctx.fill();
+      }
+    }
+  }
+}
+
+function drawPlayerTrail(w,h){
+  player.trail.forEach((pt,i)=>{
+    const a=(i/player.trail.length)*.35;
+    const r=(i/player.trail.length)*7;
+    ctx.beginPath();
+    ctx.arc(pt.x*w/100,pt.y*h/100,Math.max(.1,r),0,Math.PI*2);
+    ctx.fillStyle=`rgba(37,99,235,${a})`;ctx.fill();
+  });
+}
+
+// ── 에코 이동경로 예측선 (파란 계열) ──
+function drawEchoPaths(w,h){
+  const PREV=90;
+  echoes.forEach(echo=>{
+    const idx=frameCount-echo.offset;
+    if(idx<0||idx>=echo.path.length) return;
+    const end=Math.min(idx+PREV, echo.path.length-1);
+
+    ctx.save();
+    ctx.setLineDash([3,5]);
+    ctx.lineWidth=1.2;
+
+    for(let f=idx;f<end;f++){
+      const p0=echo.path[f], p1=echo.path[f+1];
+      if(!p0||!p1) continue;
+      const prog=(f-idx)/PREV;
+      ctx.strokeStyle=GHOST_PATH_RGBA(0.32*(1-prog));
+      ctx.beginPath();
+      ctx.moveTo(p0.x*w/100, p0.y*h/100);
+      ctx.lineTo(p1.x*w/100, p1.y*h/100);
+      ctx.stroke();
+    }
+
+    const ep=echo.path[Math.min(end,echo.path.length-1)];
+    if(ep){
+      ctx.setLineDash([2,3]); ctx.lineWidth=1;
+      ctx.strokeStyle=GHOST_PATH_RGBA(0.2);
+      ctx.beginPath(); ctx.arc(ep.x*w/100,ep.y*h/100,10,0,Math.PI*2); ctx.stroke();
+    }
+    ctx.setLineDash([]); ctx.restore();
+  });
+}
+
+// ── 에코(유령) 본체: 파란 계열 ──
+function drawEchoes(w,h){
+  echoes.forEach((echo,ei)=>{
+    const idx=frameCount-echo.offset;
+    if(idx<0||idx>=echo.path.length) return;
+    const pos=echo.path[idx]; if(!pos) return;
+    const ba=0.12+(ei/Math.max(echoes.length,1))*.35;
+    const px=pos.x*w/100, py=pos.y*h/100;
+    const dd=Math.hypot(player.x-pos.x,player.y-pos.y);
+    const da=dd<15?.8:ba;
+
+    // glow halo
+    const g=ctx.createRadialGradient(px,py,0,px,py,22);
+    g.addColorStop(0, GHOST_RGBA(da));
+    g.addColorStop(1, GHOST_RGBA(0));
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(px,py,22,0,Math.PI*2); ctx.fill();
+
+    // core dot
+    ctx.fillStyle  = GHOST_RGBA(da*1.5);
+    ctx.strokeStyle='rgba(255,255,255,.85)'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.arc(px,py,7,0,Math.PI*2); ctx.fill(); ctx.stroke();
+
+    // danger line — red when close, ghost color when nearby
+    if(dd<20){
+      ctx.strokeStyle=`rgba(239,68,68,${.8*(1-dd/20)})`;
+      ctx.lineWidth=1.5; ctx.setLineDash([3,3]);
+      ctx.beginPath();
+      ctx.moveTo(player.x*w/100,player.y*h/100);
+      ctx.lineTo(px,py); ctx.stroke(); ctx.setLineDash([]);
+    }
+  });
+}
+
+
+// ════════════════════════════════════════
+//  Obstacles
+// ════════════════════════════════════════
+function drawObstacles(w,h){
+  obstacles.forEach(ob=>{
+    const px=ob.x*w/100, py=ob.y*h/100;
+    const pulse=Math.sin(ob.pulse)*.25+1;
+    const isRoam=ob.type==='roam';
+    const col  = isRoam ? '#ef4444' : '#f97316';
+    const rgba = isRoam
+      ? (a=>`rgba(239,68,68,${a})`)
+      : (a=>`rgba(249,115,22,${a})`);
+
+    // 글로우 헤일로
+    const g=ctx.createRadialGradient(px,py,0,px,py,20*pulse);
+    g.addColorStop(0, rgba(.25)); g.addColorStop(1, rgba(0));
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(px,py,20*pulse,0,Math.PI*2); ctx.fill();
+
+    // 본체
+    ctx.save();
+    if(isRoam){
+      // 이동형: 회전 다이아몬드
+      ctx.translate(px,py); ctx.rotate(ob.pulse);
+      ctx.fillStyle=col; ctx.strokeStyle='#fff'; ctx.lineWidth=1.5;
+      ctx.beginPath();
+      const s=ob.r*pulse;
+      ctx.moveTo(0,-s); ctx.lineTo(s,0); ctx.lineTo(0,s); ctx.lineTo(-s,0);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    } else {
+      // 고정형: 뾰족 별
+      ctx.translate(px,py);
+      ctx.fillStyle=col; ctx.strokeStyle='#fff'; ctx.lineWidth=1.5;
+      ctx.beginPath();
+      for(let i=0;i<8;i++){
+        const angle=(Math.PI/4)*i;
+        const r2=i%2===0 ? ob.r*pulse : ob.r*pulse*0.45;
+        i===0 ? ctx.moveTo(Math.cos(angle)*r2, Math.sin(angle)*r2)
+              : ctx.lineTo(Math.cos(angle)*r2, Math.sin(angle)*r2);
+      }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+    ctx.restore();
+
+    // 미니맵에도 표시 (별도 처리 — 좌표만 저장)
+    ob._px=px; ob._py=py;
+  });
+}
+
+function drawCore(w,h){
+  const cx=core.x*w/100, cy=core.y*h/100;
+  const pulse=Math.sin(core.pulse)*.3+1;
+  const isB=core.type==='bonus';
+  const col=isB?'#f97316':'#f59e0b';
+  const gc =isB?'rgba(249,115,22,':'rgba(245,158,11,';
+  const g=ctx.createRadialGradient(cx,cy,0,cx,cy,28*pulse);
+  g.addColorStop(0,gc+'.35)'); g.addColorStop(1,gc+'0)');
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(cx,cy,28*pulse,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle=col; ctx.shadowBlur=12; ctx.shadowColor=col;
+  ctx.beginPath(); ctx.arc(cx,cy,8*pulse,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
+  ctx.fillStyle='rgba(255,255,255,.7)';
+  ctx.beginPath(); ctx.arc(cx-2,cy-2,2.5,0,Math.PI*2); ctx.fill();
+  if(isB){
+    ctx.strokeStyle='rgba(249,115,22,.5)'; ctx.lineWidth=1.5; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.arc(cx,cy,16*pulse,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+    const s=5*pulse;
+    ctx.strokeStyle='rgba(249,115,22,.7)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(cx-s,cy); ctx.lineTo(cx+s,cy);
+    ctx.moveTo(cx,cy-s); ctx.lineTo(cx,cy+s); ctx.stroke();
+  }
+}
+
+function drawPlayer(w,h){
+  const px=player.x*w/100, py=player.y*h/100;
+  const lowE=energy<30;
+  const col=lowE?'#ef4444':'#2563eb', gl=lowE?'#ef4444':'#3b82f6';
+  const g=ctx.createRadialGradient(px,py,0,px,py,20);
+  g.addColorStop(0,lowE?'rgba(239,68,68,.3)':'rgba(37,99,235,.25)');
+  g.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(px,py,20,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle=col; ctx.shadowBlur=10; ctx.shadowColor=gl;
+  ctx.beginPath(); ctx.arc(px,py,player.r,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='#fff'; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.arc(px,py,player.r,0,Math.PI*2); ctx.stroke(); ctx.shadowBlur=0;
+  ctx.fillStyle='rgba(255,255,255,.6)';
+  ctx.beginPath(); ctx.arc(px-2.5,py-2.5,2,0,Math.PI*2); ctx.fill();
+  if(lowE){
+    const ring=(frameCount*.05)%1;
+    ctx.strokeStyle=`rgba(239,68,68,${1-ring})`; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.arc(px,py,player.r+ring*20,0,Math.PI*2); ctx.stroke();
+  }
+}
+
+// ════════════════════════════════════════
+//  Minimap
+// ════════════════════════════════════════
+function drawMinimap(w,h){
+  if(state!=='PLAYING') return;
+  const MM=90, PAD=12;
+  const mx=w-MM-PAD, my=h-MM-PAD;
+  const S=MM/100;
+
+  ctx.save();
+
+  ctx.fillStyle='rgba(255,255,255,.84)';
+  ctx.strokeStyle='rgba(37,99,235,.16)'; ctx.lineWidth=1;
+  rrect(ctx,mx,my,MM,MM,10);
+  ctx.fill(); ctx.stroke();
+
+  ctx.beginPath(); rrect(ctx,mx,my,MM,MM,10); ctx.clip();
+
+  ctx.strokeStyle='rgba(37,99,235,.06)'; ctx.lineWidth=.5;
+  for(let i=1;i<4;i++){
+    const gx=mx+i*(MM/4), gy=my+i*(MM/4);
+    ctx.beginPath(); ctx.moveTo(gx,my); ctx.lineTo(gx,my+MM); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(mx,gy); ctx.lineTo(mx+MM,gy); ctx.stroke();
+  }
+
+  // 에코 경로 (미니맵) — 파란 계열
+  const PREV=90;
+  echoes.forEach(echo=>{
+    const idx=frameCount-echo.offset;
+    if(idx<0||idx>=echo.path.length) return;
+    ctx.save(); ctx.setLineDash([1,2]); ctx.lineWidth=0.8;
+    for(let f=idx;f<Math.min(idx+PREV,echo.path.length-1);f++){
+      const p0=echo.path[f], p1=echo.path[f+1]; if(!p0||!p1) continue;
+      const a=.22*(1-(f-idx)/PREV);
+      ctx.strokeStyle=GHOST_PATH_RGBA(a);
+      ctx.beginPath();
+      ctx.moveTo(mx+p0.x*S,my+p0.y*S);
+      ctx.lineTo(mx+p1.x*S,my+p1.y*S); ctx.stroke();
+    }
+    ctx.setLineDash([]); ctx.restore();
+  });
+
+  // 에코 현재위치 (미니맵) — 파란 계열
+  echoes.forEach(echo=>{
+    const idx=frameCount-echo.offset;
+    if(idx<0||idx>=echo.path.length) return;
+    const pos=echo.path[idx]; if(!pos) return;
+    ctx.fillStyle=GHOST_RGBA(0.9);
+    ctx.beginPath(); ctx.arc(mx+pos.x*S,my+pos.y*S,3,0,Math.PI*2); ctx.fill();
+  });
+
+
+  // 장애물 (미니맵)
+  obstacles.forEach(ob=>{
+    ctx.fillStyle = ob.type==='roam' ? 'rgba(239,68,68,.85)' : 'rgba(249,115,22,.85)';
+    ctx.beginPath(); ctx.arc(mx+ob.x*S, my+ob.y*S, 2.5, 0, Math.PI*2); ctx.fill();
+  });
+
+  // 코어
+  const isB=core.type==='bonus';
+  ctx.fillStyle=isB?'#f97316':'#f59e0b';
+  const ccx=mx+core.x*S, ccy=my+core.y*S;
+  ctx.beginPath(); ctx.arc(ccx,ccy,3.5,0,Math.PI*2); ctx.fill();
+  if(isB){
+    ctx.strokeStyle='rgba(249,115,22,.4)'; ctx.lineWidth=1; ctx.setLineDash([2,2]);
+    ctx.beginPath(); ctx.arc(ccx,ccy,6,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  // 플레이어
+  const ppx=mx+player.x*S, ppy=my+player.y*S;
+  ctx.fillStyle='#2563eb';
+  ctx.shadowBlur=5; ctx.shadowColor='#2563eb';
+  ctx.beginPath(); ctx.arc(ppx,ppy,4,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
+
+  if(player.trail.length>=2){
+    const a=player.trail[player.trail.length-2];
+    const b=player.trail[player.trail.length-1];
+    const ddx=b.x-a.x, ddy=b.y-a.y, m=Math.hypot(ddx,ddy);
+    if(m>.1){
+      ctx.strokeStyle='rgba(37,99,235,.65)'; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.moveTo(ppx,ppy);
+      ctx.lineTo(ppx+(ddx/m)*7, ppy+(ddy/m)*7); ctx.stroke();
+    }
+  }
+
+  ctx.restore();
+
+  ctx.fillStyle='rgba(37,99,235,.3)';
+  ctx.font='bold 7px "Space Mono",monospace';
+  ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+  ctx.fillText('MAP', mx+5, my+MM-5);
+}
+
+function rrect(c,x,y,w,h,r){
+  c.beginPath();
+  c.moveTo(x+r,y);
+  c.lineTo(x+w-r,y);   c.arcTo(x+w,y,   x+w,y+r,   r);
+  c.lineTo(x+w,y+h-r); c.arcTo(x+w,y+h, x+w-r,y+h, r);
+  c.lineTo(x+r,y+h);   c.arcTo(x,y+h,   x,y+h-r,   r);
+  c.lineTo(x,y+r);     c.arcTo(x,y,     x+r,y,     r);
+  c.closePath();
+}
+
+// ════════════════════════════════════════
+//  Game Over
+// ════════════════════════════════════════
+function endGame(reason){
+  state='GAMEOVER';
+  clearInterval(echoCountdownInterval);
+  document.getElementById('echo-warning').classList.remove('show');
+  const final=Math.floor(score);
+  if(final>bestScore){
+    bestScore=final;
+    document.getElementById('best-display').textContent=bestScore;
+  }
+  document.getElementById('final-score').textContent    =final;
+  document.getElementById('gameover-reason').textContent=reason;
+  document.getElementById('stat-time').textContent      =(frameCount/60).toFixed(1)+'s';
+  document.getElementById('stat-cores').textContent     =coresCollected;
+  document.getElementById('stat-combo').textContent     =maxCombo+'×';
+  document.getElementById('gameover-screen').classList.remove('hidden');
+  document.getElementById('start-screen').classList.add('hidden');
+  document.getElementById('overlay').classList.remove('hidden');
+  // 닉네임 입력 시트 자동 오픈 (파티클 후)
+  setTimeout(()=>openNicknameSheet(final), 800);
+  spawnParticles(player.x*canvas.width/100,player.y*canvas.height/100,'#ef4444',30);
+  (function fd(){
+    if(!particles.length) return;
+    updateParticles(); drawParticles(); requestAnimationFrame(fd);
+  })();
+}
+
+// ════════════════════════════════════════
+//  Init
+// ════════════════════════════════════════
+if(!isMobile) document.getElementById('kb-hint').style.display='block';
+</script>
+</body>
+</html>
