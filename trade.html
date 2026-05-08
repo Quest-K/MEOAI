@@ -306,7 +306,7 @@
       <div class="signal-title dn">🔴 급락 SHORT 신호 — 2개 조건 AND</div>
       <div class="cond-list">
         <div class="cond-item dn">S1 · MA5&gt;MA10&gt;MA30&gt;MA60 정배열이었다가 → MA10&gt;MA5&gt;종가(음봉) 역전</div>
-        <div class="cond-item dn">S2 · MACD Line &lt; 0 (음수 전환)</div>
+        <div class="cond-item dn">S2 · MACD Line 직전봉 양수 → 현재봉 음수 전환 (데드크로스)</div>
       </div>
     </div>
   </div>
@@ -512,11 +512,11 @@ async function notifyShort(r) {
     `🔴 <b>[SHORT 신호] ${r.symbol}</b>\n` +
     `━━━━━━━━━━━━━━━━\n` +
     `📉 MA 역전:  MA10(${fmtPrice(r.ma10)}) &gt; MA5(${fmtPrice(r.ma5)}) &gt; 종가(${fmtPrice(r.closePrice)}) <b>음봉</b>\n` +
-    `📊 MACD:    <b>${r.macd.toFixed(4)}</b> (음수)\n` +
+    `📊 MACD:    <b>${r.prevMacd.toFixed(4)} → ${r.macd.toFixed(4)}</b> (양→음 전환)\n` +
     `💰 진입가:  <b>${fmtPrice(r.entryPrice)} USDT</b>\n` +
     `━━━━━━━━━━━━━━━━\n` +
     `✅ S1 MA 정배열→역전 (MA10 > MA5 > 종가, 음봉)\n` +
-    `✅ S2 MACD Line 음수\n` +
+    `✅ S2 MACD Line 양→음 전환 (직전 ${r.prevMacd.toFixed(4)} → 현재 ${r.macd.toFixed(4)})\n` +
     `🕐 ${new Date().toLocaleString('ko-KR')}`;
   const ok = await sendTelegram(text);
   if (ok) { tgSentCount++; document.getElementById('statTgSent').textContent=tgSentCount; log(`📨 TG SHORT: ${r.symbol}`,'tg'); }
@@ -664,10 +664,10 @@ function checkMAReverse(klines) {
 }
 
 /**
- * S2: MACD Line < 0
+ * S2: MACD Line 양→음 전환 감지
  *
- * MACD = EMA(12) - EMA(26), 기준선(Signal) = EMA(9, MACD)
- * 여기서는 MACD Line만 체크 (< 0이면 음수 전환)
+ * MACD = EMA(12) - EMA(26)
+ * 직전봉 MACD > 0  &&  현재봉 MACD < 0  →  바로 직전에 양수였다가 음수로 전환
  */
 function calcEMA(values, period) {
   if (values.length < period) return null;
@@ -681,12 +681,24 @@ function calcEMA(values, period) {
 
 function checkMACD(klines) {
   const cl = klines.map(k => k.c);
-  if (cl.length < 35) return { ok: false, macd: 0 };
-  const ema12 = calcEMA(cl, 12);
-  const ema26 = calcEMA(cl, 26);
-  if (ema12 === null || ema26 === null) return { ok: false, macd: 0 };
-  const macdLine = ema12 - ema26;
-  return { ok: macdLine < 0, macd: macdLine };
+  if (cl.length < 36) return { ok: false, macd: 0, prevMacd: 0 };
+
+  // 현재봉 MACD
+  const ema12Cur  = calcEMA(cl, 12);
+  const ema26Cur  = calcEMA(cl, 26);
+  if (ema12Cur === null || ema26Cur === null) return { ok: false, macd: 0, prevMacd: 0 };
+  const macdCur = ema12Cur - ema26Cur;
+
+  // 직전봉 MACD (마지막 봉 제외한 슬라이스로 계산)
+  const clPrev    = cl.slice(0, -1);
+  const ema12Prev = calcEMA(clPrev, 12);
+  const ema26Prev = calcEMA(clPrev, 26);
+  if (ema12Prev === null || ema26Prev === null) return { ok: false, macd: macdCur, prevMacd: 0 };
+  const macdPrev = ema12Prev - ema26Prev;
+
+  // 직전봉 양수 → 현재봉 음수 전환
+  const crossed = macdPrev > 0 && macdCur < 0;
+  return { ok: crossed, macd: macdCur, prevMacd: macdPrev };
 }
 
 // ═══════════════════════════════════
@@ -736,7 +748,7 @@ function renderShort() {
       <td class="symbol-cell dn">${r.symbol}${r.isNew?'<span class="new-tag dn">NEW</span>':''}</td>
       <td><span class="badge dn">S1</span><span class="badge dn">S2</span></td>
       <td>${maInfo}</td>
-      <td class="${macdColor}">${r.macd.toFixed(4)}</td>
+      <td class="${macdColor}">${r.prevMacd.toFixed(4)} → ${r.macd.toFixed(4)}</td>
       <td>${pnlHtmlBySymbol(r.symbol, 'short')}</td>
       <td style="color:var(--dim)">${ageStr}</td>
     </tr>`;
@@ -873,7 +885,7 @@ async function runScan() {
             symbol:sym, price:currentPrice, entryPrice,
             ma5:s1.ma5, ma10:s1.ma10, ma30:s1.ma30, ma60:s1.ma60,
             closePrice:s1.closePrice,
-            macd:s2.macd,
+            macd:s2.macd, prevMacd:s2.prevMacd,
             ts: isNew ? Date.now() : (shortMatched[sym]?.ts ?? Date.now()),
             isNew
           };
@@ -881,8 +893,8 @@ async function runScan() {
           renderShort();
           document.getElementById('statShort').textContent=Object.keys(shortMatched).length;
           if (isNew) {
-            log(`▼ SHORT ${sym}  진입가:${fmtPrice(entryPrice)}  MA10>${fmtPrice(s1.ma10)} MA5>${fmtPrice(s1.ma5)} 종가${fmtPrice(s1.closePrice)}(음봉)  MACD:${s2.macd.toFixed(4)}`,'dn');
-            showToast(sym,'dn',`진입 ${fmtPrice(entryPrice)}  MA역전  MACD ${s2.macd.toFixed(4)}`);
+            log(`▼ SHORT ${sym}  진입가:${fmtPrice(entryPrice)}  MA10>${fmtPrice(s1.ma10)} MA5>${fmtPrice(s1.ma5)} 종가${fmtPrice(s1.closePrice)}(음봉)  MACD:${s2.prevMacd.toFixed(4)}→${s2.macd.toFixed(4)}(양→음)`,'dn');
+            showToast(sym,'dn',`진입 ${fmtPrice(entryPrice)}  MA역전  MACD ${s2.prevMacd.toFixed(4)}→${s2.macd.toFixed(4)}`);
             playAlert('dn');
             notifyShort(result);
           }
