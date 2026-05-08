@@ -369,7 +369,7 @@
 //  CONFIG & STATE
 // ═══════════════════════════════════
 const DEFAULT_TOKEN   = '8710131262:AAGxhwh3b8Z_FGf-AxFcIwM4-1_Tmau6su4';
-const DEFAULT_CHAT_ID = ['7947167026','8552211361'];
+const DEFAULT_CHAT_ID = '7947167026,8552211361'; 
 const SCAN_INTERVAL_SEC = 300;
 const BASE = 'https://fapi.binance.com';
 
@@ -496,14 +496,17 @@ function log(msg, type='') {
 //  TELEGRAM
 // ═══════════════════════════════════
 async function sendTelegram(text) {
-  const token = getTgToken(), chatId = getTgChatId();
-  if (!token || !chatId) return false;
+  const token = getTgToken();
+  const chatIds = getTgChatId().split(',').map(s => s.trim()).filter(Boolean);
+  if (!token || !chatIds.length) return false;
   try {
-    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ chat_id:chatId, text, parse_mode:'HTML' })
-    });
-    return (await res.json()).ok === true;
+    const results = await Promise.all(chatIds.map(chatId =>
+      fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ chat_id:chatId, text, parse_mode:'HTML' })
+      }).then(r => r.json()).then(d => d.ok === true).catch(() => false)
+    ));
+    return results.some(ok => ok); // 하나라도 성공이면 true
   } catch { return false; }
 }
 
