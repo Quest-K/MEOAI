@@ -5,580 +5,1169 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FUTURES SCANNER v5</title>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
-:root {
---bg:       #060910;
---surface:  #0b1118;
---surface2: #0f1822;
---border:   #162130;
---border2:  #1e3045;
---accent:   #38bdf8;
---long:     #22d3a0;
---short:    #f43f5e;
---warn:     #fb923c;
---text:     #cbd5e1;
---dim:      #475569;
---dim2:     #334155;
---tg:       #229ED9;
---long-bg:  rgba(34,211,160,0.06);
---short-bg: rgba(244,63,94,0.06);
---accent-bg:rgba(56,189,248,0.1);
-}
- * { box-sizing: border-box; margin: 0; padding: 0; }
-   body {
-   background: var(--bg);
-   color: var(--text);
-   font-family: 'Inter', system-ui, sans-serif;
-   font-size: 13px;
-   line-height: 1.5;
-   overflow-x: hidden;
-   }
-/* Typography */
-.mono { font-family: 'JetBrains Mono', monospace; letter-spacing: -0.2px; }
-.bold { font-weight: 700; }
-.uppercase { text-transform: uppercase; }
-/* Layout */
-.app-container {
-max-width: 1600px;
-margin: 0 auto;
-padding: 20px;
-display: flex;
-flex-direction: column;
-gap: 20px;
-}
-/* Header Section */
-header {
-display: flex;
-justify-content: space-between;
-align-items: center;
-background: var(--surface);
-padding: 16px 24px;
-border-radius: 12px;
-border: 1px solid var(--border);
-}
-.brand { display: flex; align-items: center; gap: 12px; }
-.brand .logo {
-width: 32px; height: 32px;
-background: linear-gradient(135deg, var(--accent), #1d4ed8);
-border-radius: 8px;
-display: grid; place-items: center; font-weight: 800; color: #fff;
-}
-.brand h1 { font-size: 18px; font-weight: 700; color: #fff; }
-.brand .ver { font-size: 10px; color: var(--accent); padding: 2px 6px; border: 1px solid var(--accent); border-radius: 4px; }
-.status-cluster { display: flex; align-items: center; gap: 24px; }
-.status-item { display: flex; flex-direction: column; align-items: flex-end; }
-.status-item .label { font-size: 10px; color: var(--dim); font-weight: 600; margin-bottom: 2px; }
-.status-item .value { font-family: 'JetBrains Mono'; font-weight: 600; font-size: 14px; }
-.dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; background: #334155; }
-.dot.green { background: var(--long); box-shadow: 0 0 10px var(--long); }
-.dot.red { background: var(--short); box-shadow: 0 0 10px var(--short); }
-.dot.blue { background: var(--tg); box-shadow: 0 0 10px var(--tg); }
-/* Control Panel */
-.control-grid {
-display: grid;
-grid-template-columns: 1.2fr 1.5fr 1fr;
-gap: 16px;
-}
-.card {
-background: var(--surface);
-border: 1px solid var(--border);
-border-radius: 12px;
-padding: 20px;
-}
-.card-title {
-font-size: 12px;
-font-weight: 700;
-color: var(--dim);
-margin-bottom: 16px;
-display: flex;
-justify-content: space-between;
-align-items: center;
-}
-/* Inputs & Buttons */
-.input-row { display: flex; gap: 8px; margin-bottom: 12px; }
-input {
-background: var(--surface2);
-border: 1px solid var(--border2);
-color: #fff;
-padding: 10px 14px;
-border-radius: 6px;
-outline: none;
-font-size: 13px;
-width: 100%;
-transition: 0.2s;
-}
-input:focus { border-color: var(--accent); }
-button {
-cursor: pointer;
-border: none;
-padding: 10px 16px;
-border-radius: 6px;
-font-weight: 600;
-font-size: 13px;
-transition: 0.2s;
-display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-}
-.btn-primary { background: var(--accent); color: #000; }
-.btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
-.btn-primary:disabled { opacity: 0.3; cursor: not-allowed; }
-.btn-outline { background: transparent; border: 1px solid var(--border2); color: var(--text); }
-.btn-outline:hover { background: var(--surface2); border-color: var(--dim); }
-.btn-red { background: #1a1012; border: 1px solid #4c1d24; color: var(--short); }
-.btn-red:hover { background: #2d161a; }
-/* Progress Bar */
-#scanningBar {
-height: 4px;
-background: var(--surface2);
-margin-top: 10px;
-border-radius: 2px;
-overflow: hidden;
-display: none;
-}
-#scanningBar.visible { display: block; }
-#progressBarFill {
-width: 0%;
-height: 100%;
-background: var(--accent);
-transition: width 0.3s;
-}
-/* Signal Table */
-.table-container {
-background: var(--surface);
-border: 1px solid var(--border);
-border-radius: 12px;
-overflow: hidden;
-min-height: 400px;
-}
-table { width: 100%; border-collapse: collapse; }
-th {
-background: var(--surface2);
-padding: 14px 20px;
-text-align: left;
-font-size: 11px;
-color: var(--dim);
-text-transform: uppercase;
-font-weight: 700;
-border-bottom: 1px solid var(--border);
-}
-td { padding: 16px 20px; border-bottom: 1px solid var(--border); vertical-align: middle; }
-tr:last-child td { border-bottom: none; }
-tr.new-row { animation: flash 1.5s ease-out; }
-@keyframes flash {
-0% { background: var(--accent-bg); }
-100% { background: transparent; }
-}
-.symbol-cell { display: flex; align-items: center; gap: 10px; }
-.symbol-name { font-size: 15px; font-weight: 700; color: #fff; }
-.signal-badge {
-padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: 800;
-}
-.signal-badge.long { background: var(--long-bg); color: var(--long); border: 1px solid rgba(34,211,160,0.2); }
-.signal-badge.short { background: var(--short-bg); color: var(--short); border: 1px solid rgba(244,63,94,0.2); }
-.pnl { font-size: 15px; font-weight: 700; }
-.pnl.up { color: var(--long); }
-.pnl.down { color: var(--short); }
-.price-info { display: flex; flex-direction: column; gap: 2px; }
-.price-info .sub { font-size: 11px; color: var(--dim); }
-/* Log Panel */
-.log-panel {
-background: #000;
-height: 180px;
-border-radius: 8px;
-padding: 12px;
-font-family: 'JetBrains Mono', monospace;
-font-size: 11px;
-overflow-y: auto;
-color: #889;
-border: 1px solid var(--border);
-}
-.log-line { margin-bottom: 4px; display: flex; gap: 8px; }
-.log-time { color: var(--dim); flex-shrink: 0; }
-.log-msg.info { color: var(--accent); }
-.log-msg.warn { color: var(--warn); }
-.log-msg.success { color: var(--long); }
-/* Scrollbar */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--dim2); }
-@media (max-width: 1024px) {
-.control-grid { grid-template-columns: 1fr; }
-}
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;500;700&display=swap');
+
+  :root {
+    --bg:      #050a0f;
+    --surface: #0a1220;
+    --surface2:#0d1826;
+    --border:  #0d2035;
+    --border2: #1a3550;
+    --accent:  #00d4ff;
+    --long:    #00ff88;
+    --short:   #ff4466;
+    --warn:    #ff8c42;
+    --muted:   #1e3a52;
+    --text:    #b8d4e8;
+    --dim:     #3d5a6e;
+    --dim2:    #2a4460;
+    --tg:      #229ED9;
+    --gold:    #ffd700;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  html { overflow-x: hidden; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+    width: 100%;
+  }
+
+  /* scanline overlay */
+  body::before {
+    content:''; position:fixed; inset:0;
+    background:
+      radial-gradient(ellipse at 15% 0%,  rgba(0,255,136,0.04) 0%, transparent 55%),
+      radial-gradient(ellipse at 85% 0%,  rgba(255,68,102,0.04) 0%, transparent 55%),
+      radial-gradient(ellipse at 50% 100%,rgba(0,212,255,0.04)  0%, transparent 55%);
+    pointer-events:none; z-index:0;
+  }
+  body::after {
+    content:''; position:fixed; inset:0;
+    background: repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,0.04) 3px,rgba(0,0,0,0.04) 4px);
+    pointer-events:none; z-index:1;
+  }
+
+  .container {
+    position:relative; z-index:2;
+    max-width:1800px; margin:0 auto;
+    padding:20px 16px;
+    width:100%;
+  }
+
+  /* ══════════════════════════════
+     HEADER
+  ══════════════════════════════ */
+  header {
+    display:flex; align-items:flex-start; justify-content:space-between;
+    margin-bottom:20px; padding-bottom:16px;
+    border-bottom:1px solid var(--border);
+    flex-wrap:wrap; gap:12px;
+  }
+  .logo {
+    font-family:'Rajdhani',sans-serif; font-weight:700;
+    font-size:24px; letter-spacing:6px; color:var(--accent);
+    text-shadow:0 0 20px rgba(0,212,255,0.4); line-height:1;
+  }
+  .logo .up { color:var(--long); }
+  .logo .dn { color:var(--short); }
+  .logo-sub { font-size:9px; color:var(--dim); letter-spacing:2px; margin-top:5px; }
+
+  .status-panel { display:flex; flex-direction:column; align-items:flex-end; gap:5px; }
+  .status-row   { display:flex; align-items:center; gap:8px; font-size:10px; color:var(--dim); }
+  .dot { width:6px; height:6px; border-radius:50%; background:var(--dim); flex-shrink:0; }
+  .dot.green  { background:var(--long);  box-shadow:0 0 7px var(--long);  animation:pulse 2s infinite; }
+  .dot.red    { background:var(--short); box-shadow:0 0 7px var(--short); }
+  .dot.yellow { background:var(--gold);  box-shadow:0 0 7px var(--gold);  animation:pulse 1s infinite; }
+  .dot.blue   { background:var(--tg);    box-shadow:0 0 7px var(--tg);    animation:pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  /* ══════════════════════════════
+     TELEGRAM PANEL
+  ══════════════════════════════ */
+  .tg-panel {
+    background:var(--surface); border:1px solid rgba(34,158,217,0.35);
+    padding:12px 16px; margin-bottom:14px;
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  }
+  .tg-label { font-size:10px; letter-spacing:2px; color:var(--tg); white-space:nowrap; }
+  .tg-input {
+    font-family:'Share Tech Mono',monospace; font-size:11px;
+    background:var(--bg); border:1px solid var(--dim2); color:var(--text);
+    padding:6px 10px; outline:none; transition:border-color .2s;
+    width:280px; min-width:0;
+  }
+  .tg-input.narrow { width:140px; }
+  .tg-input:focus { border-color:var(--tg); }
+  .btn-tg {
+    font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:2px;
+    padding:6px 12px; border:1px solid var(--tg); background:transparent; color:var(--tg);
+    cursor:pointer; transition:all .2s; white-space:nowrap; position:relative; overflow:hidden;
+  }
+  .btn-tg::before { content:''; position:absolute; inset:0; background:var(--tg); transform:translateX(-100%); transition:transform .2s; }
+  .btn-tg:hover::before { transform:translateX(0); }
+  .btn-tg:hover { color:#fff; }
+  .btn-tg span { position:relative; z-index:1; }
+  .tg-status { font-size:10px; color:var(--dim); white-space:nowrap; }
+  .tg-status.ok   { color:var(--long); }
+  .tg-status.fail { color:var(--short); }
+
+  /* ══════════════════════════════
+     CONTROLS
+  ══════════════════════════════ */
+  .controls {
+    display:flex; align-items:center; gap:8px;
+    margin-bottom:16px; flex-wrap:wrap;
+  }
+  .btn {
+    font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:2px;
+    padding:8px 16px; border:1px solid var(--accent); background:transparent; color:var(--accent);
+    cursor:pointer; transition:all .2s; text-transform:uppercase;
+    position:relative; overflow:hidden; white-space:nowrap;
+  }
+  .btn::before { content:''; position:absolute; inset:0; background:var(--accent); transform:translateX(-100%); transition:transform .2s; }
+  .btn:hover::before { transform:translateX(0); }
+  .btn:hover { color:var(--bg); }
+  .btn:disabled { border-color:var(--dim2); color:var(--dim2); cursor:not-allowed; }
+  .btn:disabled::before { display:none; }
+  .btn span { position:relative; z-index:1; }
+  .btn.danger { border-color:var(--warn); color:var(--warn); }
+  .btn.danger::before { background:var(--warn); }
+  .timer-display {
+    margin-left:auto; font-size:11px; color:var(--accent);
+    display:flex; align-items:center; gap:7px;
+  }
+  .countdown {
+    font-size:20px; font-family:'Rajdhani',sans-serif; font-weight:700;
+    color:var(--long); min-width:34px; text-align:right;
+  }
+
+  /* ══════════════════════════════
+     STATS BAR
+  ══════════════════════════════ */
+  .stats-bar {
+    display:grid;
+    grid-template-columns:repeat(7,1fr);
+    gap:1px; margin-bottom:16px;
+    background:var(--border); border:1px solid var(--border);
+  }
+  .stat-cell { background:var(--surface); padding:10px 12px; }
+  .stat-label { font-size:8px; letter-spacing:2px; color:var(--dim); margin-bottom:2px; text-transform:uppercase; }
+  .stat-value { font-size:18px; font-family:'Rajdhani',sans-serif; font-weight:700; color:var(--accent); }
+  .stat-value.up   { color:var(--long); }
+  .stat-value.dn   { color:var(--short); }
+  .stat-value.warn { color:var(--warn); }
+  .stat-value.blue { color:var(--tg); }
+
+  /* ══════════════════════════════
+     SIGNAL BOXES
+  ══════════════════════════════ */
+  .signal-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px; }
+  .signal-box { border:1px solid; padding:12px 14px; }
+  .signal-box.long-box  { border-color:rgba(0,255,136,0.25);  background:rgba(0,255,136,0.015); }
+  .signal-box.short-box { border-color:rgba(255,68,102,0.25); background:rgba(255,68,102,0.015); }
+  .signal-title {
+    font-size:10px; letter-spacing:3px; text-transform:uppercase; margin-bottom:8px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .signal-title.up { color:var(--long); }
+  .signal-title.dn { color:var(--short); }
+  .signal-title::after { content:''; flex:1; height:1px; }
+  .signal-title.up::after { background:rgba(0,255,136,0.18); }
+  .signal-title.dn::after { background:rgba(255,68,102,0.18); }
+  .cond-list { display:flex; flex-direction:column; gap:4px; }
+  .cond-item {
+    font-size:9px; letter-spacing:1px; padding:3px 7px;
+    border:1px solid; color:var(--dim); text-transform:uppercase; line-height:1.4;
+  }
+  .cond-item.up { border-color:rgba(0,255,136,0.15); }
+  .cond-item.dn { border-color:rgba(255,68,102,0.15); }
+
+  /* ══════════════════════════════
+     SCANNING BAR
+  ══════════════════════════════ */
+  .scanning-bar {
+    display:none; align-items:center; gap:10px;
+    padding:8px 12px;
+    background:rgba(0,212,255,0.04); border:1px solid rgba(0,212,255,0.15);
+    margin-bottom:12px; font-size:10px; color:var(--accent); letter-spacing:2px;
+  }
+  .scanning-bar.visible { display:flex; }
+  .spin {
+    width:11px; height:11px; border:1px solid var(--accent);
+    border-top-color:transparent; border-radius:50%;
+    animation:spin .8s linear infinite; flex-shrink:0;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .progress-bar { flex:1; height:2px; background:var(--border); overflow:hidden; min-width:0; }
+  .progress-fill { height:100%; background:var(--accent); width:0%; transition:width .3s; }
+
+  /* ══════════════════════════════
+     SECTION TITLE
+  ══════════════════════════════ */
+  .section-title {
+    font-size:9px; letter-spacing:3px; color:var(--dim);
+    text-transform:uppercase; margin-bottom:8px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .section-title::after { content:''; flex:1; height:1px; background:var(--border); }
+  .badge-up {
+    font-size:8px; padding:2px 7px;
+    background:rgba(0,255,136,0.1); color:var(--long);
+    border:1px solid rgba(0,255,136,0.3); letter-spacing:2px;
+  }
+  .badge-dn {
+    font-size:8px; padding:2px 7px;
+    background:rgba(255,68,102,0.1); color:var(--short);
+    border:1px solid rgba(255,68,102,0.3); letter-spacing:2px;
+  }
+
+  /* ══════════════════════════════
+     TABLE — RESPONSIVE WRAPPER
+  ══════════════════════════════ */
+  .table-wrap {
+    width:100%; overflow-x:auto; margin-bottom:20px;
+    /* custom scrollbar */
+    scrollbar-width:thin; scrollbar-color:var(--dim2) transparent;
+  }
+  .table-wrap::-webkit-scrollbar { height:4px; }
+  .table-wrap::-webkit-scrollbar-thumb { background:var(--dim2); border-radius:2px; }
+
+  .results-table {
+    width:100%; min-width:900px; border-collapse:collapse; font-size:11px;
+  }
+  .results-table th {
+    text-align:left; font-size:8px; letter-spacing:2px; color:var(--dim);
+    padding:7px 10px; border-bottom:1px solid var(--border);
+    font-weight:normal; white-space:nowrap; background:var(--surface);
+    position:sticky; top:0; z-index:2;
+  }
+  .results-table td {
+    padding:8px 10px; border-bottom:1px solid rgba(13,32,53,0.6);
+    vertical-align:middle; white-space:nowrap;
+  }
+  .results-table tr:hover td { background:rgba(0,212,255,0.02); }
+
+  /* symbol */
+  .symbol-cell { font-family:'Rajdhani',sans-serif; font-weight:700; font-size:14px; }
+  .symbol-cell.up { color:var(--long); }
+  .symbol-cell.dn { color:var(--short); }
+
+  .badge {
+    display:inline-block; font-size:7px; letter-spacing:1px;
+    padding:2px 4px; border:1px solid; white-space:nowrap; margin-right:2px;
+  }
+  .badge.up { border-color:var(--long);  color:var(--long); }
+  .badge.dn { border-color:var(--short); color:var(--short); }
+
+  .val-up { color:var(--long); }
+  .val-dn { color:var(--short); }
+
+  /* ══════════════════════════════
+     PRICE PANEL (STEP 1 NEW)
+  ══════════════════════════════ */
+  .price-panel {
+    display:flex; flex-direction:column; gap:3px; min-width:130px;
+  }
+  .price-row {
+    font-size:9px; color:var(--dim); letter-spacing:1px;
+    display:flex; align-items:baseline; gap:4px;
+  }
+  .price-row .lbl { flex-shrink:0; }
+  .price-row .val { color:var(--text); }
+  .price-row .val.up   { color:var(--long); }
+  .price-row .val.dn   { color:var(--short); }
+  .price-row .val.gold { color:var(--gold); }
+  .price-cur {
+    font-family:'Rajdhani',sans-serif; font-weight:700; font-size:15px; color:var(--accent);
+  }
+  .mid-badge {
+    font-size:8px; padding:1px 5px; border-radius:0;
+    border:1px solid; letter-spacing:1px;
+  }
+  .mid-badge.above { border-color:rgba(0,255,136,0.4); color:var(--long); background:rgba(0,255,136,0.07); }
+  .mid-badge.below { border-color:rgba(255,68,102,0.4); color:var(--short); background:rgba(255,68,102,0.07); }
+
+  /* ══════════════════════════════
+     PnL CELL
+  ══════════════════════════════ */
+  .pnl-block { display:flex; flex-direction:column; gap:2px; min-width:110px; }
+  .pnl-row   { font-size:9px; color:var(--dim); display:flex; gap:4px; }
+  .pnl-row .val { color:var(--text); }
+  .pnl-rate {
+    font-family:'Rajdhani',sans-serif; font-weight:700; font-size:15px;
+    display:flex; align-items:center; gap:3px;
+  }
+  .pnl-rate.gain { color:var(--long); }
+  .pnl-rate.loss { color:var(--short); }
+  .pnl-rate.zero { color:var(--dim); }
+
+  .new-tag {
+    font-size:7px; letter-spacing:2px; padding:2px 4px; margin-left:5px;
+    animation:blink 1s step-end 4;
+  }
+  .new-tag.up { background:var(--long);  color:var(--bg); }
+  .new-tag.dn { background:var(--short); color:#fff; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+  .oi-arrows { font-size:9px; color:var(--long); }
+
+  .empty-state { text-align:center; padding:32px 20px; color:var(--dim); }
+  .empty-icon  { font-size:28px; margin-bottom:10px; opacity:.2; }
+  .empty-text  { font-size:10px; letter-spacing:2px; }
+
+  /* mini MA stack for short table */
+  .ma-stack { font-size:8px; color:var(--dim); line-height:1.7; }
+  .ma-stack .v { color:var(--text); }
+
+  /* candle struct */
+  .candle-struct { font-size:8px; color:var(--dim); line-height:1.7; }
+  .candle-struct .v { color:var(--text); }
+
+  /* ══════════════════════════════
+     LOG
+  ══════════════════════════════ */
+  .log-box {
+    background:var(--surface); border:1px solid var(--border);
+    padding:10px; height:140px; overflow-y:auto; font-size:10px; line-height:1.8;
+    scrollbar-width:thin; scrollbar-color:var(--dim2) transparent;
+  }
+  .log-box::-webkit-scrollbar { width:3px; }
+  .log-box::-webkit-scrollbar-thumb { background:var(--dim2); }
+  .log-line { display:flex; gap:10px; }
+  .log-time { color:var(--dim); flex-shrink:0; font-size:9px; }
+  .log-msg        { color:var(--text); word-break:break-all; }
+  .log-msg.up     { color:var(--long); }
+  .log-msg.dn     { color:var(--short); }
+  .log-msg.info   { color:var(--accent); }
+  .log-msg.warn   { color:var(--warn); }
+  .log-msg.tg     { color:var(--tg); }
+
+  /* ══════════════════════════════
+     TOAST
+  ══════════════════════════════ */
+  .toast-container { position:fixed; top:16px; right:16px; z-index:200; display:flex; flex-direction:column; gap:7px; max-width:280px; }
+  .toast { background:var(--surface2); padding:12px 14px; animation:slideIn .3s ease; }
+  .toast.up { border:1px solid var(--long);  box-shadow:0 0 16px rgba(0,255,136,0.15); }
+  .toast.dn { border:1px solid var(--short); box-shadow:0 0 16px rgba(255,68,102,0.15); }
+  .toast.removing { animation:slideOut .3s ease forwards; }
+  @keyframes slideIn { from{transform:translateX(110%);opacity:0} to{transform:translateX(0);opacity:1} }
+  @keyframes slideOut { to{transform:translateX(110%);opacity:0} }
+  .toast-title { font-size:9px; letter-spacing:2px; margin-bottom:4px; }
+  .toast-title.up { color:var(--long); }
+  .toast-title.dn { color:var(--short); }
+  .toast-body { font-family:'Rajdhani',sans-serif; font-weight:700; font-size:16px; color:var(--text); }
+  .toast-sub  { font-size:8px; color:var(--dim); margin-top:2px; line-height:1.5; }
+
+  /* ══════════════════════════════
+     RESPONSIVE BREAKPOINTS
+  ══════════════════════════════ */
+  @media (max-width:1400px) {
+    .stats-bar { grid-template-columns:repeat(4,1fr); }
+  }
+  @media (max-width:1000px) {
+    .stats-bar   { grid-template-columns:repeat(4,1fr); }
+    .signal-grid { grid-template-columns:1fr; }
+  }
+  @media (max-width:768px) {
+    .stats-bar   { grid-template-columns:repeat(2,1fr); }
+    header { flex-direction:column; }
+    .timer-display { margin-left:0; }
+    .tg-input       { width:100%; }
+    .tg-input.narrow{ width:100%; }
+    .tg-panel { flex-direction:column; align-items:stretch; }
+    .controls { gap:6px; }
+    .toast-container { max-width:240px; right:8px; top:8px; }
+  }
+  @media (max-width:480px) {
+    .stats-bar { grid-template-columns:repeat(2,1fr); }
+    .container { padding:12px 10px; }
+    .logo { font-size:20px; letter-spacing:4px; }
+  }
 </style>
 </head>
 <body>
-<div class="app-container">
-<header>
-<div class="brand">
-<div class="logo">S</div>
-<div>
-<h1>FUTURES SCANNER</h1>
-<div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
-<span class="ver mono">V5.0</span>
-<span class="mono" style="color:var(--dim); font-size:11px;">BINANCE PERP · 15M</span>
-</div>
-</div>
-</div>
-<div class="status-cluster">
-<div class="status-item">
-<span class="label">SCAN STATUS</span>
-<span class="value uppercase"><span id="scanDot" class="dot"></span><span id="scanStatus">IDLE</span></span>
-</div>
-<div class="status-item">
-<span class="label">NEXT SCAN</span>
-<span class="value"><span id="countdown">—</span><span style="color:var(--dim); font-size:10px; margin-left:4px;">SEC</span></span>
-</div>
-<div class="status-item">
-<span class="label">SERVER TIME (UTC)</span>
-<span id="serverTime" class="value">00:00:00</span>
-</div>
-</div>
-</header>
-<div class="control-grid">
-<!-- Scanner Controls -->
-<div class="card">
-<div class="card-title">SCANNER CONTROLS <span><i class="dot blue"></i>TG SYNC</span></div>
-<div class="input-row">
-<button id="startBtn" class="btn-primary" onclick="startScanner()">START AUTOMATION</button>
-<button id="stopBtn" class="btn-outline" onclick="stopScanner()" disabled>STOP</button>
-</div>
-<button id="manualBtn" class="btn-outline" style="width:100%;" onclick="runScan()">RUN MANUAL SCAN NOW</button>
-<div id="scanningBar"><div id="progressBarFill"></div></div>
-</div>
-<!-- Telegram Config -->
-<div class="card">
-<div class="card-title">TELEGRAM NOTIFICATION</div>
-<div class="input-row">
-<input type="password" id="tgToken" placeholder="Bot Token">
-<input type="text" id="tgChatId" placeholder="Chat ID">
-</div>
-<button class="btn-outline" style="width:100%;" onclick="testTg()">SEND TEST MESSAGE</button>
-</div>
-<!-- Stats Card -->
-<div class="card">
-<div class="card-title">SESSION STATS</div>
-<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-<div style="background:var(--surface2); padding:10px; border-radius:8px;">
-<div style="font-size:10px; color:var(--dim);">TOTAL SIGNALS</div>
-<div id="statTotal" class="mono bold" style="font-size:18px; color:#fff;">0</div>
-</div>
-<div style="background:var(--surface2); padding:10px; border-radius:8px;">
-<div style="font-size:10px; color:var(--dim);">SCAN COUNT</div>
-<div id="statScans" class="mono bold" style="font-size:18px; color:var(--accent);">0</div>
-</div>
-</div>
-</div>
-</div>
-<div class="table-container">
-<table id="signalTable">
-<thead>
-<tr>
-<th>Symbol / Signal</th>
-<th>Entry Price</th>
-<th>Market Price</th>
-<th>Real-time PnL</th>
-<th>ATH / ATL Distance</th>
-<th>Detected At</th>
-</tr>
-</thead>
-<tbody id="signalBody">
-<!-- Signals inserted here -->
-</tbody>
-</table>
-<div id="emptyState" style="padding:100px; text-align:center; color:var(--dim);">
-<div style="font-size:40px; margin-bottom:16px;">🔍</div>
-<p>대기 중입니다. 스캔을 시작하면 실시간 신호가 여기에 표시됩니다.</p>
-</div>
-</div>
-<div class="log-panel" id="logPanel">
-<div class="log-line"><span class="log-time">00:00:00</span> <span class="log-msg info">시스템 초기화 완료. 스캔 대기 중...</span></div>
-</div>
-</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<div class="container">
+
+  <!-- ── Header ── -->
+  <header>
+    <div>
+      <div class="logo">FUTURES<span class="up">▲</span><span class="dn">▼</span>SCAN</div>
+      <div class="logo-sub">BINANCE PERPETUAL · 15M CHART · v5.1 &nbsp;|&nbsp; LONG &amp; SHORT SIGNAL &nbsp;|&nbsp; 실시간 손익 · ATH/ATL 중간값</div>
+    </div>
+    <div class="status-panel">
+      <div class="status-row"><div class="dot" id="apiDot"></div><span id="apiStatus">STANDBY</span></div>
+      <div class="status-row"><div class="dot" id="scanDot"></div><span id="scanStatus">IDLE</span></div>
+      <div class="status-row"><div class="dot" id="tgDot"></div><span id="tgStatus">TG DISCONNECTED</span></div>
+      <div class="status-row" id="lastScanRow" style="display:none">
+        <span id="lastScanTime" style="color:var(--dim);font-size:9px"></span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── Telegram ── -->
+  <div class="tg-panel">
+    <div class="tg-label">✈ TELEGRAM</div>
+    <input class="tg-input"        id="tgToken"  type="text" placeholder="Bot Token" spellcheck="false"/>
+    <input class="tg-input narrow" id="tgChatId" type="text" placeholder="Chat ID"   spellcheck="false"/>
+    <button class="btn-tg" onclick="testTelegram()"><span>⚡ TEST</span></button>
+    <span class="tg-status" id="tgTestStatus">—</span>
+  </div>
+
+  <!-- ── Controls ── -->
+  <div class="controls">
+    <button class="btn" id="startBtn"  onclick="startScanner()"><span>▶ START</span></button>
+    <button class="btn danger" id="stopBtn" onclick="stopScanner()" disabled><span>■ STOP</span></button>
+    <button class="btn" id="manualBtn" onclick="runScan()"><span>⟳ SCAN</span></button>
+    <div class="timer-display">NEXT&nbsp;<div class="countdown" id="countdown">—</div><span style="font-size:10px">s</span></div>
+  </div>
+
+  <!-- ── Stats ── -->
+  <div class="stats-bar">
+    <div class="stat-cell"><div class="stat-label">Total</div><div class="stat-value" id="statTotal">0</div></div>
+    <div class="stat-cell"><div class="stat-label">Scanned</div><div class="stat-value" id="statScanned">0</div></div>
+    <div class="stat-cell"><div class="stat-label">🟢 LONG</div><div class="stat-value up" id="statLong">0</div></div>
+    <div class="stat-cell"><div class="stat-label">🔴 SHORT</div><div class="stat-value dn" id="statShort">0</div></div>
+    <div class="stat-cell"><div class="stat-label">Errors</div><div class="stat-value warn" id="statErrors">0</div></div>
+    <div class="stat-cell"><div class="stat-label">TG Sent</div><div class="stat-value blue" id="statTgSent">0</div></div>
+    <div class="stat-cell"><div class="stat-label">Runs</div><div class="stat-value" id="statRuns">0</div></div>
+  </div>
+
+  <!-- ── Signal descriptions ── -->
+  <div class="signal-grid">
+    <div class="signal-box long-box">
+      <div class="signal-title up">🟢 LONG 신호 — 3개 조건 AND</div>
+      <div class="cond-list">
+        <div class="cond-item up">L1 · MA5 &gt; MA10 &gt; MA20 &gt; MA60 정배열 (3봉 연속)</div>
+        <div class="cond-item up">L2 · 최근 240분(16봉) 내 저가→종가 +7% 이상 급등</div>
+        <div class="cond-item up">L3 · OI 평균 대비 +10%↑ &amp; 3봉 연속 OI 증가</div>
+      </div>
+    </div>
+    <div class="signal-box short-box">
+      <div class="signal-title dn">🔴 SHORT 신호 — 3개 조건 AND</div>
+      <div class="cond-list">
+        <div class="cond-item dn">S1 · 24시간 대비 현재가 +15% 이상 상승 (과열)</div>
+        <div class="cond-item dn">S2 · 15분봉 MA5 &gt; MA10 &gt; MA30 &gt; MA60 정배열</div>
+        <div class="cond-item dn">S3 · 시가 &gt; MA5 &gt; MA10 &gt; 종가 인 음봉 발생 (현재봉)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Scanning progress ── -->
+  <div class="scanning-bar" id="scanningBar">
+    <div class="spin"></div>
+    <span id="scanningSymbol" style="flex-shrink:0">SCANNING</span>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    <span id="progressText" style="flex-shrink:0">0%</span>
+  </div>
+
+  <!-- ── LONG table ── -->
+  <div class="section-title"><span class="badge-up">LONG</span> 급등 신호 심볼</div>
+  <div class="table-wrap">
+    <table class="results-table">
+      <thead>
+        <tr>
+          <th>SYMBOL</th>
+          <th>COND</th>
+          <th>현재가 / ATH·ATL 중간값</th>
+          <th>MAX SPIKE</th>
+          <th>SPIKE봉</th>
+          <th>OI/평균</th>
+          <th>진입가 / 현재가 / 손익</th>
+          <th>DETECTED</th>
+        </tr>
+      </thead>
+      <tbody id="longBody">
+        <tr><td colspan="8"><div class="empty-state"><div class="empty-icon">▲</div><div class="empty-text">NO LONG SIGNALS</div></div></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── SHORT table ── -->
+  <div class="section-title"><span class="badge-dn">SHORT</span> 급락 신호 심볼</div>
+  <div class="table-wrap">
+    <table class="results-table">
+      <thead>
+        <tr>
+          <th>SYMBOL</th>
+          <th>COND</th>
+          <th>현재가 / ATH·ATL 중간값</th>
+          <th>24H 상승률</th>
+          <th>MA 정배열</th>
+          <th>음봉 구조</th>
+          <th>진입가 / 현재가 / 손익</th>
+          <th>DETECTED</th>
+        </tr>
+      </thead>
+      <tbody id="shortBody">
+        <tr><td colspan="8"><div class="empty-state"><div class="empty-icon">▼</div><div class="empty-text">NO SHORT SIGNALS</div></div></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── Log ── -->
+  <div class="section-title">SYSTEM LOG</div>
+  <div class="log-box" id="logBox"></div>
+
+</div><!-- /container -->
+
 <script>
+'use strict';
 // ═══════════════════════════════════
-//  CONFIG & GLOBALS
+//  CONFIG & STATE
 // ═══════════════════════════════════
-const SCAN_INTERVAL_SEC = 300; // 5분
+const DEFAULT_TOKEN   = '8710131262:AAGxhwh3b8Z_FGf-AxFcIwM4-1_Tmau6su4';
+const DEFAULT_CHAT_ID = '7947167026,8552211361';
+const SCAN_INTERVAL_SEC = 300;
+const BASE = 'https://fapi.binance.com';
+
+let scanInterval = null, countdownInterval = null;
+let scanCount = 0, nextScanIn = 0, tgSentCount = 0;
 let isScanning = false;
-let scanInterval = null;
-let countdownInterval = null;
-let nextScanIn = 0;
-let sessionSignals = [];
-let scanCount = 0;
+let longMatched  = {};   // sym → result
+let shortMatched = {};
+let currentPrices = {};  // sym → live price
+// ── STEP 1: ATH/ATL + midpoint cache ──
+let priceStats = {};     // sym → { ath, atl, mid }
+
 // ═══════════════════════════════════
-//  INITIALIZATION
+//  INIT
 // ═══════════════════════════════════
-window.onload = () => {
-loadTgConfig();
-updateServerTime();
-setInterval(updateServerTime, 1000);
-setInterval(updatePrices, 5000); // 5초마다 현재가 갱신
-};
-function loadTgConfig() {
-document.getElementById('tgToken').value = localStorage.getItem('tgToken') || '';
-document.getElementById('tgChatId').value = localStorage.getItem('tgChatId') || '';
-}
+window.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('tgToken').value  = localStorage.getItem('tgToken')  || DEFAULT_TOKEN;
+  document.getElementById('tgChatId').value = localStorage.getItem('tgChatId') || DEFAULT_CHAT_ID;
+  updateTgDot();
+  // 10초마다 현재가 갱신 + 테이블 리렌더
+  setInterval(updateCurrentPrices, 10000);
+  setInterval(() => { renderLong(); renderShort(); }, 10000);
+});
+
+const getTgToken  = () => document.getElementById('tgToken').value.trim();
+const getTgChatId = () => document.getElementById('tgChatId').value.trim();
 function saveTgConfig() {
-localStorage.setItem('tgToken', document.getElementById('tgToken').value);
-localStorage.setItem('tgChatId', document.getElementById('tgChatId').value);
+  localStorage.setItem('tgToken',  getTgToken());
+  localStorage.setItem('tgChatId', getTgChatId());
 }
-function log(msg, type='info') {
-const panel = document.getElementById('logPanel');
-const now = new Date().toLocaleTimeString('ko-KR', { hour12: false });
-const line = document.createElement('div');
-line.className = 'log-line';
-line.innerHTML = <span class="log-time">${now}</span> <span class="log-msg ${type}">${msg}</span>;
-panel.prepend(line);
+function updateTgDot() {
+  const ok = getTgToken() && getTgChatId();
+  document.getElementById('tgDot').className     = ok ? 'dot blue' : 'dot red';
+  document.getElementById('tgStatus').textContent = ok ? 'TG READY' : 'TG DISCONNECTED';
 }
-function updateServerTime() {
-const now = new Date();
-document.getElementById('serverTime').textContent = now.toISOString().split('T')[1].split('.')[0];
-}
+
 // ═══════════════════════════════════
-//  MAIN SCAN LOGIC
+//  ── STEP 1: 현재가 + ATH/ATL ──
+// ═══════════════════════════════════
+
+/**
+ * Binance /fapi/v1/klines (weekly, limit=1000) 로
+ * 역대 고가(ATH)·저가(ATL)·중간값(mid) 계산.
+ * 무거워서 스캔 시 1회만 계산하고 priceStats 캐시에 저장.
+ */
+async function fetchPriceStats(sym) {
+  if (priceStats[sym]) return priceStats[sym]; // 캐시 히트
+  try {
+    // 주봉 1000개 → 역대 고/저 근사치
+    const d = await apiFetch(`${BASE}/fapi/v1/klines?symbol=${sym}&interval=1w&limit=1000`);
+    const ath = Math.max(...d.map(k => +k[2])); // high
+    const atl = Math.min(...d.map(k => +k[3])); // low (0 제외)
+    const mid = (ath + atl) / 2;
+    const stats = { ath, atl, mid };
+    priceStats[sym] = stats;
+    return stats;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 현재가 기준으로 ATH/ATL 중간값 대비 ±% 계산
+ */
+function calcMidPct(currentPrice, mid) {
+  if (!mid || mid === 0) return null;
+  return (currentPrice - mid) / mid * 100;
+}
+
+/**
+ * 현재가 패널 HTML (STEP 1 핵심)
+ * @param {string} sym
+ * @param {number} currentPrice
+ * @param {'long'|'short'} direction - short면 PnL 방향만 변경, 가격 표시는 동일
+ */
+function priceStatHtml(sym, currentPrice) {
+  const stats = priceStats[sym];
+  const cur   = currentPrices[sym] || currentPrice;
+
+  if (!stats) {
+    return `<div class="price-panel">
+      <div class="price-cur">${fmtPrice(cur)}</div>
+      <div class="price-row"><span class="lbl">ATH/ATL</span><span class="val" style="color:var(--dim)">—</span></div>
+    </div>`;
+  }
+
+  const midPct = calcMidPct(cur, stats.mid);
+  const above  = midPct !== null && midPct >= 0;
+  const midPctStr = midPct !== null
+    ? (above ? '+' : '') + midPct.toFixed(2) + '%'
+    : '—';
+
+  return `<div class="price-panel">
+    <div class="price-cur">${fmtPrice(cur)}</div>
+    <div class="price-row">
+      <span class="lbl">MID</span>
+      <span class="val">${fmtPrice(stats.mid)}</span>
+      <span class="mid-badge ${above ? 'above' : 'below'}">${midPctStr}</span>
+    </div>
+    <div class="price-row">
+      <span class="lbl">ATH</span><span class="val gold">${fmtPrice(stats.ath)}</span>
+      &nbsp;
+      <span class="lbl">ATL</span><span class="val dn">${fmtPrice(stats.atl)}</span>
+    </div>
+  </div>`;
+}
+
+// ═══════════════════════════════════
+//  현재가 실시간 조회
+// ═══════════════════════════════════
+async function updateCurrentPrices() {
+  const symbols = [...new Set([...Object.keys(longMatched), ...Object.keys(shortMatched)])];
+  if (!symbols.length) return;
+  await Promise.all(symbols.map(async sym => {
+    try {
+      const d = await apiFetch(`${BASE}/fapi/v1/ticker/price?symbol=${sym}`);
+      currentPrices[sym] = +d.price;
+    } catch {}
+  }));
+}
+
+// ═══════════════════════════════════
+//  PnL 계산
+// ═══════════════════════════════════
+function calcPnl(entryPrice, currentPrice, direction) {
+  if (!entryPrice || !currentPrice) return null;
+  return direction === 'long'
+    ? (currentPrice - entryPrice) / entryPrice * 100
+    : (entryPrice - currentPrice) / entryPrice * 100;
+}
+
+function pnlHtml(sym, direction) {
+  const map   = direction === 'long' ? longMatched : shortMatched;
+  const entry = map[sym]?.entryPrice;
+  const cur   = currentPrices[sym] || map[sym]?.price;
+  if (!entry || !cur) return '<div class="pnl-block"><div class="pnl-row">—</div></div>';
+  const pnl = calcPnl(entry, cur, direction);
+  let cls='zero', sign='', arrow='—';
+  if (pnl !== null) {
+    if (pnl > 0.001)       { cls='gain'; sign='+'; arrow='▲'; }
+    else if (pnl < -0.001) { cls='loss'; sign='';  arrow='▼'; }
+  }
+  return `<div class="pnl-block">
+    <div class="pnl-row"><span class="lbl">진입</span>&nbsp;<span class="val">${fmtPrice(entry)}</span></div>
+    <div class="pnl-row"><span class="lbl">현재</span>&nbsp;<span class="val">${fmtPrice(cur)}</span></div>
+    <div class="pnl-rate ${cls}">${arrow}&nbsp;${pnl !== null ? sign+pnl.toFixed(2)+'%' : '—'}</div>
+  </div>`;
+}
+
+// ═══════════════════════════════════
+//  LOG
+// ═══════════════════════════════════
+function log(msg, type='') {
+  const box = document.getElementById('logBox');
+  const now = new Date().toLocaleTimeString('ko-KR',{hour12:false});
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.innerHTML = `<span class="log-time">${now}</span><span class="log-msg ${type}">${msg}</span>`;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+  while (box.children.length > 400) box.removeChild(box.firstChild);
+}
+
+// ═══════════════════════════════════
+//  TELEGRAM
+// ═══════════════════════════════════
+async function sendTelegram(text) {
+  const token   = getTgToken();
+  const chatIds = getTgChatId().split(',').map(s=>s.trim()).filter(Boolean);
+  if (!token || !chatIds.length) return false;
+  try {
+    const results = await Promise.all(chatIds.map(chatId =>
+      fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ chat_id:chatId, text, parse_mode:'HTML' })
+      }).then(r=>r.json()).then(d=>d.ok===true).catch(()=>false)
+    ));
+    return results.some(Boolean);
+  } catch { return false; }
+}
+
+async function testTelegram() {
+  saveTgConfig(); updateTgDot();
+  const el = document.getElementById('tgTestStatus');
+  el.className='tg-status'; el.textContent='전송 중...';
+  const ok = await sendTelegram(
+    `✅ <b>FuturesScan v5.1 연결 성공</b>\n📡 LONG/SHORT 스캐너 작동 중\n🕐 ${new Date().toLocaleString('ko-KR')}`
+  );
+  if (ok) {
+    el.className='tg-status ok'; el.textContent='✓ 전송 성공';
+    document.getElementById('tgDot').className='dot blue';
+    document.getElementById('tgStatus').textContent='TG CONNECTED';
+    log('텔레그램 테스트 성공','tg');
+  } else {
+    el.className='tg-status fail'; el.textContent='✗ 실패 — 토큰/Chat ID 확인';
+    document.getElementById('tgDot').className='dot red';
+    log('텔레그램 전송 실패','warn');
+  }
+}
+
+async function notifyLong(r) {
+  const stats   = priceStats[r.symbol];
+  const midLine = stats
+    ? `📍 ATH/ATL 중간: <b>${fmtPrice(stats.mid)}</b>  현재 ${calcMidPct(r.price, stats.mid)?.toFixed(2) ?? '?'}%\n`
+    : '';
+  const text =
+    `🟢 <b>[LONG] ${r.symbol}</b>\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `💰 현재가:  <b>${fmtPrice(r.price)} USDT</b>\n` +
+    midLine +
+    `📈 급등폭:  <b>+${r.maxSpike.toFixed(2)}%</b>  (${r.minsAgo??'?'}분 전)\n` +
+    `📊 OI/평균: <b>${r.oiRatio.toFixed(2)}x</b>  ↑↑↑\n` +
+    `💵 진입가:  <b>${fmtPrice(r.entryPrice)} USDT</b>\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `✅ L1 MA 정배열 3봉\n✅ L2 +7% 급등\n✅ L3 OI +10% 3봉증가\n` +
+    `🕐 ${new Date().toLocaleString('ko-KR')}`;
+  const ok = await sendTelegram(text);
+  if (ok) { tgSentCount++; document.getElementById('statTgSent').textContent=tgSentCount; log(`📨 TG LONG: ${r.symbol}`,'tg'); }
+  else log(`TG 전송 실패: ${r.symbol}`,'warn');
+}
+
+async function notifyShort(r) {
+  const stats   = priceStats[r.symbol];
+  const midLine = stats
+    ? `📍 ATH/ATL 중간: <b>${fmtPrice(stats.mid)}</b>  현재 ${calcMidPct(r.price, stats.mid)?.toFixed(2) ?? '?'}%\n`
+    : '';
+  const text =
+    `🔴 <b>[SHORT] ${r.symbol}</b>\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `💰 현재가:  <b>${fmtPrice(r.price)} USDT</b>\n` +
+    midLine +
+    `🔥 24H 상승:  <b>+${r.rise24h.toFixed(2)}%</b>\n` +
+    `📊 MA:  MA5(${fmtPrice(r.ma5)}) &gt; MA10(${fmtPrice(r.ma10)}) &gt; MA30(${fmtPrice(r.ma30)}) &gt; MA60(${fmtPrice(r.ma60)})\n` +
+    `📉 음봉:  시가(${fmtPrice(r.openPrice)}) &gt; MA5 &gt; MA10 &gt; 종가(${fmtPrice(r.closePrice)})\n` +
+    `💵 진입가:  <b>${fmtPrice(r.entryPrice)} USDT</b>\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `✅ S1 24H +${r.rise24h.toFixed(2)}%\n✅ S2 MA 정배열\n✅ S3 음봉구조\n` +
+    `🕐 ${new Date().toLocaleString('ko-KR')}`;
+  const ok = await sendTelegram(text);
+  if (ok) { tgSentCount++; document.getElementById('statTgSent').textContent=tgSentCount; log(`📨 TG SHORT: ${r.symbol}`,'tg'); }
+  else log(`TG 전송 실패: ${r.symbol}`,'warn');
+}
+
+// ═══════════════════════════════════
+//  API HELPERS
+// ═══════════════════════════════════
+async function apiFetch(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+async function getSymbols() {
+  const d = await apiFetch(`${BASE}/fapi/v1/exchangeInfo`);
+  return d.symbols
+    .filter(s => s.quoteAsset==='USDT' && s.status==='TRADING' && s.contractType==='PERPETUAL')
+    .map(s => s.symbol);
+}
+
+async function getKlines(sym) {
+  const d = await apiFetch(`${BASE}/fapi/v1/klines?symbol=${sym}&interval=15m&limit=120`);
+  return d.map(k=>({ o:+k[1], h:+k[2], l:+k[3], c:+k[4], v:+k[5], t:k[0] }));
+}
+
+async function getOI(sym) {
+  const d = await apiFetch(`${BASE}/futures/data/openInterestHist?symbol=${sym}&period=15m&limit=20`);
+  return d.sort((a,b)=>a.timestamp-b.timestamp);
+}
+
+// ═══════════════════════════════════
+//  MA HELPER
+// ═══════════════════════════════════
+function ma(closes, n) {
+  if (closes.length < n) return null;
+  return closes.slice(-n).reduce((a,b) => a+b, 0) / n;
+}
+
+// ═══════════════════════════════════
+//  ── LONG CHECKS ──
+// ═══════════════════════════════════
+function checkMA_Long(klines) {
+  if (klines.length < 62) return {ok:false};
+  const cl = klines.map(k=>k.c);
+  for (let off=0; off<3; off++) {
+    const s = cl.slice(0, cl.length - off);
+    const avg = n => s.slice(-n).reduce((a,b)=>a+b,0)/n;
+    if (!(avg(5)>avg(10) && avg(10)>avg(20) && avg(20)>avg(60))) return {ok:false};
+  }
+  const avg = n => cl.slice(-n).reduce((a,b)=>a+b,0)/n;
+  return {ok:true, m5:avg(5), m10:avg(10), m20:avg(20), m60:avg(60)};
+}
+
+function checkSpike(klines) {
+  const recent = klines.slice(-16);
+  let maxSpike=0, spikeCandle=null;
+  for (const k of recent) {
+    if (k.l===0) continue;
+    const spike = (k.c-k.l)/k.l*100;
+    if (spike>maxSpike) { maxSpike=spike; spikeCandle=k; }
+  }
+  const minsAgo = spikeCandle ? Math.round((Date.now()-spikeCandle.t)/60000) : null;
+  return { ok:maxSpike>=7, maxSpike, minsAgo };
+}
+
+function checkOI_long(oiData) {
+  if (!oiData || oiData.length < 4) return { ok:false, ratio:0, consecutive:0 };
+  const sorted = [...oiData].sort((a,b)=>a.timestamp-b.timestamp);
+  const values = sorted.map(d=>+d.sumOpenInterest);
+  const cur    = values[values.length-1];
+  const prev   = values.slice(0,-1);
+  const avg    = prev.reduce((a,b)=>a+b,0)/prev.length;
+  if (avg===0) return {ok:false,ratio:0,consecutive:0};
+  const ratio  = cur/avg;
+  const len    = values.length;
+  const consec = len>=4 && values[len-1]>values[len-2] && values[len-2]>values[len-3] && values[len-3]>values[len-4];
+  return { ok: ratio>=1.10 && consec, ratio, consecutive: consec?3:0 };
+}
+
+// ═══════════════════════════════════
+//  ── SHORT CHECKS ──
+// ═══════════════════════════════════
+
+// S1: 24H +15% 이상
+async function check24hRise(sym) {
+  try {
+    const d = await apiFetch(`${BASE}/fapi/v1/ticker/24hr?symbol=${sym}`);
+    const pct = +d.priceChangePercent;
+    return { ok: pct>=15, pct };
+  } catch { return { ok:false, pct:0 }; }
+}
+
+// S2: MA5 > MA10 > MA30 > MA60 정배열
+function checkMA_Short_Alignment(klines) {
+  if (klines.length < 62) return { ok:false, ma5:0, ma10:0, ma30:0, ma60:0 };
+  const cl   = klines.map(k=>k.c);
+  const ma5  = ma(cl,5);
+  const ma10 = ma(cl,10);
+  const ma30 = ma(cl,30);
+  const ma60 = ma(cl,60);
+  if (!ma5||!ma10||!ma30||!ma60) return {ok:false,ma5:0,ma10:0,ma30:0,ma60:0};
+  return { ok: ma5>ma10 && ma10>ma30 && ma30>ma60, ma5, ma10, ma30, ma60 };
+}
+
+// S3: 시가 > MA5 > MA10 > 종가 인 음봉
+function checkBearCandle(klines, ma5, ma10) {
+  if (!ma5||!ma10) return {ok:false,openPrice:0,closePrice:0};
+  const cur = klines[klines.length-1];
+  const ok  = cur.c<cur.o && cur.o>ma5 && ma5>ma10 && ma10>cur.c;
+  return { ok, openPrice:cur.o, closePrice:cur.c };
+}
+
+// ═══════════════════════════════════
+//  FORMAT
+// ═══════════════════════════════════
+function fmtPrice(p) {
+  if (p==null||isNaN(p)) return '—';
+  if (p===0) return '0';
+  return p<0.01?p.toFixed(6):p<1?p.toFixed(5):p<100?p.toFixed(4):p.toFixed(2);
+}
+
+function fmtAge(ts) {
+  const s = Math.round((Date.now()-ts)/1000);
+  return s<60 ? `${s}s` : `${Math.round(s/60)}m`;
+}
+
+// ═══════════════════════════════════
+//  RENDER
+// ═══════════════════════════════════
+function renderLong() {
+  const tbody  = document.getElementById('longBody');
+  const results = Object.values(longMatched).sort((a,b)=>b.ts-a.ts);
+  if (!results.length) {
+    tbody.innerHTML=`<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">▲</div><div class="empty-text">NO LONG SIGNALS</div></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = results.map(r => {
+    const cur = currentPrices[r.symbol] || r.price;
+    return `<tr>
+      <td class="symbol-cell up">${r.symbol}${r.isNew?'<span class="new-tag up">NEW</span>':''}</td>
+      <td><span class="badge up">L1</span><span class="badge up">L2</span><span class="badge up">L3</span></td>
+      <td>${priceStatHtml(r.symbol, cur)}</td>
+      <td class="val-up">+${r.maxSpike.toFixed(2)}%</td>
+      <td style="color:var(--dim);font-size:9px">${r.minsAgo!=null?r.minsAgo+'분 전':'—'}</td>
+      <td class="val-up">${r.oiRatio.toFixed(2)}x<span class="oi-arrows"> ↑↑↑</span></td>
+      <td>${pnlHtml(r.symbol,'long')}</td>
+      <td style="color:var(--dim);font-size:9px">${fmtAge(r.ts)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderShort() {
+  const tbody  = document.getElementById('shortBody');
+  const results = Object.values(shortMatched).sort((a,b)=>b.ts-a.ts);
+  if (!results.length) {
+    tbody.innerHTML=`<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">▼</div><div class="empty-text">NO SHORT SIGNALS</div></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = results.map(r => {
+    const cur = currentPrices[r.symbol] || r.price;
+    const maStr = `<div class="ma-stack">
+      <span class="v">${fmtPrice(r.ma5)}</span>&gt;<span class="v">${fmtPrice(r.ma10)}</span><br>
+      <span class="v">${fmtPrice(r.ma30)}</span>&gt;<span class="v">${fmtPrice(r.ma60)}</span>
+    </div>`;
+    const candleStr = `<div class="candle-struct">
+      시가<span class="v">${fmtPrice(r.openPrice)}</span><br>
+      &gt;MA5&gt;MA10<br>
+      종가<span class="v">${fmtPrice(r.closePrice)}</span>
+    </div>`;
+    return `<tr>
+      <td class="symbol-cell dn">${r.symbol}${r.isNew?'<span class="new-tag dn">NEW</span>':''}</td>
+      <td><span class="badge dn">S1</span><span class="badge dn">S2</span><span class="badge dn">S3</span></td>
+      <td>${priceStatHtml(r.symbol, cur)}</td>
+      <td class="val-up">+${r.rise24h.toFixed(2)}%</td>
+      <td>${maStr}</td>
+      <td>${candleStr}</td>
+      <td>${pnlHtml(r.symbol,'short')}</td>
+      <td style="color:var(--dim);font-size:9px">${fmtAge(r.ts)}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════
+//  TOAST + AUDIO
+// ═══════════════════════════════════
+function showToast(symbol, type, sub) {
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.innerHTML =
+    `<div class="toast-title ${type}">${type==='up'?'🟢 LONG 신호':'🔴 SHORT 신호'}</div>` +
+    `<div class="toast-body">${symbol}</div>` +
+    `<div class="toast-sub">${sub}</div>`;
+  c.appendChild(t);
+  setTimeout(()=>{ t.classList.add('removing'); setTimeout(()=>t.remove(),300); },7000);
+}
+
+function playAlert(type) {
+  try {
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const seq = type==='up' ? [[660,.12],[880,.12],[1100,.1]] : [[880,.12],[660,.12],[440,.1]];
+    seq.forEach(([freq,vol],i)=>{
+      const o=ctx.createOscillator(), g=ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value=freq; o.type='sine';
+      const t=ctx.currentTime+i*.18;
+      g.gain.setValueAtTime(vol,t);
+      g.gain.exponentialRampToValueAtTime(0.001,t+.18);
+      o.start(t); o.stop(t+.18);
+    });
+  } catch {}
+}
+
+// ═══════════════════════════════════
+//  MAIN SCAN
 // ═══════════════════════════════════
 async function runScan() {
-if (isScanning) return;
-isScanning = true;
-document.getElementById('manualBtn').disabled = true;
-document.getElementById('startBtn').disabled = true;
-document.getElementById('scanDot').className = 'dot red';
-document.getElementById('scanStatus').textContent = 'SCANNING...';
-document.getElementById('scanningBar').classList.add('visible');
-log('시장 전수 조사 시작 (Binance Perp)...');
-try {
-const exchangeInfo = await fetch('https://fapi.binance.com/fapi/v1/exchangeInfo').then(r => r.json());
-const symbols = exchangeInfo.symbols
-.filter(s => s.status === 'TRADING' && s.quoteAsset === 'USDT')
-.map(s => s.symbol);
-let current = 0;
-const total = symbols.length;
-for (const symbol of symbols) {
-current++;
-const progress = (current / total) * 100;
-document.getElementById('progressBarFill').style.width = progress + '%';
-try {
-await processSymbol(symbol);
-} catch (e) {
-// 개별 심볼 에러 무시
+  if (isScanning) return;
+  isScanning = true;
+
+  document.getElementById('scanningBar').classList.add('visible');
+  document.getElementById('scanDot').className='dot yellow';
+  document.getElementById('scanStatus').textContent='SCANNING';
+  document.getElementById('manualBtn').disabled=true;
+  document.getElementById('startBtn').disabled=true;
+  log('── SCAN STARTED ──','info');
+
+  let symbols=[];
+  try {
+    symbols = await getSymbols();
+    document.getElementById('statTotal').textContent=symbols.length;
+    document.getElementById('apiDot').className='dot green';
+    document.getElementById('apiStatus').textContent='CONNECTED';
+    log(`심볼 ${symbols.length}개 로드`,'info');
+  } catch(e) {
+    log(`심볼 로드 실패: ${e.message}`,'warn');
+    document.getElementById('apiDot').className='dot red';
+    document.getElementById('apiStatus').textContent='ERROR';
+    finishScan(); return;
+  }
+
+  scanCount++;
+  document.getElementById('statRuns').textContent=scanCount;
+
+  let scanned=0, errorCount=0;
+  const prevLong  = new Set(Object.keys(longMatched));
+  const prevShort = new Set(Object.keys(shortMatched));
+  const thisLong  = new Set();
+  const thisShort = new Set();
+
+  const BATCH = 5;
+  for (let i=0; i<symbols.length; i+=BATCH) {
+    const batch = symbols.slice(i, i+BATCH);
+
+    await Promise.all(batch.map(async sym => {
+      try {
+        document.getElementById('scanningSymbol').textContent = `SCANNING  ${sym}`;
+
+        // 병렬로 klines, OI, 24hr ticker, 주봉(ATH/ATL) 조회
+        const [klines, oiData, s1Result, statsResult] = await Promise.all([
+          getKlines(sym),
+          getOI(sym).catch(()=>null),
+          check24hRise(sym),
+          fetchPriceStats(sym)   // ← STEP 1: ATH/ATL
+        ]);
+
+        const currentPrice = klines[klines.length-1].c;
+        currentPrices[sym] = currentPrice;
+        // stats 캐시는 fetchPriceStats 내부에서 저장됨
+
+        // ── LONG check ──
+        const l1 = checkMA_Long(klines);
+        const l2 = checkSpike(klines);
+        const l3 = checkOI_long(oiData);
+
+        if (l1.ok && l2.ok && l3.ok) {
+          const isNew      = !prevLong.has(sym);
+          const entryPrice = isNew ? currentPrice : (longMatched[sym]?.entryPrice ?? currentPrice);
+          const result = {
+            symbol:sym, price:currentPrice, entryPrice,
+            maxSpike:l2.maxSpike, minsAgo:l2.minsAgo,
+            oiRatio:l3.ratio, consecutive:l3.consecutive,
+            ts: isNew ? Date.now() : (longMatched[sym]?.ts ?? Date.now()),
+            isNew
+          };
+          longMatched[sym]=result; thisLong.add(sym);
+          renderLong();
+          document.getElementById('statLong').textContent = Object.keys(longMatched).length;
+          if (isNew) {
+            const midInfo = statsResult ? ` MID:${calcMidPct(currentPrice,statsResult.mid)?.toFixed(1)}%` : '';
+            log(`▲ LONG ${sym}  ${fmtPrice(entryPrice)}${midInfo}  +${l2.maxSpike.toFixed(1)}%  OI×${l3.ratio.toFixed(2)}`,'up');
+            showToast(sym,'up',`진입 ${fmtPrice(entryPrice)}  +${l2.maxSpike.toFixed(1)}%  OI×${l3.ratio.toFixed(2)}`);
+            playAlert('up');
+            notifyLong(result);
+          }
+        } else {
+          if (longMatched[sym]) {
+            log(`${sym} LONG 해제`);
+            delete longMatched[sym];
+            delete currentPrices[sym];
+            renderLong();
+            document.getElementById('statLong').textContent = Object.keys(longMatched).length;
+          }
+        }
+
+        // ── SHORT check ──
+        const s2 = checkMA_Short_Alignment(klines);
+        const s3 = checkBearCandle(klines, s2.ma5, s2.ma10);
+
+        if (s1Result.ok && s2.ok && s3.ok) {
+          const isNew      = !prevShort.has(sym);
+          const entryPrice = isNew ? currentPrice : (shortMatched[sym]?.entryPrice ?? currentPrice);
+          const result = {
+            symbol:sym, price:currentPrice, entryPrice,
+            rise24h:  s1Result.pct,
+            ma5:s2.ma5, ma10:s2.ma10, ma30:s2.ma30, ma60:s2.ma60,
+            openPrice:s3.openPrice, closePrice:s3.closePrice,
+            ts: isNew ? Date.now() : (shortMatched[sym]?.ts ?? Date.now()),
+            isNew
+          };
+          shortMatched[sym]=result; thisShort.add(sym);
+          renderShort();
+          document.getElementById('statShort').textContent = Object.keys(shortMatched).length;
+          if (isNew) {
+            const midInfo = statsResult ? ` MID:${calcMidPct(currentPrice,statsResult.mid)?.toFixed(1)}%` : '';
+            log(`▼ SHORT ${sym}  ${fmtPrice(entryPrice)}${midInfo}  24H:+${s1Result.pct.toFixed(1)}%  MA정배열  음봉`,'dn');
+            showToast(sym,'dn',`진입 ${fmtPrice(entryPrice)}  24H+${s1Result.pct.toFixed(1)}%  MA정배열+음봉`);
+            playAlert('dn');
+            notifyShort(result);
+          }
+        } else {
+          if (shortMatched[sym]) {
+            log(`${sym} SHORT 해제`);
+            delete shortMatched[sym];
+            renderShort();
+            document.getElementById('statShort').textContent = Object.keys(shortMatched).length;
+          }
+        }
+
+      } catch(e) { errorCount++; }
+    }));
+
+    scanned += batch.length;
+    const pct = Math.round(scanned/symbols.length*100);
+    document.getElementById('progressFill').style.width = pct+'%';
+    document.getElementById('progressText').textContent = pct+'%';
+    document.getElementById('statScanned').textContent  = scanned;
+    document.getElementById('statErrors').textContent   = errorCount;
+
+    if (i+BATCH < symbols.length) await sleep(250);
+  }
+
+  // 잔류 정리 (이번 스캔에서 조건 미충족 시 삭제)
+  for (const sym of prevLong)  if (!thisLong.has(sym)  && longMatched[sym])  { delete longMatched[sym];  delete currentPrices[sym]; }
+  for (const sym of prevShort) if (!thisShort.has(sym) && shortMatched[sym]) { delete shortMatched[sym]; }
+  renderLong(); renderShort();
+
+  const now = new Date().toLocaleTimeString('ko-KR',{hour12:false});
+  document.getElementById('lastScanRow').style.display='flex';
+  document.getElementById('lastScanTime').textContent = `마지막: ${now}  |  에러: ${errorCount}`;
+  log(`── COMPLETE  LONG ${Object.keys(longMatched).length}  SHORT ${Object.keys(shortMatched).length}  에러 ${errorCount} ──`,'info');
+  finishScan();
 }
-// API 과부하 방지 슬립 (순차 처리)
-if (current % 10 === 0) await new Promise(r => setTimeout(r, 100));
-}
-scanCount++;
-document.getElementById('statScans').textContent = scanCount;
-log(스캔 완료 (${total}개 종목), 'success');
-} catch (err) {
-log('스캔 도중 오류 발생: ' + err.message, 'warn');
-} finally {
-finishScan();
-}
-}
-async function processSymbol(symbol) {
-// 15분봉 데이터 100개 조회
-const klines = await fetch(https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=15m&limit=100).then(r => r.json());
-if (klines.length < 70) return;
-const data = klines.map(k => ({
-open: parseFloat(k[1]),
-high: parseFloat(k[2]),
-low: parseFloat(k[3]),
-close: parseFloat(k[4]),
-vol: parseFloat(k[5])
-}));
-// OI 데이터 조회
-const oiData = await fetch(https://fapi.binance.com/fapi/v1/openInterestHist?symbol=${symbol}&period=15m&limit=20).then(r => r.json());
-if (oiData.length < 5) return;
-const currentOi = parseFloat(oiData[oiData.length-1].sumOpenInterest);
-const prevOi = parseFloat(oiData[oiData.length-2].sumOpenInterest);
-const avgOi = oiData.reduce((acc, cur) => acc + parseFloat(cur.sumOpenInterest), 0) / oiData.length;
-// 보조지표 계산 (간단 구현)
-const ma = (period, idx) => {
-let sum = 0;
-for (let i = 0; i < period; i++) sum += data[idx - i].close;
-return sum / period;
-};
-const idx = data.length - 2; // 막 마감된 봉 기준
-const m5 = ma(5, idx);
-const m10 = ma(10, idx);
-const m20 = ma(20, idx);
-const m30 = ma(30, idx);
-const m60 = ma(60, idx);
-// -------------------------
-// [전략 1] LONG 시나리오
-// -------------------------
-// L1: 정배열 3봉 연속 유지
-const isUpTrend = m5 > m10 && m10 > m20 && m20 > m60;
-// L2: 최근 16봉(240분) 이내 저가 대비 종가 +7% 이상 급등봉 존재 여부
-let hasBigPump = false;
-for(let i=0; i<16; i++) {
-const bar = data[idx-i];
-if ((bar.close - bar.low) / bar.low >= 0.07) { hasBigPump = true; break; }
-}
-// L3: OI 상승 (평균 대비 10% 이상 & 최근 3봉 연속 증가)
-const oiCondition = currentOi > avgOi * 1.1 &&
-currentOi > prevOi &&
-prevOi > parseFloat(oiData[oiData.length-3].sumOpenInterest);
-if (isUpTrend && hasBigPump && oiCondition) {
-addSignal(symbol, 'LONG', data[idx].close);
-return;
-}
-// -------------------------
-// [전략 2] SHORT 시나리오
-// -------------------------
-// S1: 24시간 고점 대비 하락세가 아닌, 저점 대비 15% 이상 과상승 상태 확인
-let low24 = 99999999;
-for(let i=0; i<96; i++) if(data[idx-i].low < low24) low24 = data[idx-i].low;
-const overBought = (data[idx].close - low24) / low24 >= 0.15;
-// S2: 이평선 배열 (정배열 상태에서 이탈하는 타점)
-const isStrictTrend = m5 > m10 && m10 > m30 && m30 > m60;
-// S3: 캔들 구조 (3봉 이내 시가 > M5 > M10 > 종가 패턴 발생 - 꺾임 신호)
-let breakDown = false;
-for(let i=0; i<3; i++) {
-const b = data[idx-i];
-if (b.open > ma(5, idx-i) && ma(5, idx-i) > ma(10, idx-i) && ma(10, idx-i) > b.close) {
-breakDown = true; break;
-}
-}
-if (overBought && isStrictTrend && breakDown) {
-addSignal(symbol, 'SHORT', data[idx].close);
-}
-}
-// ═══════════════════════════════════
-//  UI & DATA HANDLING
-// ═══════════════════════════════════
-async function addSignal(symbol, type, entryPrice) {
-// 중복 신호 방지 (최근 2시간 내 동일 종목 동일 신호)
-const exists = sessionSignals.find(s => s.symbol === symbol && s.type === type && (Date.now() - s.timestamp < 7200000));
-if (exists) return;
-// ATH / ATL 분석 (별도 API 호출)
-let athDist = 'N/A';
-try {
-const mData = await fetch(https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=1M&limit=200).then(r => r.json());
-let max = 0, min = 99999999;
-mData.forEach(k => {
-const h = parseFloat(k[2]), l = parseFloat(k[3]);
-if (h > max) max = h;
-if (l < min) min = l;
-});
-const dist = ((entryPrice - min) / (max - min) * 100).toFixed(1);
-athDist = ${dist}% (MID);
-} catch(e) {}
-const signal = {
-symbol, type, entryPrice, athDist,
-timestamp: Date.now(),
-currentPrice: entryPrice
-};
-sessionSignals.unshift(signal);
-updateTable();
-sendTgSignal(signal);
-document.getElementById('statTotal').textContent = sessionSignals.length;
-document.getElementById('emptyState').style.display = 'none';
-}
-function updateTable() {
-const body = document.getElementById('signalBody');
-body.innerHTML = '';
-sessionSignals.forEach(s => {
-const diff = ((s.currentPrice - s.entryPrice) / s.entryPrice * 100);
-const pnl = s.type === 'LONG' ? diff : -diff;
-const pnlClass = pnl >= 0 ? 'up' : 'down';
-const timeStr = new Date(s.timestamp).toLocaleTimeString('ko-KR', { hour12: false });
-const row = document.createElement('tr');
-row.innerHTML = <td> <div class="symbol-cell"> <span class="symbol-name">${s.symbol}</span> <span class="signal-badge ${s.type.toLowerCase()}">${s.type}</span> </div> </td> <td class="mono">$${formatPrice(s.entryPrice)}</td> <td class="mono" id="price-${s.symbol}">$${formatPrice(s.currentPrice)}</td> <td class="pnl ${pnlClass} mono" id="pnl-${s.symbol}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}%</td> <td class="mono" style="color:var(--dim); font-size:11px;">${s.athDist}</td> <td class="mono" style="color:var(--dim);">${timeStr}</td>;
-body.appendChild(row);
-});
-}
-async function updatePrices() {
-if (sessionSignals.length === 0) return;
-try {
-const prices = await fetch('https://fapi.binance.com/fapi/v1/ticker/price').then(r => r.json());
-sessionSignals.forEach(s => {
-const pData = prices.find(p => p.symbol === s.symbol);
-if (pData) {
-s.currentPrice = parseFloat(pData.price);
-const pCell = document.getElementById(price-${s.symbol});
-const pnlCell = document.getElementById(pnl-${s.symbol});
-if (pCell && pnlCell) {
-pCell.textContent = '$' + formatPrice(s.currentPrice);
-const diff = ((s.currentPrice - s.entryPrice) / s.entryPrice * 100);
-const pnl = s.type === 'LONG' ? diff : -diff;
-pnlCell.textContent = (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + '%';
-pnlCell.className = pnl ${pnl >= 0 ? 'up' : 'down'} mono;
-}
-}
-});
-} catch (e) {}
-}
-function formatPrice(p) {
-return p < 1 ? p.toFixed(6) : p < 10 ? p.toFixed(4) : p.toLocaleString(undefined, { minimumFractionDigits: 2 });
-}
+
 function finishScan() {
-isScanning = false;
-document.getElementById('scanningBar').classList.remove('visible');
-document.getElementById('scanDot').className = 'dot green';
-document.getElementById('scanStatus').textContent = 'COMPLETE';
-document.getElementById('manualBtn').disabled = false;
-if (!scanInterval) document.getElementById('startBtn').disabled = false;
+  isScanning = false;
+  document.getElementById('scanningBar').classList.remove('visible');
+  document.getElementById('scanDot').className='dot green';
+  document.getElementById('scanStatus').textContent='COMPLETE';
+  document.getElementById('manualBtn').disabled=false;
+  if (!scanInterval) document.getElementById('startBtn').disabled=false;
 }
+
 // ═══════════════════════════════════
 //  TIMER / CONTROLS
 // ═══════════════════════════════════
 function startScanner() {
-document.getElementById('startBtn').disabled = true;
-document.getElementById('stopBtn').disabled = false;
-saveTgConfig();
-log('자동 스캔 시작 (5분 간격)', 'info');
-runScan();
-nextScanIn = SCAN_INTERVAL_SEC;
-countdownInterval = setInterval(() => {
-nextScanIn--;
-document.getElementById('countdown').textContent = nextScanIn;
-if (nextScanIn <= 0) nextScanIn = SCAN_INTERVAL_SEC;
-}, 1000);
-scanInterval = setInterval(() => {
-nextScanIn = SCAN_INTERVAL_SEC;
-runScan();
-}, SCAN_INTERVAL_SEC * 1000);
+  document.getElementById('startBtn').disabled=true;
+  document.getElementById('stopBtn').disabled=false;
+  saveTgConfig(); updateTgDot();
+  log('자동 스캔 시작 (5분 간격)','info');
+  runScan();
+  nextScanIn = SCAN_INTERVAL_SEC;
+  countdownInterval = setInterval(()=>{
+    nextScanIn--;
+    document.getElementById('countdown').textContent = nextScanIn;
+    if (nextScanIn<=0) nextScanIn = SCAN_INTERVAL_SEC;
+  },1000);
+  scanInterval = setInterval(()=>{ nextScanIn=SCAN_INTERVAL_SEC; runScan(); }, SCAN_INTERVAL_SEC*1000);
 }
+
 function stopScanner() {
-clearInterval(scanInterval);
-clearInterval(countdownInterval);
-scanInterval = null;
-document.getElementById('startBtn').disabled = false;
-document.getElementById('stopBtn').disabled = true;
-document.getElementById('countdown').textContent = '—';
-document.getElementById('scanDot').className = 'dot';
-document.getElementById('scanStatus').textContent = 'IDLE';
-log('자동 스캔 정지', 'warn');
+  clearInterval(scanInterval); clearInterval(countdownInterval);
+  scanInterval = null;
+  document.getElementById('startBtn').disabled=false;
+  document.getElementById('stopBtn').disabled=true;
+  document.getElementById('countdown').textContent='—';
+  document.getElementById('scanDot').className='dot';
+  document.getElementById('scanStatus').textContent='IDLE';
+  log('자동 스캔 중지','warn');
 }
-// ═══════════════════════════════════
-//  TELEGRAM API
-// ═══════════════════════════════════
-async function sendTgSignal(s) {
-const token = document.getElementById('tgToken').value;
-const chatId = document.getElementById('tgChatId').value;
-if (!token || !chatId) return;
-const emoji = s.type === 'LONG' ? '🟢' : '🔴';
-const text = ${emoji} *[${s.type} DETECTED]*\n\n +
-*Symbol:* #${s.symbol}\n +
-*Entry:* $${s.entryPrice}\n +
-*ATH Pos:* ${s.athDist}\n +
-*Time:* ${new Date().toISOString()};
-const url = https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(text)}&parse_mode=Markdown;
-fetch(url).catch(e => log('텔레그램 전송 실패', 'warn'));
-}
-async function testTg() {
-const token = document.getElementById('tgToken').value;
-const chatId = document.getElementById('tgChatId').value;
-if (!token || !chatId) return alert('Token과 Chat ID를 입력하세요.');
-const url = https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent('🔔 Scanner 연동 테스트 성공!')};
-try {
-const res = await fetch(url).then(r => r.json());
-if (res.ok) log('텔레그램 테스트 성공', 'success');
-else throw new Error(res.description);
-} catch (e) {
-log('텔레그램 오류: ' + e.message, 'warn');
-}
-}
+
+function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }
 </script>
 </body>
 </html>
