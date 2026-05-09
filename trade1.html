@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FUTURES SCANNER v5</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+:root {
+--bg:       #060910;
+--surface:  #0b1118;
+--surface2: #0f1822;
+--border:   #162130;
+--border2:  #1e3045;
+--accent:   #38bdf8;
+--long:     #22d3a0;
+--short:    #f43f5e;
+--warn:     #fb923c;
+--text:     #cbd5e1;
+--dim:      #475569;
+--dim2:     #334155;
+--tg:       #229ED9;
+--long-bg:  rgba(34,211,160,0.06);
+--short-bg: rgba(244,63,94,0.06);
+--accent-bg:rgba(56,189,248,0.1);
+}
+ * { box-sizing: border-box; margin: 0; padding: 0; }
+   body {
+   background: var(--bg);
+   color: var(--text);
+   font-family: 'Inter', system-ui, sans-serif;
+   font-size: 13px;
+   line-height: 1.5;
+   overflow-x: hidden;
+   }
+/* Typography */
+.mono { font-family: 'JetBrains Mono', monospace; letter-spacing: -0.2px; }
+.bold { font-weight: 700; }
+.uppercase { text-transform: uppercase; }
+/* Layout */
+.app-container {
+max-width: 1600px;
+margin: 0 auto;
+padding: 20px;
+display: flex;
+flex-direction: column;
+gap: 20px;
+}
+/* Header Section */
+header {
+display: flex;
+justify-content: space-between;
+align-items: center;
+background: var(--surface);
+padding: 16px 24px;
+border-radius: 12px;
+border: 1px solid var(--border);
+}
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand .logo {
+width: 32px; height: 32px;
+background: linear-gradient(135deg, var(--accent), #1d4ed8);
+border-radius: 8px;
+display: grid; place-items: center; font-weight: 800; color: #fff;
+}
+.brand h1 { font-size: 18px; font-weight: 700; color: #fff; }
+.brand .ver { font-size: 10px; color: var(--accent); padding: 2px 6px; border: 1px solid var(--accent); border-radius: 4px; }
+.status-cluster { display: flex; align-items: center; gap: 24px; }
+.status-item { display: flex; flex-direction: column; align-items: flex-end; }
+.status-item .label { font-size: 10px; color: var(--dim); font-weight: 600; margin-bottom: 2px; }
+.status-item .value { font-family: 'JetBrains Mono'; font-weight: 600; font-size: 14px; }
+.dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; background: #334155; }
+.dot.green { background: var(--long); box-shadow: 0 0 10px var(--long); }
+.dot.red { background: var(--short); box-shadow: 0 0 10px var(--short); }
+.dot.blue { background: var(--tg); box-shadow: 0 0 10px var(--tg); }
+/* Control Panel */
+.control-grid {
+display: grid;
+grid-template-columns: 1.2fr 1.5fr 1fr;
+gap: 16px;
+}
+.card {
+background: var(--surface);
+border: 1px solid var(--border);
+border-radius: 12px;
+padding: 20px;
+}
+.card-title {
+font-size: 12px;
+font-weight: 700;
+color: var(--dim);
+margin-bottom: 16px;
+display: flex;
+justify-content: space-between;
+align-items: center;
+}
+/* Inputs & Buttons */
+.input-row { display: flex; gap: 8px; margin-bottom: 12px; }
+input {
+background: var(--surface2);
+border: 1px solid var(--border2);
+color: #fff;
+padding: 10px 14px;
+border-radius: 6px;
+outline: none;
+font-size: 13px;
+width: 100%;
+transition: 0.2s;
+}
+input:focus { border-color: var(--accent); }
+button {
+cursor: pointer;
+border: none;
+padding: 10px 16px;
+border-radius: 6px;
+font-weight: 600;
+font-size: 13px;
+transition: 0.2s;
+display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+}
+.btn-primary { background: var(--accent); color: #000; }
+.btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+.btn-primary:disabled { opacity: 0.3; cursor: not-allowed; }
+.btn-outline { background: transparent; border: 1px solid var(--border2); color: var(--text); }
+.btn-outline:hover { background: var(--surface2); border-color: var(--dim); }
+.btn-red { background: #1a1012; border: 1px solid #4c1d24; color: var(--short); }
+.btn-red:hover { background: #2d161a; }
+/* Progress Bar */
+#scanningBar {
+height: 4px;
+background: var(--surface2);
+margin-top: 10px;
+border-radius: 2px;
+overflow: hidden;
+display: none;
+}
+#scanningBar.visible { display: block; }
+#progressBarFill {
+width: 0%;
+height: 100%;
+background: var(--accent);
+transition: width 0.3s;
+}
+/* Signal Table */
+.table-container {
+background: var(--surface);
+border: 1px solid var(--border);
+border-radius: 12px;
+overflow: hidden;
+min-height: 400px;
+}
+table { width: 100%; border-collapse: collapse; }
+th {
+background: var(--surface2);
+padding: 14px 20px;
+text-align: left;
+font-size: 11px;
+color: var(--dim);
+text-transform: uppercase;
+font-weight: 700;
+border-bottom: 1px solid var(--border);
+}
+td { padding: 16px 20px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tr.new-row { animation: flash 1.5s ease-out; }
+@keyframes flash {
+0% { background: var(--accent-bg); }
+100% { background: transparent; }
+}
+.symbol-cell { display: flex; align-items: center; gap: 10px; }
+.symbol-name { font-size: 15px; font-weight: 700; color: #fff; }
+.signal-badge {
+padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: 800;
+}
+.signal-badge.long { background: var(--long-bg); color: var(--long); border: 1px solid rgba(34,211,160,0.2); }
+.signal-badge.short { background: var(--short-bg); color: var(--short); border: 1px solid rgba(244,63,94,0.2); }
+.pnl { font-size: 15px; font-weight: 700; }
+.pnl.up { color: var(--long); }
+.pnl.down { color: var(--short); }
+.price-info { display: flex; flex-direction: column; gap: 2px; }
+.price-info .sub { font-size: 11px; color: var(--dim); }
+/* Log Panel */
+.log-panel {
+background: #000;
+height: 180px;
+border-radius: 8px;
+padding: 12px;
+font-family: 'JetBrains Mono', monospace;
+font-size: 11px;
+overflow-y: auto;
+color: #889;
+border: 1px solid var(--border);
+}
+.log-line { margin-bottom: 4px; display: flex; gap: 8px; }
+.log-time { color: var(--dim); flex-shrink: 0; }
+.log-msg.info { color: var(--accent); }
+.log-msg.warn { color: var(--warn); }
+.log-msg.success { color: var(--long); }
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--dim2); }
+@media (max-width: 1024px) {
+.control-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="app-container">
+<header>
+<div class="brand">
+<div class="logo">S</div>
+<div>
+<h1>FUTURES SCANNER</h1>
+<div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
+<span class="ver mono">V5.0</span>
+<span class="mono" style="color:var(--dim); font-size:11px;">BINANCE PERP · 15M</span>
+</div>
+</div>
+</div>
+<div class="status-cluster">
+<div class="status-item">
+<span class="label">SCAN STATUS</span>
+<span class="value uppercase"><span id="scanDot" class="dot"></span><span id="scanStatus">IDLE</span></span>
+</div>
+<div class="status-item">
+<span class="label">NEXT SCAN</span>
+<span class="value"><span id="countdown">—</span><span style="color:var(--dim); font-size:10px; margin-left:4px;">SEC</span></span>
+</div>
+<div class="status-item">
+<span class="label">SERVER TIME (UTC)</span>
+<span id="serverTime" class="value">00:00:00</span>
+</div>
+</div>
+</header>
+<div class="control-grid">
+<!-- Scanner Controls -->
+<div class="card">
+<div class="card-title">SCANNER CONTROLS <span><i class="dot blue"></i>TG SYNC</span></div>
+<div class="input-row">
+<button id="startBtn" class="btn-primary" onclick="startScanner()">START AUTOMATION</button>
+<button id="stopBtn" class="btn-outline" onclick="stopScanner()" disabled>STOP</button>
+</div>
+<button id="manualBtn" class="btn-outline" style="width:100%;" onclick="runScan()">RUN MANUAL SCAN NOW</button>
+<div id="scanningBar"><div id="progressBarFill"></div></div>
+</div>
+<!-- Telegram Config -->
+<div class="card">
+<div class="card-title">TELEGRAM NOTIFICATION</div>
+<div class="input-row">
+<input type="password" id="tgToken" placeholder="Bot Token">
+<input type="text" id="tgChatId" placeholder="Chat ID">
+</div>
+<button class="btn-outline" style="width:100%;" onclick="testTg()">SEND TEST MESSAGE</button>
+</div>
+<!-- Stats Card -->
+<div class="card">
+<div class="card-title">SESSION STATS</div>
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+<div style="background:var(--surface2); padding:10px; border-radius:8px;">
+<div style="font-size:10px; color:var(--dim);">TOTAL SIGNALS</div>
+<div id="statTotal" class="mono bold" style="font-size:18px; color:#fff;">0</div>
+</div>
+<div style="background:var(--surface2); padding:10px; border-radius:8px;">
+<div style="font-size:10px; color:var(--dim);">SCAN COUNT</div>
+<div id="statScans" class="mono bold" style="font-size:18px; color:var(--accent);">0</div>
+</div>
+</div>
+</div>
+</div>
+<div class="table-container">
+<table id="signalTable">
+<thead>
+<tr>
+<th>Symbol / Signal</th>
+<th>Entry Price</th>
+<th>Market Price</th>
+<th>Real-time PnL</th>
+<th>ATH / ATL Distance</th>
+<th>Detected At</th>
+</tr>
+</thead>
+<tbody id="signalBody">
+<!-- Signals inserted here -->
+</tbody>
+</table>
+<div id="emptyState" style="padding:100px; text-align:center; color:var(--dim);">
+<div style="font-size:40px; margin-bottom:16px;">🔍</div>
+<p>대기 중입니다. 스캔을 시작하면 실시간 신호가 여기에 표시됩니다.</p>
+</div>
+</div>
+<div class="log-panel" id="logPanel">
+<div class="log-line"><span class="log-time">00:00:00</span> <span class="log-msg info">시스템 초기화 완료. 스캔 대기 중...</span></div>
+</div>
+</div>
+<script>
+// ═══════════════════════════════════
+//  CONFIG & GLOBALS
+// ═══════════════════════════════════
+const SCAN_INTERVAL_SEC = 300; // 5분
+let isScanning = false;
+let scanInterval = null;
+let countdownInterval = null;
+let nextScanIn = 0;
+let sessionSignals = [];
+let scanCount = 0;
+// ═══════════════════════════════════
+//  INITIALIZATION
+// ═══════════════════════════════════
+window.onload = () => {
+loadTgConfig();
+updateServerTime();
+setInterval(updateServerTime, 1000);
+setInterval(updatePrices, 5000); // 5초마다 현재가 갱신
+};
+function loadTgConfig() {
+document.getElementById('tgToken').value = localStorage.getItem('tgToken') || '';
+document.getElementById('tgChatId').value = localStorage.getItem('tgChatId') || '';
+}
+function saveTgConfig() {
+localStorage.setItem('tgToken', document.getElementById('tgToken').value);
+localStorage.setItem('tgChatId', document.getElementById('tgChatId').value);
+}
+function log(msg, type='info') {
+const panel = document.getElementById('logPanel');
+const now = new Date().toLocaleTimeString('ko-KR', { hour12: false });
+const line = document.createElement('div');
+line.className = 'log-line';
+line.innerHTML = <span class="log-time">${now}</span> <span class="log-msg ${type}">${msg}</span>;
+panel.prepend(line);
+}
+function updateServerTime() {
+const now = new Date();
+document.getElementById('serverTime').textContent = now.toISOString().split('T')[1].split('.')[0];
+}
+// ═══════════════════════════════════
+//  MAIN SCAN LOGIC
+// ═══════════════════════════════════
+async function runScan() {
+if (isScanning) return;
+isScanning = true;
+document.getElementById('manualBtn').disabled = true;
+document.getElementById('startBtn').disabled = true;
+document.getElementById('scanDot').className = 'dot red';
+document.getElementById('scanStatus').textContent = 'SCANNING...';
+document.getElementById('scanningBar').classList.add('visible');
+log('시장 전수 조사 시작 (Binance Perp)...');
+try {
+const exchangeInfo = await fetch('https://fapi.binance.com/fapi/v1/exchangeInfo').then(r => r.json());
+const symbols = exchangeInfo.symbols
+.filter(s => s.status === 'TRADING' && s.quoteAsset === 'USDT')
+.map(s => s.symbol);
+let current = 0;
+const total = symbols.length;
+for (const symbol of symbols) {
+current++;
+const progress = (current / total) * 100;
+document.getElementById('progressBarFill').style.width = progress + '%';
+try {
+await processSymbol(symbol);
+} catch (e) {
+// 개별 심볼 에러 무시
+}
+// API 과부하 방지 슬립 (순차 처리)
+if (current % 10 === 0) await new Promise(r => setTimeout(r, 100));
+}
+scanCount++;
+document.getElementById('statScans').textContent = scanCount;
+log(스캔 완료 (${total}개 종목), 'success');
+} catch (err) {
+log('스캔 도중 오류 발생: ' + err.message, 'warn');
+} finally {
+finishScan();
+}
+}
+async function processSymbol(symbol) {
+// 15분봉 데이터 100개 조회
+const klines = await fetch(https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=15m&limit=100).then(r => r.json());
+if (klines.length < 70) return;
+const data = klines.map(k => ({
+open: parseFloat(k[1]),
+high: parseFloat(k[2]),
+low: parseFloat(k[3]),
+close: parseFloat(k[4]),
+vol: parseFloat(k[5])
+}));
+// OI 데이터 조회
+const oiData = await fetch(https://fapi.binance.com/fapi/v1/openInterestHist?symbol=${symbol}&period=15m&limit=20).then(r => r.json());
+if (oiData.length < 5) return;
+const currentOi = parseFloat(oiData[oiData.length-1].sumOpenInterest);
+const prevOi = parseFloat(oiData[oiData.length-2].sumOpenInterest);
+const avgOi = oiData.reduce((acc, cur) => acc + parseFloat(cur.sumOpenInterest), 0) / oiData.length;
+// 보조지표 계산 (간단 구현)
+const ma = (period, idx) => {
+let sum = 0;
+for (let i = 0; i < period; i++) sum += data[idx - i].close;
+return sum / period;
+};
+const idx = data.length - 2; // 막 마감된 봉 기준
+const m5 = ma(5, idx);
+const m10 = ma(10, idx);
+const m20 = ma(20, idx);
+const m30 = ma(30, idx);
+const m60 = ma(60, idx);
+// -------------------------
+// [전략 1] LONG 시나리오
+// -------------------------
+// L1: 정배열 3봉 연속 유지
+const isUpTrend = m5 > m10 && m10 > m20 && m20 > m60;
+// L2: 최근 16봉(240분) 이내 저가 대비 종가 +7% 이상 급등봉 존재 여부
+let hasBigPump = false;
+for(let i=0; i<16; i++) {
+const bar = data[idx-i];
+if ((bar.close - bar.low) / bar.low >= 0.07) { hasBigPump = true; break; }
+}
+// L3: OI 상승 (평균 대비 10% 이상 & 최근 3봉 연속 증가)
+const oiCondition = currentOi > avgOi * 1.1 &&
+currentOi > prevOi &&
+prevOi > parseFloat(oiData[oiData.length-3].sumOpenInterest);
+if (isUpTrend && hasBigPump && oiCondition) {
+addSignal(symbol, 'LONG', data[idx].close);
+return;
+}
+// -------------------------
+// [전략 2] SHORT 시나리오
+// -------------------------
+// S1: 24시간 고점 대비 하락세가 아닌, 저점 대비 15% 이상 과상승 상태 확인
+let low24 = 99999999;
+for(let i=0; i<96; i++) if(data[idx-i].low < low24) low24 = data[idx-i].low;
+const overBought = (data[idx].close - low24) / low24 >= 0.15;
+// S2: 이평선 배열 (정배열 상태에서 이탈하는 타점)
+const isStrictTrend = m5 > m10 && m10 > m30 && m30 > m60;
+// S3: 캔들 구조 (3봉 이내 시가 > M5 > M10 > 종가 패턴 발생 - 꺾임 신호)
+let breakDown = false;
+for(let i=0; i<3; i++) {
+const b = data[idx-i];
+if (b.open > ma(5, idx-i) && ma(5, idx-i) > ma(10, idx-i) && ma(10, idx-i) > b.close) {
+breakDown = true; break;
+}
+}
+if (overBought && isStrictTrend && breakDown) {
+addSignal(symbol, 'SHORT', data[idx].close);
+}
+}
+// ═══════════════════════════════════
+//  UI & DATA HANDLING
+// ═══════════════════════════════════
+async function addSignal(symbol, type, entryPrice) {
+// 중복 신호 방지 (최근 2시간 내 동일 종목 동일 신호)
+const exists = sessionSignals.find(s => s.symbol === symbol && s.type === type && (Date.now() - s.timestamp < 7200000));
+if (exists) return;
+// ATH / ATL 분석 (별도 API 호출)
+let athDist = 'N/A';
+try {
+const mData = await fetch(https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=1M&limit=200).then(r => r.json());
+let max = 0, min = 99999999;
+mData.forEach(k => {
+const h = parseFloat(k[2]), l = parseFloat(k[3]);
+if (h > max) max = h;
+if (l < min) min = l;
+});
+const dist = ((entryPrice - min) / (max - min) * 100).toFixed(1);
+athDist = ${dist}% (MID);
+} catch(e) {}
+const signal = {
+symbol, type, entryPrice, athDist,
+timestamp: Date.now(),
+currentPrice: entryPrice
+};
+sessionSignals.unshift(signal);
+updateTable();
+sendTgSignal(signal);
+document.getElementById('statTotal').textContent = sessionSignals.length;
+document.getElementById('emptyState').style.display = 'none';
+}
+function updateTable() {
+const body = document.getElementById('signalBody');
+body.innerHTML = '';
+sessionSignals.forEach(s => {
+const diff = ((s.currentPrice - s.entryPrice) / s.entryPrice * 100);
+const pnl = s.type === 'LONG' ? diff : -diff;
+const pnlClass = pnl >= 0 ? 'up' : 'down';
+const timeStr = new Date(s.timestamp).toLocaleTimeString('ko-KR', { hour12: false });
+const row = document.createElement('tr');
+row.innerHTML = <td> <div class="symbol-cell"> <span class="symbol-name">${s.symbol}</span> <span class="signal-badge ${s.type.toLowerCase()}">${s.type}</span> </div> </td> <td class="mono">$${formatPrice(s.entryPrice)}</td> <td class="mono" id="price-${s.symbol}">$${formatPrice(s.currentPrice)}</td> <td class="pnl ${pnlClass} mono" id="pnl-${s.symbol}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}%</td> <td class="mono" style="color:var(--dim); font-size:11px;">${s.athDist}</td> <td class="mono" style="color:var(--dim);">${timeStr}</td>;
+body.appendChild(row);
+});
+}
+async function updatePrices() {
+if (sessionSignals.length === 0) return;
+try {
+const prices = await fetch('https://fapi.binance.com/fapi/v1/ticker/price').then(r => r.json());
+sessionSignals.forEach(s => {
+const pData = prices.find(p => p.symbol === s.symbol);
+if (pData) {
+s.currentPrice = parseFloat(pData.price);
+const pCell = document.getElementById(price-${s.symbol});
+const pnlCell = document.getElementById(pnl-${s.symbol});
+if (pCell && pnlCell) {
+pCell.textContent = '$' + formatPrice(s.currentPrice);
+const diff = ((s.currentPrice - s.entryPrice) / s.entryPrice * 100);
+const pnl = s.type === 'LONG' ? diff : -diff;
+pnlCell.textContent = (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + '%';
+pnlCell.className = pnl ${pnl >= 0 ? 'up' : 'down'} mono;
+}
+}
+});
+} catch (e) {}
+}
+function formatPrice(p) {
+return p < 1 ? p.toFixed(6) : p < 10 ? p.toFixed(4) : p.toLocaleString(undefined, { minimumFractionDigits: 2 });
+}
+function finishScan() {
+isScanning = false;
+document.getElementById('scanningBar').classList.remove('visible');
+document.getElementById('scanDot').className = 'dot green';
+document.getElementById('scanStatus').textContent = 'COMPLETE';
+document.getElementById('manualBtn').disabled = false;
+if (!scanInterval) document.getElementById('startBtn').disabled = false;
+}
+// ═══════════════════════════════════
+//  TIMER / CONTROLS
+// ═══════════════════════════════════
+function startScanner() {
+document.getElementById('startBtn').disabled = true;
+document.getElementById('stopBtn').disabled = false;
+saveTgConfig();
+log('자동 스캔 시작 (5분 간격)', 'info');
+runScan();
+nextScanIn = SCAN_INTERVAL_SEC;
+countdownInterval = setInterval(() => {
+nextScanIn--;
+document.getElementById('countdown').textContent = nextScanIn;
+if (nextScanIn <= 0) nextScanIn = SCAN_INTERVAL_SEC;
+}, 1000);
+scanInterval = setInterval(() => {
+nextScanIn = SCAN_INTERVAL_SEC;
+runScan();
+}, SCAN_INTERVAL_SEC * 1000);
+}
+function stopScanner() {
+clearInterval(scanInterval);
+clearInterval(countdownInterval);
+scanInterval = null;
+document.getElementById('startBtn').disabled = false;
+document.getElementById('stopBtn').disabled = true;
+document.getElementById('countdown').textContent = '—';
+document.getElementById('scanDot').className = 'dot';
+document.getElementById('scanStatus').textContent = 'IDLE';
+log('자동 스캔 정지', 'warn');
+}
+// ═══════════════════════════════════
+//  TELEGRAM API
+// ═══════════════════════════════════
+async function sendTgSignal(s) {
+const token = document.getElementById('tgToken').value;
+const chatId = document.getElementById('tgChatId').value;
+if (!token || !chatId) return;
+const emoji = s.type === 'LONG' ? '🟢' : '🔴';
+const text = ${emoji} *[${s.type} DETECTED]*\n\n +
+*Symbol:* #${s.symbol}\n +
+*Entry:* $${s.entryPrice}\n +
+*ATH Pos:* ${s.athDist}\n +
+*Time:* ${new Date().toISOString()};
+const url = https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(text)}&parse_mode=Markdown;
+fetch(url).catch(e => log('텔레그램 전송 실패', 'warn'));
+}
+async function testTg() {
+const token = document.getElementById('tgToken').value;
+const chatId = document.getElementById('tgChatId').value;
+if (!token || !chatId) return alert('Token과 Chat ID를 입력하세요.');
+const url = https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent('🔔 Scanner 연동 테스트 성공!')};
+try {
+const res = await fetch(url).then(r => r.json());
+if (res.ok) log('텔레그램 테스트 성공', 'success');
+else throw new Error(res.description);
+} catch (e) {
+log('텔레그램 오류: ' + e.message, 'warn');
+}
+}
+</script>
+</body>
+</html>
