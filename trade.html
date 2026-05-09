@@ -307,7 +307,7 @@
       <div class="cond-list">
         <div class="cond-item dn">S1 · 24시간 이내 현재가 +15% 이상 상승 (과열 기준)</div>
         <div class="cond-item dn">S2 · 15분봉 MA5 &gt; MA10 &gt; MA30 &gt; MA60 정배열</div>
-        <div class="cond-item dn">S3 · 최근 3봉(현재/직전/전전) 중 시가 &gt; MA5 &gt; MA10 &gt; 종가 인 음봉 존재</div>
+        <div class="cond-item dn">S3 · 시가 &gt; MA5 &gt; MA10 &gt; 종가 인 음봉 발생 (현재봉)</div>
       </div>
     </div>
   </div>
@@ -515,7 +515,7 @@ async function notifyShort(r) {
     `━━━━━━━━━━━━━━━━\n` +
     `🔥 24H 상승:  <b>+${r.rise24h.toFixed(2)}%</b>  (과열 기준 +15%)\n` +
     `📊 MA 정배열: MA5(${fmtPrice(r.ma5)}) &gt; MA10(${fmtPrice(r.ma10)}) &gt; MA30(${fmtPrice(r.ma30)}) &gt; MA60(${fmtPrice(r.ma60)})\n` +
-    `📉 음봉구조 [${r.offsetLabel}]:  시가(${fmtPrice(r.openPrice)}) &gt; MA5 &gt; MA10 &gt; 종가(${fmtPrice(r.closePrice)})\n` +
+    `📉 음봉구조:  시가(${fmtPrice(r.openPrice)}) &gt; MA5(${fmtPrice(r.ma5)}) &gt; MA10(${fmtPrice(r.ma10)}) &gt; 종가(${fmtPrice(r.closePrice)})\n` +
     `💰 진입가:  <b>${fmtPrice(r.entryPrice)} USDT</b>\n` +
     `━━━━━━━━━━━━━━━━\n` +
     `✅ S1 24H 대비 +${r.rise24h.toFixed(2)}% 상승 (과열)\n` +
@@ -641,45 +641,26 @@ function checkMA_Short_Alignment(klines) {
 }
 
 /**
- * S3: 최근 3봉(현재봉 / 직전봉 / 전전봉) 중 하나라도
- *     시가 > MA5 > MA10 > 종가 인 음봉이면 OK
+ * S3: 현재봉이 시가 > MA5 > MA10 > 종가 인 음봉
  *
- * 각 봉마다 해당 시점의 MA5/MA10을 계산하여 비교합니다.
- * - 현재봉   : offset 0 (klines 전체 기준)
- * - 직전봉   : offset 1 (마지막 1봉 제외)
- * - 전전봉   : offset 2 (마지막 2봉 제외)
+ * 조건:
+ *   - 음봉: 종가 < 시가
+ *   - 시가 > MA5
+ *   - MA5 > MA10
+ *   - MA10 > 종가
  */
-function checkBearCandle(klines) {
-  const len = klines.length;
-  if (len < 12) return { ok: false };
-
-  for (let offset = 0; offset <= 2; offset++) {
-    const slice = klines.slice(0, len - offset);
-    const sliceLen = slice.length;
-    if (sliceLen < 12) continue;
-
-    const candle = slice[sliceLen - 1];
-    const cl = slice.map(k => k.c);
-    const cma5  = ma(cl, 5);
-    const cma10 = ma(cl, 10);
-    if (!cma5 || !cma10) continue;
-
-    const isNeg      = candle.c < candle.o;
-    const structure  = candle.o > cma5 && cma5 > cma10 && cma10 > candle.c;
-
-    if (isNeg && structure) {
-      return {
-        ok:         true,
-        openPrice:  candle.o,
-        closePrice: candle.c,
-        candleMA5:  cma5,
-        candleMA10: cma10,
-        offsetLabel: offset === 0 ? '현재봉' : offset === 1 ? '직전봉' : '전전봉'
-      };
-    }
-  }
-
-  return { ok: false };
+function checkBearCandle(klines, ma5, ma10) {
+  if (!ma5 || !ma10) return { ok: false };
+  const cur = klines[klines.length - 1];
+  const isNegCandle = cur.c < cur.o;
+  const structure   = cur.o > ma5 && ma5 > ma10 && ma10 > cur.c;
+  return {
+    ok: isNegCandle && structure,
+    openPrice:  cur.o,
+    closePrice: cur.c,
+    isNegCandle,
+    structure
+  };
 }
 
 function fmtPrice(p) {
@@ -729,7 +710,6 @@ function renderShort() {
       MA60 ${fmtPrice(r.ma60)}
     </span>`;
     const candleStr = `<span style="font-size:9px;color:var(--dim)">
-      <span style="color:var(--short)">[${r.offsetLabel}]</span><br>
       시가 ${fmtPrice(r.openPrice)}<br>
       &gt;MA5 &gt;MA10<br>
       &gt;종가 ${fmtPrice(r.closePrice)}
@@ -870,8 +850,8 @@ async function runScan() {
         const s1 = await check24hRise(sym);
         // S2: MA5 > MA10 > MA30 > MA60 정배열
         const s2 = checkMA_Short_Alignment(klines);
-        // S3: 최근 3봉 중 시가 > MA5 > MA10 > 종가 음봉 존재 여부
-        const s3 = checkBearCandle(klines);
+        // S3: 시가 > MA5 > MA10 > 종가 음봉 (S2에서 구한 MA값 재사용)
+        const s3 = checkBearCandle(klines, s2.ma5, s2.ma10);
 
         if (s1.ok && s2.ok && s3.ok) {
           const isNew = !prevShort.has(sym);
@@ -885,7 +865,6 @@ async function runScan() {
             ma60: s2.ma60,
             openPrice:  s3.openPrice,
             closePrice: s3.closePrice,
-            offsetLabel: s3.offsetLabel,
             ts: isNew ? Date.now() : (shortMatched[sym]?.ts ?? Date.now()),
             isNew
           };
@@ -893,8 +872,8 @@ async function runScan() {
           renderShort();
           document.getElementById('statShort').textContent=Object.keys(shortMatched).length;
           if (isNew) {
-            log(`▼ SHORT ${sym}  진입가:${fmtPrice(entryPrice)}  24H:+${s1.pct.toFixed(2)}%  MA정배열  [${s3.offsetLabel}] 시가${fmtPrice(s3.openPrice)}>MA5>MA10>종가${fmtPrice(s3.closePrice)}(음봉)`,'dn');
-            showToast(sym,'dn',`진입 ${fmtPrice(entryPrice)}  24H+${s1.pct.toFixed(2)}%  [${s3.offsetLabel}]음봉`);
+            log(`▼ SHORT ${sym}  진입가:${fmtPrice(entryPrice)}  24H:+${s1.pct.toFixed(2)}%  MA정배열  시가${fmtPrice(s3.openPrice)}>MA5>MA10>종가${fmtPrice(s3.closePrice)}(음봉)`,'dn');
+            showToast(sym,'dn',`진입 ${fmtPrice(entryPrice)}  24H+${s1.pct.toFixed(2)}%  MA정배열+음봉`);
             playAlert('dn');
             notifyShort(result);
           }
