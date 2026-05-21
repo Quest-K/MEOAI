@@ -1,10 +1,10 @@
-html
+```html
 <!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>바이낸스 선물 전 종목 실시간 롱숏 스캐너</title>
+    <title>바이낸스 선물 듀얼 타임프레임 실시간 스캐너</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome Icons -->
@@ -14,8 +14,15 @@ html
             0%, 100% { border-color: rgba(239, 68, 68, 0.4); box-shadow: 0 0 0 0px rgba(239, 68, 68, 0); }
             50% { border-color: rgba(239, 68, 68, 1); box-shadow: 0 0 12px 2px rgba(239, 68, 68, 0.25); }
         }
-        .alert-active {
+        @keyframes pulse-emerald-border {
+            0%, 100% { border-color: rgba(16, 185, 129, 0.4); box-shadow: 0 0 0 0px rgba(16, 185, 129, 0); }
+            50% { border-color: rgba(16, 185, 129, 1); box-shadow: 0 0 12px 2px rgba(16, 185, 129, 0.25); }
+        }
+        .alert-active-red {
             animation: pulse-red-border 1.5s infinite;
+        }
+        .alert-active-emerald {
+            animation: pulse-emerald-border 1.5s infinite;
         }
         /* 스크롤바 커스텀 */
         ::-webkit-scrollbar {
@@ -44,10 +51,10 @@ html
             </div>
             <div>
                 <h1 class="text-lg font-bold tracking-tight flex items-center gap-2">
-                    Binance Futures Full-Symbol Scanner
+                    Binance Futures Hybrid Scanner
                     <span class="text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20 font-mono">LIVE</span>
                 </h1>
-                <p class="text-xs text-gray-400">바이낸스 선물 전 종목의 고래 포지션(Top Trader Long/Short Position Ratio) 및 계정 비율 실시간 전수 조사</p>
+                <p class="text-xs text-gray-400">바이낸스 선물 전 종목 실시간 감시 (30분봉 0.95 이하 숏 급변 포착 및 5분봉 1.2 이상 롱 모멘텀 추적)</p>
             </div>
         </div>
         
@@ -55,7 +62,7 @@ html
             <!-- 조회 상태 현황판 -->
             <div class="flex gap-2 text-xs">
                 <div class="bg-gray-800 border border-gray-700 px-3 py-2 rounded-xl">
-                    <span class="text-gray-400">전체 활성 심볼:</span> 
+                    <span class="text-gray-400">전체 선물 심볼:</span> 
                     <span id="totalSymbolsCount" class="font-bold text-amber-400 font-mono">0</span>개
                 </div>
                 <div class="bg-gray-800 border border-gray-700 px-3 py-2 rounded-xl">
@@ -80,17 +87,24 @@ html
             <!-- 1. 제어 옵션 카드 -->
             <div class="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-4">
                 <h2 class="text-sm font-semibold text-gray-300 flex items-center gap-2 border-b border-gray-800 pb-3">
-                    <i class="fa-solid fa-gears text-amber-400"></i> 스캐너 제어 설정
+                    <i class="fa-solid fa-gears text-amber-400"></i> 하이브리드 제어 설정
                 </h2>
 
                 <div class="grid grid-cols-2 gap-3">
                     <div>
-                        <label class="block text-[11px] text-gray-400 mb-1 font-semibold">임계점 (돌파 감지값)</label>
-                        <input type="number" id="thresholdInput" value="0.95" step="0.01" min="0.1" max="2.0" class="w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500 font-mono text-center">
+                        <label class="block text-[11px] text-red-400 mb-1 font-semibold">30m 숏 이탈값 (하향)</label>
+                        <input type="number" id="thresholdShortInput" value="0.95" step="0.01" min="0.1" max="2.0" class="w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-red-500 font-mono text-center">
                     </div>
                     <div>
+                        <label class="block text-[11px] text-emerald-400 mb-1 font-semibold">5m 롱 돌파값 (상향)</label>
+                        <input type="number" id="thresholdLongInput" value="1.20" step="0.01" min="0.1" max="3.0" class="w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-emerald-500 font-mono text-center">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
                         <label class="block text-[11px] text-gray-400 mb-1 font-semibold">자동 스캔 주기</label>
-                        <select id="intervalSelect" class="w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500">
+                        <select id="intervalSelect" class="w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500 font-medium">
                             <option value="15000">테스트용 (15초)</option>
                             <option value="180000">3분</option>
                             <option value="900000">15분</option>
@@ -98,24 +112,23 @@ html
                             <option value="3600000">1시간</option>
                         </select>
                     </div>
-                </div>
-
-                <div>
-                    <label class="block text-[11px] text-gray-400 mb-1.5 font-semibold">알림 사운드 방식</label>
-                    <div class="grid grid-cols-2 gap-2">
-                        <button id="soundTtsBtn" class="flex-1 py-2 rounded-xl bg-gray-800 text-xs border border-amber-500 text-amber-400 font-semibold transition" onclick="toggleSoundMode('tts')">
-                            <i class="fa-solid fa-volume-high mr-1"></i> 한국어 음성 (TTS)
-                        </button>
-                        <button id="soundBeepBtn" class="flex-1 py-2 rounded-xl bg-gray-800 text-xs border border-gray-700 text-gray-400 font-semibold transition" onclick="toggleSoundMode('beep')">
-                            <i class="fa-solid fa-bell mr-1"></i> 사이렌 비프음
-                        </button>
+                    <div>
+                        <label class="block text-[11px] text-gray-400 mb-1.5 font-semibold">알림 사운드 방식</label>
+                        <div class="grid grid-cols-2 gap-1.5">
+                            <button id="soundTtsBtn" class="py-2 rounded-xl bg-gray-800 text-[10px] border border-amber-500 text-amber-400 font-semibold transition" onclick="toggleSoundMode('tts')">
+                                <i class="fa-solid fa-volume-high"></i> TTS 음성
+                            </button>
+                            <button id="soundBeepBtn" class="py-2 rounded-xl bg-gray-800 text-[10px] border border-gray-700 text-gray-400 font-semibold transition" onclick="toggleSoundMode('beep')">
+                                <i class="fa-solid fa-bell"></i> 사이렌음
+                            </button>
+                        </div>
                     </div>
                 </div>
 
                 <!-- 진행 표시 바 -->
                 <div class="bg-gray-950 p-3 rounded-xl border border-gray-800/60">
                     <div class="flex justify-between text-[10px] text-gray-400 mb-1 font-mono">
-                        <span>API 큐(Queue) 연산량 관리</span>
+                        <span>API 트래픽 세션 관리 (안전 우회 기법)</span>
                         <span id="rateLimitProgress">0 / 0</span>
                     </div>
                     <div class="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">
@@ -123,9 +136,9 @@ html
                     </div>
                 </div>
 
-                <div class="space-y-2 pt-2">
+                <div class="space-y-2 pt-1">
                     <button id="startStopBtn" class="w-full py-3 bg-amber-500 hover:bg-amber-600 active:scale-[0.98] text-gray-950 font-extrabold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-amber-500/10">
-                        <i class="fa-solid fa-play"></i> 자동 30분 모니터링 엔진 시동
+                        <i class="fa-solid fa-play"></i> 하이브리드 모니터링 시작
                     </button>
                     <button onclick="scanAllSymbols()" class="w-full py-2 bg-gray-800 hover:bg-gray-700 text-xs text-gray-300 font-semibold rounded-xl border border-gray-700 transition flex items-center justify-center gap-1.5">
                         <i class="fa-solid fa-rotate"></i> 지금 즉시 전체 스캔 실행 (수동)
@@ -137,7 +150,7 @@ html
             <div class="bg-gray-900 border border-gray-800 rounded-2xl p-5 flex flex-col flex-grow min-h-[350px]">
                 <div class="flex justify-between items-center mb-3 pb-2 border-b border-gray-800">
                     <h2 class="text-sm font-semibold text-gray-300 flex items-center gap-2">
-                        <i class="fa-solid fa-triangle-exclamation text-red-400"></i> 실시간 0.95 이하 포착 기록
+                        <i class="fa-solid fa-clock-rotate-left text-blue-400"></i> 종합 실시간 포착 아카이브
                     </h2>
                     <button onclick="clearLogs()" class="text-[10px] text-gray-500 hover:text-gray-300 transition flex items-center gap-1">
                         <i class="fa-solid fa-trash"></i> 비우기
@@ -146,9 +159,9 @@ html
 
                 <!-- 실시간 감지 로그 스크롤 컨테이너 -->
                 <div class="overflow-y-auto flex-grow max-h-[450px] space-y-2.5" id="logContainer">
-                    <div id="emptyLogText" class="text-center text-xs text-gray-500 py-16">
+                    <div id="emptyLogText" class="text-center text-xs text-gray-500 py-20">
                         <i class="fa-solid fa-ban block text-2xl mb-2 text-gray-700"></i>
-                        0.95 미만 동시 관측 데이터가 아직 없습니다.<br>스캐너가 실시간 탐색 중입니다.
+                        0.95↓ 또는 1.20↑ 동시 관측 조건 데이터가 없습니다.<br>엔진이 선물 시장을 주시하고 있습니다.
                     </div>
                 </div>
             </div>
@@ -159,18 +172,18 @@ html
         <div class="xl:col-span-8 flex flex-col gap-4">
             
             <!-- 통합 경보 배너 -->
-            <div id="alertBanner" class="hidden bg-red-950/40 border border-red-500 p-4 rounded-2xl items-center justify-between gap-4 flex-wrap alert-active">
+            <div id="alertBanner" class="hidden bg-red-950/40 border border-red-500 p-4 rounded-2xl items-center justify-between gap-4 flex-wrap">
                 <div class="flex items-center gap-3">
-                    <div class="p-2.5 bg-red-500 text-gray-950 rounded-xl animate-bounce">
+                    <div id="alertIconBox" class="p-2.5 bg-red-500 text-gray-950 rounded-xl animate-bounce">
                         <i class="fa-solid fa-circle-radiation text-lg"></i>
                     </div>
                     <div>
-                        <h4 class="font-extrabold text-sm text-red-400">선물 시장 과밀 숏포지션 임계치 도달!</h4>
-                        <p class="text-xs text-red-200 mt-0.5">양대 지표가 모두 0.95 이하로 붕괴된 심볼들이 검출되었습니다.</p>
+                        <h4 id="alertTitle" class="font-extrabold text-sm text-red-400">시장 변동 감지 신호 발생!</h4>
+                        <p id="alertDescription" class="text-xs text-gray-200 mt-0.5">양대 조건 중 일치하는 포지션 이탈 데이터가 발생했습니다.</p>
                     </div>
                 </div>
                 <button onclick="dismissAlert()" class="px-3.5 py-1.5 bg-red-800 hover:bg-red-700 text-xs font-bold rounded-xl transition">
-                    경고음 끄기 / 확인
+                    경고음 소거 / 확인
                 </button>
             </div>
 
@@ -181,20 +194,22 @@ html
                 <div class="flex flex-wrap justify-between items-center gap-3 mb-4 pb-3 border-b border-gray-800">
                     <div class="flex items-center gap-3">
                         <h2 class="text-sm font-semibold text-gray-300 flex items-center gap-2">
-                            <i class="fa-solid fa-table-list text-amber-400"></i> 바이낸스 선물 전 종목 데이터보드
+                            <i class="fa-solid fa-table-list text-amber-400"></i> 선물 종합 데이터 시트
                         </h2>
                         <!-- 감지 건수 필터 표시 -->
                         <span id="hitCountBadge" class="hidden text-[10px] bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-full font-bold">
-                            임계치 이탈: 0개 포착
+                            포착: 0건
                         </span>
                     </div>
                     
                     <!-- 실시간 검색 및 필터 필드 -->
                     <div class="flex gap-2">
                         <input type="text" id="searchInput" oninput="filterTable()" placeholder="심볼 검색 (예: BTC)" class="bg-gray-950 border border-gray-800 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-amber-500 font-mono w-40">
-                        <select id="filterSelect" onchange="filterTable()" class="bg-gray-950 border border-gray-800 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-amber-500">
+                        <select id="filterSelect" onchange="filterTable()" class="bg-gray-950 border border-gray-800 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-amber-500 font-medium">
                             <option value="all">전체 목록 보기</option>
-                            <option value="under095">🚨 0.95 이하 이탈만 보기</option>
+                            <option value="under095">🚨 30m 0.95↓ 숏과밀 보기</option>
+                            <option value="over120">🟢 5m 1.20↑ 롱상승 보기</option>
+                            <option value="anyAlert">⚠️ 감지된 심볼만 전체 보기</option>
                         </select>
                     </div>
                 </div>
@@ -202,25 +217,30 @@ html
                 <!-- 대형 테이블 -->
                 <div class="overflow-y-auto max-h-[650px] pr-1">
                     <table class="w-full text-left text-xs border-collapse">
-                        <thead class="sticky top-0 bg-gray-900 z-10">
+                        <head class="sticky top-0 bg-gray-900 z-10">
                             <tr class="text-gray-400 border-b border-gray-800">
-                                <th class="pb-3 font-bold w-[25%]">심볼 이름</th>
-                                <th class="pb-3 font-bold w-[25%] cursor-pointer select-none" onclick="sortTable(1)">
-                                    상위 트레이더 고래 비율 <i class="fa-solid fa-sort text-[10px] text-gray-500"></i>
+                                <th class="pb-3 font-bold w-[18%] cursor-pointer select-none" onclick="sortTable(0)">
+                                    선물 심볼 <i class="fa-solid fa-sort text-[10px] text-gray-500"></i>
                                 </th>
-                                <th class="pb-3 font-bold w-[25%] cursor-pointer select-none" onclick="sortTable(2)">
-                                    전체 계정 롱숏 비율 <i class="fa-solid fa-sort text-[10px] text-gray-500"></i>
+                                <th class="pb-3 font-bold w-[23%] cursor-pointer select-none" onclick="sortTable(1)">
+                                    30m 고래 / 전체 비율 <i class="fa-solid fa-sort text-[10px] text-gray-500"></i>
                                 </th>
-                                <th class="pb-3 font-bold w-[25%] text-right cursor-pointer select-none" onclick="sortTable(3)">
-                                    동시 이탈 여부 (0.95↓) <i class="fa-solid fa-sort text-[10px] text-gray-500"></i>
+                                <th class="pb-3 font-bold w-[18%] cursor-pointer select-none" onclick="sortTable(2)">
+                                    30m 판정 (0.95↓) <i class="fa-solid fa-sort text-[10px] text-gray-500"></i>
+                                </th>
+                                <th class="pb-3 font-bold w-[23%] cursor-pointer select-none" onclick="sortTable(3)">
+                                    5m 고래 / 전체 비율 <i class="fa-solid fa-sort text-[10px] text-gray-500"></i>
+                                </th>
+                                <th class="pb-3 font-bold w-[18%] text-right cursor-pointer select-none" onclick="sortTable(4)">
+                                    5m 판정 (1.20↑) <i class="fa-solid fa-sort text-[10px] text-gray-500"></i>
                                 </th>
                             </tr>
                         </thead>
                         <tbody id="symbolTableBody" class="divide-y divide-gray-800/40 text-gray-300">
                             <tr>
-                                <td colspan="4" class="py-16 text-center text-gray-500">
+                                <td colspan="5" class="py-16 text-center text-gray-500">
                                     <i class="fa-solid fa-circle-notch animate-spin block text-3xl mb-3 text-amber-500"></i>
-                                    거래소로부터 최신 무기한 선물 리스트를 초기화하는 중입니다...
+                                    거래소로부터 전체 선물 목록 정보를 가져와 구조화 중입니다...
                                 </td>
                             </tr>
                         </tbody>
@@ -233,22 +253,22 @@ html
 
     <!-- 하단 푸터 -->
     <footer class="border-t border-gray-900 bg-gray-950 px-6 py-4 text-center text-xs text-gray-500 flex flex-wrap justify-between items-center gap-2">
-        <p>© 2026 PROV 롱숏 오토-트래커. All rights reserved.</p>
+        <p>© 2026 PROV 하이브리드 트래커. All rights reserved.</p>
         <p class="flex items-center gap-1.5 text-gray-400 bg-gray-900 px-3 py-1 rounded-full border border-gray-800">
-            <i class="fa-solid fa-shield-halved text-amber-400"></i> 선물 고성능 레이쇼 엔진 v2.5
+            <i class="fa-solid fa-shield-halved text-amber-400"></i> 실시간 선물 롱숏 감지 스캐너 v2.6
         </p>
     </footer>
 
     <!-- 자바스크립트 모니터링 엔진 소스 -->
     <script>
         let allSymbolsList = []; // 바이낸스 선물 전 심볼명 캐싱
-        let symbolsDataMap = {}; // 각 심볼의 수치 매핑 { BTCUSDT: { v1: 0.95, v2: 0.94 } }
+        let symbolsDataMap = {}; // 각 심볼의 수치 매핑 { BTCUSDT: { v1_30m: 1.1, v2_30m: 1.0, v1_5m: 1.25, v2_5m: 1.3, alert30m: false, alert5m: true } }
         let isMonitoring = false;
         let monitorIntervalId = null;
         let alertActive = false;
         let soundMode = 'tts'; 
         let audioContext = null;
-        let sortDirection = [true, true, true, true]; // 컬럼별 정렬 토글 상태
+        let sortDirection = [true, true, true, true, true]; // 컬럼별 정렬 토글 상태
 
         // 최초 로드 시 전체 심볼 리스트 수급
         window.onload = async function() {
@@ -268,15 +288,15 @@ html
                 
                 document.getElementById('totalSymbolsCount').innerText = allSymbolsList.length;
                 
-                // 테이블 뼈대 구축
+                // 테이블 구조 렌더링
                 buildInitialTable();
             } catch (e) {
-                console.error("선물 종목 리스트 로드 실패:", e);
+                console.error("선물 리스트 조회 오류:", e);
                 document.getElementById('symbolTableBody').innerHTML = `
                     <tr>
-                        <td colspan="4" class="py-12 text-center text-red-400 font-semibold">
+                        <td colspan="5" class="py-12 text-center text-red-400 font-semibold">
                             <i class="fa-solid fa-triangle-exclamation text-2xl block mb-2"></i>
-                            바이낸스 거래소 정보를 가져오지 못했습니다. 네트워크 상황을 확인하세요.
+                            바이낸스 거래소 정보를 로드하지 못했습니다. 네트워크를 확인해 주세요.
                         </td>
                     </tr>
                 `;
@@ -289,16 +309,21 @@ html
             tbody.innerHTML = '';
             
             allSymbolsList.forEach(symbol => {
-                symbolsDataMap[symbol] = { v1: null, v2: null, alert: false };
+                symbolsDataMap[symbol] = { 
+                    v1_30m: null, v2_30m: null, 
+                    v1_5m: null, v2_5m: null, 
+                    alert30m: false, alert5m: false 
+                };
 
                 const row = document.createElement('tr');
                 row.id = `row-${symbol}`;
-                row.className = "hover:bg-gray-800/40 border-b border-gray-800/40 transition-colors font-mono duration-250";
+                row.className = "hover:bg-gray-800/40 border-b border-gray-800/40 transition-colors font-mono duration-200";
                 row.innerHTML = `
-                    <td class="py-3.5 font-bold text-gray-200 tracking-wide">${symbol}</td>
-                    <td class="py-3.5 text-gray-500 font-semibold" id="v1-${symbol}">--</td>
-                    <td class="py-3.5 text-gray-500 font-semibold" id="v2-${symbol}">--</td>
-                    <td class="py-3.5 text-right font-bold text-gray-500" id="badge-${symbol}">대기 중</td>
+                    <td class="py-3 font-bold text-gray-200 tracking-wide">${symbol}</td>
+                    <td class="py-3 text-gray-500 font-semibold" id="ratio30m-${symbol}">-- / --</td>
+                    <td class="py-3 text-gray-500 font-medium" id="badge30m-${symbol}">대기 중</td>
+                    <td class="py-3 text-gray-500 font-semibold" id="ratio5m-${symbol}">-- / --</td>
+                    <td class="py-3 text-right text-gray-500 font-medium" id="badge5m-${symbol}">대기 중</td>
                 `;
                 tbody.appendChild(row);
             });
@@ -308,62 +333,82 @@ html
         async function scanAllSymbols() {
             if (allSymbolsList.length === 0) return;
 
-            const threshold = parseFloat(document.getElementById('thresholdInput').value);
+            const thresholdShort = parseFloat(document.getElementById('thresholdShortInput').value);
+            const thresholdLong = parseFloat(document.getElementById('thresholdLongInput').value);
             const statusDot = document.getElementById('statusDot');
             const statusText = document.getElementById('statusText');
             
             statusDot.className = "w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse";
-            statusText.innerText = "전수 조사 분석 중...";
+            statusText.innerText = "전수 듀얼 조사 중...";
 
             const total = allSymbolsList.length;
             let currentScanned = 0;
-            let hitSymbolsThisRound = [];
+            let hitShortSymbols = [];
+            let hitLongSymbols = [];
             const timestamp = getFormattedTime();
 
-            // 프로그레스 바 제어
+            // 프로그레스 바 초기화
             updateProgressBar(0, total);
 
-            // 바이낸스 API 호출 Rate limit 회피용 고성능 동시성 제어 큐(Queue) 처리
-            const CONCURRENCY_LIMIT = 8; // 초당 요청 수 제어를 위한 병렬 수 제한
+            // API 밴 피하기 위해 한 청크당 5개씩 나누어 요청 처리 진행
+            const CONCURRENCY_LIMIT = 5; 
             const chunks = chunkArray(allSymbolsList, CONCURRENCY_LIMIT);
 
             for (const chunk of chunks) {
                 if (!isMonitoring && currentScanned > 0) {
-                    // 중간 중지 시 스캔 취소 가능하도록 인터럽트 처리
-                    break;
+                    break; // 중지 인터럽트 처리
                 }
 
                 await Promise.all(chunk.map(async (symbol) => {
                     try {
-                        // 고래 포지션 비율과 일반 계정 비율 동시 획득
-                        const p1 = fetch(`https://fapi.binance.com/futures/data/topLongShortPositionRatio?symbol=${symbol}&period=30m&limit=1`).then(r => r.json());
-                        const p2 = fetch(`https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=${symbol}&period=30m&limit=1`).then(r => r.json());
+                        // 30분봉 데이터 호출
+                        const r1_30m = fetch(`https://fapi.binance.com/futures/data/topLongShortPositionRatio?symbol=${symbol}&period=30m&limit=1`).then(r => r.json());
+                        const r2_30m = fetch(`https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=${symbol}&period=30m&limit=1`).then(r => r.json());
+                        // 5분봉 데이터 호출
+                        const r1_5m = fetch(`https://fapi.binance.com/futures/data/topLongShortPositionRatio?symbol=${symbol}&period=5m&limit=1`).then(r => r.json());
+                        const r2_5m = fetch(`https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=${symbol}&period=5m&limit=1`).then(r => r.json());
 
-                        const [res1, res2] = await Promise.all([p1, p2]);
+                        const [res1_30m, res2_30m, res1_5m, res2_5m] = await Promise.all([r1_30m, r2_30m, r1_5m, r2_5m]);
 
-                        if (res1 && res1.length > 0 && res2 && res2.length > 0) {
-                            const v1 = parseFloat(res1[0].longShortRatio);
-                            const v2 = parseFloat(res2[0].longShortRatio);
-                            const alertResult = (v1 <= threshold && v2 <= threshold);
+                        if (res1_30m?.length > 0 && res2_30m?.length > 0 && res1_5m?.length > 0 && res2_5m?.length > 0) {
+                            const v1_30m = parseFloat(res1_30m[0].longShortRatio);
+                            const v2_30m = parseFloat(res2_30m[0].longShortRatio);
+                            
+                            const v1_5m = parseFloat(res1_5m[0].longShortRatio);
+                            const v2_5m = parseFloat(res2_5m[0].longShortRatio);
 
-                            // 매핑 및 UI 바인딩
-                            symbolsDataMap[symbol] = { v1, v2, alert: alertResult };
-                            updateRowValueUI(symbol, v1, v2, alertResult);
+                            // 판정 매핑
+                            const isAlert30m = (v1_30m <= thresholdShort && v2_30m <= thresholdShort);
+                            const isAlert5m = (v1_5m >= thresholdLong && v2_5m >= thresholdLong);
 
-                            if (alertResult) {
-                                hitSymbolsThisRound.push({ symbol, v1, v2 });
+                            symbolsDataMap[symbol] = {
+                                v1_30m, v2_30m,
+                                v1_5m, v2_5m,
+                                alert30m: isAlert30m,
+                                alert5m: isAlert5m
+                            };
+
+                            // 테이블 실시간 UI 출력 갱신
+                            updateRowValueUI(symbol, v1_30m, v2_30m, v1_5m, v2_5m, isAlert30m, isAlert5m);
+
+                            // 매칭 리스트 누적
+                            if (isAlert30m) {
+                                hitShortSymbols.push({ symbol, v1: v1_30m, v2: v2_30m });
+                            }
+                            if (isAlert5m) {
+                                hitLongSymbols.push({ symbol, v1: v1_5m, v2: v2_5m });
                             }
                         }
                     } catch (err) {
-                        // 개별 에러 무시하고 지속
+                        // 통신 누락 예외 우회
                     }
                 }));
 
                 currentScanned += chunk.length;
                 updateProgressBar(currentScanned, total);
                 
-                // 바이낸스 API 속도 제어를 위한 짧은 지연 간격 유지
-                await new Promise(res => setTimeout(res, 150));
+                // 안정적인 호출 간격 유지를 위한 250ms 대기 타임
+                await new Promise(res => setTimeout(res, 250));
             }
 
             // 스캔 마감 연산 처리
@@ -377,57 +422,84 @@ html
             
             document.getElementById('lastUpdatedText').innerText = `최근 스캔: ${timestamp}`;
 
-            // 이번 스캔 회차에서 0.95 이하가 도출된 건수들 판별하여 로그 보관 및 경고 발송
-            if (hitSymbolsThisRound.length > 0) {
-                hitSymbolsThisRound.forEach(item => {
-                    addLog(timestamp, item.symbol, item.v1, item.v2);
+            // 조건 이탈 건수 발생 시 실시간 통합 로그 저장 및 오디오 전파
+            if (hitShortSymbols.length > 0 || hitLongSymbols.length > 0) {
+                // 30m 숏 포착 로그 저장
+                hitShortSymbols.forEach(item => {
+                    addLog(timestamp, item.symbol, "30m 0.95↓", item.v1, item.v2, "🚨 숏과밀", "bg-red-950/20 text-red-400 border-red-500/30");
                 });
-                triggerGlobalAlert(hitSymbolsThisRound);
+                // 5m 롱 포착 로그 저장
+                hitLongSymbols.forEach(item => {
+                    addLog(timestamp, item.symbol, "5m 1.20↑", item.v1, item.v2, "🟢 롱급상승", "bg-emerald-950/20 text-emerald-400 border-emerald-500/30");
+                });
+
+                // 통합 오디오 전파 및 배너 알림
+                triggerGlobalAlert(hitShortSymbols, hitLongSymbols);
             }
 
             // 실시간 체크 수량 표기 필터 업데이트
             updateHitCountBadge();
         }
 
-        // 테이블 행 내부 수치 렌더링
-        function updateRowValueUI(symbol, v1, v2, isAlert) {
-            const v1El = document.getElementById(`v1-${symbol}`);
-            const v2El = document.getElementById(`v2-${symbol}`);
-            const badgeEl = document.getElementById(`badge-${symbol}`);
+        // 테이블 행 내부 수치 렌더링 (30분봉과 5분봉 컬럼 분할 및 위치 수정 적용)
+        function updateRowValueUI(symbol, v1_30, v2_30, v1_5, v2_5, isAlert30, isAlert5) {
+            const ratio30mEl = document.getElementById(`ratio30m-${symbol}`);
+            const ratio5mEl = document.getElementById(`ratio5m-${symbol}`);
+            const badge30mEl = document.getElementById(`badge30m-${symbol}`);
+            const badge5mEl = document.getElementById(`badge5m-${symbol}`);
             const rowEl = document.getElementById(`row-${symbol}`);
 
-            if (!v1El || !v2El || !badgeEl) return;
+            if (!ratio30mEl || !ratio5mEl || !badge30mEl || !badge5mEl || !rowEl) return;
 
-            v1El.innerText = v1.toFixed(3);
-            v2El.innerText = v2.toFixed(3);
+            // 2열: 30분봉 비율 표시
+            ratio30mEl.innerText = `${v1_30.toFixed(3)} / ${v2_30.toFixed(3)}`;
+            ratio30mEl.className = `py-3 font-semibold ${v1_30 <= 0.95 ? 'text-red-500 font-bold' : v1_30 < 1.0 ? 'text-yellow-500' : 'text-emerald-400'}`;
 
-            // 색상 등급 지정
-            v1El.className = `py-3.5 font-semibold ${v1 <= 0.95 ? 'text-red-500 font-bold' : v1 < 1.0 ? 'text-yellow-500' : 'text-emerald-400'}`;
-            v2El.className = `py-3.5 font-semibold ${v2 <= 0.95 ? 'text-red-500 font-bold' : v2 < 1.0 ? 'text-yellow-500' : 'text-emerald-400'}`;
-
-            if (isAlert) {
-                badgeEl.innerHTML = `<span class="bg-red-500/20 text-red-500 border border-red-500/30 px-2 py-1 rounded-lg text-[10px] font-extrabold animate-pulse">🚨 감지 (0.95↓)</span>`;
-                rowEl.className = "bg-red-950/10 hover:bg-red-950/20 border-b border-red-900/40 transition-colors font-mono duration-250";
+            // 3열: 30분 판정 열 그리기
+            if (isAlert30) {
+                badge30mEl.innerHTML = `<span class="bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded-lg text-[10px] font-extrabold">🚨 숏과밀 (0.95↓)</span>`;
             } else {
-                badgeEl.innerHTML = `<span class="bg-gray-800 text-gray-400 px-2 py-1 rounded-lg text-[10px]">정상</span>`;
-                rowEl.className = "hover:bg-gray-800/40 border-b border-gray-800/40 transition-colors font-mono duration-250";
+                badge30mEl.innerHTML = `<span class="bg-gray-800 text-gray-500 px-2 py-0.5 rounded-lg text-[10px]">정상</span>`;
+            }
+
+            // 4열: 5분봉 비율 표시
+            ratio5mEl.innerText = `${v1_5.toFixed(3)} / ${v2_5.toFixed(3)}`;
+            ratio5mEl.className = `py-3 font-semibold ${v1_5 >= 1.20 ? 'text-emerald-400 font-extrabold' : v1_5 > 1.0 ? 'text-green-500' : 'text-red-500'}`;
+
+            // 5열: 5분 판정 열 그리기
+            if (isAlert5) {
+                badge5mEl.innerHTML = `<span class="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-lg text-[10px] font-extrabold">🟢 롱상승 (1.20↑)</span>`;
+            } else {
+                badge5mEl.innerHTML = `<span class="bg-gray-800 text-gray-500 px-2 py-0.5 rounded-lg text-[10px]">정상</span>`;
+            }
+
+            // 감지 상황에 따른 배경색 클래스 매핑
+            if (isAlert30 && isAlert5) {
+                rowEl.className = "bg-purple-950/20 hover:bg-purple-950/30 border-b border-purple-900/40 transition-colors font-mono duration-200";
+            } else if (isAlert30) {
+                rowEl.className = "bg-red-950/10 hover:bg-red-950/20 border-b border-red-900/30 transition-colors font-mono duration-200";
+            } else if (isAlert5) {
+                rowEl.className = "bg-emerald-950/10 hover:bg-emerald-950/20 border-b border-emerald-900/30 transition-colors font-mono duration-200";
+            } else {
+                rowEl.className = "hover:bg-gray-800/40 border-b border-gray-800/40 transition-colors font-mono duration-200";
             }
         }
 
         // 전체 이탈한 종목 필터링 뱃지 숫자 갱신
         function updateHitCountBadge() {
             const badge = document.getElementById('hitCountBadge');
-            const hitCount = Object.values(symbolsDataMap).filter(item => item.alert).length;
+            const hitShort = Object.values(symbolsDataMap).filter(item => item.alert30m).length;
+            const hitLong = Object.values(symbolsDataMap).filter(item => item.alert5m).length;
             
-            if (hitCount > 0) {
+            if (hitShort > 0 || hitLong > 0) {
                 badge.classList.remove('hidden');
-                badge.innerText = `임계치 이탈: ${hitCount}개 포착`;
+                badge.innerText = `30m 숏 감지: ${hitShort}개 / 5m 롱 감지: ${hitLong}개`;
             } else {
                 badge.classList.add('hidden');
             }
         }
 
-        // 배열 쪼개기 헬퍼 (병렬 처리용)
+        // 배열 분산 헬퍼 (병렬 제한 처리)
         function chunkArray(array, size) {
             const chunked = [];
             for (let i = 0; i < array.length; i += size) {
@@ -443,30 +515,56 @@ html
             document.getElementById('progressBar').style.width = `${(scanned / total) * 100}%`;
         }
 
-        // 3. 실시간 통합 경고 작동 컨트롤러
-        function triggerGlobalAlert(hitList) {
+        // 3. 실시간 통합 하이브리드 경고 컨트롤러
+        function triggerGlobalAlert(hitShortList, hitLongList) {
             alertActive = true;
-            document.body.classList.add('alert-active');
-
+            
             const banner = document.getElementById('alertBanner');
+            const iconBox = document.getElementById('alertIconBox');
+            const title = document.getElementById('alertTitle');
+            const desc = document.getElementById('alertDescription');
+
             banner.classList.remove('hidden');
             banner.classList.add('flex');
 
-            const names = hitList.map(item => item.symbol).slice(0, 5).join(', ') + (hitList.length > 5 ? ` 외 ${hitList.length - 5}개` : '');
+            let messageString = "";
 
-            // 브라우저 PUSH 알림
+            if (hitShortList.length > 0 && hitLongList.length > 0) {
+                // 혼조세 포지션 급변 상황
+                document.body.className = "bg-gray-950 text-gray-100 min-h-screen font-sans flex flex-col justify-between alert-active-red";
+                iconBox.className = "p-2.5 bg-yellow-500 text-gray-950 rounded-xl animate-bounce";
+                title.innerText = "🚨 시장 양방향 급변 감지 포착!";
+                desc.innerText = `숏과밀: ${hitShortList.map(h => h.symbol).slice(0, 3).join(', ')} / 롱상승: ${hitLongList.map(h => h.symbol).slice(0, 3).join(', ')}`;
+                messageString = `경고! 30분 차트 숏과밀 ${hitShortList.length}건과, 5분 차트 롱 상승 ${hitLongList.length}건이 동시에 검출되었습니다. 시장 흐름을 확인해 주시기 바랍니다.`;
+            } else if (hitShortList.length > 0) {
+                // 숏만 있을 때
+                document.body.className = "bg-gray-950 text-gray-100 min-h-screen font-sans flex flex-col justify-between alert-active-red";
+                iconBox.className = "p-2.5 bg-red-500 text-gray-950 rounded-xl animate-bounce";
+                title.innerText = "🚨 30분봉 숏 과밀 임계치 하향 돌파!";
+                desc.innerText = `감지된 숏 심볼: ${hitShortList.map(h => h.symbol).slice(0, 5).join(', ')}`;
+                messageString = `경고! 30분 차트 기준, 롱숏 비율 0.95 이하 하향 돌파 자산이 ${hitShortList.length}개 발견되었습니다.`;
+            } else if (hitLongList.length > 0) {
+                // 롱만 있을 때
+                document.body.className = "bg-gray-950 text-gray-100 min-h-screen font-sans flex flex-col justify-between alert-active-emerald";
+                iconBox.className = "p-2.5 bg-emerald-500 text-gray-950 rounded-xl animate-bounce";
+                title.innerText = "🟢 5분봉 롱 급상승 시그널 도달!";
+                desc.innerText = `감지된 롱 상승 심볼: ${hitLongList.map(h => h.symbol).slice(0, 5).join(', ')}`;
+                messageString = `알림! 5분 차트 기준, 롱숏 비율 1.20 이상 돌파 상승 자산이 ${hitLongList.length}개 검출되었습니다.`;
+            }
+
+            // 브라우저 PUSH 알림 연동
             if (Notification.permission === 'granted') {
-                new Notification("🚨 숏 과밀 임계치 이탈 종목 발생!", {
-                    body: `감지 자산: ${names}`
+                new Notification("📈 하이브리드 선물 롱숏 감지 알림", {
+                    body: desc.innerText
                 });
             }
 
             // 오디오 사운드 재생
             if (soundMode === 'tts') {
-                playTtsMessage(`경보! 선물 시장의 ${hitList.length}개 자산이 임계 수치 영쩜구오 이하로 하락 도달했습니다.`);
+                playTtsMessage(messageString);
             } else {
                 playBeepSound();
-                setTimeout(playBeepSound, 200);
+                setTimeout(playBeepSound, 250);
             }
         }
 
@@ -477,15 +575,15 @@ html
             const beepBtn = document.getElementById('soundBeepBtn');
             
             if (mode === 'tts') {
-                ttsBtn.className = "flex-1 py-2 rounded-xl bg-gray-800 text-xs border border-amber-500 text-amber-400 font-semibold transition";
-                beepBtn.className = "flex-1 py-2 rounded-xl bg-gray-800 text-xs border border-gray-700 text-gray-400 font-semibold transition";
+                ttsBtn.className = "flex-1 py-2 rounded-xl bg-gray-800 text-[10px] border border-amber-500 text-amber-400 font-semibold transition";
+                beepBtn.className = "flex-1 py-2 rounded-xl bg-gray-800 text-[10px] border border-gray-700 text-gray-400 font-semibold transition";
             } else {
-                beepBtn.className = "flex-1 py-2 rounded-xl bg-gray-800 text-xs border border-amber-500 text-amber-400 font-semibold transition";
-                ttsBtn.className = "flex-1 py-2 rounded-xl bg-gray-800 text-xs border border-gray-700 text-gray-400 font-semibold transition";
+                beepBtn.className = "flex-1 py-2 rounded-xl bg-gray-800 text-[10px] border border-amber-500 text-amber-400 font-semibold transition";
+                ttsBtn.className = "flex-1 py-2 rounded-xl bg-gray-800 text-[10px] border border-gray-700 text-gray-400 font-semibold transition";
             }
         }
 
-        // TTS 연산 함수
+        // TTS 스피치 함수
         function playTtsMessage(text) {
             if ('speechSynthesis' in window) {
                 window.speechSynthesis.cancel();
@@ -506,8 +604,8 @@ html
                 const gain = audioContext.createGain();
                 
                 osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(950, audioContext.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(400, audioContext.currentTime + 0.4);
+                osc.frequency.setValueAtTime(880, audioContext.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(440, audioContext.currentTime + 0.4);
                 
                 gain.gain.setValueAtTime(0.2, audioContext.currentTime);
                 gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
@@ -525,7 +623,7 @@ html
         // 경고 소거
         function dismissAlert() {
             alertActive = false;
-            document.body.classList.remove('alert-active');
+            document.body.className = "bg-gray-950 text-gray-100 min-h-screen font-sans flex flex-col justify-between";
             document.getElementById('alertBanner').classList.add('hidden');
             
             if ('speechSynthesis' in window) {
@@ -541,7 +639,7 @@ html
 
             if (!isMonitoring) {
                 isMonitoring = true;
-                btn.innerHTML = `<i class="fa-solid fa-stop"></i> 모니터링 엔진 중지`;
+                btn.innerHTML = `<i class="fa-solid fa-stop"></i> 모니터링 중지`;
                 btn.className = "w-full py-3 bg-red-500 hover:bg-red-600 active:scale-[0.98] text-gray-950 font-extrabold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-red-500/15";
                 
                 statusDot.className = "w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse";
@@ -553,7 +651,7 @@ html
                 monitorIntervalId = setInterval(scanAllSymbols, intervalTime);
             } else {
                 isMonitoring = false;
-                btn.innerHTML = `<i class="fa-solid fa-play"></i> 자동 30분 모니터링 엔진 시동`;
+                btn.innerHTML = `<i class="fa-solid fa-play"></i> 하이브리드 모니터링 시작`;
                 btn.className = "w-full py-3 bg-amber-500 hover:bg-amber-600 active:scale-[0.98] text-gray-950 font-extrabold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-amber-500/15";
 
                 statusDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-500";
@@ -566,28 +664,33 @@ html
         });
 
         // 4. 관측 로그 누적 기록 보드에 요소 추가
-        function addLog(time, symbol, v1, v2) {
+        function addLog(time, symbol, timeframe, v1, v2, typeText, cardStyle) {
             const container = document.getElementById('logContainer');
             const emptyText = document.getElementById('emptyLogText');
             if (emptyText) emptyText.remove();
 
             const card = document.createElement('div');
-            card.className = "bg-red-950/20 border border-red-500/30 rounded-xl p-3 flex flex-col justify-between gap-1 transition hover:bg-red-950/30";
+            card.className = `border rounded-xl p-3 flex flex-col justify-between gap-1 transition ${cardStyle}`;
             card.innerHTML = `
                 <div class="flex justify-between items-center text-[11px]">
-                    <span class="font-bold text-gray-200 font-mono tracking-wider text-xs flex items-center gap-1">
-                        <span class="inline-block w-2 h-2 rounded-full bg-red-500"></span> ${symbol}
+                    <span class="font-bold text-gray-200 font-mono tracking-wider text-xs flex items-center gap-1.5">
+                        <span class="px-1.5 py-0.5 bg-gray-950 border border-gray-800 rounded text-[9px] text-gray-400">${timeframe}</span>
+                        ${symbol}
                     </span>
                     <span class="text-gray-500 font-mono">${time}</span>
                 </div>
-                <div class="grid grid-cols-2 gap-2 mt-1.5 text-center text-[10px] font-mono">
-                    <div class="bg-gray-950/80 px-2 py-1.5 rounded-lg border border-red-950/40">
+                <div class="grid grid-cols-3 gap-2 mt-2 text-center text-[10px] font-mono">
+                    <div class="bg-gray-950/80 px-2 py-1 rounded-lg border border-gray-800/20">
                         <span class="text-gray-500 block">고래 비율</span>
-                        <span class="text-red-400 font-bold text-xs">${v1.toFixed(3)}</span>
+                        <span class="font-bold text-xs">${v1.toFixed(3)}</span>
                     </div>
-                    <div class="bg-gray-950/80 px-2 py-1.5 rounded-lg border border-red-950/40">
+                    <div class="bg-gray-950/80 px-2 py-1 rounded-lg border border-gray-800/20">
                         <span class="text-gray-500 block">전체 비율</span>
-                        <span class="text-red-400 font-bold text-xs">${v2.toFixed(3)}</span>
+                        <span class="font-bold text-xs">${v2.toFixed(3)}</span>
+                    </div>
+                    <div class="bg-gray-950/80 px-2 py-1 rounded-lg border border-gray-800/20 flex flex-col justify-center items-center">
+                        <span class="text-gray-500 block">판정 결과</span>
+                        <span class="font-extrabold text-[9px]">${typeText}</span>
                     </div>
                 </div>
             `;
@@ -598,9 +701,9 @@ html
         function clearLogs() {
             const container = document.getElementById('logContainer');
             container.innerHTML = `
-                <div id="emptyLogText" class="text-center text-xs text-gray-500 py-16">
+                <div id="emptyLogText" class="text-center text-xs text-gray-500 py-20">
                     <i class="fa-solid fa-ban block text-2xl mb-2 text-gray-700"></i>
-                    0.95 미만 동시 관측 데이터가 아직 없습니다.<br>스캐너가 실시간 탐색 중입니다.
+                    0.95↓ 또는 1.20↑ 동시 관측 조건 데이터가 없습니다.<br>엔진이 선물 시장을 주시하고 있습니다.
                 </div>
             `;
             dismissAlert();
@@ -617,7 +720,17 @@ html
 
                 const data = symbolsDataMap[symbol];
                 const matchesSearch = symbol.includes(searchVal);
-                const matchesFilter = (filterVal === 'all') || (filterVal === 'under095' && data.alert);
+                
+                let matchesFilter = false;
+                if (filterVal === 'all') {
+                    matchesFilter = true;
+                } else if (filterVal === 'under095') {
+                    matchesFilter = data.alert30m;
+                } else if (filterVal === 'over120') {
+                    matchesFilter = data.alert5m;
+                } else if (filterVal === 'anyAlert') {
+                    matchesFilter = (data.alert30m || data.alert5m);
+                }
 
                 if (matchesSearch && matchesFilter) {
                     row.classList.remove('hidden');
@@ -627,7 +740,7 @@ html
             });
         }
 
-        // 헤더 클릭 시 테이블 열 정렬
+        // 헤더 클릭 시 테이블 열 정렬 (인덱스 변경 반영)
         function sortTable(columnIndex) {
             const table = document.querySelector("table tbody");
             const rows = Array.from(table.rows);
@@ -642,15 +755,18 @@ html
 
                 let valA, valB;
 
-                if (columnIndex === 1) { // 고래 비율 정렬
-                    valA = dataA.v1 !== null ? dataA.v1 : 9999;
-                    valB = dataB.v1 !== null ? dataB.v1 : 9999;
-                } else if (columnIndex === 2) { // 전체 비율 정렬
-                    valA = dataA.v2 !== null ? dataA.v2 : 9999;
-                    valB = dataB.v2 !== null ? dataB.v2 : 9999;
-                } else if (columnIndex === 3) { // 0.95 이탈 여부 정렬
-                    valA = dataA.alert ? 1 : 0;
-                    valB = dataB.alert ? 1 : 0;
+                if (columnIndex === 1) { // 30m 롱숏 고래비율 기준 정렬
+                    valA = dataA.v1_30m !== null ? dataA.v1_30m : 9999;
+                    valB = dataB.v1_30m !== null ? dataB.v1_30m : 9999;
+                } else if (columnIndex === 2) { // 30m 이탈 여부 정렬
+                    valA = dataA.alert30m ? 1 : 0;
+                    valB = dataB.alert30m ? 1 : 0;
+                } else if (columnIndex === 3) { // 5m 롱숏 고래비율 기준 정렬
+                    valA = dataA.v1_5m !== null ? dataA.v1_5m : -9999;
+                    valB = dataB.v1_5m !== null ? dataB.v1_5m : -9999;
+                } else if (columnIndex === 4) { // 5m 이탈 여부 정렬
+                    valA = dataA.alert5m ? 1 : 0;
+                    valB = dataB.alert5m ? 1 : 0;
                 } else { // 심볼 이름 기준 정렬
                     return isAscending ? symbolA.localeCompare(symbolB) : symbolB.localeCompare(symbolA);
                 }
@@ -671,7 +787,7 @@ html
             return now.toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
         }
 
-        // 푸시 권한 확인 요청
+        // 푸시 알림 권한 체크 및 획득 요청
         if ('Notification' in window && Notification.permission === 'default') {
             Notification.requestPermission();
         }
