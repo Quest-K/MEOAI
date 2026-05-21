@@ -33,7 +33,6 @@
     overflow-x: hidden;
   }
 
-  /* ── grid noise overlay ── */
   body::before {
     content: '';
     position: fixed; inset: 0;
@@ -44,16 +43,12 @@
     pointer-events: none; z-index: 0;
   }
 
-  /* ── scanline ── */
   body::after {
     content: '';
     position: fixed; inset: 0;
     background: repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      rgba(0,0,0,.08) 2px,
-      rgba(0,0,0,.08) 4px
+      0deg, transparent, transparent 2px,
+      rgba(0,0,0,.08) 2px, rgba(0,0,0,.08) 4px
     );
     pointer-events: none; z-index: 0;
   }
@@ -105,12 +100,13 @@
   .btn-ctrl:hover { border-color: var(--accent); color: var(--accent); }
   .btn-ctrl.active { background: rgba(232,98,42,.15); border-color: var(--accent); color: var(--accent); }
 
-  /* ── SEARCH ── */
-  .search-box {
-    display: flex; gap: 8px; margin-bottom: 10px;
-  }
+  /* ── SEARCH BOX ── */
+  .search-wrapper { position: relative; margin-bottom: 10px; }
+  .search-box { display: flex; gap: 8px; }
+
+  .search-input-wrap { flex: 1; position: relative; }
   .search-input {
-    flex: 1; padding: 12px 16px;
+    width: 100%; padding: 12px 40px 12px 16px;
     background: var(--bg1); border: 1px solid var(--border2);
     border-radius: 8px; color: var(--text);
     font-family: var(--mono); font-size: 13px; letter-spacing: .06em;
@@ -119,6 +115,74 @@
   .search-input::placeholder { color: var(--muted); }
   .search-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(232,98,42,.12); }
 
+  .search-clear {
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    color: var(--muted); cursor: pointer; font-size: 16px;
+    display: none; line-height: 1; padding: 4px; border-radius: 50%;
+    transition: color .15s;
+  }
+  .search-clear:hover { color: var(--text); }
+
+  /* ── AUTOCOMPLETE DROPDOWN ── */
+  .autocomplete-drop {
+    position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+    background: var(--bg1); border: 1px solid var(--border2);
+    border-radius: 10px; overflow: hidden;
+    box-shadow: 0 12px 40px rgba(0,0,0,.6);
+    z-index: 200; display: none; max-height: 320px;
+  }
+  .autocomplete-drop.open { display: block; animation: dropIn .15s ease; }
+  @keyframes dropIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:none} }
+
+  .drop-header {
+    padding: 8px 14px; font-size: 9px; letter-spacing: .18em;
+    color: var(--muted); text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .drop-count { font-size: 9px; color: var(--accent); }
+
+  .drop-list { overflow-y: auto; max-height: 270px; }
+  .drop-list::-webkit-scrollbar { width: 4px; }
+  .drop-list::-webkit-scrollbar-track { background: transparent; }
+  .drop-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .drop-item {
+    display: flex; align-items: center; padding: 9px 14px;
+    cursor: pointer; transition: background .1s; gap: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .drop-item:last-child { border-bottom: none; }
+  .drop-item:hover, .drop-item.selected { background: rgba(232,98,42,.08); }
+
+  .drop-sym {
+    font-size: 12px; font-weight: 700; letter-spacing: .04em;
+    color: var(--text); flex: 0 0 130px;
+  }
+  .drop-sym mark {
+    background: none; color: var(--accent); font-weight: 800;
+  }
+  .drop-price { font-size: 11px; color: var(--muted); flex: 1; }
+  .drop-change {
+    font-size: 11px; font-weight: 700;
+    flex: 0 0 60px; text-align: right;
+  }
+  .drop-change.up { color: var(--green); }
+  .drop-change.down { color: var(--red); }
+  .drop-vol { font-size: 9px; color: #333; flex: 0 0 70px; text-align: right; }
+
+  .drop-empty {
+    padding: 20px 14px; text-align: center;
+    font-size: 11px; color: var(--muted);
+  }
+
+  .drop-loading {
+    padding: 14px; text-align: center;
+    font-size: 11px; color: var(--muted);
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+
+  /* ── SEARCH BUTTON ── */
   .btn-search {
     padding: 12px 24px; border: none; border-radius: 8px;
     background: linear-gradient(135deg, #e8622a, #d63a1a);
@@ -126,29 +190,58 @@
     font-weight: 700; letter-spacing: .07em; cursor: pointer;
     white-space: nowrap; transition: opacity .2s;
     box-shadow: 0 4px 18px rgba(232,98,42,.35);
+    flex-shrink: 0;
   }
   .btn-search:hover { opacity: .88; }
   .btn-search:disabled { opacity: .4; cursor: not-allowed; }
 
-  .quick-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  /* ── SYMBOL STATUS BAR ── */
+  .symbol-status-bar {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 9px; color: var(--muted); margin-bottom: 8px;
+    letter-spacing: .08em;
+  }
+  .symbol-status-dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--muted); flex-shrink: 0;
+  }
+  .symbol-status-dot.live { background: var(--green); animation: pulse 2s infinite; }
+
+  /* ── QUICK CHIPS (scrollable, with live price) ── */
+  .chips-section { margin-bottom: 0; }
+  .chips-label { font-size: 9px; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; margin-bottom: 6px; }
+  .quick-chips {
+    display: flex; gap: 6px;
+    overflow-x: auto; padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+  .quick-chips::-webkit-scrollbar { display: none; }
+
   .chip {
-    padding: 4px 11px; border-radius: 4px; border: 1px solid var(--border);
+    flex-shrink: 0;
+    padding: 5px 10px; border-radius: 5px; border: 1px solid var(--border);
     background: var(--bg1); color: var(--muted); font-size: 10px;
-    letter-spacing: .08em; cursor: pointer; font-family: var(--mono);
-    transition: all .15s;
+    letter-spacing: .06em; cursor: pointer; font-family: var(--mono);
+    transition: all .15s; display: flex; flex-direction: column;
+    align-items: center; gap: 2px; min-width: 56px;
   }
   .chip:hover { border-color: var(--accent); color: var(--accent); }
   .chip.active { border-color: var(--accent); background: rgba(232,98,42,.12); color: var(--accent); }
+
+  .chip-sym { font-weight: 700; font-size: 10px; }
+  .chip-chg { font-size: 9px; font-weight: 600; }
+  .chip-chg.up { color: var(--green); }
+  .chip-chg.down { color: var(--red); }
+  .chip-chg.neutral { color: var(--muted); }
+  .chip.active .chip-chg.up { color: #7fffd4; }
+  .chip.active .chip-chg.down { color: #ffaaaa; }
 
   /* ── EMPTY STATE ── */
   .empty {
     text-align: center; padding: 100px 20px;
     animation: fadeIn .5s ease;
   }
-  .empty-icon {
-    font-size: 52px; margin-bottom: 20px; opacity: .2;
-    font-family: var(--sans);
-  }
+  .empty-icon { font-size: 52px; margin-bottom: 20px; opacity: .2; font-family: var(--sans); }
   .empty-title { font-size: 13px; color: var(--muted); letter-spacing: .1em; line-height: 1.8; }
 
   /* ── ANIMATIONS ── */
@@ -165,12 +258,9 @@
   .sym-badge {
     display: inline-block; padding: 2px 8px; border-radius: 3px;
     background: rgba(232,98,42,.15); color: var(--accent);
-    font-size: 10px; letter-spacing: .1em; margin-left: 8px;
-    vertical-align: middle;
+    font-size: 10px; letter-spacing: .1em; margin-left: 8px; vertical-align: middle;
   }
-  .sym-price {
-    font-size: 24px; font-weight: 700; color: #eeeef8; letter-spacing: .02em;
-  }
+  .sym-price { font-size: 24px; font-weight: 700; color: #eeeef8; letter-spacing: .02em; }
   .sym-change { font-size: 14px; font-weight: 700; margin-left: 8px; }
   .sym-change.up { color: var(--green); }
   .sym-change.down { color: var(--red); }
@@ -199,29 +289,21 @@
   .signal-sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
 
   /* ── STAGE TIMELINE ── */
-  .timeline {
-    display: flex; align-items: center; margin-bottom: 22px; gap: 0;
-  }
+  .timeline { display: flex; align-items: center; margin-bottom: 22px; gap: 0; }
   .tl-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; }
   .tl-node {
     width: 30px; height: 30px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
     font-size: 12px; font-weight: 700; border: 2px solid var(--border2);
-    background: var(--bg2); color: var(--muted);
-    transition: all .3s;
+    background: var(--bg2); color: var(--muted); transition: all .3s;
   }
-  .tl-node.active {
-    color: var(--bg); font-weight: 800;
-  }
+  .tl-node.active { color: var(--bg); font-weight: 800; }
   .tl-label {
     font-size: 9px; letter-spacing: .06em; text-transform: uppercase;
     color: var(--muted); transition: color .3s;
   }
   .tl-label.active { font-weight: 700; }
-  .tl-line {
-    flex: 0 0 20px; height: 1px; background: var(--border);
-    margin-bottom: 18px;
-  }
+  .tl-line { flex: 0 0 20px; height: 1px; background: var(--border); margin-bottom: 18px; }
 
   /* ── CARD GRID ── */
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
@@ -229,11 +311,9 @@
 
   .card {
     background: var(--bg1); border: 1px solid var(--border);
-    border-radius: 12px; padding: 20px;
-    transition: border-color .2s;
+    border-radius: 12px; padding: 20px; transition: border-color .2s;
   }
   .card:hover { border-color: var(--border2); }
-
   .card-title {
     font-size: 9px; color: var(--accent); letter-spacing: .22em;
     text-transform: uppercase; font-weight: 700; margin-bottom: 18px;
@@ -241,58 +321,38 @@
 
   /* ── GAUGE ── */
   .gauge-row { margin-bottom: 14px; }
-  .gauge-header {
-    display: flex; justify-content: space-between; margin-bottom: 5px;
-    align-items: center;
-  }
+  .gauge-header { display: flex; justify-content: space-between; margin-bottom: 5px; align-items: center; }
   .gauge-label { font-size: 10px; color: var(--muted); letter-spacing: .07em; text-transform: uppercase; }
   .gauge-value { font-size: 13px; font-weight: 700; font-family: var(--mono); }
-  .gauge-track {
-    height: 5px; background: #0d0d1c; border-radius: 3px; overflow: hidden;
-  }
-  .gauge-fill {
-    height: 100%; border-radius: 3px;
-    transition: width .7s cubic-bezier(.4,0,.2,1);
-  }
+  .gauge-track { height: 5px; background: #0d0d1c; border-radius: 3px; overflow: hidden; }
+  .gauge-fill { height: 100%; border-radius: 3px; transition: width .7s cubic-bezier(.4,0,.2,1); }
   .gauge-sub { font-size: 9px; color: #333; margin-top: 3px; }
 
   /* ── BS VOL ── */
-  .bsvol-header {
-    display: flex; justify-content: space-between; margin-bottom: 6px;
-  }
+  .bsvol-header { display: flex; justify-content: space-between; margin-bottom: 6px; }
   .bsvol-track {
     height: 8px; background: #0d0d1c; border-radius: 4px; overflow: hidden;
     display: flex; margin-bottom: 5px;
   }
   .bsvol-buy { background: linear-gradient(90deg, #00d97e, #00b86a); transition: width .7s cubic-bezier(.4,0,.2,1); }
   .bsvol-sell { background: linear-gradient(90deg, #ff5577, #ff3355); transition: width .7s cubic-bezier(.4,0,.2,1); }
-  .bsvol-foot {
-    display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 14px;
-  }
+  .bsvol-foot { display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 14px; }
   .dominant-pill {
-    font-size: 10px; font-weight: 700; padding: 1px 8px; border-radius: 3px;
-    letter-spacing: .06em;
+    font-size: 10px; font-weight: 700; padding: 1px 8px; border-radius: 3px; letter-spacing: .06em;
   }
 
-  /* ── DIVIDER ── */
   .divider { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 
-  /* ── META ROW ── */
-  .meta-row {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 6px 0;
-  }
+  .meta-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; }
   .meta-key { font-size: 10px; color: var(--muted); letter-spacing: .07em; }
   .meta-val { font-size: 12px; font-weight: 700; }
 
-  /* ── DIVERGENCE BOX ── */
   .div-box {
     margin-top: 14px; padding: 10px 12px; border-radius: 7px;
     border: 1px solid var(--border2); background: var(--bg2); transition: all .3s;
   }
   .div-box.alert {
-    background: rgba(232,98,42,.07);
-    border-color: rgba(232,98,42,.4);
+    background: rgba(232,98,42,.07); border-color: rgba(232,98,42,.4);
     box-shadow: 0 0 20px rgba(232,98,42,.08);
   }
   .div-box-label { font-size: 9px; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; margin-bottom: 4px; }
@@ -314,14 +374,8 @@
     background: var(--bg2); display: flex; align-items: center;
     justify-content: center; font-size: 10px; transition: all .25s;
   }
-  .check-box.checked {
-    background: rgba(0,217,126,.12);
-    border-color: var(--green); color: var(--green);
-  }
-  .check-text-main {
-    font-size: 12px; font-weight: 500; margin-bottom: 2px;
-    transition: color .2s;
-  }
+  .check-box.checked { background: rgba(0,217,126,.12); border-color: var(--green); color: var(--green); }
+  .check-text-main { font-size: 12px; font-weight: 500; margin-bottom: 2px; transition: color .2s; }
   .check-text-main.checked { color: var(--text); font-weight: 700; }
   .check-text-main:not(.checked) { color: var(--muted); }
   .check-text-sub { font-size: 10px; color: #333; }
@@ -331,24 +385,18 @@
     background: rgba(0,217,126,.12); color: var(--green);
   }
 
-  /* ── ERROR / NOTICE ── */
+  /* ── NOTICE ── */
   .notice {
     padding: 9px 13px; border-radius: 6px; margin-bottom: 14px;
     font-size: 10px; letter-spacing: .05em; border: 1px solid;
   }
-  .notice.warn {
-    background: rgba(245,197,24,.07);
-    border-color: rgba(245,197,24,.3);
-    color: var(--yellow);
-  }
+  .notice.warn { background: rgba(245,197,24,.07); border-color: rgba(245,197,24,.3); color: var(--yellow); }
 
-  /* ── FOOTER ── */
   .footer {
     text-align: center; padding: 20px 0 0;
     font-size: 10px; color: #252540; letter-spacing: .07em; line-height: 1.8;
   }
 
-  /* ── LOADER ── */
   .loader {
     display: inline-block; width: 14px; height: 14px;
     border: 2px solid var(--border2); border-top-color: var(--accent);
@@ -357,8 +405,36 @@
   }
   @keyframes spin { to{ transform: rotate(360deg); } }
 
-  /* ── LAST UPDATE ── */
   .last-update { font-size: 10px; color: var(--muted); text-align: right; margin-bottom: 10px; }
+
+  /* ── HOT MOVERS SECTION ── */
+  .hot-section {
+    margin-bottom: 10px; display: none;
+  }
+  .hot-label { font-size: 9px; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+  .hot-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--red); animation: pulse 1.5s infinite; }
+
+  .hot-chips {
+    display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+  .hot-chips::-webkit-scrollbar { display: none; }
+
+  .hot-chip {
+    flex-shrink: 0; padding: 4px 10px; border-radius: 4px;
+    border: 1px solid rgba(255,51,85,.2);
+    background: rgba(255,51,85,.06); cursor: pointer;
+    font-family: var(--mono); transition: all .15s;
+    display: flex; align-items: center; gap: 7px;
+  }
+  .hot-chip:hover { border-color: var(--red); background: rgba(255,51,85,.12); }
+  .hot-chip.bull { border-color: rgba(0,217,126,.2); background: rgba(0,217,126,.06); }
+  .hot-chip.bull:hover { border-color: var(--green); background: rgba(0,217,126,.12); }
+
+  .hot-chip-sym { font-size: 10px; font-weight: 700; color: var(--text); }
+  .hot-chip-chg { font-size: 10px; font-weight: 700; }
+  .hot-chip-chg.up { color: var(--green); }
+  .hot-chip-chg.down { color: var(--red); }
 </style>
 </head>
 <body>
@@ -376,28 +452,81 @@
       </div>
     </div>
 
-    <div class="search-box">
-      <input class="search-input" id="searchInput"
-        placeholder="심볼 입력 (예: BTCUSDT, ETHUSDT, SOLUSDT)"
-        oninput="this.value=this.value.toUpperCase()"
-        onkeydown="if(event.key==='Enter') doSearch()" />
-      <button class="btn-search" id="btnSearch" onclick="doSearch()">조회</button>
+    <!-- SEARCH -->
+    <div class="search-wrapper">
+      <div class="search-box">
+        <div class="search-input-wrap">
+          <input class="search-input" id="searchInput"
+            placeholder="심볼 검색 (예: BTC, ETH, SOL)"
+            autocomplete="off"
+            oninput="handleInput(this)"
+            onkeydown="handleKey(event)" />
+          <span class="search-clear" id="searchClear" onclick="clearSearch()">×</span>
+          <!-- AUTOCOMPLETE DROPDOWN -->
+          <div class="autocomplete-drop" id="autocompleteDrop">
+            <div class="drop-header">
+              <span id="dropHeaderText">USDT 선물 심볼</span>
+              <span class="drop-count" id="dropCount"></span>
+            </div>
+            <div class="drop-list" id="dropList">
+              <div class="drop-loading"><span class="loader"></span>심볼 목록 로딩 중…</div>
+            </div>
+          </div>
+        </div>
+        <button class="btn-search" id="btnSearch" onclick="doSearch()">조회</button>
+      </div>
+
+      <!-- STATUS -->
+      <div class="symbol-status-bar">
+        <div class="symbol-status-dot" id="statusDot"></div>
+        <span id="statusText">심볼 목록 로딩 중…</span>
+      </div>
     </div>
 
-    <div class="quick-chips" id="quickChips">
-      <span class="chip" onclick="quickSearch('BTCUSDT')">BTC</span>
-      <span class="chip" onclick="quickSearch('ETHUSDT')">ETH</span>
-      <span class="chip" onclick="quickSearch('SOLUSDT')">SOL</span>
-      <span class="chip" onclick="quickSearch('XRPUSDT')">XRP</span>
-      <span class="chip" onclick="quickSearch('BNBUSDT')">BNB</span>
-      <span class="chip" onclick="quickSearch('DOGEUSDT')">DOGE</span>
-      <span class="chip" onclick="quickSearch('ADAUSDT')">ADA</span>
+    <!-- HOT MOVERS -->
+    <div class="hot-section" id="hotSection">
+      <div class="hot-label"><span class="hot-dot"></span>급등락 심볼</div>
+      <div class="hot-chips" id="hotChips"></div>
+    </div>
+
+    <!-- QUICK CHIPS -->
+    <div class="chips-section">
+      <div class="chips-label">즐겨찾기</div>
+      <div class="quick-chips" id="quickChips">
+        <div class="chip" onclick="quickSearch('BTCUSDT')">
+          <span class="chip-sym">BTC</span>
+          <span class="chip-chg neutral" id="chg-BTCUSDT">—</span>
+        </div>
+        <div class="chip" onclick="quickSearch('ETHUSDT')">
+          <span class="chip-sym">ETH</span>
+          <span class="chip-chg neutral" id="chg-ETHUSDT">—</span>
+        </div>
+        <div class="chip" onclick="quickSearch('SOLUSDT')">
+          <span class="chip-sym">SOL</span>
+          <span class="chip-chg neutral" id="chg-SOLUSDT">—</span>
+        </div>
+        <div class="chip" onclick="quickSearch('XRPUSDT')">
+          <span class="chip-sym">XRP</span>
+          <span class="chip-chg neutral" id="chg-XRPUSDT">—</span>
+        </div>
+        <div class="chip" onclick="quickSearch('BNBUSDT')">
+          <span class="chip-sym">BNB</span>
+          <span class="chip-chg neutral" id="chg-BNBUSDT">—</span>
+        </div>
+        <div class="chip" onclick="quickSearch('DOGEUSDT')">
+          <span class="chip-sym">DOGE</span>
+          <span class="chip-chg neutral" id="chg-DOGEUSDT">—</span>
+        </div>
+        <div class="chip" onclick="quickSearch('ADAUSDT')">
+          <span class="chip-sym">ADA</span>
+          <span class="chip-chg neutral" id="chg-ADAUSDT">—</span>
+        </div>
+      </div>
     </div>
   </div>
 </header>
 
 <div class="wrap">
-  <!-- EMPTY STATE -->
   <div class="empty" id="emptyState">
     <div class="empty-icon">◈</div>
     <div class="empty-title">
@@ -408,16 +537,10 @@
     </div>
   </div>
 
-  <!-- MAIN RESULT (hidden until search) -->
   <div id="mainResult" style="display:none">
-
-    <!-- notice -->
     <div class="notice warn" id="noticeBox" style="display:none"></div>
-
-    <!-- last update -->
     <div class="last-update" id="lastUpdate"></div>
 
-    <!-- symbol header -->
     <div class="sym-header anim">
       <div>
         <div>
@@ -437,7 +560,6 @@
       </div>
     </div>
 
-    <!-- signal badge -->
     <div class="signal-badge anim" id="signalBadge">
       <span class="signal-icon" id="signalIcon">●</span>
       <div>
@@ -446,35 +568,19 @@
       </div>
     </div>
 
-    <!-- stage timeline -->
     <div class="timeline anim" id="stageTimeline">
-      <div class="tl-item">
-        <div class="tl-node" id="tl1">1</div>
-        <div class="tl-label" id="tll1">급등기</div>
-      </div>
+      <div class="tl-item"><div class="tl-node" id="tl1">1</div><div class="tl-label" id="tll1">급등기</div></div>
       <div class="tl-line"></div>
-      <div class="tl-item">
-        <div class="tl-node" id="tl2">2</div>
-        <div class="tl-label" id="tll2">둔화기</div>
-      </div>
+      <div class="tl-item"><div class="tl-node" id="tl2">2</div><div class="tl-label" id="tll2">둔화기</div></div>
       <div class="tl-line"></div>
-      <div class="tl-item">
-        <div class="tl-node" id="tl3">3</div>
-        <div class="tl-label" id="tll3">전환기</div>
-      </div>
+      <div class="tl-item"><div class="tl-node" id="tl3">3</div><div class="tl-label" id="tll3">전환기</div></div>
       <div class="tl-line"></div>
-      <div class="tl-item">
-        <div class="tl-node" id="tl4">4</div>
-        <div class="tl-label" id="tll4">폭락기</div>
-      </div>
+      <div class="tl-item"><div class="tl-node" id="tl4">4</div><div class="tl-label" id="tll4">폭락기</div></div>
     </div>
 
-    <!-- grid cards -->
     <div class="grid2 anim">
-      <!-- card 1: position ratios -->
       <div class="card">
         <div class="card-title">포지션 비율</div>
-
         <div class="gauge-row" id="gaugeLS">
           <div class="gauge-header">
             <span class="gauge-label">L/S Ratio (전체 계정)</span>
@@ -483,7 +589,6 @@
           <div class="gauge-track"><div class="gauge-fill" id="gLsRatio" style="width:0%"></div></div>
           <div class="gauge-sub">개미 심리 — 1.8+ 과열</div>
         </div>
-
         <div class="gauge-row">
           <div class="gauge-header">
             <span class="gauge-label">L/S Acco. (상위 계정)</span>
@@ -492,7 +597,6 @@
           <div class="gauge-track"><div class="gauge-fill" id="gLsAcco" style="width:0%"></div></div>
           <div class="gauge-sub">고래 방향성</div>
         </div>
-
         <div class="gauge-row">
           <div class="gauge-header">
             <span class="gauge-label">L/S Posit. (상위 물량)</span>
@@ -501,17 +605,14 @@
           <div class="gauge-track"><div class="gauge-fill" id="gLsPosit" style="width:0%"></div></div>
           <div class="gauge-sub">고래 자금 규모 — 핵심 지표</div>
         </div>
-
         <div class="div-box" id="divBox">
           <div class="div-box-label">포지션 불일치 (다이버전스)</div>
           <div class="div-box-val" id="divVal">● 정상 범위</div>
         </div>
       </div>
 
-      <!-- card 2: volume -->
       <div class="card">
         <div class="card-title">시장가 거래량</div>
-
         <div class="bsvol-header">
           <span style="font-size:10px;color:var(--muted);letter-spacing:.07em;text-transform:uppercase">B/S Taker Vol</span>
           <span class="dominant-pill" id="dominantPill">—</span>
@@ -524,16 +625,13 @@
           <span style="color:var(--green)">Buy <span id="bsBuyPct">—</span>% &nbsp;<span id="bsBuyVol">—</span></span>
           <span style="color:var(--red)">Sell <span id="bsSellPct">—</span>% &nbsp;<span id="bsSellVol">—</span></span>
         </div>
-
         <div class="gauge-row">
           <div class="gauge-header">
             <span class="gauge-label">매수 거래량 변화</span>
             <span class="gauge-value" id="vVolChange">—</span>
           </div>
         </div>
-
         <hr class="divider">
-
         <div class="meta-row">
           <span class="meta-key">펀딩비율</span>
           <span class="meta-val" id="vFunding">—</span>
@@ -545,10 +643,8 @@
       </div>
     </div>
 
-    <!-- checklist -->
     <div class="checklist-card anim">
       <div class="card-title">숏 전환 신호 체크리스트</div>
-
       <div class="check-item">
         <div class="check-box" id="ck1"></div>
         <div style="flex:1">
@@ -557,7 +653,6 @@
         </div>
         <span class="check-pill" id="ckp1" style="display:none">감지</span>
       </div>
-
       <div class="check-item">
         <div class="check-box" id="ck2"></div>
         <div style="flex:1">
@@ -566,7 +661,6 @@
         </div>
         <span class="check-pill" id="ckp2" style="display:none">감지</span>
       </div>
-
       <div class="check-item">
         <div class="check-box" id="ck3"></div>
         <div style="flex:1">
@@ -575,7 +669,6 @@
         </div>
         <span class="check-pill" id="ckp3" style="display:none">감지</span>
       </div>
-
       <div class="check-item">
         <div class="check-box" id="ck4"></div>
         <div style="flex:1">
@@ -584,7 +677,6 @@
         </div>
         <span class="check-pill" id="ckp4" style="display:none">감지</span>
       </div>
-
       <div class="check-item">
         <div class="check-box" id="ck5"></div>
         <div style="flex:1">
@@ -603,18 +695,248 @@
 </div>
 
 <script>
-/* ──────────────────────────────────────────────
-   STATE
-────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════
+   GLOBALS
+══════════════════════════════════════════════ */
 let currentSymbol = '';
 let currentInterval = '1h';
 let autoTimer = null;
 let autoOn = false;
 let currentData = null;
 
-/* ──────────────────────────────────────────────
+// Symbol database
+let allSymbols = [];          // [{symbol, baseAsset, price, priceChange, volume}]
+let symbolMap = {};           // symbol -> object (fast lookup)
+let symbolsLoaded = false;
+let selectedDropIndex = -1;
+let dropVisible = false;
+
+const FAVORITES = ['BTCUSDT','ETHUSDT','SOLUSDT','XRPUSDT','BNBUSDT','DOGEUSDT','ADAUSDT'];
+const BASE = 'https://fapi.binance.com';
+
+/* ══════════════════════════════════════════════
+   SYMBOL LOADER — fetch all USDT perp symbols + 24h tickers
+══════════════════════════════════════════════ */
+async function loadAllSymbols() {
+  try {
+    // Fetch all 24h tickers in one shot (includes price, change, volume)
+    const resp = await fetch(`${BASE}/fapi/v1/ticker/24hr`);
+    if (!resp.ok) throw new Error('ticker fetch failed');
+    const tickers = await resp.json();
+
+    // Filter: USDT-margined perpetuals only (exclude BUSD, USD, etc.)
+    const filtered = tickers
+      .filter(t => t.symbol.endsWith('USDT') && !t.symbol.includes('_'))
+      .map(t => ({
+        symbol: t.symbol,
+        baseAsset: t.symbol.replace('USDT',''),
+        price: parseFloat(t.lastPrice),
+        priceChange: parseFloat(t.priceChangePercent),
+        volume: parseFloat(t.quoteVolume),   // USDT volume
+        high: parseFloat(t.highPrice),
+        low: parseFloat(t.lowPrice),
+      }))
+      .sort((a,b) => b.volume - a.volume);  // sort by volume desc (most liquid first)
+
+    allSymbols = filtered;
+    symbolMap = {};
+    filtered.forEach(s => symbolMap[s.symbol] = s);
+    symbolsLoaded = true;
+
+    updateStatusBar(true, `${filtered.length}개 USDT 선물 심볼 로드 완료`);
+    updateFavoriteChips();
+    renderHotMovers();
+    return true;
+  } catch(e) {
+    updateStatusBar(false, 'API 연결 실패 — 오프라인 또는 CORS 환경');
+    return false;
+  }
+}
+
+function updateStatusBar(live, msg) {
+  const dot = document.getElementById('statusDot');
+  const txt = document.getElementById('statusText');
+  dot.className = 'symbol-status-dot' + (live ? ' live' : '');
+  txt.textContent = msg;
+}
+
+/* ══════════════════════════════════════════════
+   FAVORITE CHIP PRICE UPDATE
+══════════════════════════════════════════════ */
+function updateFavoriteChips() {
+  FAVORITES.forEach(sym => {
+    const el = document.getElementById('chg-' + sym);
+    if (!el) return;
+    const s = symbolMap[sym];
+    if (!s) return;
+    const chg = s.priceChange;
+    const cls = chg > 0 ? 'up' : chg < 0 ? 'down' : 'neutral';
+    el.textContent = (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%';
+    el.className = 'chip-chg ' + cls;
+  });
+}
+
+/* ══════════════════════════════════════════════
+   HOT MOVERS  (top 5 gainers + top 5 losers)
+══════════════════════════════════════════════ */
+function renderHotMovers() {
+  if (!symbolsLoaded || allSymbols.length === 0) return;
+
+  // Only include symbols with decent volume (> $10M USDT)
+  const liquid = allSymbols.filter(s => s.volume > 10_000_000);
+  const sorted = [...liquid].sort((a,b) => b.priceChange - a.priceChange);
+  const gainers = sorted.slice(0, 6);
+  const losers  = sorted.slice(-6).reverse();
+  const hot = [...gainers, ...losers];
+
+  const container = document.getElementById('hotChips');
+  container.innerHTML = '';
+  hot.forEach(s => {
+    const div = document.createElement('div');
+    const isBull = s.priceChange >= 0;
+    div.className = 'hot-chip' + (isBull ? ' bull' : '');
+    div.onclick = () => quickSearch(s.symbol);
+    div.innerHTML = `
+      <span class="hot-chip-sym">${s.baseAsset}</span>
+      <span class="hot-chip-chg ${isBull?'up':'down'}">${isBull?'+':''}${s.priceChange.toFixed(2)}%</span>
+    `;
+    container.appendChild(div);
+  });
+
+  document.getElementById('hotSection').style.display = 'block';
+}
+
+/* ══════════════════════════════════════════════
+   AUTOCOMPLETE
+══════════════════════════════════════════════ */
+function handleInput(input) {
+  const val = input.value.toUpperCase().trim();
+  input.value = val;
+
+  const clear = document.getElementById('searchClear');
+  clear.style.display = val ? 'block' : 'none';
+
+  if (!val) { closeDropdown(); return; }
+  showDropdown(val);
+}
+
+function showDropdown(query) {
+  const drop = document.getElementById('autocompleteDrop');
+  const list = document.getElementById('dropList');
+  const hdr  = document.getElementById('dropHeaderText');
+  const cnt  = document.getElementById('dropCount');
+
+  if (!symbolsLoaded) {
+    hdr.textContent = '로딩 중…';
+    cnt.textContent = '';
+    list.innerHTML = '<div class="drop-loading"><span class="loader"></span>심볼 목록 로딩 중…</div>';
+    drop.classList.add('open');
+    dropVisible = true;
+    return;
+  }
+
+  // Match: symbol starts with query OR baseAsset starts with query
+  const matches = allSymbols.filter(s =>
+    s.symbol.startsWith(query) || s.baseAsset.startsWith(query)
+  ).slice(0, 60);
+
+  hdr.textContent = query ? `"${query}" 검색 결과` : 'USDT 선물 심볼';
+  cnt.textContent = matches.length > 0 ? `${matches.length}개` : '';
+
+  if (matches.length === 0) {
+    list.innerHTML = `<div class="drop-empty">일치하는 심볼 없음 : ${query}</div>`;
+  } else {
+    list.innerHTML = matches.map((s, i) => {
+      const chg = s.priceChange;
+      const chgClass = chg > 0 ? 'up' : chg < 0 ? 'down' : '';
+      const chgStr = (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%';
+      const vol = fmtVol(s.volume);
+      // highlight matched chars
+      const symHL = highlightMatch(s.symbol, query);
+      return `
+        <div class="drop-item" data-sym="${s.symbol}" data-idx="${i}"
+          onmousedown="selectSymbol('${s.symbol}')"
+          onmouseover="hoverItem(${i})">
+          <span class="drop-sym">${symHL}</span>
+          <span class="drop-price">${fmtPrice(s.price)}</span>
+          <span class="drop-change ${chgClass}">${chgStr}</span>
+          <span class="drop-vol">${vol}</span>
+        </div>`;
+    }).join('');
+  }
+
+  selectedDropIndex = -1;
+  drop.classList.add('open');
+  dropVisible = true;
+}
+
+function highlightMatch(sym, query) {
+  if (!query || !sym.startsWith(query)) return sym;
+  return `<mark>${sym.slice(0,query.length)}</mark>${sym.slice(query.length)}`;
+}
+
+function closeDropdown() {
+  document.getElementById('autocompleteDrop').classList.remove('open');
+  dropVisible = false;
+  selectedDropIndex = -1;
+}
+
+function hoverItem(idx) {
+  selectedDropIndex = idx;
+  document.querySelectorAll('.drop-item').forEach((el,i) =>
+    el.classList.toggle('selected', i === idx)
+  );
+}
+
+function selectSymbol(sym) {
+  document.getElementById('searchInput').value = sym;
+  closeDropdown();
+  currentSymbol = sym;
+  // trigger search after mousedown settles
+  setTimeout(() => doSearch(), 50);
+}
+
+function handleKey(e) {
+  const items = document.querySelectorAll('.drop-item');
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (!dropVisible) showDropdown(document.getElementById('searchInput').value.toUpperCase());
+    selectedDropIndex = Math.min(selectedDropIndex + 1, items.length - 1);
+    items.forEach((el,i) => el.classList.toggle('selected', i === selectedDropIndex));
+    items[selectedDropIndex]?.scrollIntoView({block:'nearest'});
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    selectedDropIndex = Math.max(selectedDropIndex - 1, -1);
+    items.forEach((el,i) => el.classList.toggle('selected', i === selectedDropIndex));
+    if (selectedDropIndex >= 0) items[selectedDropIndex]?.scrollIntoView({block:'nearest'});
+  } else if (e.key === 'Enter') {
+    if (dropVisible && selectedDropIndex >= 0 && items[selectedDropIndex]) {
+      const sym = items[selectedDropIndex].dataset.sym;
+      selectSymbol(sym);
+    } else {
+      doSearch();
+    }
+  } else if (e.key === 'Escape') {
+    closeDropdown();
+  }
+}
+
+function clearSearch() {
+  const inp = document.getElementById('searchInput');
+  inp.value = '';
+  document.getElementById('searchClear').style.display = 'none';
+  closeDropdown();
+  inp.focus();
+}
+
+// Close dropdown on outside click
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search-input-wrap')) closeDropdown();
+});
+
+/* ══════════════════════════════════════════════
    HELPERS
-────────────────────────────────────────────── */
+══════════════════════════════════════════════ */
 function fmtVol(v) {
   if (!v || isNaN(v)) return '—';
   if (v >= 1e9) return (v/1e9).toFixed(2)+'B';
@@ -623,16 +945,17 @@ function fmtVol(v) {
   return v.toFixed(0);
 }
 function fmtPrice(p) {
-  if (!p) return '—';
-  if (p >= 1000) return '$' + p.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-  if (p >= 1)    return '$' + p.toFixed(4);
-  return '$' + p.toFixed(6);
+  if (!p && p !== 0) return '—';
+  if (p >= 10000) return '$' + p.toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1});
+  if (p >= 1000)  return '$' + p.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  if (p >= 1)     return '$' + p.toFixed(4);
+  if (p >= 0.001) return '$' + p.toFixed(5);
+  return '$' + p.toFixed(8);
 }
 function fmtRatio(v) { return v != null ? v.toFixed(3) : '—'; }
 function clamp(v,mn,mx){ return Math.min(mx,Math.max(mn,v)); }
 function pct(v,mn,mx){ return (clamp(v,mn,mx)-mn)/(mx-mn)*100; }
 
-/* gauge color based on value type */
 function gaugeColor(v, isDanger) {
   if (isDanger) return v > 1.8 ? '#ff3355' : v > 1.3 ? '#f5c518' : '#00d97e';
   return v < 0.8 ? '#ff3355' : v < 1.0 ? '#f5c518' : '#00d97e';
@@ -651,16 +974,17 @@ function setGauge(valueId, fillId, value, mn, mx, isDanger) {
   fEl.style.boxShadow = `0 0 8px ${color}88`;
 }
 
-/* ──────────────────────────────────────────────
-   MOCK DATA (fallback)
-────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════
+   MOCK DATA
+══════════════════════════════════════════════ */
 function mockData(symbol, interval) {
   const s = symbol.split('').reduce((a,c)=>a+c.charCodeAt(0),0);
   const r = (base,range,o=0) => base + ((s*(o+1)*7919) % range)/100;
+  const cached = symbolMap[symbol];
   return {
     symbol, interval,
-    price:       r(100,9900000,8),
-    priceChange: (r(0,1600,9)-800)/100,
+    price:       cached?.price || r(100,9900000,8),
+    priceChange: cached?.priceChange || (r(0,1600,9)-800)/100,
     lsRatio:     r(85,120,3)/100,
     lsPosit:     r(70,140,4)/100,
     lsAcco:      r(88,115,7)/100,
@@ -674,12 +998,11 @@ function mockData(symbol, interval) {
   };
 }
 
-/* ──────────────────────────────────────────────
+/* ══════════════════════════════════════════════
    BINANCE API FETCH
-────────────────────────────────────────────── */
+══════════════════════════════════════════════ */
 async function fetchData(symbol, interval) {
   try {
-    const BASE = 'https://fapi.binance.com';
     const [tickerR, lsR, accoR, positR, klinesR, oiR, frR] = await Promise.allSettled([
       fetch(`${BASE}/fapi/v1/ticker/24hr?symbol=${symbol}`),
       fetch(`${BASE}/futures/data/globalLongShortAccountRatio?symbol=${symbol}&period=${interval}&limit=2`),
@@ -691,41 +1014,41 @@ async function fetchData(symbol, interval) {
     ]);
 
     const j = async (r) => r.status === 'fulfilled' && r.value.ok ? r.value.json() : null;
-    const ticker = await j(tickerR);
-    const lsData = await j(lsR);
-    const accoData= await j(accoR);
+    const ticker   = await j(tickerR);
+    const lsData   = await j(lsR);
+    const accoData = await j(accoR);
     const positData= await j(positR);
-    const klines  = await j(klinesR);
-    const oiData  = await j(oiR);
-    const frData  = await j(frR);
+    const klines   = await j(klinesR);
+    const oiData   = await j(oiR);
+    const frData   = await j(frR);
 
     const price       = ticker ? parseFloat(ticker.lastPrice) : null;
     const priceChange = ticker ? parseFloat(ticker.priceChangePercent) : 0;
     if (!price) return null;
 
-    const lsRatio  = lsData?.[0]   ? parseFloat(lsData[0].longShortRatio)    : null;
-    const lsAcco   = accoData?.[0] ? parseFloat(accoData[0].longShortRatio)   : null;
-    const lsPosit  = positData?.[0]? parseFloat(positData[0].longShortRatio)  : null;
+    const lsRatio     = lsData?.[0]    ? parseFloat(lsData[0].longShortRatio)   : null;
+    const lsAcco      = accoData?.[0]  ? parseFloat(accoData[0].longShortRatio)  : null;
+    const lsPosit     = positData?.[0] ? parseFloat(positData[0].longShortRatio) : null;
     const prevLsPosit = positData?.[1] ? parseFloat(positData[1].longShortRatio) : lsPosit;
-    const bsVolBuy  = klines?.[1] ? parseFloat(klines[1][9]) : 0;
-    const bsVolSell = klines?.[1] ? parseFloat(klines[1][5]) - parseFloat(klines[1][9]) : 0;
-    const prevBsVolBuy = klines?.[0] ? parseFloat(klines[0][9]) : bsVolBuy;
-    const openInterest = oiData ? parseFloat(oiData.openInterest) * price : 0;
-    const fundingRate  = frData ? parseFloat(frData.lastFundingRate) : 0;
+    const bsVolBuy    = klines?.[1] ? parseFloat(klines[1][9]) : 0;
+    const bsVolSell   = klines?.[1] ? parseFloat(klines[1][5]) - parseFloat(klines[1][9]) : 0;
+    const prevBsVolBuy= klines?.[0] ? parseFloat(klines[0][9]) : bsVolBuy;
+    const openInterest= oiData ? parseFloat(oiData.openInterest) * price : 0;
+    const fundingRate = frData ? parseFloat(frData.lastFundingRate) : 0;
 
     return { symbol, interval, price, priceChange, lsRatio, lsAcco, lsPosit, prevLsPosit,
              bsVolBuy, bsVolSell, prevBsVolBuy, openInterest, fundingRate, source:'binance' };
   } catch(e) { return null; }
 }
 
-/* ──────────────────────────────────────────────
-   SIGNAL DETECTION
-────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════
+   SIGNAL
+══════════════════════════════════════════════ */
 function detectSignal(d) {
   const { lsRatio, lsPosit, prevLsPosit, bsVolBuy, bsVolSell, prevBsVolBuy } = d;
-  const bsBuyRatio = bsVolBuy / (bsVolBuy + bsVolSell + 1e-9);
-  const volExhausted  = prevBsVolBuy > 0 && bsVolBuy < prevBsVolBuy * 0.6;
-  const divergence    = lsRatio > 1.6 && lsPosit < 0.9 && lsPosit < prevLsPosit;
+  const bsBuyRatio  = bsVolBuy / (bsVolBuy + bsVolSell + 1e-9);
+  const volExhausted= prevBsVolBuy > 0 && bsVolBuy < prevBsVolBuy * 0.6;
+  const divergence  = lsRatio > 1.6 && lsPosit < 0.9 && lsPosit < prevLsPosit;
   const sellDominated = bsVolSell > bsVolBuy * 1.3;
 
   if (bsBuyRatio > 0.72 && lsPosit > 1.2)
@@ -739,54 +1062,49 @@ function detectSignal(d) {
   return { stage:0, label:'중립 / 대기', color:'#52526e', bg:'rgba(82,82,110,.06)', icon:'●', sub:'유의미한 신호 없음' };
 }
 
-/* ──────────────────────────────────────────────
+/* ══════════════════════════════════════════════
    RENDER
-────────────────────────────────────────────── */
+══════════════════════════════════════════════ */
 const STAGE_COLORS = ['#52526e','#00d97e','#f5c518','#e8622a','#ff3355'];
 
 function render(d) {
   currentData = d;
 
-  /* symbol + price */
   document.getElementById('rSymbol').textContent = d.symbol;
   document.getElementById('rPrice').textContent  = fmtPrice(d.price);
   const chEl = document.getElementById('rChange');
   chEl.textContent = (d.priceChange >= 0 ? '+' : '') + d.priceChange?.toFixed(2) + '%';
   chEl.className = 'sym-change ' + (d.priceChange >= 0 ? 'up' : 'down');
 
-  /* signal */
-  const sig = detectSignal(d);
+  const sig   = detectSignal(d);
   const badge = document.getElementById('signalBadge');
-  badge.style.background   = sig.bg;
-  badge.style.borderColor  = sig.color + '44';
-  badge.style.boxShadow    = `0 0 20px ${sig.color}10`;
+  badge.style.background  = sig.bg;
+  badge.style.borderColor = sig.color + '44';
+  badge.style.boxShadow   = `0 0 20px ${sig.color}10`;
   document.getElementById('signalIcon').textContent  = sig.icon;
   document.getElementById('signalLabel').textContent = sig.label;
   document.getElementById('signalLabel').style.color = sig.color;
   document.getElementById('signalSub').textContent   = sig.sub;
 
-  /* timeline */
   for (let i = 1; i <= 4; i++) {
     const n = document.getElementById('tl' + i);
     const l = document.getElementById('tll' + i);
     const c = STAGE_COLORS[i];
     const active = sig.stage === i;
-    n.style.background   = active ? c : 'var(--bg2)';
-    n.style.borderColor  = active ? c : 'var(--border2)';
-    n.style.color        = active ? 'var(--bg)' : 'var(--muted)';
-    n.style.boxShadow    = active ? `0 0 14px ${c}88` : 'none';
-    l.style.color        = active ? c : 'var(--muted)';
-    l.style.fontWeight   = active ? '700' : '400';
+    n.style.background  = active ? c : 'var(--bg2)';
+    n.style.borderColor = active ? c : 'var(--border2)';
+    n.style.color       = active ? 'var(--bg)' : 'var(--muted)';
+    n.style.boxShadow   = active ? `0 0 14px ${c}88` : 'none';
+    l.style.color       = active ? c : 'var(--muted)';
+    l.style.fontWeight  = active ? '700' : '400';
     n.className = 'tl-node' + (active ? ' active' : '');
     l.className = 'tl-label' + (active ? ' active' : '');
   }
 
-  /* gauges */
-  setGauge('vLsRatio', 'gLsRatio', d.lsRatio,  0.5, 2.5, true);
-  setGauge('vLsAcco',  'gLsAcco',  d.lsAcco,   0.5, 2.5, false);
-  setGauge('vLsPosit', 'gLsPosit', d.lsPosit,  0.3, 2.2, false);
+  setGauge('vLsRatio','gLsRatio', d.lsRatio,  0.5, 2.5, true);
+  setGauge('vLsAcco', 'gLsAcco',  d.lsAcco,   0.5, 2.5, false);
+  setGauge('vLsPosit','gLsPosit', d.lsPosit,  0.3, 2.2, false);
 
-  /* divergence box */
   const divBox = document.getElementById('divBox');
   const divVal = document.getElementById('divVal');
   const isDivergence = d.lsRatio > 1.6 && d.lsPosit != null && d.lsPosit < 0.9;
@@ -794,9 +1112,8 @@ function render(d) {
   divVal.style.color = isDivergence ? '#e8622a' : 'var(--muted)';
   divVal.textContent = isDivergence ? '⚡ 개미↑ 고래↓ — 역추세 포착' : '● 정상 범위';
 
-  /* B/S vol */
-  const total = d.bsVolBuy + d.bsVolSell;
-  const buyPct  = total > 0 ? (d.bsVolBuy  / total * 100) : 50;
+  const total   = d.bsVolBuy + d.bsVolSell;
+  const buyPct  = total > 0 ? (d.bsVolBuy / total * 100) : 50;
   const sellPct = 100 - buyPct;
   document.getElementById('bsvolBuy').style.width  = buyPct  + '%';
   document.getElementById('bsvolSell').style.width = sellPct + '%';
@@ -805,13 +1122,12 @@ function render(d) {
   document.getElementById('bsBuyVol').textContent  = fmtVol(d.bsVolBuy);
   document.getElementById('bsSellVol').textContent = fmtVol(d.bsVolSell);
 
-  const dom = buyPct > 55 ? 'buy' : sellPct > 55 ? 'sell' : 'neutral';
+  const dom  = buyPct > 55 ? 'buy' : sellPct > 55 ? 'sell' : 'neutral';
   const pill = document.getElementById('dominantPill');
   pill.textContent = dom === 'buy' ? '매수 우세' : dom === 'sell' ? '매도 우세' : '중립';
-  pill.style.background = dom === 'buy' ? 'rgba(0,217,126,.12)' : dom === 'sell' ? 'rgba(255,51,85,.12)' : 'rgba(82,82,110,.12)';
-  pill.style.color = dom === 'buy' ? '#00d97e' : dom === 'sell' ? '#ff3355' : '#52526e';
+  pill.style.background = dom==='buy' ? 'rgba(0,217,126,.12)' : dom==='sell' ? 'rgba(255,51,85,.12)' : 'rgba(82,82,110,.12)';
+  pill.style.color = dom==='buy' ? '#00d97e' : dom==='sell' ? '#ff3355' : '#52526e';
 
-  /* vol change */
   const vcEl = document.getElementById('vVolChange');
   if (d.prevBsVolBuy > 0) {
     const chg = (d.bsVolBuy / d.prevBsVolBuy - 1) * 100;
@@ -819,18 +1135,15 @@ function render(d) {
     vcEl.textContent = (chg >= 0 ? '+' : '') + chg.toFixed(1) + '%' + (exhausted ? ' ← 거래량 고갈' : '');
     vcEl.style.color = exhausted ? '#e8622a' : chg > 20 ? '#00d97e' : '#52526e';
   } else {
-    vcEl.textContent = '—';
-    vcEl.style.color = '#52526e';
+    vcEl.textContent = '—'; vcEl.style.color = '#52526e';
   }
 
-  /* funding + OI */
-  const fr = d.fundingRate;
+  const fr   = d.fundingRate;
   const frEl = document.getElementById('vFunding');
   frEl.textContent = fr != null ? (fr * 100).toFixed(4) + '%' : '—';
   frEl.style.color = fr > 0 ? '#00d97e' : fr < 0 ? '#ff3355' : '#52526e';
   document.getElementById('vOI').textContent = '$' + fmtVol(d.openInterest);
 
-  /* checklist */
   const checks = [
     d.prevBsVolBuy > 0 && d.bsVolBuy < d.prevBsVolBuy * 0.6,
     d.lsPosit != null && d.lsPosit < d.prevLsPosit && d.lsPosit < 0.95,
@@ -839,54 +1152,58 @@ function render(d) {
     d.bsVolSell > d.bsVolBuy * 2
   ];
   checks.forEach((ok, i) => {
-    const n = i + 1;
-    const box = document.getElementById('ck' + n);
+    const n   = i + 1;
+    const box = document.getElementById('ck'  + n);
     const txt = document.getElementById('ckt' + n);
-    const pill = document.getElementById('ckp' + n);
+    const pip = document.getElementById('ckp' + n);
     box.className = 'check-box' + (ok ? ' checked' : '');
     box.textContent = ok ? '✓' : '';
     txt.className = 'check-text-main' + (ok ? ' checked' : '');
-    pill.style.display = ok ? 'inline-block' : 'none';
+    pip.style.display = ok ? 'inline-block' : 'none';
   });
 
-  /* last update */
   document.getElementById('lastUpdate').textContent =
     '마지막 업데이트: ' + new Date().toLocaleTimeString('ko-KR') +
-    (d.source === 'binance' ? ' · Binance Futures' : ' · 데모 데이터');
+    (d.source === 'binance' ? ' · Binance Futures Live' : ' · 데모 데이터');
 
-  /* show result */
-  document.getElementById('emptyState').style.display = 'none';
-  document.getElementById('mainResult').style.display = 'block';
-  document.getElementById('btnRefresh').style.display = 'inline-block';
+  document.getElementById('emptyState').style.display  = 'none';
+  document.getElementById('mainResult').style.display  = 'block';
+  document.getElementById('btnRefresh').style.display  = 'inline-block';
+
+  // update active chip highlight
+  document.querySelectorAll('#quickChips .chip').forEach(c => {
+    const sym = c.querySelector('.chip-sym').textContent + 'USDT';
+    c.classList.toggle('active', sym === d.symbol);
+  });
 }
 
-/* ──────────────────────────────────────────────
+/* ══════════════════════════════════════════════
    SEARCH
-────────────────────────────────────────────── */
+══════════════════════════════════════════════ */
 async function doSearch() {
   const input = document.getElementById('searchInput');
-  const sym = input.value.trim().toUpperCase();
+  let sym = input.value.trim().toUpperCase();
   if (!sym) return;
+
+  // Auto-append USDT if user typed just a base like "BTC"
+  if (!sym.endsWith('USDT') && !sym.endsWith('BUSD')) {
+    // Check if exact match exists, or append USDT
+    if (!symbolMap[sym]) sym = sym + 'USDT';
+  }
+  input.value = sym;
+  closeDropdown();
+  document.getElementById('searchClear').style.display = 'block';
 
   currentSymbol = sym;
   setLoading(true);
 
-  // update quick chips
-  document.querySelectorAll('.chip').forEach(c => {
-    c.classList.toggle('active', c.textContent === sym.replace('USDT',''));
-  });
-
-  // interval buttons
   document.querySelectorAll('.btn-interval').forEach(b =>
     b.classList.toggle('active', b.textContent === currentInterval)
   );
 
   let result = await fetchData(sym, currentInterval);
   let noticed = false;
-  if (!result) {
-    result = mockData(sym, currentInterval);
-    noticed = true;
-  }
+  if (!result) { result = mockData(sym, currentInterval); noticed = true; }
 
   setLoading(false);
   const notice = document.getElementById('noticeBox');
@@ -902,6 +1219,8 @@ async function doSearch() {
 
 function quickSearch(sym) {
   document.getElementById('searchInput').value = sym;
+  document.getElementById('searchClear').style.display = 'block';
+  closeDropdown();
   doSearch();
 }
 
@@ -919,9 +1238,9 @@ function setLoading(on) {
   btn.innerHTML = on ? '<span class="loader"></span>조회중' : '조회';
 }
 
-/* ──────────────────────────────────────────────
+/* ══════════════════════════════════════════════
    AUTO REFRESH
-────────────────────────────────────────────── */
+══════════════════════════════════════════════ */
 function toggleAuto() {
   autoOn = !autoOn;
   const btn = document.getElementById('btnAuto');
@@ -936,9 +1255,22 @@ function toggleAuto() {
   }
 }
 
-function doRefresh() {
-  if (currentSymbol) doSearch();
-}
+function doRefresh() { if (currentSymbol) doSearch(); }
+
+/* ══════════════════════════════════════════════
+   INIT
+══════════════════════════════════════════════ */
+(async () => {
+  updateStatusBar(false, '심볼 목록 로딩 중…');
+  const ok = await loadAllSymbols();
+  if (!ok) {
+    updateStatusBar(false, 'API 오프라인 — 심볼 입력 후 직접 조회 가능');
+  }
+  // Refresh symbol list + chip prices every 60s
+  setInterval(async () => {
+    await loadAllSymbols();
+  }, 60_000);
+})();
 </script>
 </body>
 </html>
