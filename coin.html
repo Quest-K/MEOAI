@@ -1,4 +1,4 @@
-
+```html
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -54,7 +54,7 @@
                     Binance Futures Hybrid Scanner
                     <span class="text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20 font-mono">LIVE</span>
                 </h1>
-                <p class="text-xs text-gray-400">바이낸스 선물 전 종목 실시간 감시 (30분봉 0.95 이하 숏 급변 포착 및 5분봉 1.2 이상 롱 모멘텀 추적)</p>
+                <p class="text-xs text-gray-400">바이낸스 선물 전 종목 실시간 감시 (30분봉 0.95 이하 숏과밀 & 5분봉 1.20 이상 롱모멘텀 추적 & 실시간 가격 추이)</p>
             </div>
         </div>
         
@@ -217,28 +217,31 @@
                 <!-- 대형 테이블 -->
                 <div class="overflow-y-auto max-h-[650px] pr-1">
                     <table class="w-full text-left text-xs border-collapse">
-                        <head class="sticky top-0 bg-gray-900 z-10">
+                        <thead class="sticky top-0 bg-gray-900 z-10">
                             <tr class="text-gray-400 border-b border-gray-800">
-                                <th class="pb-3 font-bold w-[18%] cursor-pointer select-none" onclick="sortTable(0)">
+                                <th class="pb-3 font-bold w-[15%] cursor-pointer select-none" onclick="sortTable(0)">
                                     선물 심볼 <i class="fa-solid fa-sort text-[10px] text-gray-500"></i>
                                 </th>
-                                <th class="pb-3 font-bold w-[23%] cursor-pointer select-none" onclick="sortTable(1)">
-                                    30m 고래 / 전체 비율 <i class="fa-solid fa-sort text-[10px] text-gray-500"></i>
+                                <th class="pb-3 font-bold w-[18%] cursor-pointer select-none" onclick="sortTable(1)">
+                                    현재가 / 24h 변동 <i class="fa-solid fa-sort text-[10px] text-gray-500"></i>
                                 </th>
                                 <th class="pb-3 font-bold w-[18%] cursor-pointer select-none" onclick="sortTable(2)">
+                                    30m 고래 / 전체 비율 <i class="fa-solid fa-sort text-[10px] text-gray-500"></i>
+                                </th>
+                                <th class="pb-3 font-bold w-[15%] cursor-pointer select-none" onclick="sortTable(3)">
                                     30m 판정 (0.95↓) <i class="fa-solid fa-sort text-[10px] text-gray-500"></i>
                                 </th>
-                                <th class="pb-3 font-bold w-[23%] cursor-pointer select-none" onclick="sortTable(3)">
+                                <th class="pb-3 font-bold w-[18%] cursor-pointer select-none" onclick="sortTable(4)">
                                     5m 고래 / 전체 비율 <i class="fa-solid fa-sort text-[10px] text-gray-500"></i>
                                 </th>
-                                <th class="pb-3 font-bold w-[18%] text-right cursor-pointer select-none" onclick="sortTable(4)">
+                                <th class="pb-3 font-bold w-[16%] text-right cursor-pointer select-none" onclick="sortTable(5)">
                                     5m 판정 (1.20↑) <i class="fa-solid fa-sort text-[10px] text-gray-500"></i>
                                 </th>
                             </tr>
                         </thead>
                         <tbody id="symbolTableBody" class="divide-y divide-gray-800/40 text-gray-300">
                             <tr>
-                                <td colspan="5" class="py-16 text-center text-gray-500">
+                                <td colspan="6" class="py-16 text-center text-gray-500">
                                     <i class="fa-solid fa-circle-notch animate-spin block text-3xl mb-3 text-amber-500"></i>
                                     거래소로부터 전체 선물 목록 정보를 가져와 구조화 중입니다...
                                 </td>
@@ -255,20 +258,20 @@
     <footer class="border-t border-gray-900 bg-gray-950 px-6 py-4 text-center text-xs text-gray-500 flex flex-wrap justify-between items-center gap-2">
         <p>© 2026 PROV 하이브리드 트래커. All rights reserved.</p>
         <p class="flex items-center gap-1.5 text-gray-400 bg-gray-900 px-3 py-1 rounded-full border border-gray-800">
-            <i class="fa-solid fa-shield-halved text-amber-400"></i> 실시간 선물 롱숏 감지 스캐너 v2.6
+            <i class="fa-solid fa-shield-halved text-amber-400"></i> 실시간 선물 롱숏 감지 스캐너 v2.7
         </p>
     </footer>
 
     <!-- 자바스크립트 모니터링 엔진 소스 -->
     <script>
         let allSymbolsList = []; // 바이낸스 선물 전 심볼명 캐싱
-        let symbolsDataMap = {}; // 각 심볼의 수치 매핑 { BTCUSDT: { v1_30m: 1.1, v2_30m: 1.0, v1_5m: 1.25, v2_5m: 1.3, alert30m: false, alert5m: true } }
+        let symbolsDataMap = {}; // 각 심볼의 수치 매핑 { BTCUSDT: { price: 68000, priceChangePercent: 2.5, v1_30m: 1.1, v2_30m: 1.0, v1_5m: 1.25, v2_5m: 1.3, alert30m: false, alert5m: true } }
         let isMonitoring = false;
         let monitorIntervalId = null;
         let alertActive = false;
         let soundMode = 'tts'; 
         let audioContext = null;
-        let sortDirection = [true, true, true, true, true]; // 컬럼별 정렬 토글 상태
+        let sortDirection = [true, true, true, true, true, true]; // 컬럼별 정렬 토글 상태
 
         // 최초 로드 시 전체 심볼 리스트 수급
         window.onload = async function() {
@@ -294,7 +297,7 @@
                 console.error("선물 리스트 조회 오류:", e);
                 document.getElementById('symbolTableBody').innerHTML = `
                     <tr>
-                        <td colspan="5" class="py-12 text-center text-red-400 font-semibold">
+                        <td colspan="6" class="py-12 text-center text-red-400 font-semibold">
                             <i class="fa-solid fa-triangle-exclamation text-2xl block mb-2"></i>
                             바이낸스 거래소 정보를 로드하지 못했습니다. 네트워크를 확인해 주세요.
                         </td>
@@ -310,6 +313,8 @@
             
             allSymbolsList.forEach(symbol => {
                 symbolsDataMap[symbol] = { 
+                    price: null,
+                    priceChangePercent: null,
                     v1_30m: null, v2_30m: null, 
                     v1_5m: null, v2_5m: null, 
                     alert30m: false, alert5m: false 
@@ -320,6 +325,7 @@
                 row.className = "hover:bg-gray-800/40 border-b border-gray-800/40 transition-colors font-mono duration-200";
                 row.innerHTML = `
                     <td class="py-3 font-bold text-gray-200 tracking-wide">${symbol}</td>
+                    <td class="py-3 text-gray-500 font-semibold" id="ticker-${symbol}">-- / --</td>
                     <td class="py-3 text-gray-500 font-semibold" id="ratio30m-${symbol}">-- / --</td>
                     <td class="py-3 text-gray-500 font-medium" id="badge30m-${symbol}">대기 중</td>
                     <td class="py-3 text-gray-500 font-semibold" id="ratio5m-${symbol}">-- / --</td>
@@ -329,7 +335,7 @@
             });
         }
 
-        // 2. 핵심 고성능 병렬 API 스캔 엔진 (스케줄링 주기 설정 제어)
+        // 2. 핵심 고성능 병렬 API 스캔 엔진
         async function scanAllSymbols() {
             if (allSymbolsList.length === 0) return;
 
@@ -350,7 +356,22 @@
             // 프로그레스 바 초기화
             updateProgressBar(0, total);
 
-            // API 밴 피하기 위해 한 청크당 5개씩 나누어 요청 처리 진행
+            // [최적화 알고리즘] 바이낸스 24시간 가격 정보(티커) API 일괄 호출하여 트래픽 효율 극대화
+            let tickerDataMap = {};
+            try {
+                const tickerRes = await fetch("https://fapi.binance.com/fapi/v1/ticker/24hr");
+                const tickers = await tickerRes.json();
+                tickers.forEach(t => {
+                    tickerDataMap[t.symbol] = {
+                        lastPrice: parseFloat(t.lastPrice),
+                        priceChangePercent: parseFloat(t.priceChangePercent)
+                    };
+                });
+            } catch (e) {
+                console.error("가격 정보 수급 에러:", e);
+            }
+
+            // API 밴 방지를 위해 한 청크당 5개씩 나누어 요청 처리 진행
             const CONCURRENCY_LIMIT = 5; 
             const chunks = chunkArray(allSymbolsList, CONCURRENCY_LIMIT);
 
@@ -381,22 +402,27 @@
                             const isAlert30m = (v1_30m <= thresholdShort && v2_30m <= thresholdShort);
                             const isAlert5m = (v1_5m >= thresholdLong && v2_5m >= thresholdLong);
 
+                            // 캐싱된 티커 데이터 연동
+                            const ticker = tickerDataMap[symbol] || { lastPrice: 0, priceChangePercent: 0 };
+
                             symbolsDataMap[symbol] = {
+                                price: ticker.lastPrice,
+                                priceChangePercent: ticker.priceChangePercent,
                                 v1_30m, v2_30m,
                                 v1_5m, v2_5m,
                                 alert30m: isAlert30m,
                                 alert5m: isAlert5m
                             };
 
-                            // 테이블 실시간 UI 출력 갱신
-                            updateRowValueUI(symbol, v1_30m, v2_30m, v1_5m, v2_5m, isAlert30m, isAlert5m);
+                            // 테이블 실시간 UI 출력 갱신 (현재가 및 상승률 포함)
+                            updateRowValueUI(symbol, ticker.lastPrice, ticker.priceChangePercent, v1_30m, v2_30m, v1_5m, v2_5m, isAlert30m, isAlert5m);
 
                             // 매칭 리스트 누적
                             if (isAlert30m) {
-                                hitShortSymbols.push({ symbol, v1: v1_30m, v2: v2_30m });
+                                hitShortSymbols.push({ symbol, v1: v1_30m, v2: v2_30m, price: ticker.lastPrice });
                             }
                             if (isAlert5m) {
-                                hitLongSymbols.push({ symbol, v1: v1_5m, v2: v2_5m });
+                                hitLongSymbols.push({ symbol, v1: v1_5m, v2: v2_5m, price: ticker.lastPrice });
                             }
                         }
                     } catch (err) {
@@ -426,11 +452,11 @@
             if (hitShortSymbols.length > 0 || hitLongSymbols.length > 0) {
                 // 30m 숏 포착 로그 저장
                 hitShortSymbols.forEach(item => {
-                    addLog(timestamp, item.symbol, "30m 0.95↓", item.v1, item.v2, "🚨 숏과밀", "bg-red-950/20 text-red-400 border-red-500/30");
+                    addLog(timestamp, item.symbol, "30m 0.95↓", item.v1, item.v2, item.price, "🚨 숏과밀", "bg-red-950/20 text-red-400 border-red-500/30");
                 });
                 // 5m 롱 포착 로그 저장
                 hitLongSymbols.forEach(item => {
-                    addLog(timestamp, item.symbol, "5m 1.20↑", item.v1, item.v2, "🟢 롱급상승", "bg-emerald-950/20 text-emerald-400 border-emerald-500/30");
+                    addLog(timestamp, item.symbol, "5m 1.20↑", item.v1, item.v2, item.price, "🟢 롱급상승", "bg-emerald-950/20 text-emerald-400 border-emerald-500/30");
                 });
 
                 // 통합 오디오 전파 및 배너 알림
@@ -441,32 +467,42 @@
             updateHitCountBadge();
         }
 
-        // 테이블 행 내부 수치 렌더링 (30분봉과 5분봉 컬럼 분할 및 위치 수정 적용)
-        function updateRowValueUI(symbol, v1_30, v2_30, v1_5, v2_5, isAlert30, isAlert5) {
+        // 테이블 행 내부 수치 렌더링 (실시간 시세 및 24H 등락률 결합 반영)
+        function updateRowValueUI(symbol, price, changePercent, v1_30, v2_30, v1_5, v2_5, isAlert30, isAlert5) {
+            const tickerEl = document.getElementById(`ticker-${symbol}`);
             const ratio30mEl = document.getElementById(`ratio30m-${symbol}`);
             const ratio5mEl = document.getElementById(`ratio5m-${symbol}`);
             const badge30mEl = document.getElementById(`badge30m-${symbol}`);
             const badge5mEl = document.getElementById(`badge5m-${symbol}`);
             const rowEl = document.getElementById(`row-${symbol}`);
 
-            if (!ratio30mEl || !ratio5mEl || !badge30mEl || !badge5mEl || !rowEl) return;
+            if (!tickerEl || !ratio30mEl || !ratio5mEl || !badge30mEl || !badge5mEl || !rowEl) return;
 
-            // 2열: 30분봉 비율 표시
+            // 2열: 가격 및 24시간 변동폭 표시
+            const sign = changePercent >= 0 ? '+' : '';
+            const colorClass = changePercent >= 0 ? 'text-emerald-400 font-bold' : 'text-red-500 font-bold';
+            
+            // 소수점 유동성 대응 (비트코인은 소수점 1자리, 아주 가벼운 밈코인은 소수점 자리를 넓게 표출)
+            const priceStr = price >= 100 ? price.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : price.toFixed(5);
+            
+            tickerEl.innerHTML = `<span class="text-gray-200 font-bold">${priceStr}</span> <span class="${colorClass} text-[11px] ml-1.5">${sign}${changePercent.toFixed(2)}%</span>`;
+
+            // 3열: 30분봉 비율 표시
             ratio30mEl.innerText = `${v1_30.toFixed(3)} / ${v2_30.toFixed(3)}`;
             ratio30mEl.className = `py-3 font-semibold ${v1_30 <= 0.95 ? 'text-red-500 font-bold' : v1_30 < 1.0 ? 'text-yellow-500' : 'text-emerald-400'}`;
 
-            // 3열: 30분 판정 열 그리기
+            // 4열: 30분 판정 열 그리기
             if (isAlert30) {
                 badge30mEl.innerHTML = `<span class="bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded-lg text-[10px] font-extrabold">🚨 숏과밀 (0.95↓)</span>`;
             } else {
                 badge30mEl.innerHTML = `<span class="bg-gray-800 text-gray-500 px-2 py-0.5 rounded-lg text-[10px]">정상</span>`;
             }
 
-            // 4열: 5분봉 비율 표시
+            // 5열: 5분봉 비율 표시
             ratio5mEl.innerText = `${v1_5.toFixed(3)} / ${v2_5.toFixed(3)}`;
             ratio5mEl.className = `py-3 font-semibold ${v1_5 >= 1.20 ? 'text-emerald-400 font-extrabold' : v1_5 > 1.0 ? 'text-green-500' : 'text-red-500'}`;
 
-            // 5열: 5분 판정 열 그리기
+            // 6열: 5분 판정 열 그리기
             if (isAlert5) {
                 badge5mEl.innerHTML = `<span class="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-lg text-[10px] font-extrabold">🟢 롱상승 (1.20↑)</span>`;
             } else {
@@ -664,10 +700,12 @@
         });
 
         // 4. 관측 로그 누적 기록 보드에 요소 추가
-        function addLog(time, symbol, timeframe, v1, v2, typeText, cardStyle) {
+        function addLog(time, symbol, timeframe, v1, v2, price, typeText, cardStyle) {
             const container = document.getElementById('logContainer');
             const emptyText = document.getElementById('emptyLogText');
             if (emptyText) emptyText.remove();
+
+            const priceStr = price >= 100 ? price.toLocaleString('en-US') : price.toFixed(5);
 
             const card = document.createElement('div');
             card.className = `border rounded-xl p-3 flex flex-col justify-between gap-1 transition ${cardStyle}`;
@@ -679,17 +717,21 @@
                     </span>
                     <span class="text-gray-500 font-mono">${time}</span>
                 </div>
-                <div class="grid grid-cols-3 gap-2 mt-2 text-center text-[10px] font-mono">
-                    <div class="bg-gray-950/80 px-2 py-1 rounded-lg border border-gray-800/20">
+                <div class="grid grid-cols-4 gap-1.5 mt-2 text-center text-[10px] font-mono">
+                    <div class="bg-gray-950/80 px-1 py-1 rounded-lg border border-gray-800/20">
+                        <span class="text-gray-500 block">검출 가격</span>
+                        <span class="font-bold text-xs text-amber-400">${priceStr}</span>
+                    </div>
+                    <div class="bg-gray-950/80 px-1 py-1 rounded-lg border border-gray-800/20">
                         <span class="text-gray-500 block">고래 비율</span>
                         <span class="font-bold text-xs">${v1.toFixed(3)}</span>
                     </div>
-                    <div class="bg-gray-950/80 px-2 py-1 rounded-lg border border-gray-800/20">
+                    <div class="bg-gray-950/80 px-1 py-1 rounded-lg border border-gray-800/20">
                         <span class="text-gray-500 block">전체 비율</span>
                         <span class="font-bold text-xs">${v2.toFixed(3)}</span>
                     </div>
-                    <div class="bg-gray-950/80 px-2 py-1 rounded-lg border border-gray-800/20 flex flex-col justify-center items-center">
-                        <span class="text-gray-500 block">판정 결과</span>
+                    <div class="bg-gray-950/80 px-1 py-1 rounded-lg border border-gray-800/20 flex flex-col justify-center items-center">
+                        <span class="text-gray-500 block">판정</span>
                         <span class="font-extrabold text-[9px]">${typeText}</span>
                     </div>
                 </div>
@@ -740,7 +782,7 @@
             });
         }
 
-        // 헤더 클릭 시 테이블 열 정렬 (인덱스 변경 반영)
+        // 헤더 클릭 시 테이블 열 정렬 (인덱스 변경 및 가격 정렬 신설 반영)
         function sortTable(columnIndex) {
             const table = document.querySelector("table tbody");
             const rows = Array.from(table.rows);
@@ -755,16 +797,19 @@
 
                 let valA, valB;
 
-                if (columnIndex === 1) { // 30m 롱숏 고래비율 기준 정렬
+                if (columnIndex === 1) { // 24시간 등락률 기준 정렬
+                    valA = dataA.priceChangePercent !== null ? dataA.priceChangePercent : -9999;
+                    valB = dataB.priceChangePercent !== null ? dataB.priceChangePercent : -9999;
+                } else if (columnIndex === 2) { // 30m 고래 비율 기준 정렬
                     valA = dataA.v1_30m !== null ? dataA.v1_30m : 9999;
                     valB = dataB.v1_30m !== null ? dataB.v1_30m : 9999;
-                } else if (columnIndex === 2) { // 30m 이탈 여부 정렬
+                } else if (columnIndex === 3) { // 30m 이탈 여부 정렬
                     valA = dataA.alert30m ? 1 : 0;
                     valB = dataB.alert30m ? 1 : 0;
-                } else if (columnIndex === 3) { // 5m 롱숏 고래비율 기준 정렬
+                } else if (columnIndex === 4) { // 5m 고래 비율 기준 정렬
                     valA = dataA.v1_5m !== null ? dataA.v1_5m : -9999;
                     valB = dataB.v1_5m !== null ? dataB.v1_5m : -9999;
-                } else if (columnIndex === 4) { // 5m 이탈 여부 정렬
+                } else if (columnIndex === 5) { // 5m 이탈 여부 정렬
                     valA = dataA.alert5m ? 1 : 0;
                     valB = dataB.alert5m ? 1 : 0;
                 } else { // 심볼 이름 기준 정렬
@@ -794,3 +839,5 @@
     </script>
 </body>
 </html>
+
+```
