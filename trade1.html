@@ -1,1548 +1,708 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FUTURES SCANNER v5.2</title>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;500;700&display=swap');
+import { useState, useEffect, useCallback, useRef } from "react";
 
-  :root {
-    --bg:      #050a0f;
-    --surface: #0a1220;
-    --surface2:#0d1826;
-    --border:  #0d2035;
-    --border2: #1a3550;
-    --accent:  #00d4ff;
-    --long:    #00ff88;
-    --short:   #ff4466;
-    --crash:   #ff2200;
-    --warn:    #ff8c42;
-    --muted:   #1e3a52;
-    --text:    #b8d4e8;
-    --dim:     #3d5a6e;
-    --dim2:    #2a4460;
-    --tg:      #229ED9;
-    --gold:    #ffd700;
-  }
+const EXCHANGES = ["binance", "bybit", "okx"];
+const INTERVALS = ["5m", "15m", "1h", "4h"];
 
-  * { margin:0; padding:0; box-sizing:border-box; }
-  html { overflow-x: hidden; }
+const DEFAULT_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "BNBUSDT"];
 
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'Share Tech Mono', monospace;
-    min-height: 100vh;
-    overflow-x: hidden;
-    width: 100%;
-  }
+// Signal stage detection logic
+function detectSignalStage(data) {
+  if (!data) return null;
+  const { lsRatio, lsPosit, bsVolBuy, bsVolSell, prevLsPosit, prevBsVolBuy } = data;
 
-  body::before {
-    content:''; position:fixed; inset:0;
-    background:
-      radial-gradient(ellipse at 15% 0%,  rgba(0,255,136,0.04) 0%, transparent 55%),
-      radial-gradient(ellipse at 85% 0%,  rgba(255,68,102,0.04) 0%, transparent 55%),
-      radial-gradient(ellipse at 50% 100%,rgba(0,212,255,0.04)  0%, transparent 55%);
-    pointer-events:none; z-index:0;
-  }
-  body::after {
-    content:''; position:fixed; inset:0;
-    background: repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,0.04) 3px,rgba(0,0,0,0.04) 4px);
-    pointer-events:none; z-index:1;
-  }
+  const bsRatio = bsVolBuy / (bsVolBuy + bsVolSell);
+  const volExhausted = prevBsVolBuy > 0 && bsVolBuy < prevBsVolBuy * 0.6;
+  const divergence = lsRatio > 1.6 && lsPosit < 0.9 && lsPosit < prevLsPosit;
+  const sellDominated = bsVolSell > bsVolBuy * 1.3;
 
-  .container {
-    position:relative; z-index:2;
-    max-width:1800px; margin:0 auto;
-    padding:20px 16px;
-    width:100%;
-  }
+  if (bsRatio > 0.72 && lsPosit > 1.2) return { stage: 1, label: "강한 급등", color: "#00e5a0", icon: "🚀" };
+  if (divergence && volExhausted && !sellDominated) return { stage: 3, label: "추세 전환 감지", color: "#ff6b35", icon: "⚡" };
+  if (sellDominated && lsPosit < 0.7) return { stage: 4, label: "폭락 진행", color: "#ff2d55", icon: "💥" };
+  if (volExhausted && lsPosit >= 1.6) return { stage: 2, label: "상승 탄력 둔화", color: "#ffd60a", icon: "⚠️" };
+  return { stage: 0, label: "중립 / 대기", color: "#8e8ea0", icon: "●" };
+}
 
-  /* ══ HEADER ══ */
-  header {
-    display:flex; align-items:flex-start; justify-content:space-between;
-    margin-bottom:20px; padding-bottom:16px;
-    border-bottom:1px solid var(--border);
-    flex-wrap:wrap; gap:12px;
-  }
-  .logo {
-    font-family:'Rajdhani',sans-serif; font-weight:700;
-    font-size:24px; letter-spacing:6px; color:var(--accent);
-    text-shadow:0 0 20px rgba(0,212,255,0.4); line-height:1;
-  }
-  .logo .up { color:var(--long); }
-  .logo .dn { color:var(--short); }
-  .logo-sub { font-size:9px; color:var(--dim); letter-spacing:2px; margin-top:5px; }
+function getMockData(symbol, interval) {
+  // Deterministic mock from symbol hash for realistic demo
+  const seed = symbol.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+  const rand = (base, range, offset = 0) => base + ((seed * (offset + 1) * 7919) % range) / 100;
 
-  .status-panel { display:flex; flex-direction:column; align-items:flex-end; gap:5px; }
-  .status-row   { display:flex; align-items:center; gap:8px; font-size:10px; color:var(--dim); }
-  .dot { width:6px; height:6px; border-radius:50%; background:var(--dim); flex-shrink:0; }
-  .dot.green  { background:var(--long);  box-shadow:0 0 7px var(--long);  animation:pulse 2s infinite; }
-  .dot.red    { background:var(--short); box-shadow:0 0 7px var(--short); }
-  .dot.yellow { background:var(--gold);  box-shadow:0 0 7px var(--gold);  animation:pulse 1s infinite; }
-  .dot.blue   { background:var(--tg);    box-shadow:0 0 7px var(--tg);    animation:pulse 2s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  const bsVolBuy = rand(1000, 400000, 1);
+  const bsVolSell = rand(800, 380000, 2);
+  const lsRatio = rand(85, 120, 3) / 100;
+  const lsPosit = rand(70, 140, 4) / 100;
+  const prevLsPosit = rand(75, 140, 5) / 100;
+  const prevBsVolBuy = rand(900, 420000, 6);
+  const lsAcco = rand(88, 115, 7) / 100;
+  const price = rand(100, 9900000, 8);
+  const priceChange = (rand(-800, 1600, 9) - 400) / 100;
+  const fundingRate = (rand(-30, 60, 10) - 15) / 10000;
+  const openInterest = rand(500, 990000000, 11);
 
-  /* ══ TELEGRAM ══ */
-  .tg-panel {
-    background:var(--surface); border:1px solid rgba(34,158,217,0.35);
-    padding:12px 16px; margin-bottom:14px;
-    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
-  }
-  .tg-label { font-size:10px; letter-spacing:2px; color:var(--tg); white-space:nowrap; }
-  .tg-input {
-    font-family:'Share Tech Mono',monospace; font-size:11px;
-    background:var(--bg); border:1px solid var(--dim2); color:var(--text);
-    padding:6px 10px; outline:none; transition:border-color .2s;
-    width:280px; min-width:0;
-  }
-  .tg-input.narrow { width:140px; }
-  .tg-input:focus { border-color:var(--tg); }
-  .btn-tg {
-    font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:2px;
-    padding:6px 12px; border:1px solid var(--tg); background:transparent; color:var(--tg);
-    cursor:pointer; transition:all .2s; white-space:nowrap; position:relative; overflow:hidden;
-  }
-  .btn-tg::before { content:''; position:absolute; inset:0; background:var(--tg); transform:translateX(-100%); transition:transform .2s; }
-  .btn-tg:hover::before { transform:translateX(0); }
-  .btn-tg:hover { color:#fff; }
-  .btn-tg span { position:relative; z-index:1; }
-  .tg-status { font-size:10px; color:var(--dim); white-space:nowrap; }
-  .tg-status.ok   { color:var(--long); }
-  .tg-status.fail { color:var(--short); }
+  return {
+    symbol,
+    interval,
+    price,
+    priceChange,
+    lsRatio,
+    lsPosit,
+    lsAcco,
+    bsVolBuy,
+    bsVolSell,
+    prevLsPosit,
+    prevBsVolBuy,
+    fundingRate,
+    openInterest,
+    timestamp: Date.now(),
+  };
+}
 
-  /* ══ CONTROLS ══ */
-  .controls {
-    display:flex; align-items:center; gap:8px;
-    margin-bottom:10px; flex-wrap:wrap;
-  }
-  .btn {
-    font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:2px;
-    padding:8px 16px; border:1px solid var(--accent); background:transparent; color:var(--accent);
-    cursor:pointer; transition:all .2s; text-transform:uppercase;
-    position:relative; overflow:hidden; white-space:nowrap;
-  }
-  .btn::before { content:''; position:absolute; inset:0; background:var(--accent); transform:translateX(-100%); transition:transform .2s; }
-  .btn:hover::before { transform:translateX(0); }
-  .btn:hover { color:var(--bg); }
-  .btn:disabled { border-color:var(--dim2); color:var(--dim2); cursor:not-allowed; }
-  .btn:disabled::before { display:none; }
-  .btn span { position:relative; z-index:1; }
-  .btn.danger { border-color:var(--warn); color:var(--warn); }
-  .btn.danger::before { background:var(--warn); }
-  .timer-display {
-    margin-left:auto; font-size:11px; color:var(--accent);
-    display:flex; align-items:center; gap:7px;
-  }
-  .countdown {
-    font-size:20px; font-family:'Rajdhani',sans-serif; font-weight:700;
-    color:var(--long); min-width:34px; text-align:right;
-  }
+// Fetch real data from Binance public API (no key needed)
+async function fetchBinanceData(symbol, interval) {
+  try {
+    const [tickerRes, lsRatioRes, topAccoRes, topPositRes] = await Promise.allSettled([
+      fetch(`https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=${symbol}`),
+      fetch(`https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=${symbol}&period=${interval}&limit=2`),
+      fetch(`https://fapi.binance.com/futures/data/topLongShortAccountRatio?symbol=${symbol}&period=${interval}&limit=2`),
+      fetch(`https://fapi.binance.com/futures/data/topLongShortPositionRatio?symbol=${symbol}&period=${interval}&limit=2`),
+    ]);
 
-  /* ══ CONDITION FILTER ══ */
-  .cond-filter-wrap {
-    background:var(--surface); border:1px solid var(--border2);
-    padding:12px 16px; margin-bottom:14px;
-    display:flex; flex-direction:column; gap:10px;
-  }
-  .cond-filter-title {
-    font-size:9px; letter-spacing:3px; color:var(--dim); text-transform:uppercase;
-    display:flex; align-items:center; gap:8px;
-  }
-  .cond-filter-title::after { content:''; flex:1; height:1px; background:var(--border); }
-  .cond-filter-row {
-    display:flex; align-items:center; gap:6px; flex-wrap:wrap;
-  }
-  .cond-filter-label {
-    font-size:9px; letter-spacing:2px; color:var(--dim); min-width:54px; flex-shrink:0;
-  }
-  .cond-toggle {
-    font-family:'Share Tech Mono',monospace; font-size:9px; letter-spacing:1px;
-    padding:5px 10px; border:1px solid; background:transparent;
-    cursor:pointer; transition:all .2s; white-space:nowrap; user-select:none;
-  }
-  /* LONG 조건 토글 */
-  .cond-toggle.long-t        { border-color:var(--dim2); color:var(--dim); }
-  .cond-toggle.long-t.active { border-color:var(--long); color:var(--long); background:rgba(0,255,136,0.08); box-shadow:0 0 8px rgba(0,255,136,0.15); }
-  /* SHORT 조건 토글 */
-  .cond-toggle.short-t        { border-color:var(--dim2); color:var(--dim); }
-  .cond-toggle.short-t.active { border-color:var(--short); color:var(--short); background:rgba(255,68,102,0.08); box-shadow:0 0 8px rgba(255,68,102,0.15); }
-  /* CRASH 조건 토글 */
-  .cond-toggle.crash-t        { border-color:var(--dim2); color:var(--dim); }
-  .cond-toggle.crash-t.active { border-color:var(--crash); color:var(--crash); background:rgba(255,34,0,0.08); box-shadow:0 0 8px rgba(255,34,0,0.15); }
+    const ticker = tickerRes.status === "fulfilled" && tickerRes.value.ok ? await tickerRes.value.json() : null;
+    const lsRatioData = lsRatioRes.status === "fulfilled" && lsRatioRes.value.ok ? await lsRatioRes.value.json() : null;
+    const topAccoData = topAccoRes.status === "fulfilled" && topAccoRes.value.ok ? await topAccoRes.value.json() : null;
+    const topPositData = topPositRes.status === "fulfilled" && topPositRes.value.ok ? await topPositRes.value.json() : null;
 
-  .cond-sep { width:1px; height:18px; background:var(--border2); margin:0 4px; flex-shrink:0; }
+    // Taker volume from klines
+    const klinesRes = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=3`);
+    const klines = klinesRes.ok ? await klinesRes.json() : null;
 
-  .cond-all-btn {
-    font-family:'Share Tech Mono',monospace; font-size:8px; letter-spacing:2px;
-    padding:4px 8px; border:1px solid var(--dim2); color:var(--dim);
-    background:transparent; cursor:pointer; transition:all .2s;
-  }
-  .cond-all-btn:hover { border-color:var(--accent); color:var(--accent); }
+    const price = ticker ? parseFloat(ticker.lastPrice) : 0;
+    const priceChange = ticker ? parseFloat(ticker.priceChangePercent) : 0;
+    const lsRatio = lsRatioData?.[0] ? parseFloat(lsRatioData[0].longShortRatio) : null;
+    const lsAcco = topAccoData?.[0] ? parseFloat(topAccoData[0].longShortRatio) : null;
+    const lsPosit = topPositData?.[0] ? parseFloat(topPositData[0].longShortRatio) : null;
+    const prevLsPosit = topPositData?.[1] ? parseFloat(topPositData[1].longShortRatio) : lsPosit;
+    const bsVolBuy = klines?.[1] ? parseFloat(klines[1][9]) : 0;   // takerBuyBaseAssetVolume
+    const bsVolSell = klines?.[1] ? parseFloat(klines[1][5]) - parseFloat(klines[1][9]) : 0;
+    const prevBsVolBuy = klines?.[0] ? parseFloat(klines[0][9]) : bsVolBuy;
 
-  /* ══ STATS BAR ══ */
-  .stats-bar {
-    display:grid;
-    grid-template-columns:repeat(8,1fr);
-    gap:1px; margin-bottom:16px;
-    background:var(--border); border:1px solid var(--border);
-  }
-  .stat-cell { background:var(--surface); padding:10px 12px; }
-  .stat-label { font-size:8px; letter-spacing:2px; color:var(--dim); margin-bottom:2px; text-transform:uppercase; }
-  .stat-value { font-size:18px; font-family:'Rajdhani',sans-serif; font-weight:700; color:var(--accent); }
-  .stat-value.up    { color:var(--long); }
-  .stat-value.dn    { color:var(--short); }
-  .stat-value.crash { color:var(--crash); }
-  .stat-value.warn  { color:var(--warn); }
-  .stat-value.blue  { color:var(--tg); }
+    // Open interest
+    const oiRes = await fetch(`https://fapi.binance.com/fapi/v1/openInterest?symbol=${symbol}`);
+    const oiData = oiRes.ok ? await oiRes.json() : null;
+    const openInterest = oiData ? parseFloat(oiData.openInterest) * price : 0;
 
-  /* ══ SIGNAL BOXES ══ */
-  .signal-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; margin-bottom:16px; }
-  .signal-box { border:1px solid; padding:12px 14px; }
-  .signal-box.long-box  { border-color:rgba(0,255,136,0.25);  background:rgba(0,255,136,0.015); }
-  .signal-box.short-box { border-color:rgba(255,68,102,0.25); background:rgba(255,68,102,0.015); }
-  .signal-box.crash-box {
-    border-color:rgba(255,34,0,0.35);
-    background:rgba(255,34,0,0.025);
-    position:relative;
-  }
-  .signal-box.crash-box::before {
-    content:'NEW';
-    position:absolute; top:8px; right:10px;
-    font-size:7px; letter-spacing:2px; padding:2px 5px;
-    background:var(--crash); color:#fff;
-  }
-  .signal-title {
-    font-size:10px; letter-spacing:3px; text-transform:uppercase; margin-bottom:8px;
-    display:flex; align-items:center; gap:8px;
-  }
-  .signal-title.up    { color:var(--long); }
-  .signal-title.dn    { color:var(--short); }
-  .signal-title.crash { color:var(--crash); }
-  .signal-title::after { content:''; flex:1; height:1px; }
-  .signal-title.up::after    { background:rgba(0,255,136,0.18); }
-  .signal-title.dn::after    { background:rgba(255,68,102,0.18); }
-  .signal-title.crash::after { background:rgba(255,34,0,0.25); }
-  .cond-list { display:flex; flex-direction:column; gap:4px; }
-  .cond-item {
-    font-size:9px; letter-spacing:1px; padding:3px 7px;
-    border:1px solid; color:var(--dim); text-transform:uppercase; line-height:1.4;
-    transition: all .2s;
-  }
-  .cond-item.up    { border-color:rgba(0,255,136,0.15); }
-  .cond-item.dn    { border-color:rgba(255,68,102,0.15); }
-  .cond-item.crash { border-color:rgba(255,34,0,0.25); color:rgba(255,34,0,0.6); }
-  .cond-item.inactive {
-    opacity:.3; border-style:dashed;
-  }
-  .cond-item.active-cond {
-    opacity:1;
-  }
+    // Funding rate
+    const frRes = await fetch(`https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${symbol}`);
+    const frData = frRes.ok ? await frRes.json() : null;
+    const fundingRate = frData ? parseFloat(frData.lastFundingRate) : 0;
 
-  /* ══ SCANNING BAR ══ */
-  .scanning-bar {
-    display:none; flex-direction:column; gap:6px;
-    padding:10px 12px;
-    background:rgba(0,212,255,0.04); border:1px solid rgba(0,212,255,0.15);
-    margin-bottom:12px;
-  }
-  .scanning-bar.visible { display:flex; }
-  .scanning-bar-top {
-    display:flex; align-items:center; gap:10px;
-    font-size:10px; color:var(--accent); letter-spacing:2px;
-  }
-  .spin {
-    width:11px; height:11px; border:1px solid var(--accent);
-    border-top-color:transparent; border-radius:50%;
-    animation:spin .8s linear infinite; flex-shrink:0;
-  }
-  @keyframes spin { to { transform:rotate(360deg); } }
-  .progress-bar { flex:1; height:2px; background:var(--border); overflow:hidden; min-width:0; }
-  .progress-fill { height:100%; background:var(--accent); width:0%; transition:width .3s; }
+    if (!price) return null;
 
-  /* ══ SCAN LIST PANEL ══ */
-  .scan-list-panel {
-    display:none; flex-direction:column; gap:0;
-    border:1px solid var(--border2); background:var(--surface);
-    margin-bottom:12px; overflow:hidden;
+    return {
+      symbol,
+      interval,
+      price,
+      priceChange,
+      lsRatio,
+      lsPosit,
+      lsAcco,
+      bsVolBuy,
+      bsVolSell,
+      prevLsPosit,
+      prevBsVolBuy,
+      fundingRate,
+      openInterest,
+      timestamp: Date.now(),
+      source: "binance",
+    };
+  } catch (e) {
+    return null;
   }
-  .scan-list-panel.visible { display:flex; }
-  .scan-list-header {
-    display:flex; align-items:center; justify-content:space-between;
-    padding:8px 12px;
-    border-bottom:1px solid var(--border);
-    font-size:9px; letter-spacing:2px; color:var(--dim);
-    background:var(--surface2);
-    cursor:pointer; user-select:none;
-  }
-  .scan-list-header:hover { color:var(--accent); }
-  .scan-list-header-left { display:flex; align-items:center; gap:8px; }
-  .scan-list-toggle { font-size:10px; color:var(--dim); transition:transform .2s; }
-  .scan-list-toggle.open { transform:rotate(180deg); }
+}
 
-  .scan-list-body {
-    display:none; max-height:220px; overflow-y:auto;
-    padding:8px;
-    scrollbar-width:thin; scrollbar-color:var(--dim2) transparent;
-  }
-  .scan-list-body.open { display:block; }
-  .scan-list-body::-webkit-scrollbar { width:3px; }
-  .scan-list-body::-webkit-scrollbar-thumb { background:var(--dim2); }
+function GaugeBar({ value, min = 0, max = 3, danger = false, label, sublabel }) {
+  const pct = Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100));
+  const color = danger
+    ? value > 1.8 ? "#ff2d55" : value > 1.3 ? "#ffd60a" : "#00e5a0"
+    : value < 0.8 ? "#ff2d55" : value < 1.0 ? "#ffd60a" : "#00e5a0";
 
-  .scan-grid {
-    display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:3px;
-  }
-  .scan-item {
-    font-size:9px; letter-spacing:1px; padding:4px 7px;
-    border:1px solid var(--border); color:var(--dim);
-    display:flex; align-items:center; gap:4px;
-    animation:fadeIn .2s ease;
-  }
-  @keyframes fadeIn { from{opacity:0;transform:translateY(-2px)} to{opacity:1;transform:none} }
-  .scan-item.pending  { border-color:var(--border); color:var(--dim2); }
-  .scan-item.done     { border-color:rgba(0,212,255,0.2); color:var(--accent); }
-  .scan-item.hit-long  { border-color:rgba(0,255,136,0.5); color:var(--long); background:rgba(0,255,136,0.06); }
-  .scan-item.hit-short { border-color:rgba(255,68,102,0.5); color:var(--short); background:rgba(255,68,102,0.06); }
-  .scan-item.hit-crash { border-color:rgba(255,34,0,0.5); color:var(--crash); background:rgba(255,34,0,0.06); }
-  .scan-item.error    { border-color:rgba(255,140,66,0.3); color:var(--warn); }
-  .scan-item-dot { width:4px; height:4px; border-radius:50%; flex-shrink:0; }
-  .scan-item.pending  .scan-item-dot { background:var(--dim2); }
-  .scan-item.done     .scan-item-dot { background:var(--accent); }
-  .scan-item.hit-long  .scan-item-dot { background:var(--long);  box-shadow:0 0 4px var(--long); }
-  .scan-item.hit-short .scan-item-dot { background:var(--short); box-shadow:0 0 4px var(--short); }
-  .scan-item.hit-crash .scan-item-dot { background:var(--crash); box-shadow:0 0 4px var(--crash); }
-  .scan-item.error    .scan-item-dot { background:var(--warn); }
-  .scan-item-tag { font-size:7px; padding:1px 3px; border:1px solid; margin-left:auto; letter-spacing:1px; }
-  .scan-item.hit-long  .scan-item-tag { border-color:var(--long);  color:var(--long); }
-  .scan-item.hit-short .scan-item-tag { border-color:var(--short); color:var(--short); }
-  .scan-item.hit-crash .scan-item-tag { border-color:var(--crash); color:var(--crash); }
-
-  .scan-stats-row {
-    display:flex; gap:12px; align-items:center;
-    font-size:9px; letter-spacing:1px;
-  }
-  .scan-stat-chip { display:flex; align-items:center; gap:4px; }
-  .scan-stat-chip .n { font-family:'Rajdhani',sans-serif; font-weight:700; font-size:13px; }
-  .scan-stat-chip.done-c  .n { color:var(--accent); }
-  .scan-stat-chip.long-c  .n { color:var(--long); }
-  .scan-stat-chip.short-c .n { color:var(--short); }
-  .scan-stat-chip.crash-c .n { color:var(--crash); }
-  .scan-stat-chip.err-c   .n { color:var(--warn); }
-  .scan-stat-chip .lbl { color:var(--dim); }
-
-  /* ══ SECTION TITLE ══ */
-  .section-title {
-    font-size:9px; letter-spacing:3px; color:var(--dim);
-    text-transform:uppercase; margin-bottom:8px;
-    display:flex; align-items:center; gap:8px;
-  }
-  .section-title::after { content:''; flex:1; height:1px; background:var(--border); }
-  .badge-up {
-    font-size:8px; padding:2px 7px;
-    background:rgba(0,255,136,0.1); color:var(--long);
-    border:1px solid rgba(0,255,136,0.3); letter-spacing:2px;
-  }
-  .badge-dn {
-    font-size:8px; padding:2px 7px;
-    background:rgba(255,68,102,0.1); color:var(--short);
-    border:1px solid rgba(255,68,102,0.3); letter-spacing:2px;
-  }
-  .badge-crash {
-    font-size:8px; padding:2px 7px;
-    background:rgba(255,34,0,0.12); color:var(--crash);
-    border:1px solid rgba(255,34,0,0.4); letter-spacing:2px;
-    animation:crashBlink 1.4s infinite;
-  }
-  @keyframes crashBlink { 0%,100%{opacity:1} 50%{opacity:.45} }
-
-  /* ══ TABLE ══ */
-  .table-wrap {
-    width:100%; overflow-x:auto; margin-bottom:20px;
-    scrollbar-width:thin; scrollbar-color:var(--dim2) transparent;
-  }
-  .table-wrap::-webkit-scrollbar { height:4px; }
-  .table-wrap::-webkit-scrollbar-thumb { background:var(--dim2); border-radius:2px; }
-
-  .results-table {
-    width:100%; min-width:900px; border-collapse:collapse; font-size:11px;
-  }
-  .results-table th {
-    text-align:left; font-size:8px; letter-spacing:2px; color:var(--dim);
-    padding:7px 10px; border-bottom:1px solid var(--border);
-    font-weight:normal; white-space:nowrap; background:var(--surface);
-    position:sticky; top:0; z-index:2;
-  }
-  .results-table td {
-    padding:8px 10px; border-bottom:1px solid rgba(13,32,53,0.6);
-    vertical-align:middle; white-space:nowrap;
-  }
-  .results-table tr:hover td { background:rgba(0,212,255,0.02); }
-
-  .crash-row td { border-bottom:1px solid rgba(255,34,0,0.12); }
-  .crash-row:hover td { background:rgba(255,34,0,0.03); }
-
-  .symbol-cell { font-family:'Rajdhani',sans-serif; font-weight:700; font-size:14px; }
-  .symbol-cell.up    { color:var(--long); }
-  .symbol-cell.dn    { color:var(--short); }
-  .symbol-cell.crash { color:var(--crash); }
-
-  .badge {
-    display:inline-block; font-size:7px; letter-spacing:1px;
-    padding:2px 4px; border:1px solid; white-space:nowrap; margin-right:2px;
-  }
-  .badge.up    { border-color:var(--long);  color:var(--long); }
-  .badge.dn    { border-color:var(--short); color:var(--short); }
-  .badge.crash { border-color:var(--crash); color:var(--crash); }
-  .badge.dim   { border-color:var(--dim2);  color:var(--dim2); text-decoration:line-through; }
-
-  .val-up    { color:var(--long); }
-  .val-dn    { color:var(--short); }
-  .val-crash { color:var(--crash); }
-
-  /* ══ PRICE PANEL ══ */
-  .price-panel { display:flex; flex-direction:column; gap:3px; min-width:130px; }
-  .price-row {
-    font-size:9px; color:var(--dim); letter-spacing:1px;
-    display:flex; align-items:baseline; gap:4px;
-  }
-  .price-row .lbl { flex-shrink:0; }
-  .price-row .val { color:var(--text); }
-  .price-row .val.up   { color:var(--long); }
-  .price-row .val.dn   { color:var(--short); }
-  .price-row .val.gold { color:var(--gold); }
-  .price-cur {
-    font-family:'Rajdhani',sans-serif; font-weight:700; font-size:15px; color:var(--accent);
-  }
-  .mid-badge {
-    font-size:8px; padding:1px 5px;
-    border:1px solid; letter-spacing:1px;
-  }
-  .mid-badge.above { border-color:rgba(0,255,136,0.4); color:var(--long); background:rgba(0,255,136,0.07); }
-  .mid-badge.below { border-color:rgba(255,68,102,0.4); color:var(--short); background:rgba(255,68,102,0.07); }
-
-  /* ══ PnL ══ */
-  .pnl-block { display:flex; flex-direction:column; gap:2px; min-width:110px; }
-  .pnl-row   { font-size:9px; color:var(--dim); display:flex; gap:4px; }
-  .pnl-row .val { color:var(--text); }
-  .pnl-rate {
-    font-family:'Rajdhani',sans-serif; font-weight:700; font-size:15px;
-    display:flex; align-items:center; gap:3px;
-  }
-  .pnl-rate.gain { color:var(--long); }
-  .pnl-rate.loss { color:var(--short); }
-  .pnl-rate.zero { color:var(--dim); }
-
-  /* ★ L/S ratio */
-  .ls-ratio-block { display:flex; flex-direction:column; gap:4px; min-width:140px; }
-  .ls-ratio-row   { display:flex; justify-content:space-between; align-items:center; font-size:9px; gap:8px; }
-  .ls-ratio-label { color:var(--dim); letter-spacing:1px; flex-shrink:0; }
-  .ls-ratio-val   {
-    font-family:'Rajdhani',sans-serif; font-weight:700; font-size:14px;
-    color:var(--crash);
-  }
-  .ls-ratio-bar-wrap { flex:1; height:3px; background:var(--border); min-width:50px; overflow:hidden; }
-  .ls-ratio-bar { height:100%; background:var(--crash); opacity:.7; }
-
-  .new-tag {
-    font-size:7px; letter-spacing:2px; padding:2px 4px; margin-left:5px;
-    animation:blink 1s step-end 4;
-  }
-  .new-tag.up    { background:var(--long);  color:var(--bg); }
-  .new-tag.dn    { background:var(--short); color:#fff; }
-  .new-tag.crash { background:var(--crash); color:#fff; }
-  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
-
-  .oi-arrows { font-size:9px; color:var(--long); }
-
-  .empty-state { text-align:center; padding:32px 20px; color:var(--dim); }
-  .empty-icon  { font-size:28px; margin-bottom:10px; opacity:.2; }
-  .empty-text  { font-size:10px; letter-spacing:2px; }
-
-  .ma-stack { font-size:8px; color:var(--dim); line-height:1.7; }
-  .ma-stack .v { color:var(--text); }
-  .candle-struct { font-size:8px; color:var(--dim); line-height:1.7; }
-  .candle-struct .v { color:var(--text); }
-
-  /* ══ COND INFO in table ══ */
-  .cond-detail-wrap { display:flex; flex-direction:column; gap:2px; min-width:100px; }
-  .cond-detail-line { font-size:8px; letter-spacing:1px; color:var(--dim); display:flex; align-items:center; gap:4px; }
-  .cond-detail-line .ck { font-size:10px; }
-  .cond-detail-line.pass .ck { color:var(--long); }
-  .cond-detail-line.fail .ck { color:var(--short); }
-  .cond-detail-line.pass { color:var(--text); }
-
-  /* ══ LOG ══ */
-  .log-box {
-    background:var(--surface); border:1px solid var(--border);
-    padding:10px; height:140px; overflow-y:auto; font-size:10px; line-height:1.8;
-    scrollbar-width:thin; scrollbar-color:var(--dim2) transparent;
-  }
-  .log-box::-webkit-scrollbar { width:3px; }
-  .log-box::-webkit-scrollbar-thumb { background:var(--dim2); }
-  .log-line { display:flex; gap:10px; }
-  .log-time { color:var(--dim); flex-shrink:0; font-size:9px; }
-  .log-msg        { color:var(--text); word-break:break-all; }
-  .log-msg.up     { color:var(--long); }
-  .log-msg.dn     { color:var(--short); }
-  .log-msg.crash  { color:var(--crash); font-weight:bold; }
-  .log-msg.info   { color:var(--accent); }
-  .log-msg.warn   { color:var(--warn); }
-  .log-msg.tg     { color:var(--tg); }
-
-  /* ══ TOAST ══ */
-  .toast-container { position:fixed; top:16px; right:16px; z-index:200; display:flex; flex-direction:column; gap:7px; max-width:280px; }
-  .toast { background:var(--surface2); padding:12px 14px; animation:slideIn .3s ease; }
-  .toast.up    { border:1px solid var(--long);  box-shadow:0 0 16px rgba(0,255,136,0.15); }
-  .toast.dn    { border:1px solid var(--short); box-shadow:0 0 16px rgba(255,68,102,0.15); }
-  .toast.crash { border:1px solid var(--crash); box-shadow:0 0 24px rgba(255,34,0,0.3); }
-  .toast.removing { animation:slideOut .3s ease forwards; }
-  @keyframes slideIn { from{transform:translateX(110%);opacity:0} to{transform:translateX(0);opacity:1} }
-  @keyframes slideOut { to{transform:translateX(110%);opacity:0} }
-  .toast-title { font-size:9px; letter-spacing:2px; margin-bottom:4px; }
-  .toast-title.up    { color:var(--long); }
-  .toast-title.dn    { color:var(--short); }
-  .toast-title.crash { color:var(--crash); }
-  .toast-body { font-family:'Rajdhani',sans-serif; font-weight:700; font-size:16px; color:var(--text); }
-  .toast-sub  { font-size:8px; color:var(--dim); margin-top:2px; line-height:1.5; }
-
-  /* ══ RESPONSIVE ══ */
-  @media (max-width:1400px) {
-    .stats-bar { grid-template-columns:repeat(4,1fr); }
-    .signal-grid { grid-template-columns:1fr 1fr; }
-  }
-  @media (max-width:1000px) {
-    .stats-bar   { grid-template-columns:repeat(4,1fr); }
-    .signal-grid { grid-template-columns:1fr; }
-  }
-  @media (max-width:768px) {
-    .stats-bar   { grid-template-columns:repeat(2,1fr); }
-    header { flex-direction:column; }
-    .timer-display { margin-left:0; }
-    .tg-input       { width:100%; }
-    .tg-input.narrow{ width:100%; }
-    .tg-panel { flex-direction:column; align-items:stretch; }
-    .controls { gap:6px; }
-    .toast-container { max-width:240px; right:8px; top:8px; }
-    .scan-grid { grid-template-columns:repeat(auto-fill,minmax(100px,1fr)); }
-  }
-  @media (max-width:480px) {
-    .stats-bar { grid-template-columns:repeat(2,1fr); }
-    .container { padding:12px 10px; }
-    .logo { font-size:20px; letter-spacing:4px; }
-  }
-</style>
-</head>
-<body>
-
-<div class="toast-container" id="toastContainer"></div>
-
-<div class="container">
-
-  <header>
-    <div>
-      <div class="logo">FUTURES<span class="up">▲</span><span class="dn">▼</span>SCAN</div>
-      <div class="logo-sub">BINANCE PERPETUAL · 15M CHART · v5.2 &nbsp;|&nbsp; 개별 조건 선택 스캔 &nbsp;|&nbsp; 실시간 심볼 진행 목록</div>
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+        <span style={{ fontSize: 11, color: "#8e8ea0", letterSpacing: "0.08em", textTransform: "uppercase" }}>{label}</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color, fontFamily: "'JetBrains Mono', monospace" }}>
+          {value?.toFixed(3) ?? "—"}
+        </span>
+      </div>
+      <div style={{ height: 5, background: "#1a1a2e", borderRadius: 3, overflow: "hidden" }}>
+        <div style={{
+          height: "100%", width: `${pct}%`, background: color,
+          borderRadius: 3, transition: "width 0.6s cubic-bezier(.4,0,.2,1)",
+          boxShadow: `0 0 8px ${color}88`
+        }} />
+      </div>
+      {sublabel && <div style={{ fontSize: 10, color: "#555", marginTop: 3 }}>{sublabel}</div>}
     </div>
-    <div class="status-panel">
-      <div class="status-row"><div class="dot" id="apiDot"></div><span id="apiStatus">STANDBY</span></div>
-      <div class="status-row"><div class="dot" id="scanDot"></div><span id="scanStatus">IDLE</span></div>
-      <div class="status-row"><div class="dot" id="tgDot"></div><span id="tgStatus">TG DISCONNECTED</span></div>
-      <div class="status-row" id="lastScanRow" style="display:none">
-        <span id="lastScanTime" style="color:var(--dim);font-size:9px"></span>
+  );
+}
+
+function BSVolBar({ buy, sell }) {
+  const total = buy + sell;
+  const buyPct = total > 0 ? (buy / total) * 100 : 50;
+  const sellPct = 100 - buyPct;
+  const dominant = buyPct > 55 ? "buy" : sellPct > 55 ? "sell" : "neutral";
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+        <span style={{ fontSize: 11, color: "#8e8ea0", letterSpacing: "0.08em", textTransform: "uppercase" }}>B/S Taker Vol</span>
+        <span style={{
+          fontSize: 11, fontWeight: 700, padding: "1px 7px", borderRadius: 3,
+          background: dominant === "buy" ? "#00e5a022" : dominant === "sell" ? "#ff2d5522" : "#ffffff11",
+          color: dominant === "buy" ? "#00e5a0" : dominant === "sell" ? "#ff2d55" : "#8e8ea0"
+        }}>
+          {dominant === "buy" ? "매수 우세" : dominant === "sell" ? "매도 우세" : "중립"}
+        </span>
+      </div>
+      <div style={{ height: 8, background: "#1a1a2e", borderRadius: 4, overflow: "hidden", display: "flex" }}>
+        <div style={{
+          height: "100%", width: `${buyPct}%`,
+          background: "linear-gradient(90deg, #00e5a0, #00bfa5)",
+          transition: "width 0.6s cubic-bezier(.4,0,.2,1)"
+        }} />
+        <div style={{
+          height: "100%", width: `${sellPct}%`,
+          background: "linear-gradient(90deg, #ff4466, #ff2d55)",
+          transition: "width 0.6s cubic-bezier(.4,0,.2,1)"
+        }} />
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+        <span style={{ fontSize: 10, color: "#00e5a0" }}>
+          Buy {buyPct.toFixed(1)}% &nbsp;{formatVolume(buy)}
+        </span>
+        <span style={{ fontSize: 10, color: "#ff2d55" }}>
+          Sell {sellPct.toFixed(1)}% &nbsp;{formatVolume(sell)}
+        </span>
       </div>
     </div>
-  </header>
+  );
+}
 
-  <div class="tg-panel">
-    <div class="tg-label">✈ TELEGRAM</div>
-    <input class="tg-input"        id="tgToken"  type="text" placeholder="Bot Token" spellcheck="false"/>
-    <input class="tg-input narrow" id="tgChatId" type="text" placeholder="Chat ID"   spellcheck="false"/>
-    <button class="btn-tg" onclick="testTelegram()"><span>⚡ TEST</span></button>
-    <span class="tg-status" id="tgTestStatus">—</span>
-  </div>
+function formatVolume(v) {
+  if (!v) return "—";
+  if (v >= 1e9) return (v / 1e9).toFixed(2) + "B";
+  if (v >= 1e6) return (v / 1e6).toFixed(2) + "M";
+  if (v >= 1e3) return (v / 1e3).toFixed(1) + "K";
+  return v.toFixed(0);
+}
 
-  <!-- ══ 조건 필터 ══ -->
-  <div class="cond-filter-wrap">
-    <div class="cond-filter-title">조건 선택 — 체크된 조건만 조회합니다 (각 신호 세트 내에서 AND 조건)</div>
+function formatPrice(p) {
+  if (!p) return "—";
+  if (p >= 1000) return p.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (p >= 1) return p.toFixed(4);
+  return p.toFixed(6);
+}
 
-    <div class="cond-filter-row">
-      <span class="cond-filter-label">🟢 LONG</span>
-      <button class="cond-toggle long-t active" id="togL1" onclick="toggleCond('L1')">L1 MA정배열</button>
-      <button class="cond-toggle long-t active" id="togL2" onclick="toggleCond('L2')">L2 급등+7%</button>
-      <button class="cond-toggle long-t active" id="togL3" onclick="toggleCond('L3')">L3 OI+10%</button>
-      <div class="cond-sep"></div>
-      <button class="cond-all-btn" onclick="setAllConds('long',true)">ALL ON</button>
-      <button class="cond-all-btn" onclick="setAllConds('long',false)">ALL OFF</button>
-    </div>
-
-    <div class="cond-filter-row">
-      <span class="cond-filter-label">🔴 SHORT</span>
-      <button class="cond-toggle short-t active" id="togS1" onclick="toggleCond('S1')">S1 24H+15%</button>
-      <button class="cond-toggle short-t active" id="togS2" onclick="toggleCond('S2')">S2 MA정배열</button>
-      <button class="cond-toggle short-t active" id="togS3" onclick="toggleCond('S3')">S3 음봉구조</button>
-      <div class="cond-sep"></div>
-      <button class="cond-all-btn" onclick="setAllConds('short',true)">ALL ON</button>
-      <button class="cond-all-btn" onclick="setAllConds('short',false)">ALL OFF</button>
-    </div>
-
-    <div class="cond-filter-row">
-      <span class="cond-filter-label">💥 CRASH</span>
-      <button class="cond-toggle crash-t active" id="togC1" onclick="toggleCond('C1')">C1 전체L/S↓</button>
-      <button class="cond-toggle crash-t active" id="togC2" onclick="toggleCond('C2')">C2 고래L/S↓</button>
-      <button class="cond-toggle crash-t active" id="togC3" onclick="toggleCond('C3')">C3 24H+20%</button>
-      <button class="cond-toggle crash-t active" id="togC4" onclick="toggleCond('C4')">C4 BB중앙↓</button>
-      <div class="cond-sep"></div>
-      <button class="cond-all-btn" onclick="setAllConds('crash',true)">ALL ON</button>
-      <button class="cond-all-btn" onclick="setAllConds('crash',false)">ALL OFF</button>
-    </div>
-  </div>
-
-  <div class="controls">
-    <button class="btn" id="startBtn"  onclick="startScanner()"><span>▶ START</span></button>
-    <button class="btn danger" id="stopBtn" onclick="stopScanner()" disabled><span>■ STOP</span></button>
-    <button class="btn" id="manualBtn" onclick="runScan()"><span>⟳ SCAN NOW</span></button>
-    <div class="timer-display">NEXT&nbsp;<div class="countdown" id="countdown">—</div><span style="font-size:10px">s</span></div>
-  </div>
-
-  <div class="stats-bar">
-    <div class="stat-cell"><div class="stat-label">Total</div><div class="stat-value" id="statTotal">0</div></div>
-    <div class="stat-cell"><div class="stat-label">Scanned</div><div class="stat-value" id="statScanned">0</div></div>
-    <div class="stat-cell"><div class="stat-label">🟢 LONG</div><div class="stat-value up" id="statLong">0</div></div>
-    <div class="stat-cell"><div class="stat-label">🔴 SHORT</div><div class="stat-value dn" id="statShort">0</div></div>
-    <div class="stat-cell"><div class="stat-label">💥 CRASH</div><div class="stat-value crash" id="statCrash">0</div></div>
-    <div class="stat-cell"><div class="stat-label">Errors</div><div class="stat-value warn" id="statErrors">0</div></div>
-    <div class="stat-cell"><div class="stat-label">TG Sent</div><div class="stat-value blue" id="statTgSent">0</div></div>
-    <div class="stat-cell"><div class="stat-label">Runs</div><div class="stat-value" id="statRuns">0</div></div>
-  </div>
-
-  <div class="signal-grid">
-    <div class="signal-box long-box">
-      <div class="signal-title up">🟢 LONG 신호</div>
-      <div class="cond-list">
-        <div class="cond-item up active-cond" id="ci-L1">L1 · MA5 &gt; MA10 &gt; MA20 &gt; MA60 정배열 (3봉 연속)</div>
-        <div class="cond-item up active-cond" id="ci-L2">L2 · 최근 240분(16봉) 내 저가→종가 +7% 이상 급등</div>
-        <div class="cond-item up active-cond" id="ci-L3">L3 · OI 평균 대비 +10%↑ &amp; 3봉 연속 OI 증가</div>
+function SignalBadge({ signal }) {
+  if (!signal) return null;
+  const stages = ["중립", "1단계", "2단계", "3단계", "4단계"];
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 8,
+      padding: "8px 14px", borderRadius: 8,
+      background: `${signal.color}18`,
+      border: `1px solid ${signal.color}44`,
+      marginBottom: 20
+    }}>
+      <span style={{ fontSize: 20 }}>{signal.icon}</span>
+      <div>
+        <div style={{ fontSize: 12, color: signal.color, fontWeight: 700, letterSpacing: "0.05em" }}>
+          {signal.stage > 0 ? stages[signal.stage] + " — " : ""}{signal.label}
+        </div>
+        {signal.stage === 3 && (
+          <div style={{ fontSize: 10, color: "#8e8ea0", marginTop: 2 }}>
+            고래 숏 매집 감지 · 개미-고래 포지션 불일치 극대화
+          </div>
+        )}
+        {signal.stage === 4 && (
+          <div style={{ fontSize: 10, color: "#8e8ea0", marginTop: 2 }}>
+            시장가 매도 폭탄 · 롱 청산 연쇄 가속화 중
+          </div>
+        )}
       </div>
     </div>
-    <div class="signal-box short-box">
-      <div class="signal-title dn">🔴 SHORT 신호</div>
-      <div class="cond-list">
-        <div class="cond-item dn active-cond" id="ci-S1">S1 · 24시간 대비 현재가 +15% 이상 상승 (과열)</div>
-        <div class="cond-item dn active-cond" id="ci-S2">S2 · 15분봉 MA5 &gt; MA10 &gt; MA30 &gt; MA60 정배열</div>
-        <div class="cond-item dn active-cond" id="ci-S3">S3 · 시가 &gt; MA5 &gt; MA10 &gt; 종가 인 음봉 발생 (현재봉)</div>
-      </div>
-    </div>
-    <div class="signal-box crash-box">
-      <div class="signal-title crash">💥 CRASH 신호</div>
-      <div class="cond-list">
-        <div class="cond-item crash active-cond" id="ci-C1">C1 · 5분봉 전체 계정 롱/숏 비율 &lt; 0.9</div>
-        <div class="cond-item crash active-cond" id="ci-C2">C2 · 5분봉 고래 계정 롱/숏 비율 &lt; 0.9</div>
-        <div class="cond-item crash active-cond" id="ci-C3">C3 · 24시간 이내 현재가 +20% 이상 상승</div>
-        <div class="cond-item crash active-cond" id="ci-C4">C4 · 15분봉 볼린저밴드 중앙선(SMA20) 아래</div>
-      </div>
-    </div>
-  </div>
+  );
+}
 
-  <!-- ══ 스캔 진행 바 ══ -->
-  <div class="scanning-bar" id="scanningBar">
-    <div class="scanning-bar-top">
-      <div class="spin"></div>
-      <span id="scanningSymbol" style="flex-shrink:0">SCANNING</span>
-      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
-      <span id="progressText" style="flex-shrink:0">0%</span>
+function StageTimeline({ current }) {
+  const stages = [
+    { n: 1, label: "급등기", color: "#00e5a0" },
+    { n: 2, label: "둔화기", color: "#ffd60a" },
+    { n: 3, label: "전환기", color: "#ff6b35" },
+    { n: 4, label: "폭락기", color: "#ff2d55" },
+  ];
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 0, marginBottom: 20 }}>
+      {stages.map((s, i) => (
+        <div key={s.n} style={{ display: "flex", alignItems: "center", flex: 1 }}>
+          <div style={{
+            flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4
+          }}>
+            <div style={{
+              width: 28, height: 28, borderRadius: "50%",
+              background: current === s.n ? s.color : "#1a1a2e",
+              border: `2px solid ${current === s.n ? s.color : "#2a2a3e"}`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 12, fontWeight: 700,
+              color: current === s.n ? "#0a0a14" : "#555",
+              boxShadow: current === s.n ? `0 0 12px ${s.color}88` : "none",
+              transition: "all 0.3s"
+            }}>{s.n}</div>
+            <span style={{
+              fontSize: 9, color: current === s.n ? s.color : "#555",
+              letterSpacing: "0.05em", textTransform: "uppercase", fontWeight: current === s.n ? 700 : 400
+            }}>{s.label}</span>
+          </div>
+          {i < stages.length - 1 && (
+            <div style={{
+              height: 1, flex: 0.3,
+              background: current > s.n ? "#2a3a2a" : "#1a1a2e",
+              marginBottom: 18
+            }} />
+          )}
+        </div>
+      ))}
     </div>
-  </div>
+  );
+}
 
-  <!-- ══ 스캔 심볼 목록 패널 ══ -->
-  <div class="scan-list-panel" id="scanListPanel">
-    <div class="scan-list-header" onclick="toggleScanList()">
-      <div class="scan-list-header-left">
-        <span>📋 스캔 심볼 목록</span>
-        <div class="scan-stats-row" id="scanStatsRow">
-          <div class="scan-stat-chip done-c"><span class="n" id="slDone">0</span><span class="lbl">완료</span></div>
-          <div class="scan-stat-chip long-c"><span class="n" id="slLong">0</span><span class="lbl">LONG</span></div>
-          <div class="scan-stat-chip short-c"><span class="n" id="slShort">0</span><span class="lbl">SHORT</span></div>
-          <div class="scan-stat-chip crash-c"><span class="n" id="slCrash">0</span><span class="lbl">CRASH</span></div>
-          <div class="scan-stat-chip err-c"><span class="n" id="slErr">0</span><span class="lbl">ERR</span></div>
+export default function App() {
+  const [query, setQuery] = useState("");
+  const [symbol, setSymbol] = useState("");
+  const [interval, setInterval] = useState("1h");
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const timerRef = useRef(null);
+
+  const fetchData = useCallback(async (sym, intv) => {
+    if (!sym) return;
+    setLoading(true);
+    setError("");
+    try {
+      const result = await fetchBinanceData(sym.toUpperCase(), intv);
+      if (result) {
+        setData(result);
+        setLastUpdated(new Date());
+      } else {
+        // Fallback to mock
+        setData(getMockData(sym.toUpperCase(), intv));
+        setLastUpdated(new Date());
+        setError("⚠️ Binance API 응답 없음 — 데모 데이터로 표시 중");
+      }
+    } catch {
+      setData(getMockData(sym.toUpperCase(), intv));
+      setLastUpdated(new Date());
+      setError("⚠️ 네트워크 오류 — 데모 데이터로 표시 중");
+    }
+    setLoading(false);
+  }, []);
+
+  const handleSearch = () => {
+    const sym = query.trim().toUpperCase();
+    if (!sym) return;
+    setSymbol(sym);
+    fetchData(sym, interval);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter") handleSearch();
+  };
+
+  const handleIntervalChange = (intv) => {
+    setInterval(intv);
+    if (symbol) fetchData(symbol, intv);
+  };
+
+  // Auto refresh
+  useEffect(() => {
+    if (autoRefresh && symbol) {
+      timerRef.current = setInterval(() => fetchData(symbol, interval), 30000);
+    }
+    return () => clearInterval(timerRef.current);
+  }, [autoRefresh, symbol, interval, fetchData]);
+
+  const signal = detectSignalStage(data);
+
+  return (
+    <div style={{
+      minHeight: "100vh",
+      background: "#080810",
+      fontFamily: "'Space Mono', 'Courier New', monospace",
+      color: "#e0e0e8",
+      padding: "0 0 60px",
+    }}>
+      {/* Header */}
+      <div style={{
+        borderBottom: "1px solid #1a1a2e",
+        padding: "20px 24px 16px",
+        background: "linear-gradient(180deg, #0d0d1a 0%, #080810 100%)",
+        position: "sticky", top: 0, zIndex: 10
+      }}>
+        <div style={{ maxWidth: 780, margin: "0 auto" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <div>
+              <div style={{
+                fontSize: 11, letterSpacing: "0.25em", color: "#ff6b35",
+                textTransform: "uppercase", fontWeight: 700, marginBottom: 3
+              }}>
+                ◈ Whale Footprint Scanner
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: "0.03em", color: "#e8e8f0" }}>
+                선물 포지션 지표 분석기
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <button
+                onClick={() => setAutoRefresh(v => !v)}
+                style={{
+                  padding: "6px 12px", borderRadius: 6, border: "none", cursor: "pointer",
+                  fontSize: 10, letterSpacing: "0.08em", fontWeight: 700,
+                  background: autoRefresh ? "#ff6b3522" : "#1a1a2e",
+                  color: autoRefresh ? "#ff6b35" : "#555",
+                  transition: "all 0.2s"
+                }}
+              >
+                {autoRefresh ? "● AUTO 30s" : "○ AUTO OFF"}
+              </button>
+              {symbol && (
+                <button
+                  onClick={() => fetchData(symbol, interval)}
+                  disabled={loading}
+                  style={{
+                    padding: "6px 12px", borderRadius: 6, border: "1px solid #2a2a3e",
+                    background: "transparent", color: "#8e8ea0", cursor: "pointer",
+                    fontSize: 10, letterSpacing: "0.08em"
+                  }}
+                >
+                  {loading ? "⟳ 조회중..." : "↺ 새로고침"}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Search bar */}
+          <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ flex: 1, position: "relative" }}>
+              <input
+                value={query}
+                onChange={e => setQuery(e.target.value.toUpperCase())}
+                onKeyDown={handleKeyDown}
+                placeholder="심볼 입력 (예: BTCUSDT, ETHUSDT)"
+                style={{
+                  width: "100%", padding: "11px 16px", borderRadius: 8,
+                  background: "#0f0f1e", border: "1px solid #2a2a3e",
+                  color: "#e0e0e8", fontSize: 13, outline: "none",
+                  fontFamily: "'Space Mono', monospace", letterSpacing: "0.05em",
+                  boxSizing: "border-box",
+                  transition: "border-color 0.2s"
+                }}
+                onFocus={e => e.target.style.borderColor = "#ff6b35"}
+                onBlur={e => e.target.style.borderColor = "#2a2a3e"}
+              />
+            </div>
+            <button
+              onClick={handleSearch}
+              disabled={loading}
+              style={{
+                padding: "11px 22px", borderRadius: 8, border: "none",
+                background: loading ? "#333" : "linear-gradient(135deg, #ff6b35, #ff2d55)",
+                color: "#fff", fontWeight: 700, cursor: loading ? "not-allowed" : "pointer",
+                fontSize: 13, letterSpacing: "0.05em", fontFamily: "'Space Mono', monospace",
+                transition: "opacity 0.2s", whiteSpace: "nowrap"
+              }}
+            >
+              {loading ? "조회중" : "조회"}
+            </button>
+          </div>
+
+          {/* Quick symbols */}
+          <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+            {DEFAULT_SYMBOLS.map(s => (
+              <button key={s} onClick={() => { setQuery(s); setSymbol(s); fetchData(s, interval); }}
+                style={{
+                  padding: "4px 10px", borderRadius: 4,
+                  background: symbol === s ? "#ff6b3522" : "#0f0f1e",
+                  border: `1px solid ${symbol === s ? "#ff6b35" : "#1a1a2e"}`,
+                  color: symbol === s ? "#ff6b35" : "#555",
+                  fontSize: 10, cursor: "pointer", letterSpacing: "0.08em",
+                  fontFamily: "'Space Mono', monospace", transition: "all 0.2s"
+                }}>{s.replace("USDT", "")}</button>
+            ))}
+          </div>
         </div>
       </div>
-      <span class="scan-list-toggle open" id="scanListToggle">▼</span>
+
+      {/* Main content */}
+      <div style={{ maxWidth: 780, margin: "0 auto", padding: "24px 24px 0" }}>
+        {!symbol && !loading && (
+          <div style={{
+            textAlign: "center", padding: "80px 20px",
+            color: "#2a2a3e"
+          }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>◈</div>
+            <div style={{ fontSize: 14, letterSpacing: "0.1em", color: "#3a3a5e" }}>
+              심볼을 검색하여<br />고래 포지션 분석을 시작하세요
+            </div>
+            <div style={{ fontSize: 11, color: "#2a2a3e", marginTop: 12, letterSpacing: "0.08em" }}>
+              L/S 비율 · 시장가 거래량 · 추세 전환 신호
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div style={{
+            padding: "10px 14px", borderRadius: 6, marginBottom: 16,
+            background: "#ffd60a11", border: "1px solid #ffd60a33",
+            fontSize: 11, color: "#ffd60a", letterSpacing: "0.05em"
+          }}>{error}</div>
+        )}
+
+        {data && symbol && (
+          <>
+            {/* Symbol header */}
+            <div style={{
+              display: "flex", alignItems: "flex-start", justifyContent: "space-between",
+              marginBottom: 20, flexWrap: "wrap", gap: 12
+            }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                  <span style={{ fontSize: 26, fontWeight: 700, letterSpacing: "0.03em", color: "#f0f0f8" }}>
+                    {data.symbol}
+                  </span>
+                  <span style={{
+                    fontSize: 12, padding: "2px 8px", borderRadius: 4,
+                    background: "#ff6b3522", color: "#ff6b35", letterSpacing: "0.08em"
+                  }}>PERP</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 4 }}>
+                  <span style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#e8e8f0" }}>
+                    ${formatPrice(data.price)}
+                  </span>
+                  <span style={{
+                    fontSize: 13, fontWeight: 700,
+                    color: data.priceChange >= 0 ? "#00e5a0" : "#ff2d55"
+                  }}>
+                    {data.priceChange >= 0 ? "+" : ""}{data.priceChange?.toFixed(2)}%
+                  </span>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                {INTERVALS.map(intv => (
+                  <button key={intv} onClick={() => handleIntervalChange(intv)}
+                    style={{
+                      padding: "6px 12px", borderRadius: 6, border: "none",
+                      background: interval === intv ? "#ff6b35" : "#0f0f1e",
+                      color: interval === intv ? "#fff" : "#555",
+                      fontSize: 11, cursor: "pointer", fontWeight: 700,
+                      fontFamily: "'Space Mono', monospace", letterSpacing: "0.05em",
+                      transition: "all 0.2s"
+                    }}>{intv}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Signal + Stage */}
+            <SignalBadge signal={signal} />
+            <StageTimeline current={signal?.stage ?? 0} />
+
+            {/* Grid cards */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+              {/* L/S Ratios card */}
+              <div style={{
+                background: "#0d0d1a", border: "1px solid #1a1a2e", borderRadius: 12, padding: 20
+              }}>
+                <div style={{
+                  fontSize: 10, color: "#ff6b35", letterSpacing: "0.2em",
+                  textTransform: "uppercase", marginBottom: 16, fontWeight: 700
+                }}>포지션 비율</div>
+                {data.lsRatio != null && (
+                  <GaugeBar value={data.lsRatio} min={0.5} max={2.5} danger
+                    label="L/S Ratio (전체 계정)" sublabel="개미 심리 — 1.8+ 과열" />
+                )}
+                {data.lsAcco != null && (
+                  <GaugeBar value={data.lsAcco} min={0.5} max={2.5}
+                    label="L/S Acco. (상위 계정)" sublabel="고래 방향성" />
+                )}
+                {data.lsPosit != null && (
+                  <GaugeBar value={data.lsPosit} min={0.3} max={2.2}
+                    label="L/S Posit. (상위 물량)" sublabel="고래 자금 규모 — 핵심 지표" />
+                )}
+                {/* Divergence indicator */}
+                {data.lsRatio != null && data.lsPosit != null && (
+                  <div style={{
+                    marginTop: 12, padding: "8px 12px", borderRadius: 6,
+                    background: data.lsRatio > 1.6 && data.lsPosit < 0.9
+                      ? "#ff6b3518" : "#1a1a2e",
+                    border: `1px solid ${data.lsRatio > 1.6 && data.lsPosit < 0.9 ? "#ff6b3544" : "#2a2a3e"}`
+                  }}>
+                    <div style={{ fontSize: 10, color: "#8e8ea0", marginBottom: 3 }}>포지션 불일치 (다이버전스)</div>
+                    <div style={{
+                      fontSize: 12, fontWeight: 700,
+                      color: data.lsRatio > 1.6 && data.lsPosit < 0.9 ? "#ff6b35" : "#3a3a5e"
+                    }}>
+                      {data.lsRatio > 1.6 && data.lsPosit < 0.9
+                        ? "⚡ 개미↑ 고래↓ — 역추세 포착"
+                        : "● 정상 범위"}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Volume card */}
+              <div style={{
+                background: "#0d0d1a", border: "1px solid #1a1a2e", borderRadius: 12, padding: 20
+              }}>
+                <div style={{
+                  fontSize: 10, color: "#ff6b35", letterSpacing: "0.2em",
+                  textTransform: "uppercase", marginBottom: 16, fontWeight: 700
+                }}>시장가 거래량</div>
+                <BSVolBar buy={data.bsVolBuy} sell={data.bsVolSell} />
+
+                {/* Volume exhaustion */}
+                {data.prevBsVolBuy > 0 && (
+                  <div style={{ marginTop: 8, marginBottom: 14 }}>
+                    <div style={{ fontSize: 11, color: "#8e8ea0", marginBottom: 5, letterSpacing: "0.08em" }}>
+                      매수 거래량 변화
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{
+                        fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace",
+                        color: data.bsVolBuy < data.prevBsVolBuy * 0.6 ? "#ff6b35"
+                          : data.bsVolBuy > data.prevBsVolBuy * 1.2 ? "#00e5a0" : "#8e8ea0"
+                      }}>
+                        {data.prevBsVolBuy > 0
+                          ? ((data.bsVolBuy / data.prevBsVolBuy - 1) * 100).toFixed(1) + "%"
+                          : "—"}
+                      </span>
+                      <span style={{ fontSize: 10, color: "#555" }}>전 봉 대비</span>
+                      {data.bsVolBuy < data.prevBsVolBuy * 0.6 && (
+                        <span style={{
+                          fontSize: 10, padding: "2px 6px", borderRadius: 3,
+                          background: "#ff6b3522", color: "#ff6b35"
+                        }}>거래량 고갈</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Funding rate + OI */}
+                <div style={{ borderTop: "1px solid #1a1a2e", paddingTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 11, color: "#8e8ea0", letterSpacing: "0.08em" }}>펀딩비율</span>
+                    <span style={{
+                      fontSize: 12, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace",
+                      color: data.fundingRate > 0 ? "#00e5a0" : data.fundingRate < 0 ? "#ff2d55" : "#8e8ea0"
+                    }}>
+                      {data.fundingRate != null
+                        ? (data.fundingRate * 100).toFixed(4) + "%" : "—"}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 11, color: "#8e8ea0", letterSpacing: "0.08em" }}>미결제약정 (OI)</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#e0e0e8" }}>
+                      ${formatVolume(data.openInterest)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Signal condition checklist */}
+            <div style={{
+              background: "#0d0d1a", border: "1px solid #1a1a2e", borderRadius: 12,
+              padding: 20, marginBottom: 14
+            }}>
+              <div style={{
+                fontSize: 10, color: "#ff6b35", letterSpacing: "0.2em",
+                textTransform: "uppercase", marginBottom: 16, fontWeight: 700
+              }}>숏 전환 신호 체크리스트</div>
+              {[
+                {
+                  label: "시장가 매수세 고갈 (B.S Vol.)",
+                  active: data.prevBsVolBuy > 0 && data.bsVolBuy < data.prevBsVolBuy * 0.6,
+                  desc: "전 봉 대비 매수 거래량 40% 이상 감소"
+                },
+                {
+                  label: "고래 포지션 하락 전환 (L/S Posit.↓)",
+                  active: data.lsPosit != null && data.lsPosit < data.prevLsPosit && data.lsPosit < 0.95,
+                  desc: "상위 트레이더 물량 비율이 하락하며 숏 전환 중"
+                },
+                {
+                  label: "개미 과매수 (L/S Ratio↑)",
+                  active: data.lsRatio != null && data.lsRatio > 1.7,
+                  desc: "전체 계정 롱 비율 1.7 초과 — FOMO 매수 과열"
+                },
+                {
+                  label: "고래-개미 다이버전스",
+                  active: data.lsRatio != null && data.lsPosit != null && data.lsRatio > 1.6 && data.lsPosit < 0.9,
+                  desc: "개미 롱↑ + 고래 숏↑ 동시 발생 — 핵심 포착"
+                },
+                {
+                  label: "매도 시장가 폭발 (B.S Vol. Sell)",
+                  active: data.bsVolSell > data.bsVolBuy * 2,
+                  desc: "시장가 매도 거래량이 매수의 2배 초과"
+                },
+              ].map((item, i) => (
+                <div key={i} style={{
+                  display: "flex", alignItems: "flex-start", gap: 10,
+                  padding: "8px 0",
+                  borderBottom: i < 4 ? "1px solid #12121e" : "none"
+                }}>
+                  <div style={{
+                    width: 18, height: 18, borderRadius: 4, flexShrink: 0, marginTop: 1,
+                    background: item.active ? "#00e5a022" : "#1a1a2e",
+                    border: `1px solid ${item.active ? "#00e5a0" : "#2a2a3e"}`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 10, color: item.active ? "#00e5a0" : "#333"
+                  }}>
+                    {item.active ? "✓" : ""}
+                  </div>
+                  <div>
+                    <div style={{
+                      fontSize: 12, fontWeight: item.active ? 700 : 400,
+                      color: item.active ? "#e0e0e8" : "#555",
+                      marginBottom: 2
+                    }}>{item.label}</div>
+                    <div style={{ fontSize: 10, color: "#444" }}>{item.desc}</div>
+                  </div>
+                  {item.active && (
+                    <div style={{
+                      marginLeft: "auto", fontSize: 10, padding: "2px 6px",
+                      borderRadius: 3, background: "#00e5a022", color: "#00e5a0",
+                      flexShrink: 0
+                    }}>감지</div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Footer */}
+            <div style={{
+              textAlign: "center", padding: "14px 0",
+              fontSize: 10, color: "#2a2a3e", letterSpacing: "0.08em"
+            }}>
+              {lastUpdated && `마지막 업데이트: ${lastUpdated.toLocaleTimeString("ko-KR")}`}
+              {data.source === "binance" && " · Binance Futures API"}
+              <div style={{ marginTop: 4, color: "#1e1e2e" }}>
+                본 정보는 투자 조언이 아닙니다. 참고용으로만 활용하세요.
+              </div>
+            </div>
+          </>
+        )}
+      </div>
     </div>
-    <div class="scan-list-body open" id="scanListBody">
-      <div class="scan-grid" id="scanGrid"></div>
-    </div>
-  </div>
-
-  <div class="section-title"><span class="badge-up">LONG</span> 급등 신호 심볼</div>
-  <div class="table-wrap">
-    <table class="results-table">
-      <thead>
-        <tr>
-          <th>SYMBOL</th><th>조건 충족</th><th>현재가 / ATH·ATL 중간값</th>
-          <th>MAX SPIKE</th><th>SPIKE봉</th><th>OI/평균</th>
-          <th>진입가 / 현재가 / 손익</th><th>DETECTED</th>
-        </tr>
-      </thead>
-      <tbody id="longBody">
-        <tr><td colspan="8"><div class="empty-state"><div class="empty-icon">▲</div><div class="empty-text">NO LONG SIGNALS</div></div></td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <div class="section-title"><span class="badge-dn">SHORT</span> 급락 신호 심볼</div>
-  <div class="table-wrap">
-    <table class="results-table">
-      <thead>
-        <tr>
-          <th>SYMBOL</th><th>조건 충족</th><th>현재가 / ATH·ATL 중간값</th>
-          <th>24H 상승률</th><th>MA 정배열</th><th>음봉 구조</th>
-          <th>진입가 / 현재가 / 손익</th><th>DETECTED</th>
-        </tr>
-      </thead>
-      <tbody id="shortBody">
-        <tr><td colspan="8"><div class="empty-state"><div class="empty-icon">▼</div><div class="empty-text">NO SHORT SIGNALS</div></div></td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <div class="section-title"><span class="badge-crash">💥 CRASH</span> 폭락 경고 심볼</div>
-  <div class="table-wrap">
-    <table class="results-table">
-      <thead>
-        <tr>
-          <th>SYMBOL</th><th>조건 충족</th><th>현재가</th>
-          <th>전체 L/S 비율 (5M)</th><th>고래 L/S 비율 (5M)</th>
-          <th>24H 상승률</th><th>BB 중앙선 (15M)</th><th>감지 시각</th>
-        </tr>
-      </thead>
-      <tbody id="crashBody">
-        <tr><td colspan="8"><div class="empty-state"><div class="empty-icon">💥</div><div class="empty-text">NO CRASH SIGNALS</div></div></td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <div class="section-title">SYSTEM LOG</div>
-  <div class="log-box" id="logBox"></div>
-
-</div>
-<script>
-'use strict';
-// ════════════════════════════════════
-//  CONFIG & STATE
-// ════════════════════════════════════
-const DEFAULT_TOKEN   = '8710131262:AAGxhwh3b8Z_FGf-AxFcIwM4-1_Tmau6su4';
-const DEFAULT_CHAT_ID = '7947167026,8552211361';
-const SCAN_INTERVAL_SEC = 300;
-const BASE = 'https://fapi.binance.com';
-const CRASH_LS_THRESHOLD   = 0.9;
-const CRASH_RISE_THRESHOLD = 20;
-
-let scanInterval = null, countdownInterval = null;
-let scanCount = 0, nextScanIn = 0, tgSentCount = 0;
-let isScanning = false;
-let longMatched  = {};
-let shortMatched = {};
-let crashMatched = {};
-let currentPrices = {};
-let priceStats = {};
-
-// ════════════════════════════════════
-//  CONDITION FILTER STATE
-// ════════════════════════════════════
-const condState = { L1:true, L2:true, L3:true, S1:true, S2:true, S3:true, C1:true, C2:true, C3:true, C4:true };
-
-function toggleCond(key) {
-  condState[key] = !condState[key];
-  const btn = document.getElementById('tog'+key);
-  const ci  = document.getElementById('ci-'+key);
-  const type = key[0]==='L'?'long-t':key[0]==='S'?'short-t':'crash-t';
-  btn.className = `cond-toggle ${type}${condState[key]?' active':''}`;
-  if (ci) {
-    ci.classList.toggle('inactive', !condState[key]);
-    ci.classList.toggle('active-cond', condState[key]);
-  }
-  log(`조건 ${key} ${condState[key]?'활성화':'비활성화'}`, 'info');
+  );
 }
-
-function setAllConds(group, val) {
-  const map = { long:['L1','L2','L3'], short:['S1','S2','S3'], crash:['C1','C2','C3','C4'] };
-  (map[group]||[]).forEach(k => {
-    if (condState[k] !== val) toggleCond(k);
-  });
-}
-
-// 조건 충족 뱃지 HTML
-function condBadgesLong(r) {
-  const conds = ['L1','L2','L3'];
-  return conds.map(c => {
-    const active = condState[c];
-    const pass   = r && r['cond_'+c];
-    if (!active) return `<span class="badge dim">${c}</span>`;
-    return `<span class="badge up">${c}</span>`;
-  }).join('');
-}
-function condBadgesShort(r) {
-  return ['S1','S2','S3'].map(c => {
-    if (!condState[c]) return `<span class="badge dim">${c}</span>`;
-    return `<span class="badge dn">${c}</span>`;
-  }).join('');
-}
-function condBadgesCrash(r) {
-  return ['C1','C2','C3','C4'].map(c => {
-    if (!condState[c]) return `<span class="badge dim">${c}</span>`;
-    return `<span class="badge crash">${c}</span>`;
-  }).join('');
-}
-
-// ════════════════════════════════════
-//  SCAN LIST STATE
-// ════════════════════════════════════
-let scanItems = {};   // sym -> { status: 'pending'|'done'|'hit-long'|'hit-short'|'hit-crash'|'error', tags:[] }
-let slDoneCnt=0, slLongCnt=0, slShortCnt=0, slCrashCnt=0, slErrCnt=0;
-
-function initScanList(symbols) {
-  scanItems = {};
-  slDoneCnt=0; slLongCnt=0; slShortCnt=0; slCrashCnt=0; slErrCnt=0;
-  symbols.forEach(s => { scanItems[s] = { status:'pending', tags:[] }; });
-  document.getElementById('scanListPanel').classList.add('visible');
-  updateScanListStats();
-  renderScanGrid();
-}
-
-function updateScanItem(sym, status, tags=[]) {
-  if (!scanItems[sym]) return;
-  const prev = scanItems[sym].status;
-
-  // 통계 조정
-  if (prev==='done') slDoneCnt--;
-  else if (prev==='hit-long')  slLongCnt--;
-  else if (prev==='hit-short') slShortCnt--;
-  else if (prev==='hit-crash') slCrashCnt--;
-  else if (prev==='error')     slErrCnt--;
-
-  scanItems[sym] = { status, tags };
-
-  if (status==='done')       slDoneCnt++;
-  else if (status==='hit-long')  { slDoneCnt++; slLongCnt++; }
-  else if (status==='hit-short') { slDoneCnt++; slShortCnt++; }
-  else if (status==='hit-crash') { slDoneCnt++; slCrashCnt++; }
-  else if (status==='error')     slErrCnt++;
-
-  updateScanListStats();
-
-  // DOM 업데이트 (해당 아이템만)
-  const el = document.getElementById('scan-item-'+sym);
-  if (el) {
-    const tagHtml = tags.length ? tags.map(t=>`<span class="scan-item-tag">${t}</span>`).join('') : '';
-    el.className = `scan-item ${status}`;
-    el.innerHTML = `<span class="scan-item-dot"></span><span>${sym.replace('USDT','')}</span>${tagHtml}`;
-  }
-}
-
-function updateScanListStats() {
-  document.getElementById('slDone').textContent  = slDoneCnt;
-  document.getElementById('slLong').textContent  = slLongCnt;
-  document.getElementById('slShort').textContent = slShortCnt;
-  document.getElementById('slCrash').textContent = slCrashCnt;
-  document.getElementById('slErr').textContent   = slErrCnt;
-}
-
-function renderScanGrid() {
-  const grid = document.getElementById('scanGrid');
-  grid.innerHTML = Object.keys(scanItems).map(sym => {
-    const it = scanItems[sym];
-    const tagHtml = it.tags.length ? it.tags.map(t=>`<span class="scan-item-tag">${t}</span>`).join('') : '';
-    return `<div class="scan-item ${it.status}" id="scan-item-${sym}">
-      <span class="scan-item-dot"></span>
-      <span>${sym.replace('USDT','')}</span>
-      ${tagHtml}
-    </div>`;
-  }).join('');
-}
-
-function toggleScanList() {
-  const body = document.getElementById('scanListBody');
-  const tog  = document.getElementById('scanListToggle');
-  const open = body.classList.toggle('open');
-  tog.classList.toggle('open', open);
-}
-
-// ════════════════════════════════════
-//  INIT
-// ════════════════════════════════════
-window.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('tgToken').value  = localStorage.getItem('tgToken')  || DEFAULT_TOKEN;
-  document.getElementById('tgChatId').value = localStorage.getItem('tgChatId') || DEFAULT_CHAT_ID;
-  updateTgDot();
-  setInterval(updateCurrentPrices, 10000);
-  setInterval(() => { renderLong(); renderShort(); renderCrash(); }, 10000);
-});
-
-const getTgToken  = () => document.getElementById('tgToken').value.trim();
-const getTgChatId = () => document.getElementById('tgChatId').value.trim();
-function saveTgConfig() {
-  localStorage.setItem('tgToken',  getTgToken());
-  localStorage.setItem('tgChatId', getTgChatId());
-}
-function updateTgDot() {
-  const ok = getTgToken() && getTgChatId();
-  document.getElementById('tgDot').className      = ok ? 'dot blue' : 'dot red';
-  document.getElementById('tgStatus').textContent  = ok ? 'TG READY' : 'TG DISCONNECTED';
-}
-
-// ════════════════════════════════════
-//  ATH / ATL
-// ════════════════════════════════════
-async function fetchPriceStats(sym) {
-  if (priceStats[sym]) return priceStats[sym];
-  try {
-    const d = await apiFetch(`${BASE}/fapi/v1/klines?symbol=${sym}&interval=1w&limit=1000`);
-    const ath = Math.max(...d.map(k=>+k[2]));
-    const atl = Math.min(...d.map(k=>+k[3]));
-    const mid = (ath+atl)/2;
-    priceStats[sym] = { ath, atl, mid };
-    return priceStats[sym];
-  } catch { return null; }
-}
-function calcMidPct(cur, mid) {
-  if (!mid) return null;
-  return (cur-mid)/mid*100;
-}
-function priceStatHtml(sym, currentPrice) {
-  const stats = priceStats[sym];
-  const cur   = currentPrices[sym]||currentPrice;
-  if (!stats) return `<div class="price-panel"><div class="price-cur">${fmtPrice(cur)}</div></div>`;
-  const midPct = calcMidPct(cur, stats.mid);
-  const above  = midPct!==null && midPct>=0;
-  const midStr = midPct!==null?(above?'+':'')+midPct.toFixed(2)+'%':'—';
-  return `<div class="price-panel">
-    <div class="price-cur">${fmtPrice(cur)}</div>
-    <div class="price-row"><span class="lbl">MID</span><span class="val">${fmtPrice(stats.mid)}</span>
-    <span class="mid-badge ${above?'above':'below'}">${midStr}</span></div>
-    <div class="price-row"><span class="lbl">ATH</span><span class="val gold">${fmtPrice(stats.ath)}</span>&nbsp;
-    <span class="lbl">ATL</span><span class="val dn">${fmtPrice(stats.atl)}</span></div>
-  </div>`;
-}
-
-// ════════════════════════════════════
-//  현재가 실시간
-// ════════════════════════════════════
-async function updateCurrentPrices() {
-  const symbols = [...new Set([...Object.keys(longMatched),...Object.keys(shortMatched),...Object.keys(crashMatched)])];
-  if (!symbols.length) return;
-  await Promise.all(symbols.map(async sym => {
-    try {
-      const d = await apiFetch(`${BASE}/fapi/v1/ticker/price?symbol=${sym}`);
-      currentPrices[sym] = +d.price;
-    } catch {}
-  }));
-}
-
-// ════════════════════════════════════
-//  PnL
-// ════════════════════════════════════
-function calcPnl(entry, cur, dir) {
-  if (!entry||!cur) return null;
-  return dir==='long'?(cur-entry)/entry*100:(entry-cur)/entry*100;
-}
-function pnlHtml(sym, direction) {
-  const map   = direction==='long'?longMatched:shortMatched;
-  const entry = map[sym]?.entryPrice;
-  const cur   = currentPrices[sym]||map[sym]?.price;
-  if (!entry||!cur) return '<div class="pnl-block"><div class="pnl-row">—</div></div>';
-  const pnl = calcPnl(entry,cur,direction);
-  let cls='zero',sign='',arrow='—';
-  if (pnl>0.001)       {cls='gain';sign='+';arrow='▲';}
-  else if (pnl<-0.001) {cls='loss';sign=''; arrow='▼';}
-  return `<div class="pnl-block">
-    <div class="pnl-row"><span class="lbl">진입</span>&nbsp;<span class="val">${fmtPrice(entry)}</span></div>
-    <div class="pnl-row"><span class="lbl">현재</span>&nbsp;<span class="val">${fmtPrice(cur)}</span></div>
-    <div class="pnl-rate ${cls}">${arrow}&nbsp;${pnl!==null?sign+pnl.toFixed(2)+'%':'—'}</div>
-  </div>`;
-}
-
-// ════════════════════════════════════
-//  LOG
-// ════════════════════════════════════
-function log(msg, type='') {
-  const box = document.getElementById('logBox');
-  const now = new Date().toLocaleTimeString('ko-KR',{hour12:false});
-  const line = document.createElement('div');
-  line.className='log-line';
-  line.innerHTML=`<span class="log-time">${now}</span><span class="log-msg ${type}">${msg}</span>`;
-  box.appendChild(line);
-  box.scrollTop=box.scrollHeight;
-  while(box.children.length>400) box.removeChild(box.firstChild);
-}
-
-// ════════════════════════════════════
-//  TELEGRAM
-// ════════════════════════════════════
-async function sendTelegram(text) {
-  const token  = getTgToken();
-  const chatIds = getTgChatId().split(',').map(s=>s.trim()).filter(Boolean);
-  if (!token||!chatIds.length) return false;
-  try {
-    const results = await Promise.all(chatIds.map(chatId =>
-      fetch(`https://api.telegram.org/bot${token}/sendMessage`,{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({chat_id:chatId,text,parse_mode:'HTML'})
-      }).then(r=>r.json()).then(d=>d.ok===true).catch(()=>false)
-    ));
-    return results.some(Boolean);
-  } catch { return false; }
-}
-async function testTelegram() {
-  saveTgConfig(); updateTgDot();
-  const el=document.getElementById('tgTestStatus');
-  el.className='tg-status'; el.textContent='전송 중...';
-  const ok=await sendTelegram(`✅ <b>FuturesScan v5.2 연결 성공</b>\n📡 개별조건 선택 스캐너 작동 중\n🕐 ${new Date().toLocaleString('ko-KR')}`);
-  if(ok){el.className='tg-status ok';el.textContent='✓ 전송 성공';document.getElementById('tgDot').className='dot blue';document.getElementById('tgStatus').textContent='TG CONNECTED';log('텔레그램 테스트 성공','tg');}
-  else{el.className='tg-status fail';el.textContent='✗ 실패 — 토큰/Chat ID 확인';document.getElementById('tgDot').className='dot red';log('텔레그램 전송 실패','warn');}
-}
-async function notifyLong(r) {
-  const stats=priceStats[r.symbol];
-  const midLine=stats?`📍 ATH/ATL 중간: <b>${fmtPrice(stats.mid)}</b>  현재 ${calcMidPct(r.price,stats.mid)?.toFixed(2)??'?'}%\n`:'';
-  const activeConds = ['L1','L2','L3'].filter(c=>condState[c]).map(c=>`✅ ${c}`).join('\n');
-  const text=`🟢 <b>[LONG] ${r.symbol}</b>\n━━━━━━━━━━━━━━━━\n`+
-    `💰 현재가:  <b>${fmtPrice(r.price)} USDT</b>\n${midLine}`+
-    `📈 급등폭:  <b>+${r.maxSpike.toFixed(2)}%</b>  (${r.minsAgo??'?'}분 전)\n`+
-    `📊 OI/평균: <b>${r.oiRatio.toFixed(2)}x</b>  ↑↑↑\n`+
-    `💵 진입가:  <b>${fmtPrice(r.entryPrice)} USDT</b>\n━━━━━━━━━━━━━━━━\n`+
-    `${activeConds}\n🕐 ${new Date().toLocaleString('ko-KR')}`;
-  const ok=await sendTelegram(text);
-  if(ok){tgSentCount++;document.getElementById('statTgSent').textContent=tgSentCount;log(`📨 TG LONG: ${r.symbol}`,'tg');}
-  else log(`TG 전송 실패: ${r.symbol}`,'warn');
-}
-async function notifyShort(r) {
-  const stats=priceStats[r.symbol];
-  const midLine=stats?`📍 ATH/ATL 중간: <b>${fmtPrice(stats.mid)}</b>  현재 ${calcMidPct(r.price,stats.mid)?.toFixed(2)??'?'}%\n`:'';
-  const activeConds = ['S1','S2','S3'].filter(c=>condState[c]).map(c=>`✅ ${c}`).join('\n');
-  const text=`🔴 <b>[SHORT] ${r.symbol}</b>\n━━━━━━━━━━━━━━━━\n`+
-    `💰 현재가:  <b>${fmtPrice(r.price)} USDT</b>\n${midLine}`+
-    `🔥 24H 상승:  <b>+${r.rise24h.toFixed(2)}%</b>\n`+
-    `💵 진입가:  <b>${fmtPrice(r.entryPrice)} USDT</b>\n━━━━━━━━━━━━━━━━\n`+
-    `${activeConds}\n🕐 ${new Date().toLocaleString('ko-KR')}`;
-  const ok=await sendTelegram(text);
-  if(ok){tgSentCount++;document.getElementById('statTgSent').textContent=tgSentCount;log(`📨 TG SHORT: ${r.symbol}`,'tg');}
-  else log(`TG 전송 실패: ${r.symbol}`,'warn');
-}
-async function notifyCrash(r) {
-  const bbDiff=r.bbMid?((r.price-r.bbMid)/r.bbMid*100):null;
-  const bbDiffStr=bbDiff!==null?(bbDiff>=0?'+':'')+bbDiff.toFixed(2)+'%':'—';
-  const activeConds = ['C1','C2','C3','C4'].filter(c=>condState[c]).map(c=>`⚠️ ${c}`).join('\n');
-  const text=`💥 <b>[CRASH SIGNAL] ${r.symbol}</b>\n━━━━━━━━━━━━━━━━\n`+
-    `💰 현재가:      <b>${fmtPrice(r.price)} USDT</b>\n`+
-    `📉 전체 L/S:   <b>${r.globalRatio.toFixed(4)}</b>\n`+
-    `🐋 고래 L/S:   <b>${r.whaleRatio.toFixed(4)}</b>\n`+
-    `🔥 24H 상승률: <b>+${r.change24h.toFixed(2)}%</b>\n`+
-    `📊 BB 중앙선:  <b>${r.bbMid?fmtPrice(r.bbMid):'—'}</b>  (괴리 ${bbDiffStr})\n`+
-    `━━━━━━━━━━━━━━━━\n${activeConds}\n`+
-    `🔴 폭락 가능성 경고\n🕐 ${new Date().toLocaleString('ko-KR')}`;
-  const ok=await sendTelegram(text);
-  if(ok){tgSentCount++;document.getElementById('statTgSent').textContent=tgSentCount;log(`📨 TG CRASH: ${r.symbol}`,'tg');}
-  else log(`TG 전송 실패(CRASH): ${r.symbol}`,'warn');
-}
-
-// ════════════════════════════════════
-//  API HELPERS
-// ════════════════════════════════════
-async function apiFetch(url) {
-  const r=await fetch(url);
-  if(!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
-}
-async function getSymbols() {
-  const d=await apiFetch(`${BASE}/fapi/v1/exchangeInfo`);
-  return d.symbols
-    .filter(s=>s.quoteAsset==='USDT'&&s.status==='TRADING'&&s.contractType==='PERPETUAL')
-    .map(s=>s.symbol);
-}
-async function getKlines(sym) {
-  const d=await apiFetch(`${BASE}/fapi/v1/klines?symbol=${sym}&interval=15m&limit=120`);
-  return d.map(k=>({o:+k[1],h:+k[2],l:+k[3],c:+k[4],v:+k[5],t:k[0]}));
-}
-async function getOI(sym) {
-  const d=await apiFetch(`${BASE}/futures/data/openInterestHist?symbol=${sym}&period=15m&limit=20`);
-  return d.sort((a,b)=>a.timestamp-b.timestamp);
-}
-
-// ════════════════════════════════════
-//  MA HELPER
-// ════════════════════════════════════
-function ma(closes,n) {
-  if(closes.length<n) return null;
-  return closes.slice(-n).reduce((a,b)=>a+b,0)/n;
-}
-
-// ════════════════════════════════════
-//  LONG CHECKS
-// ════════════════════════════════════
-function checkMA_Long(klines) {
-  if(klines.length<62) return {ok:false};
-  const cl=klines.map(k=>k.c);
-  for(let off=0;off<3;off++){
-    const s=cl.slice(0,cl.length-off);
-    const avg=n=>s.slice(-n).reduce((a,b)=>a+b,0)/n;
-    if(!(avg(5)>avg(10)&&avg(10)>avg(20)&&avg(20)>avg(60))) return {ok:false};
-  }
-  const avg=n=>cl.slice(-n).reduce((a,b)=>a+b,0)/n;
-  return {ok:true,m5:avg(5),m10:avg(10),m20:avg(20),m60:avg(60)};
-}
-function checkSpike(klines) {
-  const recent=klines.slice(-16);
-  let maxSpike=0,spikeCandle=null;
-  for(const k of recent){
-    if(k.l===0) continue;
-    const spike=(k.c-k.l)/k.l*100;
-    if(spike>maxSpike){maxSpike=spike;spikeCandle=k;}
-  }
-  const minsAgo=spikeCandle?Math.round((Date.now()-spikeCandle.t)/60000):null;
-  return {ok:maxSpike>=7,maxSpike,minsAgo};
-}
-function checkOI_long(oiData) {
-  if(!oiData||oiData.length<4) return {ok:false,ratio:0};
-  const vals=[...oiData].sort((a,b)=>a.timestamp-b.timestamp).map(d=>+d.sumOpenInterest);
-  const cur=vals[vals.length-1];
-  const avg=vals.slice(0,-1).reduce((a,b)=>a+b,0)/(vals.length-1)||1;
-  const ratio=cur/avg;
-  const len=vals.length;
-  const consec=len>=4&&vals[len-1]>vals[len-2]&&vals[len-2]>vals[len-3]&&vals[len-3]>vals[len-4];
-  return {ok:ratio>=1.10&&consec,ratio};
-}
-
-// ════════════════════════════════════
-//  SHORT CHECKS
-// ════════════════════════════════════
-async function check24hRise(sym) {
-  try{
-    const d=await apiFetch(`${BASE}/fapi/v1/ticker/24hr?symbol=${sym}`);
-    return {ok:+d.priceChangePercent>=15,pct:+d.priceChangePercent};
-  }catch{return {ok:false,pct:0};}
-}
-function checkMA_Short_Alignment(klines) {
-  if(klines.length<62) return {ok:false,ma5:0,ma10:0,ma30:0,ma60:0};
-  const cl=klines.map(k=>k.c);
-  const ma5=ma(cl,5),ma10=ma(cl,10),ma30=ma(cl,30),ma60=ma(cl,60);
-  if(!ma5||!ma10||!ma30||!ma60) return {ok:false,ma5:0,ma10:0,ma30:0,ma60:0};
-  return {ok:ma5>ma10&&ma10>ma30&&ma30>ma60,ma5,ma10,ma30,ma60};
-}
-function checkBearCandle(klines,ma5,ma10) {
-  if(!ma5||!ma10) return {ok:false,openPrice:0,closePrice:0};
-  const cur=klines[klines.length-1];
-  return {ok:cur.c<cur.o&&cur.o>ma5&&ma5>ma10&&ma10>cur.c,openPrice:cur.o,closePrice:cur.c};
-}
-
-// ════════════════════════════════════
-//  CRASH CHECKS
-// ════════════════════════════════════
-async function checkCrash_LS(sym) {
-  try{
-    const [globalData,whaleData,ticker24h,klines15m]=await Promise.all([
-      apiFetch(`${BASE}/futures/data/globalLongShortAccountRatio?symbol=${sym}&period=5m&limit=1`),
-      apiFetch(`${BASE}/futures/data/topLongShortAccountRatio?symbol=${sym}&period=5m&limit=1`),
-      apiFetch(`${BASE}/fapi/v1/ticker/24hr?symbol=${sym}`),
-      apiFetch(`${BASE}/fapi/v1/klines?symbol=${sym}&interval=15m&limit=20`),
-    ]);
-    const globalRatio=+globalData[0].longShortRatio;
-    const whaleRatio =+whaleData[0].longShortRatio;
-    const rise24h    =+ticker24h.priceChangePercent;
-    const closes15m  =klines15m.map(k=>+k[4]);
-    const bbMid      =closes15m.reduce((a,b)=>a+b,0)/closes15m.length;
-    const curPrice   =closes15m[closes15m.length-1];
-    const c1=globalRatio<CRASH_LS_THRESHOLD;
-    const c2=whaleRatio <CRASH_LS_THRESHOLD;
-    const c3=rise24h    >=CRASH_RISE_THRESHOLD;
-    const c4=curPrice   <bbMid;
-    return {ok:c1&&c2&&c3&&c4,globalRatio,whaleRatio,rise24h,bbMid,c1,c2,c3,c4};
-  }catch{
-    return {ok:false,globalRatio:null,whaleRatio:null,rise24h:0,bbMid:null,c1:false,c2:false,c3:false,c4:false};
-  }
-}
-
-// ════════════════════════════════════
-//  FORMAT
-// ════════════════════════════════════
-function fmtPrice(p) {
-  if(p==null||isNaN(p)) return '—';
-  if(p===0) return '0';
-  return p<0.01?p.toFixed(6):p<1?p.toFixed(5):p<100?p.toFixed(4):p.toFixed(2);
-}
-function fmtAge(ts) {
-  const s=Math.round((Date.now()-ts)/1000);
-  return s<60?`${s}s`:`${Math.round(s/60)}m`;
-}
-
-// ════════════════════════════════════
-//  RENDER
-// ════════════════════════════════════
-function renderLong() {
-  const tbody=document.getElementById('longBody');
-  const results=Object.values(longMatched).sort((a,b)=>b.ts-a.ts);
-  if(!results.length){
-    tbody.innerHTML=`<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">▲</div><div class="empty-text">NO LONG SIGNALS</div></div></td></tr>`;
-    return;
-  }
-  tbody.innerHTML=results.map(r=>{
-    const cur=currentPrices[r.symbol]||r.price;
-    const activeConds=['L1','L2','L3'].filter(c=>condState[c]);
-    const badges=activeConds.map(c=>`<span class="badge up">${c}</span>`).join('')+
-      ['L1','L2','L3'].filter(c=>!condState[c]).map(c=>`<span class="badge dim">${c}</span>`).join('');
-    return `<tr>
-      <td class="symbol-cell up">${r.symbol}${r.isNew?'<span class="new-tag up">NEW</span>':''}</td>
-      <td>${badges}</td>
-      <td>${priceStatHtml(r.symbol,cur)}</td>
-      <td class="val-up">+${r.maxSpike.toFixed(2)}%</td>
-      <td style="color:var(--dim);font-size:9px">${r.minsAgo!=null?r.minsAgo+'분 전':'—'}</td>
-      <td class="val-up">${r.oiRatio.toFixed(2)}x<span class="oi-arrows"> ↑↑↑</span></td>
-      <td>${pnlHtml(r.symbol,'long')}</td>
-      <td style="color:var(--dim);font-size:9px">${fmtAge(r.ts)}</td>
-    </tr>`;
-  }).join('');
-}
-
-function renderShort() {
-  const tbody=document.getElementById('shortBody');
-  const results=Object.values(shortMatched).sort((a,b)=>b.ts-a.ts);
-  if(!results.length){
-    tbody.innerHTML=`<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">▼</div><div class="empty-text">NO SHORT SIGNALS</div></div></td></tr>`;
-    return;
-  }
-  tbody.innerHTML=results.map(r=>{
-    const cur=currentPrices[r.symbol]||r.price;
-    const badges=['S1','S2','S3'].map(c=>condState[c]?`<span class="badge dn">${c}</span>`:`<span class="badge dim">${c}</span>`).join('');
-    const maStr=`<div class="ma-stack">
-      <span class="v">${fmtPrice(r.ma5)}</span>&gt;<span class="v">${fmtPrice(r.ma10)}</span><br>
-      <span class="v">${fmtPrice(r.ma30)}</span>&gt;<span class="v">${fmtPrice(r.ma60)}</span>
-    </div>`;
-    const candleStr=`<div class="candle-struct">
-      시가<span class="v">${fmtPrice(r.openPrice)}</span><br>
-      &gt;MA5&gt;MA10<br>
-      종가<span class="v">${fmtPrice(r.closePrice)}</span>
-    </div>`;
-    return `<tr>
-      <td class="symbol-cell dn">${r.symbol}${r.isNew?'<span class="new-tag dn">NEW</span>':''}</td>
-      <td>${badges}</td>
-      <td>${priceStatHtml(r.symbol,cur)}</td>
-      <td class="val-up">+${r.rise24h.toFixed(2)}%</td>
-      <td>${maStr}</td>
-      <td>${candleStr}</td>
-      <td>${pnlHtml(r.symbol,'short')}</td>
-      <td style="color:var(--dim);font-size:9px">${fmtAge(r.ts)}</td>
-    </tr>`;
-  }).join('');
-}
-
-function renderCrash() {
-  const tbody=document.getElementById('crashBody');
-  const results=Object.values(crashMatched).sort((a,b)=>b.ts-a.ts);
-  if(!results.length){
-    tbody.innerHTML=`<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">💥</div><div class="empty-text">NO CRASH SIGNALS</div></div></td></tr>`;
-    return;
-  }
-  tbody.innerHTML=results.map(r=>{
-    const cur=currentPrices[r.symbol]||r.price;
-    const gPct=Math.min(100,r.globalRatio/CRASH_LS_THRESHOLD*100);
-    const wPct=Math.min(100,r.whaleRatio /CRASH_LS_THRESHOLD*100);
-    const badges=['C1','C2','C3','C4'].map(c=>condState[c]?`<span class="badge crash">${c}</span>`:`<span class="badge dim">${c}</span>`).join('');
-    const lsGlobalHtml=`<div class="ls-ratio-block"><div class="ls-ratio-row">
-      <span class="ls-ratio-label">전체</span>
-      <span class="ls-ratio-val">${r.globalRatio.toFixed(4)}</span>
-      <div class="ls-ratio-bar-wrap"><div class="ls-ratio-bar" style="width:${gPct}%"></div></div>
-      <span style="font-size:9px;color:var(--crash)">▼${CRASH_LS_THRESHOLD}</span>
-    </div></div>`;
-    const lsWhaleHtml=`<div class="ls-ratio-block"><div class="ls-ratio-row">
-      <span class="ls-ratio-label">고래</span>
-      <span class="ls-ratio-val">${r.whaleRatio.toFixed(4)}</span>
-      <div class="ls-ratio-bar-wrap"><div class="ls-ratio-bar" style="width:${wPct}%"></div></div>
-      <span style="font-size:9px;color:var(--crash)">▼${CRASH_LS_THRESHOLD}</span>
-    </div></div>`;
-    const chgStr='+'+r.change24h.toFixed(2)+'%';
-    const detectedTime=new Date(r.ts).toLocaleTimeString('ko-KR',{hour12:false});
-    const bbDiff=r.bbMid?((cur-r.bbMid)/r.bbMid*100):null;
-    const bbDiffStr=bbDiff!==null?(bbDiff>=0?'+':'')+bbDiff.toFixed(2)+'%':'—';
-    const bbMidHtml=`<div class="price-panel">
-      <div class="price-row"><span class="lbl">MID</span><span class="val">${r.bbMid?fmtPrice(r.bbMid):'—'}</span></div>
-      <div class="price-row"><span class="lbl">괴리</span><span class="val dn">${bbDiffStr}</span></div>
-    </div>`;
-    return `<tr class="crash-row">
-      <td class="symbol-cell crash">${r.symbol}${r.isNew?'<span class="new-tag crash">NEW</span>':''}</td>
-      <td>${badges}</td>
-      <td><div class="price-cur" style="color:var(--crash)">${fmtPrice(cur)}</div></td>
-      <td>${lsGlobalHtml}</td>
-      <td>${lsWhaleHtml}</td>
-      <td class="val-crash" style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:15px">${chgStr}</td>
-      <td>${bbMidHtml}</td>
-      <td style="color:var(--dim);font-size:9px">${detectedTime}<br>${fmtAge(r.ts)} ago</td>
-    </tr>`;
-  }).join('');
-}
-
-// ════════════════════════════════════
-//  TOAST + AUDIO
-// ════════════════════════════════════
-function showToast(symbol,type,sub) {
-  const c=document.getElementById('toastContainer');
-  const t=document.createElement('div');
-  t.className=`toast ${type}`;
-  const titleMap={up:'🟢 LONG 신호',dn:'🔴 SHORT 신호',crash:'💥 CRASH 경고'};
-  t.innerHTML=`<div class="toast-title ${type}">${titleMap[type]||''}</div>`+
-    `<div class="toast-body">${symbol}</div><div class="toast-sub">${sub}</div>`;
-  c.appendChild(t);
-  const delay=type==='crash'?12000:7000;
-  setTimeout(()=>{t.classList.add('removing');setTimeout(()=>t.remove(),300);},delay);
-}
-function playAlert(type) {
-  try{
-    const ctx=new(window.AudioContext||window.webkitAudioContext)();
-    const seqMap={up:[[660,.12],[880,.12],[1100,.1]],dn:[[880,.12],[660,.12],[440,.1]],crash:[[440,.18],[330,.18],[220,.22],[110,.25]]};
-    const seq=seqMap[type]||seqMap.dn;
-    seq.forEach(([freq,vol],i)=>{
-      const o=ctx.createOscillator(),g=ctx.createGain();
-      o.connect(g);g.connect(ctx.destination);
-      o.frequency.value=freq;o.type=type==='crash'?'sawtooth':'sine';
-      const t=ctx.currentTime+i*.2;
-      g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(0.001,t+.22);
-      o.start(t);o.stop(t+.25);
-    });
-  }catch{}
-}
-
-// ════════════════════════════════════
-//  ACTIVE CONDITION CHECK HELPERS
-// ════════════════════════════════════
-// LONG: 활성화된 조건들만 AND
-function evalLong(l1, l2, l3) {
-  const checks = [];
-  if (condState.L1) checks.push(l1.ok);
-  if (condState.L2) checks.push(l2.ok);
-  if (condState.L3) checks.push(l3.ok);
-  if (checks.length === 0) return false; // 전체 OFF면 매칭 안 함
-  return checks.every(Boolean);
-}
-// SHORT: 활성화된 조건들만 AND
-function evalShort(s1, s2, s3) {
-  const checks = [];
-  if (condState.S1) checks.push(s1.ok);
-  if (condState.S2) checks.push(s2.ok);
-  if (condState.S3) checks.push(s3.ok);
-  if (checks.length === 0) return false;
-  return checks.every(Boolean);
-}
-// CRASH: 활성화된 조건들만 AND
-function evalCrash(cs) {
-  const checks = [];
-  if (condState.C1) checks.push(cs.c1);
-  if (condState.C2) checks.push(cs.c2);
-  if (condState.C3) checks.push(cs.c3);
-  if (condState.C4) checks.push(cs.c4);
-  if (checks.length === 0) return false;
-  return checks.every(Boolean);
-}
-
-// ════════════════════════════════════
-//  MAIN SCAN
-// ════════════════════════════════════
-async function runScan() {
-  if(isScanning) return;
-  isScanning=true;
-  document.getElementById('scanningBar').classList.add('visible');
-  document.getElementById('scanDot').className='dot yellow';
-  document.getElementById('scanStatus').textContent='SCANNING';
-  document.getElementById('manualBtn').disabled=true;
-  document.getElementById('startBtn').disabled=true;
-
-  // 활성 조건 로그
-  const activeL=['L1','L2','L3'].filter(c=>condState[c]);
-  const activeS=['S1','S2','S3'].filter(c=>condState[c]);
-  const activeC=['C1','C2','C3','C4'].filter(c=>condState[c]);
-  log(`── SCAN STARTED · LONG[${activeL.join(',')||'none'}] SHORT[${activeS.join(',')||'none'}] CRASH[${activeC.join(',')||'none'}] ──`,'info');
-
-  let symbols=[];
-  try{
-    symbols=await getSymbols();
-    document.getElementById('statTotal').textContent=symbols.length;
-    document.getElementById('apiDot').className='dot green';
-    document.getElementById('apiStatus').textContent='CONNECTED';
-    log(`심볼 ${symbols.length}개 로드`,'info');
-  }catch(e){
-    log(`심볼 로드 실패: ${e.message}`,'warn');
-    document.getElementById('apiDot').className='dot red';
-    document.getElementById('apiStatus').textContent='ERROR';
-    finishScan(); return;
-  }
-
-  // 스캔 목록 초기화
-  initScanList(symbols);
-
-  scanCount++;
-  document.getElementById('statRuns').textContent=scanCount;
-
-  let scanned=0,errorCount=0;
-  const prevLong=new Set(Object.keys(longMatched));
-  const prevShort=new Set(Object.keys(shortMatched));
-  const prevCrash=new Set(Object.keys(crashMatched));
-  const thisLong=new Set(),thisShort=new Set(),thisCrash=new Set();
-
-  const BATCH=5;
-  for(let i=0;i<symbols.length;i+=BATCH){
-    const batch=symbols.slice(i,i+BATCH);
-
-    await Promise.all(batch.map(async sym=>{
-      try{
-        document.getElementById('scanningSymbol').textContent=`SCANNING  ${sym}`;
-
-        const [klines,oiData,s1Result,statsResult,crashLS]=await Promise.all([
-          getKlines(sym),
-          getOI(sym).catch(()=>null),
-          check24hRise(sym),
-          fetchPriceStats(sym),
-          checkCrash_LS(sym),
-        ]);
-
-        const currentPrice=klines[klines.length-1].c;
-        currentPrices[sym]=currentPrice;
-
-        const l1=checkMA_Long(klines),l2=checkSpike(klines),l3=checkOI_long(oiData);
-        const s2=checkMA_Short_Alignment(klines),s3=checkBearCandle(klines,s2.ma5,s2.ma10);
-
-        const longHit  = evalLong(l1,l2,l3);
-        const shortHit = evalShort(s1Result,s2,s3);
-        const crashHit = evalCrash(crashLS);
-
-        // 심볼 목록 상태 업데이트
-        const hitTags=[];
-        if(longHit)  hitTags.push('L');
-        if(shortHit) hitTags.push('S');
-        if(crashHit) hitTags.push('C');
-
-        let itemStatus='done';
-        if(crashHit)      itemStatus='hit-crash';
-        else if(shortHit) itemStatus='hit-short';
-        else if(longHit)  itemStatus='hit-long';
-        // 여러 개 hit인 경우 태그로 모두 표시
-        updateScanItem(sym, itemStatus, hitTags);
-
-        // ── LONG ──
-        if(longHit){
-          const isNew=!prevLong.has(sym);
-          const entryPrice=isNew?currentPrice:(longMatched[sym]?.entryPrice??currentPrice);
-          const result={symbol:sym,price:currentPrice,entryPrice,maxSpike:l2.maxSpike,minsAgo:l2.minsAgo,oiRatio:l3.ratio,ts:isNew?Date.now():(longMatched[sym]?.ts??Date.now()),isNew};
-          longMatched[sym]=result; thisLong.add(sym);
-          renderLong();
-          document.getElementById('statLong').textContent=Object.keys(longMatched).length;
-          if(isNew){
-            log(`▲ LONG ${sym}  ${fmtPrice(entryPrice)}  +${l2.maxSpike.toFixed(1)}%  OI×${l3.ratio.toFixed(2)}`,'up');
-            showToast(sym,'up',`진입 ${fmtPrice(entryPrice)}  +${l2.maxSpike.toFixed(1)}%  OI×${l3.ratio.toFixed(2)}`);
-            playAlert('up');
-            notifyLong(result);
-          }
-        }else{
-          if(longMatched[sym]){delete longMatched[sym];delete currentPrices[sym];renderLong();document.getElementById('statLong').textContent=Object.keys(longMatched).length;}
-        }
-
-        // ── SHORT ──
-        if(shortHit){
-          const isNew=!prevShort.has(sym);
-          const entryPrice=isNew?currentPrice:(shortMatched[sym]?.entryPrice??currentPrice);
-          const result={symbol:sym,price:currentPrice,entryPrice,rise24h:s1Result.pct,ma5:s2.ma5,ma10:s2.ma10,ma30:s2.ma30,ma60:s2.ma60,openPrice:s3.openPrice,closePrice:s3.closePrice,ts:isNew?Date.now():(shortMatched[sym]?.ts??Date.now()),isNew};
-          shortMatched[sym]=result; thisShort.add(sym);
-          renderShort();
-          document.getElementById('statShort').textContent=Object.keys(shortMatched).length;
-          if(isNew){
-            log(`▼ SHORT ${sym}  ${fmtPrice(entryPrice)}  24H:+${s1Result.pct.toFixed(1)}%`,'dn');
-            showToast(sym,'dn',`진입 ${fmtPrice(entryPrice)}  24H+${s1Result.pct.toFixed(1)}%`);
-            playAlert('dn');
-            notifyShort(result);
-          }
-        }else{
-          if(shortMatched[sym]){delete shortMatched[sym];renderShort();document.getElementById('statShort').textContent=Object.keys(shortMatched).length;}
-        }
-
-        // ── CRASH ──
-        if(crashHit){
-          const isNew=!prevCrash.has(sym);
-          const result={symbol:sym,price:currentPrice,globalRatio:crashLS.globalRatio,whaleRatio:crashLS.whaleRatio,change24h:crashLS.rise24h,bbMid:crashLS.bbMid,ts:isNew?Date.now():(crashMatched[sym]?.ts??Date.now()),isNew};
-          crashMatched[sym]=result; thisCrash.add(sym);
-          renderCrash();
-          document.getElementById('statCrash').textContent=Object.keys(crashMatched).length;
-          if(isNew){
-            log(`💥 CRASH ${sym}  전체L/S=${crashLS.globalRatio.toFixed(4)}  고래L/S=${crashLS.whaleRatio.toFixed(4)}  24H=+${crashLS.rise24h.toFixed(1)}%`,'crash');
-            showToast(sym,'crash',`전체 L/S=${crashLS.globalRatio.toFixed(4)}  고래 L/S=${crashLS.whaleRatio.toFixed(4)}  24H +${crashLS.rise24h.toFixed(1)}%`);
-            playAlert('crash');
-            notifyCrash(result);
-          }
-        }else{
-          if(crashMatched[sym]){delete crashMatched[sym];renderCrash();document.getElementById('statCrash').textContent=Object.keys(crashMatched).length;}
-        }
-
-      }catch(e){
-        errorCount++;
-        updateScanItem(sym,'error',[]);
-      }
-    }));
-
-    scanned+=batch.length;
-    const pct=Math.round(scanned/symbols.length*100);
-    document.getElementById('progressFill').style.width=pct+'%';
-    document.getElementById('progressText').textContent=pct+'%';
-    document.getElementById('statScanned').textContent=scanned;
-    document.getElementById('statErrors').textContent=errorCount;
-
-    if(i+BATCH<symbols.length) await sleep(250);
-  }
-
-  // 잔류 정리
-  for(const sym of prevLong)  if(!thisLong.has(sym)  &&longMatched[sym])  {delete longMatched[sym]; delete currentPrices[sym];}
-  for(const sym of prevShort) if(!thisShort.has(sym) &&shortMatched[sym]) {delete shortMatched[sym];}
-  for(const sym of prevCrash) if(!thisCrash.has(sym) &&crashMatched[sym]) {delete crashMatched[sym];}
-  renderLong(); renderShort(); renderCrash();
-
-  const now=new Date().toLocaleTimeString('ko-KR',{hour12:false});
-  document.getElementById('lastScanRow').style.display='flex';
-  document.getElementById('lastScanTime').textContent=`마지막: ${now}  |  에러: ${errorCount}`;
-  log(`── COMPLETE  LONG ${Object.keys(longMatched).length}  SHORT ${Object.keys(shortMatched).length}  CRASH ${Object.keys(crashMatched).length}  에러 ${errorCount} ──`,'info');
-  finishScan();
-}
-
-function finishScan() {
-  isScanning=false;
-  document.getElementById('scanningBar').classList.remove('visible');
-  document.getElementById('scanDot').className='dot green';
-  document.getElementById('scanStatus').textContent='COMPLETE';
-  document.getElementById('manualBtn').disabled=false;
-  if(!scanInterval) document.getElementById('startBtn').disabled=false;
-}
-
-// ════════════════════════════════════
-//  TIMER / CONTROLS
-// ════════════════════════════════════
-function startScanner() {
-  document.getElementById('startBtn').disabled=true;
-  document.getElementById('stopBtn').disabled=false;
-  saveTgConfig(); updateTgDot();
-  log('자동 스캔 시작 (5분 간격)','info');
-  runScan();
-  nextScanIn=SCAN_INTERVAL_SEC;
-  countdownInterval=setInterval(()=>{
-    nextScanIn--;
-    document.getElementById('countdown').textContent=nextScanIn;
-    if(nextScanIn<=0) nextScanIn=SCAN_INTERVAL_SEC;
-  },1000);
-  scanInterval=setInterval(()=>{nextScanIn=SCAN_INTERVAL_SEC;runScan();},SCAN_INTERVAL_SEC*1000);
-}
-function stopScanner() {
-  clearInterval(scanInterval);clearInterval(countdownInterval);
-  scanInterval=null;
-  document.getElementById('startBtn').disabled=false;
-  document.getElementById('stopBtn').disabled=true;
-  document.getElementById('countdown').textContent='—';
-  document.getElementById('scanDot').className='dot';
-  document.getElementById('scanStatus').textContent='IDLE';
-  log('자동 스캔 중지','warn');
-}
-function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
-</script>
-</body>
-</html>
