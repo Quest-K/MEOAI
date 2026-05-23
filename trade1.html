@@ -1,856 +1,1463 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Binance Futures Scanner Pro</title>
-<style>
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Pretendard:wght@300;400;500;600;700&display=swap');
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PROV · Binance Futures Scanner v3.3</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-:root {
-  --bg:      #0b0e11;
-  --bg2:     #161a1e;
-  --bg3:     #21262c;
-  --bg4:     #2b3139;
-  --border:  #2b313a;
-  --border2: #475262;
-  --accent:  #fcd535;
-  --accent-hover: #f3ba2f;
-  --accent-rgb: 252, 213, 53;
-  --green:   #0ecb81;
-  --red:     #f6465d;
-  --yellow:  #fcd535;
-  --purple:  #b67bfb;
-  --text:    #eaecef;
-  --muted:   #848e9c;
-  --muted2:  #b7bdc6;
-  --row-match: rgba(14, 203, 129, 0.06);
-  --row-match-hover: rgba(14, 203, 129, 0.12);
-}
+    <style>
+        /* ── 토큰 ── */
+        :root {
+            --bg-base:    #080c14;
+            --bg-panel:   #0d1422;
+            --bg-card:    #111827;
+            --bg-row:     #0f1929;
+            --border:     #1e2d42;
+            --border-hi:  #2a3f5a;
+            --text-pri:   #e8eef6;
+            --text-sec:   #8a9bb5;
+            --text-dim:   #445566;
+            --accent-y:   #f0b429;
+            --accent-g:   #10d96e;
+            --accent-r:   #f0424a;
+            --accent-b:   #3b9eff;
+            --accent-o:   #ff7a2f;
+        }
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { scroll-behavior: smooth; }
+        * { box-sizing: border-box; }
 
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: 'Pretendard', sans-serif;
-  font-size: 13px;
-  line-height: 1.5;
-  min-height: 100vh;
-}
+        body {
+            background: var(--bg-base);
+            color: var(--text-pri);
+            font-family: 'IBM Plex Mono', monospace;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
 
-/* ── TOPBAR ── */
-#topbar {
-  position: sticky; top: 0; z-index: 200;
-  background: rgba(22, 26, 30, 0.85);
-  backdrop-filter: blur(16px);
-  border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; gap: 20px;
-  padding: 0 24px; height: 56px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.3);
-}
+        body::before {
+            content: '';
+            position: fixed; inset: 0; z-index: 0; pointer-events: none;
+            background-image:
+                linear-gradient(rgba(30,45,66,0.25) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(30,45,66,0.25) 1px, transparent 1px);
+            background-size: 32px 32px;
+        }
 
-.logo {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 16px; font-weight: 700;
-  color: var(--text);
-  letter-spacing: 1.5px;
-  flex-shrink: 0;
-  display: flex; align-items: center; gap: 8px;
-}
-.logo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 2s infinite; }
-@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(1.3)} }
+        body::after {
+            content: '';
+            position: fixed; top: -120px; left: 50%; transform: translateX(-50%);
+            width: 700px; height: 280px; border-radius: 50%;
+            background: radial-gradient(ellipse, rgba(240,180,41,0.07) 0%, transparent 70%);
+            z-index: 0; pointer-events: none;
+        }
 
-.topbar-pills { display: flex; gap: 8px; flex-wrap: nowrap; overflow-x: auto; max-width: 60%; }
-.topbar-pills::-webkit-scrollbar { display:none; }
+        header, main, footer { position: relative; z-index: 1; }
 
-.t-pill {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 4px 12px;
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
-  white-space: nowrap;
-  display: flex; align-items: center; gap: 6px;
-  flex-shrink: 0;
-}
-.t-pill .pl { color: var(--muted); }
-.t-pill .pv { color: var(--text); font-weight: 600; }
+        .font-display { font-family: 'Syne', sans-serif; }
 
-.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
-.last-updated { font-size: 11px; color: var(--muted); font-family: 'IBM Plex Mono', monospace; }
+        .panel {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+        }
+        .panel-inner {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+        }
 
-#scanBtn {
-  background: var(--accent);
-  color: #000;
-  border: none; cursor: pointer;
-  padding: 8px 20px;
-  border-radius: 6px;
-  font-family: 'Pretendard', sans-serif;
-  font-size: 12px; font-weight: 600;
-  transition: all .15s ease-in-out;
-  display: flex; align-items: center; gap: 6px;
-}
-#scanBtn:hover { background: var(--accent-hover); box-shadow: 0 0 12px rgba(252,213,53,0.3); }
-#scanBtn:active { transform: scale(.97); }
-#scanBtn:disabled { background: var(--bg4); color: var(--muted); cursor: not-allowed; box-shadow: none; }
+        input[type=number], select {
+            background: var(--bg-base);
+            border: 1px solid var(--border-hi);
+            color: var(--text-pri);
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-family: inherit;
+            font-size: 12px;
+            width: 100%;
+            transition: border-color .2s;
+        }
+        input[type=number]:focus, select:focus {
+            outline: none;
+            border-color: var(--accent-y);
+            box-shadow: 0 0 0 3px rgba(240,180,41,0.12);
+        }
+        select option { background: #111827; }
 
-/* ── CONTROLS STRIP ── */
-#ctrlStrip {
-  background: var(--bg2);
-  border-bottom: 1px solid var(--border);
-  padding: 10px 24px;
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-}
+        .btn-primary {
+            background: var(--accent-y);
+            color: #080c14;
+            font-family: 'Syne', sans-serif;
+            font-weight: 800;
+            font-size: 13px;
+            letter-spacing: .02em;
+            border: none;
+            border-radius: 10px;
+            padding: 11px 0;
+            width: 100%;
+            cursor: pointer;
+            transition: background .15s, transform .1s, box-shadow .15s;
+            box-shadow: 0 4px 20px rgba(240,180,41,0.18);
+        }
+        .btn-primary:hover  { background: #ffc940; box-shadow: 0 6px 28px rgba(240,180,41,0.30); }
+        .btn-primary:active { transform: scale(.98); }
+        .btn-primary.stop   { background: var(--accent-r); box-shadow: 0 4px 20px rgba(240,66,74,0.20); color: #fff; }
+        .btn-primary.stop:hover { background: #ff5a62; }
 
-.section-label {
-  font-size: 11px; color: var(--muted);
-  font-family: 'IBM Plex Mono', monospace;
-  letter-spacing: 1px; text-transform: uppercase;
-}
+        .btn-secondary {
+            background: transparent;
+            border: 1px solid var(--border-hi);
+            color: var(--text-sec);
+            font-family: inherit;
+            font-size: 11px;
+            font-weight: 600;
+            border-radius: 8px;
+            padding: 8px 0;
+            width: 100%;
+            cursor: pointer;
+            transition: all .15s;
+        }
+        .btn-secondary:hover { border-color: var(--accent-y); color: var(--accent-y); }
 
-.chip-group { display: flex; gap: 6px; flex-wrap: wrap; }
+        .btn-sound {
+            font-family: inherit;
+            font-size: 10px;
+            font-weight: 600;
+            border-radius: 8px;
+            padding: 8px 0;
+            cursor: pointer;
+            transition: all .15s;
+            border: 1px solid var(--border-hi);
+            background: var(--bg-base);
+            color: var(--text-dim);
+        }
+        .btn-sound.active {
+            border-color: var(--accent-y);
+            color: var(--accent-y);
+            background: rgba(240,180,41,0.08);
+        }
 
-.chip {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  color: var(--muted2);
-  padding: 5px 14px; border-radius: 6px;
-  cursor: pointer; font-size: 12px; font-weight: 500;
-  transition: all .15s; white-space: nowrap;
-  user-select: none;
-}
-.chip:hover { border-color: var(--muted); color: var(--text); }
-.chip.active { border-color: var(--accent); color: var(--accent); background: rgba(252,213,53,0.05); font-weight: 600; }
-.chip.active.green-chip { border-color: var(--green); color: var(--green); background: rgba(14,203,129,0.05); }
-.chip.active.yellow-chip{ border-color: var(--yellow); color: var(--yellow); background: rgba(252,213,53,0.05); }
+        .progress-track {
+            background: rgba(30,45,66,0.6);
+            border-radius: 4px;
+            height: 4px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            border-radius: 4px;
+            background: linear-gradient(90deg, var(--accent-y), #ff9f2f);
+            transition: width .3s ease;
+        }
 
-.divider { width: 1px; height: 20px; background: var(--border); }
+        .stat-chip {
+            background: rgba(13,20,34,0.8);
+            border: 1px solid var(--border-hi);
+            border-radius: 9px;
+            padding: 6px 12px;
+            font-size: 11px;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .stat-chip .label { color: var(--text-sec); }
+        .stat-chip .value { font-weight: 700; }
 
-.search-wrap { position: relative; margin-left: auto; }
-.search-wrap svg {
-  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
-  color: var(--muted); width: 14px; height: 14px; pointer-events: none;
-}
-#searchInput {
-  background: var(--bg3); border: 1px solid var(--border);
-  color: var(--text); padding: 6px 12px 6px 32px;
-  border-radius: 6px; font-size: 12px; outline: none;
-  width: 180px; font-family: 'IBM Plex Mono', monospace;
-  transition: all .2s ease;
-}
-#searchInput:focus { border-color: var(--accent); width: 220px; box-shadow: 0 0 0 3px rgba(252,213,53,0.15); }
+        table { border-collapse: collapse; width: 100%; }
+        thead th {
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            padding: 0 10px 12px;
+            background: var(--bg-panel);
+            position: sticky; top: 0; z-index: 10;
+            white-space: nowrap;
+            cursor: pointer;
+            user-select: none;
+            border-bottom: 1px solid var(--border);
+        }
+        thead th:hover { color: var(--text-sec); }
 
-/* ── PROGRESS ── */
-#progressOverlay {
-  display: none;
-  background: var(--bg2); border-bottom: 1px solid var(--border);
-  padding: 16px 24px;
-}
-#progressOverlay.show { display: block; }
+        tbody tr {
+            border-bottom: 1px solid rgba(30,45,66,0.5);
+            transition: background .12s;
+        }
+        tbody tr:hover { background: rgba(30,45,66,0.5) !important; }
 
-.prog-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.prog-label { font-family: 'Pretendard', sans-serif; font-size: 12px; font-weight: 500; color: var(--accent); }
-.prog-count { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--muted2); }
-.prog-track { background: var(--bg4); border-radius: 4px; height: 6px; overflow: hidden; }
-.prog-fill {
-  height: 100%; border-radius: 4px; width: 0%;
-  background: linear-gradient(90deg, var(--accent), var(--green));
-  transition: width .2s ease;
-}
-.prog-sub { margin-top: 6px; font-size: 11px; color: var(--muted); font-family: 'IBM Plex Mono', monospace; }
+        tbody td {
+            padding: 9px 10px;
+            font-size: 11px;
+            vertical-align: middle;
+        }
 
-/* ── SUMMARY CARDS ── */
-#summarySection {
-  display: none;
-  padding: 16px 24px 0;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-#summarySection.show { display: flex; }
+        .row-short  { background: rgba(240,66,74,0.05); }
+        .row-long   { background: rgba(16,217,110,0.04); }
+        .row-oi     { background: rgba(240,180,41,0.05); }
+        .row-dual   { background: rgba(163,75,230,0.07); }
+        .row-combo-rl { background: rgba(255,122,47,0.06); }
+        .row-combo-gl { background: rgba(59,158,255,0.05); }
 
-.sum-card {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 14px 18px;
-  cursor: pointer;
-  transition: all .15s ease;
-  min-width: 140px;
-  flex: 1;
-}
-.sum-card:hover { border-color: var(--border2); background: var(--bg3); transform: translateY(-1px); }
-.sum-card.active-card { border-color: var(--accent); background: rgba(252,213,53,0.02); box-shadow: 0 0 0 3px rgba(252,213,53,0.1); }
-.sum-card .sv { font-family: 'IBM Plex Mono', monospace; font-size: 24px; font-weight: 700; line-height: 1.2; }
-.sum-card .sl { font-size: 11px; color: var(--muted); margin-top: 6px; font-weight: 500; }
-.sum-card .sb { margin-top: 8px; height: 3px; border-radius: 2px; }
+        .badge {
+            display: inline-flex; align-items: center; gap: 4px;
+            font-size: 9px; font-weight: 700;
+            padding: 3px 7px; border-radius: 5px;
+            line-height: 1;
+        }
+        .badge-short  { background: rgba(240,66,74,0.15);  color: #f87171; border: 1px solid rgba(240,66,74,0.25); }
+        .badge-long   { background: rgba(16,217,110,0.12); color: #34d399; border: 1px solid rgba(16,217,110,0.25); }
+        .badge-oi     { background: rgba(240,180,41,0.12); color: var(--accent-y); border: 1px solid rgba(240,180,41,0.25); }
+        .badge-neutral{ background: rgba(30,45,66,0.5);    color: var(--text-dim);  border: 1px solid transparent; }
 
-/* ── ERROR ── */
-#errorBanner {
-  display: none;
-  margin: 16px 24px;
-  background: rgba(246,70,93,0.1); border: 1px solid rgba(246,70,93,0.3);
-  border-radius: 8px; padding: 14px 18px;
-  color: #ff6b7e; font-size: 13px;
-  align-items: flex-start; gap: 12px;
-}
-#errorBanner.show { display: flex; }
-#errorBanner .ei { font-size: 18px; flex-shrink: 0; }
+        .oi-item {
+            display: flex; align-items: center; gap: 8px;
+            padding: 7px 10px; border-radius: 8px;
+            border: 1px solid transparent;
+            transition: all .15s;
+        }
+        .oi-item:hover { background: rgba(30,45,66,0.4); border-color: var(--border); }
+        .oi-item.rising { border-color: rgba(240,180,41,0.15); background: rgba(240,180,41,0.04); }
 
-/* ── TABLE WRAP ── */
-#tableSection { padding: 16px 24px 32px; }
+        .log-card {
+            border-radius: 10px;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            background: rgba(13,20,34,0.7);
+        }
+        .log-card.short-card { border-color: rgba(240,66,74,0.3);  background: rgba(240,66,74,0.05); }
+        .log-card.long-card  { border-color: rgba(16,217,110,0.3); background: rgba(16,217,110,0.04); }
+        .log-card.oi-card    { border-color: rgba(240,180,41,0.3); background: rgba(240,180,41,0.04); }
 
-#tableInfo {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 10px;
-}
-.table-count { font-size: 12px; color: var(--muted2); font-family: 'IBM Plex Mono', monospace; }
-.table-hint  { font-size: 11px; color: var(--muted); }
+        .log-stat {
+            background: rgba(8,12,20,0.7);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 5px 4px;
+            text-align: center;
+        }
 
-.table-wrap {
-  overflow-x: auto;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-}
+        .alert-banner {
+            border-radius: 12px;
+            padding: 14px 18px;
+            display: flex; align-items: center; justify-content: space-between; gap: 12px;
+            flex-wrap: wrap;
+        }
+        .alert-banner.short-alert { background: rgba(240,66,74,0.1);  border: 1px solid rgba(240,66,74,0.5); }
+        .alert-banner.long-alert  { background: rgba(16,217,110,0.08); border: 1px solid rgba(16,217,110,0.4); }
+        .alert-banner.oi-alert    { background: rgba(240,180,41,0.08); border: 1px solid rgba(240,180,41,0.4); }
+        .alert-banner.mixed-alert { background: rgba(163,75,230,0.10); border: 1px solid rgba(163,75,230,0.4); }
 
-table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
-thead { background: var(--bg2); position: sticky; top: 0; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .dot-idle    { background: #34d399; }
+        .dot-running { background: var(--accent-r); animation: blink .9s infinite; }
+        .dot-scan    { background: var(--accent-b); animation: blink .9s infinite; }
 
-th {
-  padding: 12px 14px;
-  color: var(--muted); font-family: 'Pretendard', sans-serif;
-  font-size: 11px; font-weight: 600;
-  border-bottom: 1px solid var(--border);
-  white-space: nowrap; cursor: pointer; user-select: none;
-  text-align: right;
-  transition: color .15s;
-}
-th:hover { color: var(--text); }
-th.th-left { text-align: left; }
-th.th-center { text-align: center; }
-th .sort-arrow { margin-left: 4px; display: inline-block; width: 8px; font-family: 'IBM Plex Mono', monospace; }
-th.sort-asc .sort-arrow::after  { content: '▲'; color: var(--accent); font-size: 9px; }
-th.sort-desc .sort-arrow::after { content: '▼'; color: var(--accent); font-size: 9px; }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.4} }
 
-td {
-  padding: 12px 14px; text-align: right;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg2);
-  color: var(--text);
-  vertical-align: middle;
-}
+        @keyframes border-pulse-r {
+            0%,100%{ box-shadow: 0 0 0 0 rgba(240,66,74,0); }
+            50%    { box-shadow: 0 0 0 3px rgba(240,66,74,0.20); }
+        }
+        @keyframes border-pulse-g {
+            0%,100%{ box-shadow: 0 0 0 0 rgba(16,217,110,0); }
+            50%    { box-shadow: 0 0 0 3px rgba(16,217,110,0.15); }
+        }
+        .body-alert-r { animation: border-pulse-r 1.8s infinite; }
+        .body-alert-g { animation: border-pulse-g 1.8s infinite; }
 
-tbody tr { transition: background .1s; }
-tbody tr:hover td { background: var(--bg3) !important; }
-tbody tr:last-child td { border-bottom: none; }
+        @keyframes oi-pulse {
+            0%,100%{ box-shadow: none; }
+            50%    { box-shadow: 0 0 8px 1px rgba(240,180,41,0.25); }
+        }
+        .oi-rising { animation: oi-pulse 2.2s infinite; }
 
-tbody tr.row-match td { background: var(--row-match); }
-tbody tr.row-match:hover td { background: var(--row-match-hover); }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #3a5070; }
 
-/* cells */
-.c-num { color: var(--muted); font-family: 'IBM Plex Mono', monospace; text-align: center; }
+        .section-title {
+            font-family: 'Syne', sans-serif;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: .04em;
+            color: var(--text-sec);
+            display: flex; align-items: center; gap: 8px;
+        }
+        .section-divider { border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 16px; }
 
-.c-symbol {
-  text-align: left;
-  display: flex; align-items: center; gap: 8px;
-}
-.sym-name {
-  font-family: 'IBM Plex Mono', monospace; font-weight: 600;
-  font-size: 13px; color: var(--text);
-}
-.sym-quote { color: var(--muted); font-weight: 400; font-size: 11px; }
+        .field-label {
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: .04em;
+            margin-bottom: 5px;
+            display: block;
+        }
 
-.badge {
-  font-size: 9px; font-family: 'IBM Plex Mono', monospace; font-weight: 700;
-  padding: 1px 4px; border-radius: 4px;
-  flex-shrink: 0;
-}
-.badge-all { background: rgba(14,203,129,0.15); color: var(--green); border: 1px solid rgba(14,203,129,0.3); }
+        /* 동시 조건 안내 박스 */
+        .condition-box {
+            background: rgba(8,12,20,0.6);
+            border: 1px solid var(--border-hi);
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 10px;
+            color: var(--text-sec);
+            line-height: 1.6;
+        }
+        .condition-box strong { font-weight: 700; }
+        .condition-tag {
+            display: inline-block;
+            font-size: 9px;
+            font-weight: 700;
+            padding: 1px 6px;
+            border-radius: 4px;
+            margin-right: 2px;
+        }
 
-.c-price { font-family: 'IBM Plex Mono', monospace; font-weight: 500; }
+        /* ── OI+숏 복합 패널 ── */
+        .combo-item {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 11px;
+            border-radius: 9px;
+            border: 1px solid rgba(240,66,74,0.2);
+            background: rgba(240,66,74,0.04);
+            transition: all .15s;
+            cursor: default;
+        }
+        .combo-item:hover {
+            border-color: rgba(240,66,74,0.4);
+            background: rgba(240,66,74,0.08);
+        }
+        .combo-item .sym {
+            font-weight: 700;
+            font-size: 12px;
+            color: var(--text-pri);
+            letter-spacing: .02em;
+        }
+        .combo-item .meta {
+            font-size: 10px;
+            color: var(--text-sec);
+            margin-top: 2px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .combo-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            font-size: 9px;
+            font-weight: 700;
+            padding: 2px 7px;
+            border-radius: 4px;
+        }
+        .combo-badge-oi  { background: rgba(240,180,41,0.15); color: var(--accent-y); border: 1px solid rgba(240,180,41,0.3); }
+        .combo-badge-sht { background: rgba(240,66,74,0.15);  color: #f87171;         border: 1px solid rgba(240,66,74,0.25); }
 
-/* MA 레이아웃 */
-.ma-result {
-  display: flex; flex-direction: column; align-items: center; gap: 6px; justify-content: center;
-}
-.ma-icon { font-size: 14px; line-height: 1; font-weight: bold; }
-.ma-container {
-  font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--muted2);
-  text-align: left; line-height: 1.4; display: flex; flex-direction: column; gap: 2px; width: 100%;
-}
-.ma-line { white-space: nowrap; display: flex; justify-content: space-between; gap: 8px; }
-.ma-line .ma-lbl { color: var(--muted); font-weight: 500; }
-.ma-line .ma-val { color: var(--text); font-weight: 600; text-align: right; }
-
-/* LS bar */
-.ls-wrap { display: flex; flex-direction: column; align-items: center; gap: 4px; justify-content: center; }
-.ls-bar { display: flex; width: 90px; height: 6px; border-radius: 3px; overflow: hidden; background: var(--bg4); }
-.ls-l { background: var(--green); }
-.ls-s { background: var(--red); }
-.ls-nums {
-  display: flex; justify-content: space-between; width: 90px;
-  font-family: 'IBM Plex Mono', monospace; font-size: 10px;
-}
-.ls-nums .ln { color: var(--green); font-weight: 500; }
-.ls-nums .sn { color: var(--red); font-weight: 500; }
-.ls-label { font-size: 10px; font-weight: 500; }
-
-/* OI */
-.oi-wrap { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
-.oi-track { width: 60px; height: 6px; background: var(--bg4); border-radius: 3px; overflow: hidden; }
-.oi-fill { height: 100%; background: var(--accent); border-radius: 3px; }
-.oi-num { font-family: 'IBM Plex Mono', monospace; font-size: 12px; min-width: 50px; text-align: right; }
-
-/* Score */
-.score-wrap {
-  display: flex; flex-direction: column; align-items: center; gap: 4px; justify-content: center;
-}
-.score-dots { display: flex; gap: 4px; }
-.score-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--bg4);
-  transition: all .2s;
-}
-.score-dot.on { background: var(--green); box-shadow: 0 0 6px var(--green); }
-.score-num { font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 11px; }
-.score-3 { color: var(--green); }
-.score-2 { color: var(--yellow); }
-.score-1 { color: #f9a826; }
-.score-0 { color: var(--muted); }
-
-/* empty */
-.empty-state {
-  padding: 60px 20px; text-align: center;
-  color: var(--muted); font-family: 'Pretendard', sans-serif;
-}
-.empty-icon { font-size: 40px; margin-bottom: 12px; }
-.empty-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; color: var(--text); }
-.empty-sub { font-size: 12px; color: var(--muted); }
-
-/* tooltip */
-[data-tip] { position: relative; }
-[data-tip]:hover::after {
-  content: attr(data-tip);
-  position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
-  background: var(--bg3); border: 1px solid var(--border2);
-  color: var(--text); font-size: 11px; font-family: 'Pretendard', sans-serif;
-  padding: 5px 10px; border-radius: 4px; white-space: nowrap; z-index: 999;
-  pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-}
-
-/* ── ONBOARDING SPLASH ── */
-#splash {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  padding: 60px 24px; text-align: center;
-  gap: 24px; background: var(--bg2);
-}
-.splash-icon { font-size: 48px; }
-.splash-title { font-family: 'Pretendard', sans-serif; font-size: 22px; font-weight: 700; color: var(--text); letter-spacing: -0.5px; }
-.splash-desc { font-size: 13px; color: var(--muted2); line-height: 1.8; max-width: 520px; }
-.splash-grid {
-  display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;
-  max-width: 460px; width: 100%; margin: 8px 0;
-}
-.splash-tag {
-  background: var(--bg3); border: 1px solid var(--border);
-  border-radius: 8px; padding: 12px 16px;
-  display: flex; align-items: center; gap: 12px;
-  text-align: left;
-}
-.splash-tag .st-icon { font-size: 20px; flex-shrink: 0; }
-.splash-tag .st-text { font-size: 12px; font-weight: 600; color: var(--text); }
-.splash-tag .st-sub  { font-size: 11px; color: var(--muted); margin-top: 2px; font-family: 'IBM Plex Mono', monospace; }
-.splash-cta {
-  background: var(--accent); color: #000;
-  border: none; cursor: pointer;
-  padding: 14px 36px; border-radius: 6px;
-  font-family: 'Pretendard', sans-serif;
-  font-size: 14px; font-weight: 700;
-  transition: all .2s;
-  box-shadow: 0 4px 14px rgba(252,213,53,0.2);
-}
-.splash-cta:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 6px 20px rgba(252,213,53,0.3); }
-
-/* scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: var(--bg); }
-::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
-
-/* responsive */
-@media (max-width: 768px) {
-  #topbar { padding: 0 16px; gap: 10px; justify-content: space-between; }
-  #ctrlStrip { padding: 10px 16px; }
-  #tableSection { padding: 12px 16px; }
-  #summarySection { padding: 12px 16px 0; }
-  .topbar-pills { display: none; }
-  .splash-grid { grid-template-columns: 1fr; }
-  .search-wrap { width: 100%; margin-left: 0; }
-  #searchInput { width: 100%; }
-  #searchInput:focus { width: 100%; }
-}
-</style>
+        @keyframes combo-glow {
+            0%,100% { box-shadow: none; }
+            50%     { box-shadow: 0 0 10px 1px rgba(240,66,74,0.18); }
+        }
+        .combo-item.hot { animation: combo-glow 2s infinite; }
+    </style>
 </head>
+
 <body>
 
-<!-- TOPBAR -->
-<div id="topbar">
-  <div class="logo">
-    <div class="logo-dot"></div>
-    FUTURES<span style="color:var(--accent)">SCAN</span>
-  </div>
-  <div class="topbar-pills">
-    <div class="t-pill"><span class="pl">전체</span><span class="pv" id="hd-total">—</span></div>
-    <div class="t-pill"><span class="pl">스캔</span><span class="pv" id="hd-done">0</span></div>
-    <div class="t-pill"><span class="pl" style="color:var(--accent)">MA✓</span><span class="pv" id="hd-ma" style="color:var(--accent)">0</span></div>
-    <div class="t-pill"><span class="pl" style="color:var(--green)">15M 롱</span><span class="pv" id="hd-ls15m" style="color:var(--green)">0</span></div>
-    <div class="t-pill"><span class="pl" style="color:var(--green)">1H 롱</span><span class="pv" id="hd-ls1h" style="color:var(--green)">0</span></div>
-    <div class="t-pill"><span class="pl" style="color:var(--yellow)">ALL✓</span><span class="pv" id="hd-all" style="color:var(--yellow)">0</span></div>
-  </div>
-  <div class="topbar-right">
-    <span class="last-updated" id="lastUpdated"></span>
-    <button id="scanBtn" onclick="startScan()">
-      <span id="scanBtnIcon">▶</span>
-      <span id="scanBtnText">스캔 시작</span>
-    </button>
-  </div>
-</div>
+<!-- ══════════════════════ HEADER ══════════════════════ -->
+<header style="background: rgba(8,12,20,0.92); border-bottom: 1px solid var(--border); backdrop-filter: blur(16px);"
+        class="sticky top-0 z-50 px-5 py-3 flex flex-wrap justify-between items-center gap-3">
 
-<!-- CONTROLS -->
-<div id="ctrlStrip">
-  <span class="section-label">필터</span>
-  <div class="chip-group" id="chipGroup">
-    <div class="chip active"        data-filter="all"      onclick="setChip(this,'all')">전체 보기</div>
-    <div class="chip green-chip"    data-filter="all3"     onclick="setChip(this,'all3')">🎯 조건 전부</div>
-    <div class="chip"               data-filter="ma"       onclick="setChip(this,'ma')">📈 MA 정배열</div>
-    <div class="chip yellow-chip"   data-filter="ls_15m"   onclick="setChip(this,'ls_15m')">🟢 15m 롱 우세</div>
-    <div class="chip green-chip"    data-filter="ls_1h"    onclick="setChip(this,'ls_1h')">🟢 1h 롱 우세</div>
-  </div>
-  <div class="divider"></div>
-  <div class="search-wrap">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-    </svg>
-    <input id="searchInput" type="text" placeholder="BTC, ETH..." oninput="renderTable()" />
-  </div>
-</div>
-
-<!-- PROGRESS -->
-<div id="progressOverlay">
-  <div class="prog-top">
-    <span class="prog-label" id="progLabel">📡 심볼 목록 로딩 중...</span>
-    <span class="prog-count" id="progCount">0 / 0</span>
-  </div>
-  <div class="prog-track"><div class="prog-fill" id="progFill"></div></div>
-  <div class="prog-sub" id="progSub">바이낸스 API 연결 중</div>
-</div>
-
-<!-- ERROR -->
-<div id="errorBanner">
-  <div class="ei">⚠️</div>
-  <div>
-    <div style="font-weight:600;margin-bottom:4px">API 오류</div>
-    <div id="errorText" style="font-size:12px;opacity:.9"></div>
-    <div style="font-size:11px;margin-top:6px;color:var(--muted2)">
-      💡 이 파일을 <strong>로컬 브라우저(Chrome/Safari)</strong>에서 직접 열어야 바이낸스 API에 접근 가능합니다.
-    </div>
-  </div>
-</div>
-
-<!-- SUMMARY CARDS -->
-<div id="summarySection">
-  <div class="sum-card" id="sc-all" onclick="setChipById('all')" data-tip="전체 심볼 수">
-    <div class="sv" style="color:var(--text)" id="sv-total">0</div>
-    <div class="sl">전체 심볼</div>
-    <div class="sb" style="background:var(--muted)"></div>
-  </div>
-  <div class="sum-card" id="sc-ma" onclick="setChipById('ma')" data-tip="MA5 > MA20 > MA60 정배열">
-    <div class="sv" style="color:var(--yellow)" id="sv-ma">0</div>
-    <div class="sl">MA 정배열</div>
-    <div class="sb" style="background:var(--yellow)"></div>
-  </div>
-  <div class="sum-card" id="sc-ls_15m" onclick="setChipById('ls_15m')" data-tip="15분 기준 롱 포지션 50% 초과">
-    <div class="sv" style="color:var(--green)" id="sv-ls15m">0</div>
-    <div class="sl">15m 롱 우세</div>
-    <div class="sb" style="background:var(--green)"></div>
-  </div>
-  <div class="sum-card" id="sc-ls_1h" onclick="setChipById('ls_1h')" data-tip="1시간 기준 롱 포지션 50% 초과">
-    <div class="sv" style="color:var(--green)" id="sv-ls1h">0</div>
-    <div class="sl">1h 롱 우세</div>
-    <div class="sb" style="background:var(--green)"></div>
-  </div>
-  <div class="sum-card" id="sc-all3" onclick="setChipById('all3')" data-tip="MA정배열 + 15m 롱 + 1h 롱 동시 만족">
-    <div class="sv" style="color:var(--green)" id="sv-all3">0</div>
-    <div class="sl">조건 전부 ⭐</div>
-    <div class="sb" style="background:linear-gradient(90deg,var(--yellow),var(--green))"></div>
-  </div>
-</div>
-
-<!-- TABLE -->
-<div id="tableSection">
-  <div id="tableInfo" style="display:none">
-    <span class="table-count" id="tableCount"></span>
-    <span class="table-hint">헤더 클릭으로 정렬 · 카드 클릭으로 필터</span>
-  </div>
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th onclick="sortBy('no')" class="th-center" style="width:60px">#<span class="sort-arrow"></span></th>
-          <th onclick="sortBy('symbol')" class="th-left">심볼<span class="sort-arrow"></span></th>
-          <th onclick="sortBy('price')">현재가<span class="sort-arrow"></span></th>
-          <th onclick="sortBy('ma')" class="th-center" style="width:160px;" data-tip="MA5 > MA20 > MA60">MA 지표 (1H)<span class="sort-arrow"></span></th>
-          <th onclick="sortBy('ls15m')" class="th-center" data-tip="고래 롱/숏 비율 (15m 기준)">롱/숏 (15m)<span class="sort-arrow"></span></th>
-          <th onclick="sortBy('ls1h')" class="th-center" data-tip="고래 롱/숏 비율 (1h 기준)">롱/숏 (1h)<span class="sort-arrow"></span></th>
-          <th onclick="sortBy('oi')">OI 규모<span class="sort-arrow"></span></th>
-          <th onclick="sortBy('score')" class="th-center" style="width:90px">점수<span class="sort-arrow"></span></th>
-        </tr>
-      </thead>
-      <tbody id="tableBody">
-        <tr><td colspan="8" style="padding:0">
-          <div id="splash">
-            <div class="splash-icon">🚀</div>
-            <div class="splash-title">FUTURES SCANNER PRO</div>
-            <div class="splash-desc">바이낸스 USDT 무기한 선물 전체 심볼을 실시간 분석합니다.<br>기술 지표와 롱/숏 비율을 종합하여 조건을 충족하는 심볼을 찾아드립니다.</div>
-            <div class="splash-grid">
-              <div class="splash-tag">
-                <div class="st-icon">📈</div>
-                <div><div class="st-text">MA 정배열</div><div class="st-sub">5 &gt; 20 &gt; 60 (1H)</div></div>
-              </div>
-              <div class="splash-tag">
-                <div class="st-icon">🐋</div>
-                <div><div class="st-text">롱/숏 (15m)</div><div class="st-sub">단기 고래 포지션 추이</div></div>
-              </div>
-              <div class="splash-tag">
-                <div class="st-icon">🐋</div>
-                <div><div class="st-text">롱/숏 (1h)</div><div class="st-sub">중기 고래 포지션 추이</div></div>
-              </div>
-              <div class="splash-tag">
-                <div class="st-icon">📊</div>
-                <div><div class="st-text">OI 시각화</div><div class="st-sub">미결제약정 규모 시각화</div></div>
-              </div>
+    <div class="flex items-center gap-3">
+        <div style="background: linear-gradient(135deg,#f0b429,#ff7a2f); border-radius: 10px; padding: 9px 10px; box-shadow: 0 4px 16px rgba(240,180,41,0.25);">
+            <i class="fa-solid fa-satellite-dish" style="color:#080c14; font-size:16px;"></i>
+        </div>
+        <div>
+            <div class="font-display flex items-center gap-2" style="font-size:15px; font-weight:800; color:var(--text-pri); letter-spacing:.01em;">
+                PROV · Hybrid Scanner
+                <span style="font-size:9px; background:rgba(240,180,41,0.12); color:var(--accent-y); border:1px solid rgba(240,180,41,0.3); padding:2px 7px; border-radius:20px; font-family:inherit; font-weight:700;">LIVE</span>
+                <span style="font-size:9px; background:rgba(59,158,255,0.12); color:var(--accent-b); border:1px solid rgba(59,158,255,0.3); padding:2px 7px; border-radius:20px; font-family:inherit; font-weight:700;">OI</span>
+                <span style="font-size:9px; background:rgba(163,75,230,0.12); color:#c084fc; border:1px solid rgba(163,75,230,0.3); padding:2px 7px; border-radius:20px; font-family:inherit; font-weight:700;">v3.3</span>
             </div>
-            <button class="splash-cta" onclick="startScan()">▶ 스캔 시작하기</button>
-          </div>
-        </td></tr>
-      </tbody>
-    </table>
-  </div>
+            <div id="headerSubtext" style="font-size:10px; color:var(--text-dim); margin-top:2px;">
+                <span style="color:var(--accent-r);">숏</span> 30m+5m 동시 0.95↓ &nbsp;|&nbsp;
+                <span style="color:var(--accent-g);">롱</span> 30m+5m 동시 1.25↑ &nbsp;|&nbsp;
+                <span style="color:var(--accent-y);">📈+🚨</span> OI↑ + 숏우세 복합 감지
+            </div>
+        </div>
+    </div>
+
+    <div class="flex items-center gap-2 flex-wrap">
+        <div class="stat-chip">
+            <span class="label">전체 심볼</span>
+            <span class="value" id="totalSymbolsCount" style="color:var(--accent-y);">0</span>
+            <span class="label">개</span>
+        </div>
+        <div class="stat-chip">
+            <span class="label">진행</span>
+            <span class="value" id="scanProgressText" style="color:var(--accent-b);">0%</span>
+        </div>
+        <div class="stat-chip">
+            <span class="label">OI↑</span>
+            <span class="value" id="oiRisingCount" style="color:var(--accent-y);">0</span>
+            <span class="label">개</span>
+        </div>
+        <div class="stat-chip">
+            <span class="label">📈+🚨</span>
+            <span class="value" id="oiShortComboCount" style="color:var(--accent-r);">0</span>
+            <span class="label">개</span>
+        </div>
+        <div class="stat-chip" style="gap:8px;">
+            <span class="dot dot-idle" id="statusDot"></span>
+            <span id="statusText" style="color:var(--text-sec); font-size:11px; font-weight:600;">대기 중</span>
+        </div>
+    </div>
+</header>
+
+<!-- ══════════════════════ MAIN ══════════════════════ -->
+<main class="flex-grow p-4 md:p-5" style="max-width:1920px; margin:0 auto; width:100%; display:grid; grid-template-columns:1fr; gap:18px;">
+<div style="display:grid; grid-template-columns:1fr; gap:18px;" class="xl:grid-cols-12-custom">
+
+<div style="display:grid; grid-template-columns:380px 1fr; gap:18px; align-items:start;" id="mainGrid">
+
+    <!-- ══ 왼쪽 패널 ══ -->
+    <div style="display:flex; flex-direction:column; gap:14px;">
+
+        <!-- 제어 설정 -->
+        <div class="panel" style="padding:18px;">
+            <div class="section-title section-divider">
+                <i class="fa-solid fa-sliders" style="color:var(--accent-y);"></i>
+                하이브리드 제어 설정
+            </div>
+
+            <!-- 조건 안내 박스 -->
+            <div class="condition-box" style="margin-bottom:12px;">
+                <div style="margin-bottom:4px;">
+                    <span class="condition-tag" style="background:rgba(240,66,74,0.15);color:#f87171;border:1px solid rgba(240,66,74,0.25);">숏 감지</span>
+                    <strong style="color:var(--text-pri);" id="condLabelShort">인터벌 A + B</strong>
+                    <span style="color:var(--accent-r);"> 동시 이하</span>
+                </div>
+                <div>
+                    <span class="condition-tag" style="background:rgba(16,217,110,0.12);color:#34d399;border:1px solid rgba(16,217,110,0.25);">롱 감지</span>
+                    <strong style="color:var(--text-pri);" id="condLabelLong">인터벌 A + B</strong>
+                    <span style="color:var(--accent-g);"> 동시 이상</span>
+                </div>
+            </div>
+
+            <!-- 인터벌 A / B -->
+            <div style="margin-bottom:12px;">
+                <label class="field-label" style="color:var(--accent-b);">📊 롱숏 비율 조회 인터벌</label>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                    <div>
+                        <div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;text-align:center;">인터벌 A (기준)</div>
+                        <select id="periodASelect" onchange="onPeriodChange()">
+                            <option value="5m">5분</option>
+                            <option value="15m">15분</option>
+                            <option value="30m" selected>30분</option>
+                            <option value="1h">1시간</option>
+                            <option value="4h">4시간</option>
+                            <option value="1d">1일</option>
+                        </select>
+                    </div>
+                    <div>
+                        <div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;text-align:center;">인터벌 B (보조)</div>
+                        <select id="periodBSelect" onchange="onPeriodChange()">
+                            <option value="5m" selected>5분</option>
+                            <option value="15m">15분</option>
+                            <option value="30m">30분</option>
+                            <option value="1h">1시간</option>
+                            <option value="4h">4시간</option>
+                            <option value="1d">1일</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- OI 인터벌 -->
+            <div style="margin-bottom:12px;">
+                <label class="field-label" style="color:var(--accent-y);">📈 OI 조회 인터벌</label>
+                <select id="oiPeriodSelect" onchange="onPeriodChange()">
+                    <option value="5m" selected>5분</option>
+                    <option value="15m">15분</option>
+                    <option value="30m">30분</option>
+                    <option value="1h">1시간</option>
+                    <option value="4h">4시간</option>
+                    <option value="1d">1일</option>
+                </select>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+                <div>
+                    <label class="field-label" style="color:var(--accent-r);">▼ 숏 감지 기준값</label>
+                    <input type="number" id="thresholdShortInput" value="0.95" step="0.01" min="0.1" max="2.0" style="text-align:center;">
+                    <div style="font-size:9px;color:var(--text-dim);margin-top:3px;text-align:center;">A + B 동시 이하</div>
+                </div>
+                <div>
+                    <label class="field-label" style="color:var(--accent-g);">▲ 롱 감지 기준값</label>
+                    <input type="number" id="thresholdLongInput" value="1.25" step="0.01" min="0.1" max="3.0" style="text-align:center;">
+                    <div style="font-size:9px;color:var(--text-dim);margin-top:3px;text-align:center;">A + B 동시 이상</div>
+                </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+                <div>
+                    <label class="field-label" style="color:var(--accent-y);">📈 OI 상승 기준 (%)</label>
+                    <input type="number" id="oiThresholdInput" value="2.0" step="0.5" min="0.1" max="20" style="text-align:center;">
+                </div>
+                <div>
+                    <label class="field-label" style="color:var(--text-sec);">⏱ 자동 스캔 주기</label>
+                    <select id="intervalSelect">
+                        <option value="15000">테스트 (15초)</option>
+                        <option value="300000">5분</option>
+                        <option value="1800000">30분 (권장)</option>
+                        <option value="3600000" selected>1시간</option>
+                        <option value="14400000">4시간</option>
+                        <option value="43200000">12시간</option>
+                        <option value="86400000">24시간</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- 사운드 -->
+            <div style="margin-bottom:14px;">
+                <label class="field-label" style="color:var(--text-sec);">🔔 알림 사운드</label>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                    <button id="soundTtsBtn" class="btn-sound active" onclick="toggleSoundMode('tts')">
+                        <i class="fa-solid fa-volume-high"></i> TTS 음성
+                    </button>
+                    <button id="soundBeepBtn" class="btn-sound" onclick="toggleSoundMode('beep')">
+                        <i class="fa-solid fa-bell"></i> 사이렌음
+                    </button>
+                </div>
+            </div>
+
+            <!-- 진행 바 -->
+            <div style="margin-bottom:14px; background:rgba(8,12,20,0.5); border:1px solid var(--border); border-radius:8px; padding:10px 12px;">
+                <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-dim); margin-bottom:6px;">
+                    <span>API 트래픽 세션</span>
+                    <span id="rateLimitProgress" style="color:var(--text-sec);">0 / 0</span>
+                </div>
+                <div class="progress-track">
+                    <div class="progress-fill" id="progressBar" style="width:0%;"></div>
+                </div>
+            </div>
+
+            <!-- 버튼 -->
+            <button id="startStopBtn" class="btn-primary" style="margin-bottom:8px;">
+                <i class="fa-solid fa-play"></i>&nbsp; 하이브리드 모니터링 시작
+            </button>
+            <button onclick="scanAllSymbols()" class="btn-secondary">
+                <i class="fa-solid fa-rotate"></i>&nbsp; 즉시 전체 스캔 (수동)
+            </button>
+
+            <div style="text-align:right; font-size:10px; color:var(--text-dim); margin-top:8px;">
+                <span id="lastUpdatedText">최근 스캔: -</span>
+            </div>
+        </div>
+
+        <!-- OI TOP 10 -->
+        <div class="panel" style="padding:18px;">
+            <div class="section-title section-divider" style="justify-content:space-between;">
+                <span><i class="fa-solid fa-fire" style="color:var(--accent-y);"></i>&nbsp; OI 급등 TOP 10</span>
+                <button onclick="renderOiTopList()" style="background:none;border:none;cursor:pointer;font-size:11px;color:var(--text-dim);" onmouseover="this.style.color='var(--accent-y)'" onmouseout="this.style.color='var(--text-dim)'">
+                    <i class="fa-solid fa-arrows-rotate"></i>
+                </button>
+            </div>
+            <div id="oiTopList" style="display:flex; flex-direction:column; gap:4px; max-height:260px; overflow-y:auto;">
+                <div style="text-align:center; padding:30px 0; color:var(--text-dim); font-size:11px;">
+                    <i class="fa-solid fa-chart-line" style="display:block; font-size:20px; margin-bottom:8px; color:var(--border-hi);"></i>
+                    스캔 후 표시됩니다
+                </div>
+            </div>
+        </div>
+
+        <!-- OI↑ + 숏우세 복합 감지 패널 -->
+        <div class="panel" style="padding:18px;">
+            <div class="section-title section-divider" style="justify-content:space-between;">
+                <span>
+                    <i class="fa-solid fa-triangle-exclamation" style="color:var(--accent-r);"></i>&nbsp;
+                    OI↑ + 숏우세 복합 감지
+                </span>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span id="oiShortComboCountBadge" style="display:none;font-size:10px;background:rgba(240,66,74,0.12);color:#f87171;border:1px solid rgba(240,66,74,0.25);padding:2px 8px;border-radius:20px;font-weight:700;"></span>
+                    <button onclick="renderOiShortComboList()" style="background:none;border:none;cursor:pointer;font-size:11px;color:var(--text-dim);" onmouseover="this.style.color='var(--accent-r)'" onmouseout="this.style.color='var(--text-dim)'">
+                        <i class="fa-solid fa-arrows-rotate"></i>
+                    </button>
+                </div>
+            </div>
+            <!-- 조건 설명 -->
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+                <span style="font-size:9px;background:rgba(240,180,41,0.1);color:var(--accent-y);border:1px solid rgba(240,180,41,0.2);padding:2px 7px;border-radius:4px;font-weight:700;">
+                    <i class="fa-solid fa-chart-line" style="font-size:8px;"></i> OI 증가 중
+                </span>
+                <span style="font-size:9px;color:var(--text-dim);">AND</span>
+                <span style="font-size:9px;background:rgba(240,66,74,0.1);color:#f87171;border:1px solid rgba(240,66,74,0.2);padding:2px 7px;border-radius:4px;font-weight:700;">
+                    <i class="fa-solid fa-bear-market" style="font-size:8px;"></i> 롱숏 비율 &lt; 1.0 (숏 우세)
+                </span>
+            </div>
+            <!-- 추가 필터: 숏우세 기준값 -->
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                <label style="font-size:10px;color:var(--text-sec);white-space:nowrap;">숏우세 기준 (비율 &lt;)</label>
+                <input type="number" id="shortRatioThreshInput" value="1.0" step="0.05" min="0.1" max="2.0"
+                    style="width:70px;text-align:center;padding:5px 8px;font-size:11px;">
+                <label style="font-size:10px;color:var(--text-sec);white-space:nowrap;">OI 기준은 위 설정값 사용</label>
+            </div>
+            <div id="oiShortComboList" style="display:flex;flex-direction:column;gap:5px;max-height:300px;overflow-y:auto;">
+                <div style="text-align:center;padding:24px 0;color:var(--text-dim);font-size:11px;">
+                    <i class="fa-solid fa-magnifying-glass" style="display:block;font-size:18px;margin-bottom:7px;color:var(--border-hi);"></i>
+                    스캔 후 표시됩니다
+                </div>
+            </div>
+        </div>
+        <div class="panel" style="padding:18px; flex:1; min-height:280px; display:flex; flex-direction:column;">
+            <div class="section-title section-divider" style="justify-content:space-between;">
+                <span><i class="fa-solid fa-clock-rotate-left" style="color:var(--accent-b);"></i>&nbsp; 실시간 포착 로그</span>
+                <button onclick="clearLogs()" style="background:none;border:none;cursor:pointer;font-size:10px;color:var(--text-dim);" onmouseover="this.style.color='var(--accent-r)'" onmouseout="this.style.color='var(--text-dim)'">
+                    <i class="fa-solid fa-trash"></i> 비우기
+                </button>
+            </div>
+            <div id="logContainer" style="overflow-y:auto; flex:1; max-height:380px; display:flex; flex-direction:column; gap:8px;">
+                <div id="emptyLogText" style="text-align:center; padding:40px 0; color:var(--text-dim); font-size:11px;">
+                    <i class="fa-solid fa-ban" style="display:block; font-size:22px; margin-bottom:8px; color:var(--border-hi);"></i>
+                    감지된 포착 데이터가 없습니다
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /왼쪽 -->
+
+    <!-- ══ 오른쪽 패널 ══ -->
+    <div style="display:flex; flex-direction:column; gap:14px; min-width:0;">
+
+        <!-- 경보 배너 -->
+        <div id="alertBanner" class="alert-banner short-alert" style="display:none;">
+            <div style="display:flex; align-items:center; gap:12px;">
+                <div id="alertIconBox" style="background:var(--accent-r); border-radius:10px; padding:10px 11px; animation:bounceIn .4s ease;">
+                    <i class="fa-solid fa-circle-radiation" style="font-size:16px; color:#fff;"></i>
+                </div>
+                <div>
+                    <div id="alertTitle" style="font-family:'Syne',sans-serif; font-weight:800; font-size:14px; color:var(--accent-r);">시장 변동 감지!</div>
+                    <div id="alertDescription" style="font-size:11px; color:var(--text-sec); margin-top:2px;">포지션 이탈 데이터가 발생했습니다.</div>
+                </div>
+            </div>
+            <button onclick="dismissAlert()" style="background:rgba(240,66,74,0.15); border:1px solid rgba(240,66,74,0.3); color:#f87171; font-family:inherit; font-size:11px; font-weight:700; border-radius:8px; padding:7px 16px; cursor:pointer; transition:all .15s;" onmouseover="this.style.background='rgba(240,66,74,0.25)'" onmouseout="this.style.background='rgba(240,66,74,0.15)'">
+                소거 / 확인
+            </button>
+        </div>
+
+        <!-- 테이블 패널 -->
+        <div class="panel" style="padding:18px; flex:1; display:flex; flex-direction:column;">
+
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding-bottom:14px; margin-bottom:0; border-bottom:1px solid var(--border);">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span class="font-display" style="font-size:13px; font-weight:700; color:var(--text-pri);">
+                        <i class="fa-solid fa-table-list" style="color:var(--accent-y); margin-right:6px;"></i>선물 종합 데이터
+                    </span>
+                    <span id="hitCountBadge" style="display:none; font-size:10px; background:rgba(240,66,74,0.12); color:#f87171; border:1px solid rgba(240,66,74,0.25); padding:3px 9px; border-radius:20px; font-weight:700;"></span>
+                </div>
+                <div style="display:flex; gap:8px;">
+                    <input type="text" id="searchInput" oninput="filterTable()" placeholder="심볼 검색 (BTC…)"
+                        style="width:140px; padding:6px 10px; font-size:11px;">
+                    <select id="filterSelect" onchange="filterTable()" style="width:160px; padding:6px 10px; font-size:11px;">
+                        <option value="all">전체 목록</option>
+                        <option value="under095">🚨 숏과밀 (양봉 동시)</option>
+                        <option value="over125">🟢 롱상승 (양봉 동시)</option>
+                        <option value="oiRising">📈 OI 급증</option>
+                        <option value="oiShortCombo">📈🚨 OI↑ + 숏우세</option>
+                        <option value="anyAlert">⚠️ 감지 전체</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- 테이블 -->
+            <div style="overflow-y:auto; max-height:680px; margin-top:0;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th onclick="sortTable(0)" style="padding-left:12px; text-align:left;">심볼 <i class="fa-solid fa-sort" style="opacity:.4;"></i></th>
+                            <th onclick="sortTable(1)" style="text-align:left;">현재가 / 24h <i class="fa-solid fa-sort" style="opacity:.4;"></i></th>
+                            <th onclick="sortTable(2)" style="text-align:left;" id="thColA">인터벌 A <i class="fa-solid fa-sort" style="opacity:.4;"></i></th>
+                            <th onclick="sortTable(3)" style="text-align:left;" id="thColB">인터벌 B <i class="fa-solid fa-sort" style="opacity:.4;"></i></th>
+                            <th onclick="sortTable(4)" style="text-align:center;">최종 판정 <i class="fa-solid fa-sort" style="opacity:.4;"></i></th>
+                            <th onclick="sortTable(5)" style="text-align:left;" id="thColOI">OI / 변화율 <i class="fa-solid fa-sort" style="opacity:.4;"></i></th>
+                            <th onclick="sortTable(6)" style="text-align:center;">OI 추이 <i class="fa-solid fa-sort" style="opacity:.4;"></i></th>
+                        </tr>
+                    </thead>
+                    <tbody id="symbolTableBody">
+                        <tr>
+                            <td colspan="7" style="text-align:center; padding:60px 0; color:var(--text-dim);">
+                                <i class="fa-solid fa-circle-notch fa-spin" style="font-size:28px; color:var(--accent-y); display:block; margin-bottom:12px;"></i>
+                                거래소에서 전체 선물 목록을 로드하는 중입니다…
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div><!-- /오른쪽 -->
+</div><!-- /2컬럼 그리드 -->
 </div>
+</main>
 
+<!-- ══════════════════════ FOOTER ══════════════════════ -->
+<footer style="border-top:1px solid var(--border); background:rgba(8,12,20,0.8); padding:12px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; font-size:10px; color:var(--text-dim);">
+    <span>© 2026 PROV 하이브리드 트래커 · All rights reserved.</span>
+    <span style="display:flex; align-items:center; gap:6px; color:var(--text-sec);">
+        <i class="fa-solid fa-shield-halved" style="color:var(--accent-y);"></i>
+        실시간 선물 롱숏 동시조건 + OI↑+숏우세 복합 감지 스캐너 v3.3
+    </span>
+</footer>
+
+<!-- ══════════════════════ SCRIPT ══════════════════════ -->
 <script>
-/* ===== STATE ===== */
-const BASE = 'https://fapi.binance.com';
-let allData = [], maxOI = 1;
-let curFilter = 'all', sortKey = 'score', sortDir = 'desc';
+// ── 반응형 ──
+(function () {
+    const grid = document.getElementById('mainGrid');
+    function applyLayout() {
+        grid.style.gridTemplateColumns = window.innerWidth < 1100 ? '1fr' : '380px 1fr';
+    }
+    applyLayout();
+    window.addEventListener('resize', applyLayout);
+})();
 
-/* ===== UTILS ===== */
-const $ = id => document.getElementById(id);
-const fmt = n => {
-  if (!n || isNaN(n)) return '—';
-  if (n >= 1e9) return (n/1e9).toFixed(2)+'B';
-  if (n >= 1e6) return (n/1e6).toFixed(2)+'M';
-  if (n >= 1e3) return (n/1e3).toFixed(1)+'K';
-  return n.toFixed(2);
-};
-const fmtPrice = p => {
-  if (!p) return '—';
-  if (p < 0.0001) return p.toFixed(7);
-  if (p < 0.01)   return p.toFixed(5);
-  if (p < 1)      return p.toFixed(4);
-  if (p < 100)    return p.toFixed(3);
-  return p.toFixed(2);
-};
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+// ─────────────────────────────────────────────
+//  전역 상태
+// ─────────────────────────────────────────────
+let allSymbolsList    = [];
+let symbolsDataMap    = {};
+let isMonitoring      = false;
+let monitorIntervalId = null;
+let alertActive       = false;
+let soundMode         = 'tts';
+let audioContext      = null;
+let sortDirection     = [true, true, true, true, true, true, true];
 
-async function fetchRetry(url, tries=3) {
-  for (let i=0; i<tries; i++) {
+window.onload = async function() {
+    onPeriodChange();
+    await initializeExchangeInfo();
+};
+
+// 인터벌 변경 시 UI 라벨 동기화
+function onPeriodChange() {
+    const A = document.getElementById('periodASelect')?.value || '30m';
+    const B = document.getElementById('periodBSelect')?.value || '5m';
+    // 조건 박스 라벨
+    const lS = document.getElementById('condLabelShort');
+    const lL = document.getElementById('condLabelLong');
+    if (lS) lS.textContent = `${A} AND ${B}`;
+    if (lL) lL.textContent = `${A} AND ${B}`;
+    // 테이블 헤더
+    const thA = document.getElementById('thColA');
+    const thB = document.getElementById('thColB');
+    if (thA) thA.innerHTML = `${A} 비율 <i class="fa-solid fa-sort" style="opacity:.4;"></i>`;
+    if (thB) thB.innerHTML = `${B} 비율 <i class="fa-solid fa-sort" style="opacity:.4;"></i>`;
+    // 헤더 서브텍스트
+    const sub = document.getElementById('headerSubtext');
+    const oiP = document.getElementById('oiPeriodSelect')?.value || '5m';
+    if (sub) sub.innerHTML = `<span style="color:var(--accent-r);">숏</span> ${A}+${B} 동시 이하 &nbsp;|&nbsp; <span style="color:var(--accent-g);">롱</span> ${A}+${B} 동시 이상 &nbsp;|&nbsp; <span style="color:var(--accent-y);">📈+🚨</span> OI(${oiP})↑ + 숏우세`;
+}
+
+function requestNotificationPermission() {
+    if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
+}
+
+// ─────────────────────────────────────────────
+//  초기화
+// ─────────────────────────────────────────────
+async function initializeExchangeInfo() {
     try {
-      const r = await fetch(url);
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return await r.json();
+        const res  = await fetch("https://fapi.binance.com/fapi/v1/exchangeInfo");
+        const data = await res.json();
+        allSymbolsList = data.symbols
+            .filter(s => s.quoteAsset === "USDT" && s.contractType === "PERPETUAL" && s.status === "TRADING")
+            .map(s => s.symbol);
+        document.getElementById('totalSymbolsCount').innerText = allSymbolsList.length;
+        buildInitialTable();
     } catch(e) {
-      if (i===tries-1) throw e;
-      await sleep(400*(i+1));
+        console.error("선물 리스트 조회 오류:", e);
+        document.getElementById('symbolTableBody').innerHTML = `
+            <tr><td colspan="7" style="text-align:center;padding:60px 0;color:var(--accent-r);">
+                <i class="fa-solid fa-triangle-exclamation" style="display:block;font-size:24px;margin-bottom:10px;"></i>
+                바이낸스 거래소 정보를 로드하지 못했습니다. 네트워크를 확인해 주세요.
+            </td></tr>`;
     }
-  }
 }
 
-/* ===== FILTER / SORT ===== */
-function setChip(el, filter) {
-  curFilter = filter;
-  document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-  el.classList.add('active');
-  document.querySelectorAll('.sum-card').forEach(c => c.classList.remove('active-card'));
-  const sc = $('sc-'+filter);
-  if (sc) sc.classList.add('active-card');
-  renderTable();
+function buildInitialTable() {
+    const tbody = document.getElementById('symbolTableBody');
+    tbody.innerHTML = '';
+    allSymbolsList.forEach(symbol => {
+        symbolsDataMap[symbol] = {
+            price: null, priceChangePercent: null,
+            v1_30m: null, v2_30m: null, v1_5m: null, v2_5m: null,
+            alertShort: false, alertLong: false,
+            oi: null, oiPrev: null, oiChange: null, oiHistory: [], alertOI: false,
+            alertOIShortCombo: false, avgRatio: null
+        };
+        const row = document.createElement('tr');
+        row.id = `row-${symbol}`;
+        row.innerHTML = `
+            <td style="padding-left:12px; font-weight:700; color:var(--text-pri); font-size:12px; letter-spacing:.02em;">
+                ${symbol.replace('USDT','')}<span style="color:var(--text-dim);font-size:9px;">USDT</span>
+            </td>
+            <td id="ticker-${symbol}" style="color:var(--text-sec);">-- / --</td>
+            <td id="ratio30m-${symbol}" style="color:var(--text-sec);">--</td>
+            <td id="ratio5m-${symbol}" style="color:var(--text-sec);">--</td>
+            <td id="badgeFinal-${symbol}" style="text-align:center;"><span class="badge badge-neutral">대기</span></td>
+            <td id="oiVal-${symbol}" style="color:var(--text-sec);">--</td>
+            <td style="text-align:center;" id="oiChart-${symbol}">
+                <canvas id="canvas-${symbol}" width="80" height="26" style="display:inline-block;"></canvas>
+            </td>`;
+        tbody.appendChild(row);
+    });
 }
-function setChipById(filter) {
-  const el = document.querySelector(`.chip[data-filter="${filter}"]`);
-  if (el) setChip(el, filter);
-}
 
-function sortBy(key) {
-  if (sortKey === key) sortDir = sortDir==='asc'?'desc':'asc';
-  else { sortKey = key; sortDir = 'desc'; }
-  document.querySelectorAll('th').forEach(th => th.classList.remove('sort-asc','sort-desc'));
-  renderTable();
-}
+// ─────────────────────────────────────────────
+//  스캔 엔진
+// ─────────────────────────────────────────────
+async function scanAllSymbols() {
+    if (allSymbolsList.length === 0) return;
 
-/* ===== MA ===== */
-function calcMA(closes, p) {
-  if (closes.length < p) return null;
-  return closes.slice(-p).reduce((a,b)=>a+b,0)/p;
-}
+    // 사용자가 설정한 기준값 읽기
+    const thresholdShort  = parseFloat(document.getElementById('thresholdShortInput').value);
+    const thresholdLong   = parseFloat(document.getElementById('thresholdLongInput').value);
+    const oiThreshold     = parseFloat(document.getElementById('oiThresholdInput').value);
+    const shortRatioThr   = parseFloat(document.getElementById('shortRatioThreshInput').value) || 1.0;
+    const periodA         = document.getElementById('periodASelect').value;   // e.g. "30m"
+    const periodB         = document.getElementById('periodBSelect').value;   // e.g. "5m"
+    const oiPeriod        = document.getElementById('oiPeriodSelect').value;  // e.g. "5m"
+    const statusDot      = document.getElementById('statusDot');
+    const statusText     = document.getElementById('statusText');
 
-/* ===== SCAN ===== */
-async function startScan() {
-  const btn = $('scanBtn');
-  btn.disabled = true;
-  $('scanBtnIcon').textContent = '⏳';
-  $('scanBtnText').textContent = '스캔 중...';
-  $('progressOverlay').classList.add('show');
-  $('summarySection').classList.remove('show');
-  $('tableInfo').style.display = 'none';
-  $('errorBanner').classList.remove('show');
-  allData = []; maxOI = 1;
+    statusDot.className  = 'dot dot-scan';
+    statusText.innerText = '전수 조사 중…';
 
-  document.getElementById('splash') && (document.getElementById('splash').style.display = 'none');
+    const total = allSymbolsList.length;
+    let scanned = 0;
+    const timestamp = getFormattedTime();
+    const hitShort = [], hitLong = [], hitOI = [], hitOIShortCombo = [];
 
-  try {
-    $('progLabel').textContent = '📡 심볼 목록 로딩 중...';
-    $('progSub').textContent = 'fapi.binance.com/exchangeInfo';
+    updateProgressBar(0, total);
 
-    const exInfo = await fetchRetry(`${BASE}/fapi/v1/exchangeInfo`);
-    const symbols = exInfo.symbols
-      .filter(s => s.quoteAsset==='USDT' && s.contractType==='PERPETUAL' && s.status==='TRADING')
-      .map(s => s.symbol);
+    // 티커 일괄 수급
+    let tickerMap = {};
+    try {
+        const r = await fetch("https://fapi.binance.com/fapi/v1/ticker/24hr");
+        const t = await r.json();
+        t.forEach(x => { tickerMap[x.symbol] = { lastPrice: parseFloat(x.lastPrice), priceChangePercent: parseFloat(x.priceChangePercent) }; });
+    } catch(e) { console.error("티커 수급 실패", e); }
 
-    $('hd-total').textContent = symbols.length;
-    $('progCount').textContent = `0 / ${symbols.length}`;
+    const CHUNK = 5;
+    const chunks = chunkArray(allSymbolsList, CHUNK);
 
-    const BATCH = 6;
-    let done = 0;
-    const results = [];
+    for (const chunk of chunks) {
+        if (!isMonitoring && monitorIntervalId !== null) break;
 
-    for (let i=0; i<symbols.length; i+=BATCH) {
-      const batch = symbols.slice(i, i+BATCH);
-      const settled = await Promise.allSettled(batch.map(scanOne));
-      settled.forEach(r => { if (r.status==='fulfilled' && r.value) results.push(r.value); });
+        await Promise.all(chunk.map(async symbol => {
+            try {
+                const [res1_A, res2_A, res1_B, res2_B, resOI] = await Promise.all([
+                    fetch(`https://fapi.binance.com/futures/data/topLongShortPositionRatio?symbol=${symbol}&period=${periodA}&limit=1`).then(r=>r.json()),
+                    fetch(`https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=${symbol}&period=${periodA}&limit=1`).then(r=>r.json()),
+                    fetch(`https://fapi.binance.com/futures/data/topLongShortPositionRatio?symbol=${symbol}&period=${periodB}&limit=1`).then(r=>r.json()),
+                    fetch(`https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=${symbol}&period=${periodB}&limit=1`).then(r=>r.json()),
+                    fetch(`https://fapi.binance.com/futures/data/openInterestHist?symbol=${symbol}&period=${oiPeriod}&limit=10`).then(r=>r.json())
+                ]);
 
-      done += batch.length;
-      const pct = (done/symbols.length*100).toFixed(1);
-      $('progFill').style.width = pct+'%';
-      $('progCount').textContent = `${done} / ${symbols.length}`;
-      $('progLabel').textContent = `📡 스캔 중... ${pct}%`;
-      $('hd-done').textContent = done;
-      $('progSub').textContent = batch.join(', ');
+                if (!res1_A?.length || !res2_A?.length || !res1_B?.length || !res2_B?.length) return;
 
-      allData = [...results];
-      if (allData.length>0) { maxOI = Math.max(...allData.map(d=>d.oi||0),1); updateStats(); renderTable(); }
-      await sleep(100);
+                const v1_30m = parseFloat(res1_A[0].longShortRatio);  // periodA 고래비율
+                const v2_30m = parseFloat(res2_A[0].longShortRatio);  // periodA 전체비율
+                const v1_5m  = parseFloat(res1_B[0].longShortRatio);  // periodB 고래비율
+                const v2_5m  = parseFloat(res2_B[0].longShortRatio);  // periodB 전체비율
+
+                // ★ 핵심 변경: 30m AND 5m 동시 조건
+                // 숏 감지: 30m 고래비율 AND 30m 전체비율 AND 5m 고래비율 AND 5m 전체비율 모두 thresholdShort 이하
+                const isAlertShort = v1_30m <= thresholdShort
+                                  && v2_30m <= thresholdShort
+                                  && v1_5m  <= thresholdShort
+                                  && v2_5m  <= thresholdShort;
+
+                // 롱 감지: 30m 고래비율 AND 30m 전체비율 AND 5m 고래비율 AND 5m 전체비율 모두 thresholdLong 이상
+                const isAlertLong  = v1_30m >= thresholdLong
+                                  && v2_30m >= thresholdLong
+                                  && v1_5m  >= thresholdLong
+                                  && v2_5m  >= thresholdLong;
+
+                // OI 처리
+                let oiCurrent=null, oiPrev=null, oiChange=null, oiHistory=[], isAlertOI=false;
+                if (Array.isArray(resOI) && resOI.length >= 2) {
+                    oiHistory  = resOI.map(x => parseFloat(x.sumOpenInterest));
+                    oiCurrent  = oiHistory[oiHistory.length-1];
+                    oiPrev     = oiHistory[oiHistory.length-2];
+                    oiChange   = oiPrev > 0 ? (oiCurrent-oiPrev)/oiPrev*100 : 0;
+                    isAlertOI  = oiChange >= oiThreshold;
+                } else if (Array.isArray(resOI) && resOI.length === 1) {
+                    oiHistory  = [parseFloat(resOI[0].sumOpenInterest)];
+                    oiCurrent  = oiHistory[0];
+                }
+
+                // ★ OI↑ + 숏우세 복합 조건
+                // 4개 비율(30m 고래/전체, 5m 고래/전체) 평균으로 숏우세 판단
+                const avgRatio = (v1_30m + v2_30m + v1_5m + v2_5m) / 4;
+                const isAlertOIShortCombo = isAlertOI && (avgRatio < shortRatioThr);
+
+                const prevHistory  = symbolsDataMap[symbol]?.oiHistory || [];
+                const mergedHistory = [...prevHistory, ...oiHistory].slice(-20);
+                const ticker       = tickerMap[symbol] || { lastPrice:0, priceChangePercent:0 };
+
+                symbolsDataMap[symbol] = {
+                    price: ticker.lastPrice, priceChangePercent: ticker.priceChangePercent,
+                    v1_30m, v2_30m, v1_5m, v2_5m,
+                    alertShort: isAlertShort, alertLong: isAlertLong,
+                    oi: oiCurrent, oiPrev, oiChange, oiHistory: mergedHistory, alertOI: isAlertOI,
+                    alertOIShortCombo: isAlertOIShortCombo, avgRatio,
+                    // 필터 호환용
+                    thresholdShort, thresholdLong
+                };
+
+                updateRowUI(symbol, ticker.lastPrice, ticker.priceChangePercent,
+                    v1_30m, v2_30m, v1_5m, v2_5m,
+                    isAlertShort, isAlertLong,
+                    oiCurrent, oiChange, mergedHistory, isAlertOI,
+                    thresholdShort, thresholdLong);
+
+                if (isAlertShort) hitShort.push({ symbol, v1_30:v1_30m, v2_30:v2_30m, v1_5:v1_5m, v2_5:v2_5m, price:ticker.lastPrice });
+                if (isAlertLong)  hitLong.push(  { symbol, v1_30:v1_30m, v2_30:v2_30m, v1_5:v1_5m, v2_5:v2_5m, price:ticker.lastPrice });
+                if (isAlertOI)    hitOI.push(    { symbol, oiChange, oi:oiCurrent, price:ticker.lastPrice });
+                if (isAlertOIShortCombo) hitOIShortCombo.push({ symbol, oiChange, oi:oiCurrent, avgRatio, v1_30m, v2_30m, v1_5m, v2_5m, price:ticker.lastPrice });
+
+            } catch(err) {}
+        }));
+
+        scanned += chunk.length;
+        updateProgressBar(scanned, total);
+        await sleep(250);
     }
 
-    $('progressOverlay').classList.remove('show');
-    $('summarySection').classList.add('show');
-    $('tableInfo').style.display = 'flex';
-    $('lastUpdated').textContent = '업데이트: ' + new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
-    updateStats(); renderTable();
+    statusDot.className  = isMonitoring ? 'dot dot-running' : 'dot dot-idle';
+    statusText.innerText = isMonitoring ? '자동 감시 중' : '스캔 완료';
+    document.getElementById('lastUpdatedText').innerText = `최근 스캔: ${timestamp}`;
 
-  } catch(e) {
-    $('progressOverlay').classList.remove('show');
-    $('errorBanner').classList.add('show');
-    $('errorText').textContent = e.message;
-  }
+    renderOiTopList();
+    renderOiShortComboList();
+    const oiRisingCnt    = Object.values(symbolsDataMap).filter(d=>d.alertOI).length;
+    const oiShortComboCnt= Object.values(symbolsDataMap).filter(d=>d.alertOIShortCombo).length;
+    document.getElementById('oiRisingCount').innerText     = oiRisingCnt;
+    document.getElementById('oiShortComboCount').innerText = oiShortComboCnt;
 
-  btn.disabled = false;
-  $('scanBtnIcon').textContent = '🔄';
-  $('scanBtnText').textContent = '다시 스캔';
+    if (hitShort.length || hitLong.length || hitOI.length || hitOIShortCombo.length) {
+        hitShort.forEach(it => addLog(timestamp, it.symbol, "30m+5m 숏과밀",
+            it.v1_30, it.v2_30, it.v1_5, it.v2_5, it.price, null, "🚨 숏과밀", "short-card"));
+        hitLong.forEach(it  => addLog(timestamp, it.symbol, "30m+5m 롱상승",
+            it.v1_30, it.v2_30, it.v1_5, it.v2_5, it.price, null, "🟢 롱급상승", "long-card"));
+        hitOI.forEach(it    => addLog(timestamp, it.symbol, "OI급등",
+            null, null, null, null, it.price, it.oiChange, "📈 OI급등", "oi-card"));
+        hitOIShortCombo.forEach(it => addLog(timestamp, it.symbol, "OI↑+숏우세",
+            it.v1_30m, it.v2_30m, it.v1_5m, it.v2_5m, it.price, it.oiChange, "📈🚨 OI+숏", "short-card"));
+        triggerGlobalAlert(hitShort, hitLong, hitOI, hitOIShortCombo);
+    }
+    updateHitCountBadge();
 }
 
-async function scanOne(sym) {
-  try {
-    const [kR, oiR, ls15mR, ls1hR] = await Promise.allSettled([
-      fetchRetry(`${BASE}/fapi/v1/klines?symbol=${sym}&interval=1h&limit=62`),
-      fetchRetry(`${BASE}/fapi/v1/openInterest?symbol=${sym}`),
-      fetchRetry(`${BASE}/futures/data/globalLongShortAccountRatio?symbol=${sym}&period=15m&limit=1`),
-      fetchRetry(`${BASE}/futures/data/globalLongShortAccountRatio?symbol=${sym}&period=1h&limit=1`),
-    ]);
-    
-    if (kR.status!=='fulfilled') return null;
-    const k = kR.value;
-    if (!k || k.length < 60) return null;
+// ─────────────────────────────────────────────
+//  행 UI 업데이트 (30m+5m 동시 조건 반영)
+// ─────────────────────────────────────────────
+function updateRowUI(symbol, price, changePct,
+                     v1_30, v2_30, v1_5, v2_5,
+                     isAlertShort, isAlertLong,
+                     oi, oiChange, oiHistory, isAOI,
+                     thrShort, thrLong) {
 
-    const closes = k.map(c=>parseFloat(c[4]));
-    const last = closes.at(-1);
-    const ma5=calcMA(closes,5), ma20=calcMA(closes,20), ma60=calcMA(closes,60);
-    const maOk = ma5&&ma20&&ma60 && ma5>ma20 && ma20>ma60;
+    const tickerEl  = document.getElementById(`ticker-${symbol}`);
+    const r30El     = document.getElementById(`ratio30m-${symbol}`);
+    const r5El      = document.getElementById(`ratio5m-${symbol}`);
+    const bFinalEl  = document.getElementById(`badgeFinal-${symbol}`);
+    const oiValEl   = document.getElementById(`oiVal-${symbol}`);
+    const rowEl     = document.getElementById(`row-${symbol}`);
+    if (!tickerEl || !r30El || !r5El || !bFinalEl || !oiValEl || !rowEl) return;
 
-    let oi = 0;
-    if (oiR.status==='fulfilled') oi = parseFloat(oiR.value.openInterest||0)*last;
+    // 가격
+    const sign  = changePct >= 0 ? '+' : '';
+    const pclr  = changePct >= 0 ? 'var(--accent-g)' : 'var(--accent-r)';
+    const pStr  = price >= 100
+        ? price.toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:2})
+        : price < 0.01 ? price.toFixed(6) : price.toFixed(4);
+    tickerEl.innerHTML = `<span style="color:var(--text-pri);font-weight:600;">${pStr}</span> <span style="color:${pclr};font-size:10px;font-weight:700;">${sign}${changePct.toFixed(2)}%</span>`;
 
-    let ls15mLong = 50, ls15mShort = 50;
-    if (ls15mR.status==='fulfilled' && ls15mR.value?.length>0) {
-      const ratio = parseFloat(ls15mR.value[0].longShortRatio);
-      ls15mLong = ratio/(1+ratio)*100; ls15mShort = 100-ls15mLong;
+    // 30m 비율 셀 — 숏/롱 임계치 기준으로 컬러
+    const c30v1 = v1_30 <= thrShort ? 'var(--accent-r)' : v1_30 >= thrLong ? 'var(--accent-g)' : 'var(--text-sec)';
+    const c30v2 = v2_30 <= thrShort ? 'var(--accent-r)' : v2_30 >= thrLong ? 'var(--accent-g)' : 'var(--text-sec)';
+    const w30v1 = (v1_30 <= thrShort || v1_30 >= thrLong) ? '700' : '500';
+    r30El.innerHTML = `
+        <span style="color:${c30v1};font-weight:${w30v1};">${v1_30.toFixed(3)}</span>
+        <span style="color:var(--text-dim);"> / </span>
+        <span style="color:${c30v2};">${v2_30.toFixed(3)}</span>`;
+
+    // 5m 비율 셀
+    const c5v1 = v1_5 <= thrShort ? 'var(--accent-r)' : v1_5 >= thrLong ? 'var(--accent-g)' : 'var(--text-sec)';
+    const c5v2 = v2_5 <= thrShort ? 'var(--accent-r)' : v2_5 >= thrLong ? 'var(--accent-g)' : 'var(--text-sec)';
+    const w5v1 = (v1_5 <= thrShort || v1_5 >= thrLong) ? '700' : '500';
+    r5El.innerHTML = `
+        <span style="color:${c5v1};font-weight:${w5v1};">${v1_5.toFixed(3)}</span>
+        <span style="color:var(--text-dim);"> / </span>
+        <span style="color:${c5v2};">${v2_5.toFixed(3)}</span>`;
+
+    // 최종 판정 뱃지 (30m+5m 동시)
+    if (isAlertShort && isAlertLong) {
+        // 이론상 동시 발생은 거의 불가하지만 혹시 대비
+        bFinalEl.innerHTML = `<span class="badge" style="background:rgba(163,75,230,0.15);color:#c084fc;border:1px solid rgba(163,75,230,0.3);"><i class="fa-solid fa-bolt" style="font-size:8px;"></i> 혼재</span>`;
+    } else if (isAlertShort) {
+        bFinalEl.innerHTML = `<span class="badge badge-short"><i class="fa-solid fa-arrow-down" style="font-size:8px;"></i> 숏과밀 (30m+5m)</span>`;
+    } else if (isAlertLong) {
+        bFinalEl.innerHTML = `<span class="badge badge-long"><i class="fa-solid fa-arrow-up" style="font-size:8px;"></i> 롱상승 (30m+5m)</span>`;
+    } else {
+        bFinalEl.innerHTML = `<span class="badge badge-neutral">정상</span>`;
     }
 
-    let ls1hLong = 50, ls1hShort = 50;
-    if (ls1hR.status==='fulfilled' && ls1hR.value?.length>0) {
-      const ratio = parseFloat(ls1hR.value[0].longShortRatio);
-      ls1hLong = ratio/(1+ratio)*100; ls1hShort = 100-ls1hLong;
+    // OI
+    if (oi !== null) {
+        const chgSign = oiChange >= 0 ? '+' : '';
+        const chgClr  = oiChange >= 2.0 ? 'var(--accent-y)' : oiChange >= 0 ? 'var(--text-sec)' : 'var(--accent-r)';
+        const oiIcon  = isAOI ? '↑ ' : '';
+        oiValEl.innerHTML = `
+            <span style="color:var(--text-pri);font-size:11px;">${formatOI(oi)}</span>&nbsp;
+            <span style="color:${chgClr};font-size:10px;font-weight:${isAOI?'700':'500'};">${oiIcon}${chgSign}${oiChange!==null?oiChange.toFixed(2)+'%':'--'}</span>`;
+        if (isAOI) oiValEl.classList.add('oi-rising');
+        else       oiValEl.classList.remove('oi-rising');
+    } else {
+        oiValEl.innerHTML = `<span style="color:var(--text-dim);">--</span>`;
     }
 
-    const lsOk_15m = ls15mLong > 50;
-    const lsOk_1h = ls1hLong > 50;
-    
-    // 점수 계산 (최대 3점)
-    const score = [maOk, lsOk_15m, lsOk_1h].filter(Boolean).length;
-    
-    return { symbol:sym, price:last, ma5,ma20,ma60, maOk, oi, ls15mLong, ls1hLong, lsOk_15m, lsOk_1h, score };
-  } catch { return null; }
+    drawSparkline(symbol, oiHistory, isAOI);
+
+    // 행 배경
+    rowEl.className = '';
+    if      (isAlertShort && isAlertLong && isAOI) rowEl.classList.add('row-dual');
+    else if (isAlertShort && isAlertLong)           rowEl.classList.add('row-dual');
+    else if (isAOI && isAlertShort)                 rowEl.classList.add('row-combo-rl');
+    else if (isAOI && isAlertLong)                  rowEl.classList.add('row-combo-gl');
+    else if (isAlertShort)                          rowEl.classList.add('row-short');
+    else if (isAlertLong)                           rowEl.classList.add('row-long');
+    else if (isAOI)                                 rowEl.classList.add('row-oi');
 }
 
-/* ===== STATS ===== */
-function updateStats() {
-  const d = allData;
-  const ma=d.filter(x=>x.maOk).length;
-  const ls15m=d.filter(x=>x.lsOk_15m).length;
-  const ls1h=d.filter(x=>x.lsOk_1h).length;
-  const all3=d.filter(x=>x.maOk && x.lsOk_15m && x.lsOk_1h).length;
-  
-  $('hd-ma').textContent=ma; $('hd-ls15m').textContent=ls15m; $('hd-ls1h').textContent=ls1h; $('hd-all').textContent=all3;
-  $('sv-total').textContent=d.length; $('sv-ma').textContent=ma; $('sv-ls15m').textContent=ls15m; $('sv-ls1h').textContent=ls1h; $('sv-all3').textContent=all3;
+// ─────────────────────────────────────────────
+//  스파크라인
+// ─────────────────────────────────────────────
+function drawSparkline(symbol, history, isRising) {
+    const canvas = document.getElementById(`canvas-${symbol}`);
+    if (!canvas || !history || history.length < 2) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    const vals = history.slice(-20);
+    const minV = Math.min(...vals), maxV = Math.max(...vals);
+    const range = maxV - minV || 1;
+    const pad = 3, step = (W - pad*2) / (vals.length - 1);
+    const pts = vals.map((v,i) => ({ x: pad + i*step, y: H - pad - ((v-minV)/range)*(H-pad*2) }));
+
+    const lineClr = isRising ? '#f0b429' : '#3b9eff';
+    const areaClr = isRising ? 'rgba(240,180,41,0.12)' : 'rgba(59,158,255,0.10)';
+
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, areaClr);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, H);
+    pts.forEach(p => ctx.lineTo(p.x, p.y));
+    ctx.lineTo(pts[pts.length-1].x, H);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    pts.forEach(p => ctx.lineTo(p.x, p.y));
+    ctx.strokeStyle = lineClr;
+    ctx.lineWidth = 1.5;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+
+    const last = pts[pts.length-1];
+    ctx.beginPath();
+    ctx.arc(last.x, last.y, 2.5, 0, Math.PI*2);
+    ctx.fillStyle = lineClr;
+    ctx.fill();
 }
 
-/* ===== RENDER ===== */
-function renderTable() {
-  const q = $('searchInput').value.trim().toUpperCase();
-  let data = allData.filter(d => {
-    if (q && !d.symbol.includes(q)) return false;
-    if (curFilter==='all3')   return d.maOk && d.lsOk_15m && d.lsOk_1h;
-    if (curFilter==='ma')     return d.maOk;
-    if (curFilter==='ls_15m') return d.lsOk_15m;
-    if (curFilter==='ls_1h')  return d.lsOk_1h;
-    return true;
-  });
+// ─────────────────────────────────────────────
+//  OI TOP 10
+// ─────────────────────────────────────────────
+function renderOiTopList() {
+    const container = document.getElementById('oiTopList');
+    const ranked = Object.entries(symbolsDataMap)
+        .filter(([,d]) => d.oiChange !== null && d.oi !== null)
+        .sort(([,a],[,b]) => b.oiChange - a.oiChange)
+        .slice(0, 10);
 
-  const dir = sortDir==='asc'?1:-1;
-  data.sort((a,b)=>{
-    switch(sortKey){
-      case 'symbol': return dir*(a.symbol<b.symbol?-1:1);
-      case 'price':  return dir*(a.price-b.price);
-      case 'ma':     return dir*((a.maOk?1:0)-(b.maOk?1:0));
-      case 'ls15m':  return dir*(a.ls15mLong-b.ls15mLong);
-      case 'ls1h':   return dir*(a.ls1hLong-b.ls1hLong);
-      case 'oi':     return dir*(a.oi-b.oi);
-      case 'score':  return dir*(a.score-b.score);
-      default:       return 0;
+    if (!ranked.length) {
+        container.innerHTML = `<div style="text-align:center;padding:30px 0;color:var(--text-dim);font-size:11px;">스캔 후 표시됩니다</div>`;
+        return;
     }
-  });
 
-  document.querySelectorAll('th').forEach(th => th.classList.remove('sort-asc','sort-desc'));
-  const thMap={no:0, symbol:1, price:2, ma:3, ls15m:4, ls1h:5, oi:6, score:7};
-  const thIdx = thMap[sortKey];
-  if (thIdx!==undefined) {
-    const ths = document.querySelectorAll('thead th');
-    if (ths[thIdx]) ths[thIdx].classList.add(sortDir==='asc'?'sort-asc':'sort-desc');
-  }
+    const medals = ['🥇','🥈','🥉'];
+    container.innerHTML = ranked.map(([symbol, d], idx) => {
+        const chgSign = d.oiChange >= 0 ? '+' : '';
+        const chgClr  = d.oiChange >= 5 ? 'var(--accent-y)' : d.oiChange >= 2 ? '#facc15' : d.oiChange >= 0 ? 'var(--text-sec)' : 'var(--accent-r)';
+        const bar     = d.oiChange > 0 ? Math.min(100, d.oiChange / 10 * 100) : 0;
+        const medal   = medals[idx] || `<span style="color:var(--text-dim);font-size:10px;">${idx+1}.</span>`;
+        const isRise  = d.oiChange >= 2;
+        return `
+        <div class="oi-item ${isRise?'rising':''}">
+            <span style="width:20px;text-align:center;font-size:11px;">${medal}</span>
+            <span style="font-weight:700;font-size:11px;color:var(--text-pri);width:88px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${symbol}</span>
+            <div style="flex:1;background:rgba(30,45,66,0.5);border-radius:3px;height:3px;overflow:hidden;">
+                <div style="height:100%;border-radius:3px;background:${isRise?'var(--accent-y)':'var(--border-hi)'};width:${bar}%;transition:width .5s;"></div>
+            </div>
+            <span style="font-weight:700;font-size:11px;color:${chgClr};width:54px;text-align:right;">${chgSign}${d.oiChange.toFixed(2)}%</span>
+            <span style="font-size:9px;color:var(--text-dim);width:44px;text-align:right;">${formatOI(d.oi)}</span>
+        </div>`;
+    }).join('');
+}
 
-  const cnt = data.length;
-  $('tableCount').textContent = `${cnt}개 심볼 표시 중 (전체 ${allData.length}개)`;
+// ─────────────────────────────────────────────
+//  OI↑ + 숏우세 복합 리스트
+// ─────────────────────────────────────────────
+function renderOiShortComboList() {
+    const container = document.getElementById('oiShortComboList');
+    const badge     = document.getElementById('oiShortComboCountBadge');
+    const shortRatioThr = parseFloat(document.getElementById('shortRatioThreshInput').value) || 1.0;
 
-  const tbody = $('tableBody');
-  if (cnt===0) {
-    tbody.innerHTML = `<tr><td colspan="8">
-      <div class="empty-state">
-        <div class="empty-icon">📭</div>
-        <div class="empty-title">조건에 맞는 심볼 없음</div>
-        <div class="empty-sub">필터를 변경하거나 검색어를 확인해 주세요.</div>
-      </div></td></tr>`;
-    return;
-  }
+    const hits = Object.entries(symbolsDataMap)
+        .filter(([, d]) => d.alertOIShortCombo && d.avgRatio !== null)
+        .sort(([, a], [, b]) => {
+            // OI 변화율 내림차순, 같으면 숏우세 더 강한 순(avgRatio 낮은 순)
+            if (Math.abs(b.oiChange - a.oiChange) > 0.01) return b.oiChange - a.oiChange;
+            return a.avgRatio - b.avgRatio;
+        });
 
-  tbody.innerHTML = data.map((d,i)=>{
-    const ls15mW = Math.round(d.ls15mLong);
-    const ls1hW = Math.round(d.ls1hLong);
-    const oiPct = Math.min(100,(d.oi/maxOI)*100).toFixed(1);
-    const isAll3 = d.maOk && d.lsOk_15m && d.lsOk_1h;
-    const shortSym = d.symbol.replace('USDT','');
+    // 배지 업데이트
+    if (hits.length > 0) {
+        badge.style.display = 'inline-block';
+        badge.innerText = `${hits.length}개 감지`;
+    } else {
+        badge.style.display = 'none';
+    }
 
-    const maLayout = d.ma5 && d.ma20 && d.ma60
-      ? `<div class="ma-container">
-          <div class="ma-line"><span class="ma-lbl">MA(5)</span><span class="ma-val">${fmtPrice(d.ma5)}</span></div>
-          <div class="ma-line"><span class="ma-lbl">MA(20)</span><span class="ma-val">${fmtPrice(d.ma20)}</span></div>
-          <div class="ma-line"><span class="ma-lbl">MA(60)</span><span class="ma-val">${fmtPrice(d.ma60)}</span></div>
-         </div>`
-      : '<div style="color:var(--muted)">—</div>';
+    if (!hits.length) {
+        container.innerHTML = `
+            <div style="text-align:center;padding:24px 0;color:var(--text-dim);font-size:11px;">
+                <i class="fa-solid fa-check-circle" style="display:block;font-size:18px;margin-bottom:7px;color:var(--border-hi);"></i>
+                해당 조건 없음
+            </div>`;
+        return;
+    }
 
-    return `<tr class="${isAll3?'row-match':''}">
-      <td class="c-num">${i+1}</td>
-      <td>
-        <div class="c-symbol">
-          <span class="sym-name">${shortSym}<span class="sym-quote">/USDT</span></span>
-          ${isAll3?'<span class="badge badge-all">ALL</span>':''}
+    container.innerHTML = hits.map(([symbol, d], idx) => {
+        const oiSign  = d.oiChange >= 0 ? '+' : '';
+        const oiClr   = d.oiChange >= 5 ? 'var(--accent-y)' : '#facc15';
+        const ratioClr= d.avgRatio < 0.85 ? '#f87171' : d.avgRatio < 0.95 ? '#fca5a5' : 'var(--text-sec)';
+        const pStr    = d.price >= 100
+            ? d.price.toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:2})
+            : d.price < 0.01 ? d.price.toFixed(6) : d.price.toFixed(4);
+        const pClr    = d.priceChangePercent >= 0 ? 'var(--accent-g)' : 'var(--accent-r)';
+        const pSign   = d.priceChangePercent >= 0 ? '+' : '';
+        const isHot   = d.oiChange >= 3 && d.avgRatio < 0.9;
+        const rankNum = idx + 1;
+
+        return `
+        <div class="combo-item ${isHot ? 'hot' : ''}">
+            <div>
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                    <span style="font-size:10px;color:var(--text-dim);font-weight:600;width:18px;">${rankNum}.</span>
+                    <span class="sym">${symbol.replace('USDT','')}<span style="color:var(--text-dim);font-size:9px;font-weight:400;">USDT</span></span>
+                    ${isHot ? '<span style="font-size:9px;background:rgba(240,66,74,0.2);color:#f87171;border:1px solid rgba(240,66,74,0.3);padding:1px 5px;border-radius:3px;font-weight:700;">🔥 HOT</span>' : ''}
+                </div>
+                <div class="meta">
+                    <span><span style="color:var(--text-dim);">가격</span> <span style="color:var(--text-pri);font-weight:600;">${pStr}</span> <span style="color:${pClr};font-size:9px;">${pSign}${d.priceChangePercent?.toFixed(2) ?? '--'}%</span></span>
+                    <span><span style="color:var(--text-dim);">30m 비율</span> <span style="color:${d.v1_30m < shortRatioThr ? '#f87171' : 'var(--text-sec)'};">${d.v1_30m?.toFixed(3) ?? '--'}</span><span style="color:var(--text-dim);">/</span><span style="color:${d.v2_30m < shortRatioThr ? '#f87171' : 'var(--text-sec)'};">${d.v2_30m?.toFixed(3) ?? '--'}</span></span>
+                    <span><span style="color:var(--text-dim);">5m 비율</span> <span style="color:${d.v1_5m < shortRatioThr ? '#f87171' : 'var(--text-sec)'};">${d.v1_5m?.toFixed(3) ?? '--'}</span><span style="color:var(--text-dim);">/</span><span style="color:${d.v2_5m < shortRatioThr ? '#f87171' : 'var(--text-sec)'};">${d.v2_5m?.toFixed(3) ?? '--'}</span></span>
+                </div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
+                <span class="combo-badge combo-badge-oi"><i class="fa-solid fa-arrow-trend-up" style="font-size:8px;"></i> OI ${oiSign}${d.oiChange?.toFixed(2) ?? '--'}%</span>
+                <span class="combo-badge combo-badge-sht"><i class="fa-solid fa-arrow-down" style="font-size:8px;"></i> 평균 ${d.avgRatio?.toFixed(3) ?? '--'}</span>
+                <span style="font-size:9px;color:var(--text-dim);">${formatOI(d.oi)}</span>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+
+function updateHitCountBadge() {
+    const badge    = document.getElementById('hitCountBadge');
+    const hitShort = Object.values(symbolsDataMap).filter(d=>d.alertShort).length;
+    const hitLong  = Object.values(symbolsDataMap).filter(d=>d.alertLong).length;
+    const hitOI    = Object.values(symbolsDataMap).filter(d=>d.alertOI).length;
+    const hitCombo = Object.values(symbolsDataMap).filter(d=>d.alertOIShortCombo).length;
+    if (hitShort + hitLong + hitOI + hitCombo > 0) {
+        badge.style.display = 'inline-flex';
+        badge.innerText = `🚨${hitShort} 🟢${hitLong} 📈${hitOI} 📈🚨${hitCombo}`;
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+function updateProgressBar(scanned, total) {
+    const pct = total > 0 ? Math.round(scanned/total*100) : 0;
+    document.getElementById('scanProgressText').innerText = `${pct}% (${scanned}/${total})`;
+    document.getElementById('rateLimitProgress').innerText = `${scanned} / ${total}`;
+    document.getElementById('progressBar').style.width = `${pct}%`;
+}
+
+// ─────────────────────────────────────────────
+//  경보 / 사운드
+// ─────────────────────────────────────────────
+function triggerGlobalAlert(hitShortList, hitLongList, hitOIList, hitOIShortComboList=[]) {
+    alertActive = true;
+    const banner  = document.getElementById('alertBanner');
+    const iconBox = document.getElementById('alertIconBox');
+    const title   = document.getElementById('alertTitle');
+    const desc    = document.getElementById('alertDescription');
+    banner.style.display = 'flex';
+
+    let msg = '';
+    const hasS = hitShortList.length > 0, hasL = hitLongList.length > 0, hasO = hitOIList.length > 0, hasC = hitOIShortComboList.length > 0;
+
+    banner.className = 'alert-banner';
+
+    if (hasS && hasL) {
+        banner.classList.add('mixed-alert');
+        document.body.classList.add('body-alert-r');
+        iconBox.style.background = '#a34be6';
+        title.style.color = '#c084fc';
+        title.innerText = '🚨 시장 복합 신호 동시 발생!';
+        desc.innerText  = `숏과밀(30m+5m) ${hitShortList.length}건 · 롱상승(30m+5m) ${hitLongList.length}건${hasO?' · OI급등 '+hitOIList.length+'건':''}`;
+        msg = `경고! 30분+5분 동시 숏과밀 ${hitShortList.length}건, 롱상승 ${hitLongList.length}건 검출.`;
+    } else if (hasS) {
+        banner.classList.add('short-alert');
+        document.body.classList.add('body-alert-r');
+        iconBox.style.background = 'var(--accent-r)';
+        title.style.color = '#f87171';
+        title.innerText = '🚨 30m+5m 동시 숏과밀 감지!';
+        desc.innerText  = `감지 심볼: ${hitShortList.map(h=>h.symbol).slice(0,5).join(', ')}`;
+        msg = `경고! 30분과 5분 동시 숏과밀 자산 ${hitShortList.length}개 검출.`;
+    } else if (hasL) {
+        banner.classList.add('long-alert');
+        document.body.classList.add('body-alert-g');
+        iconBox.style.background = 'var(--accent-g)';
+        title.style.color = '#34d399';
+        title.innerText = '🟢 30m+5m 동시 롱급상승 시그널!';
+        desc.innerText  = `감지 심볼: ${hitLongList.map(h=>h.symbol).slice(0,5).join(', ')}`;
+        msg = `알림! 30분과 5분 동시 롱상승 자산 ${hitLongList.length}개 검출.`;
+    } else if (hasO) {
+        banner.classList.add('oi-alert');
+        iconBox.style.background = 'var(--accent-y)';
+        title.style.color = 'var(--accent-y)';
+        title.innerText = '📈 미체결약정 급증 감지!';
+        desc.innerText  = `OI 급등 심볼: ${hitOIList.map(h=>h.symbol).slice(0,5).join(', ')}`;
+        msg = `알림! OI 급증 자산 ${hitOIList.length}개 검출.`;
+    } else if (hasC) {
+        banner.classList.add('short-alert');
+        document.body.classList.add('body-alert-r');
+        iconBox.style.background = 'linear-gradient(135deg,var(--accent-y),var(--accent-r))';
+        title.style.color = '#f87171';
+        title.innerText = '📈🚨 OI 증가 + 숏 우세 감지!';
+        desc.innerText  = `복합 심볼: ${hitOIShortComboList.map(h=>h.symbol).slice(0,5).join(', ')}`;
+        msg = `경고! OI 상승 중 숏우세 자산 ${hitOIShortComboList.length}개 검출.`;
+    }
+
+    if (Notification.permission === 'granted')
+        new Notification("📈 하이브리드 선물 감지", { body: desc.innerText });
+
+    soundMode === 'tts' ? playTtsMessage(msg) : (playBeepSound(), setTimeout(playBeepSound, 280));
+}
+
+function dismissAlert() {
+    alertActive = false;
+    document.body.classList.remove('body-alert-r','body-alert-g');
+    document.getElementById('alertBanner').style.display = 'none';
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+}
+
+function toggleSoundMode(mode) {
+    soundMode = mode;
+    document.getElementById('soundTtsBtn').classList.toggle('active',  mode === 'tts');
+    document.getElementById('soundBeepBtn').classList.toggle('active', mode === 'beep');
+}
+
+function playTtsMessage(text) {
+    if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = 'ko-KR'; u.rate = 1.15;
+        window.speechSynthesis.speak(u);
+    }
+}
+
+function playBeepSound() {
+    try {
+        if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioContext.createOscillator(), gain = audioContext.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(880, audioContext.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(440, audioContext.currentTime + 0.4);
+        gain.gain.setValueAtTime(0.2, audioContext.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
+        osc.connect(gain); gain.connect(audioContext.destination);
+        osc.start(); osc.stop(audioContext.currentTime + 0.4);
+    } catch(e) {}
+}
+
+// ─────────────────────────────────────────────
+//  모니터링 토글
+// ─────────────────────────────────────────────
+document.getElementById('startStopBtn').addEventListener('click', function() {
+    const btn = this;
+    const dot = document.getElementById('statusDot');
+    const txt = document.getElementById('statusText');
+
+    if (!isMonitoring) {
+        isMonitoring = true;
+        requestNotificationPermission();
+        btn.innerHTML = '<i class="fa-solid fa-stop"></i>&nbsp; 모니터링 중지';
+        btn.classList.add('stop');
+        dot.className = 'dot dot-running';
+        txt.innerText = '자동 감시 중';
+        clearInterval(monitorIntervalId);
+        scanAllSymbols();
+        monitorIntervalId = setInterval(scanAllSymbols, parseInt(document.getElementById('intervalSelect').value));
+    } else {
+        isMonitoring = false;
+        btn.innerHTML = '<i class="fa-solid fa-play"></i>&nbsp; 하이브리드 모니터링 시작';
+        btn.classList.remove('stop');
+        dot.className = 'dot dot-idle';
+        txt.innerText = '대기 중';
+        clearInterval(monitorIntervalId);
+        monitorIntervalId = null;
+        dismissAlert();
+    }
+});
+
+// ─────────────────────────────────────────────
+//  로그
+// ─────────────────────────────────────────────
+function addLog(time, symbol, timeframe, v1_30, v2_30, v1_5, v2_5, price, oiChange, typeText, cardClass) {
+    const container = document.getElementById('logContainer');
+    const empty = document.getElementById('emptyLogText');
+    if (empty) empty.remove();
+
+    const pStr  = price >= 100 ? price.toLocaleString('en-US') : price < 0.01 ? price.toFixed(6) : price.toFixed(4);
+    const isOI  = oiChange !== null;
+
+    const card = document.createElement('div');
+    card.className = `log-card ${cardClass}`;
+
+    let statsHtml = '';
+    if (isOI) {
+        statsHtml = `
+            <div class="log-stat"><div style="font-size:9px;color:var(--text-dim);margin-bottom:2px;">검출가</div><div style="font-weight:700;font-size:11px;color:var(--accent-y);">${pStr}</div></div>
+            <div class="log-stat"><div style="font-size:9px;color:var(--text-dim);margin-bottom:2px;">OI 변화율</div><div style="font-weight:600;font-size:11px;color:var(--text-pri);">+${oiChange.toFixed(2)}%</div></div>
+            <div class="log-stat" style="grid-column:span 2;display:flex;flex-direction:column;justify-content:center;align-items:center;"><div style="font-size:9px;color:var(--text-dim);margin-bottom:2px;">판정</div><div style="font-weight:800;font-size:10px;">${typeText}</div></div>`;
+    } else {
+        statsHtml = `
+            <div class="log-stat"><div style="font-size:9px;color:var(--text-dim);margin-bottom:2px;">검출가</div><div style="font-weight:700;font-size:11px;color:var(--accent-y);">${pStr}</div></div>
+            <div class="log-stat"><div style="font-size:9px;color:var(--text-dim);margin-bottom:2px;">30m (고래/전체)</div><div style="font-weight:600;font-size:10px;color:var(--text-pri);">${v1_30.toFixed(3)} / ${v2_30.toFixed(3)}</div></div>
+            <div class="log-stat"><div style="font-size:9px;color:var(--text-dim);margin-bottom:2px;">5m (고래/전체)</div><div style="font-weight:600;font-size:10px;color:var(--text-pri);">${v1_5.toFixed(3)} / ${v2_5.toFixed(3)}</div></div>
+            <div class="log-stat" style="display:flex;flex-direction:column;justify-content:center;align-items:center;"><div style="font-size:9px;color:var(--text-dim);margin-bottom:2px;">판정</div><div style="font-weight:800;font-size:10px;">${typeText}</div></div>`;
+    }
+
+    card.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;">
+            <span style="display:flex;align-items:center;gap:6px;font-weight:700;font-size:12px;color:var(--text-pri);">
+                <span style="font-size:9px;background:var(--bg-base);border:1px solid var(--border);padding:2px 6px;border-radius:4px;color:var(--text-dim);">${timeframe}</span>
+                ${symbol}
+            </span>
+            <span style="font-size:10px;color:var(--text-dim);">${time}</span>
         </div>
-      </td>
-      <td class="c-price">${fmtPrice(d.price)}</td>
-      <td>
-        <div class="ma-result">
-          <div class="ma-icon">${d.maOk?'<span style="color:var(--green)">정배열 ✓</span>':'<span style="color:var(--muted)">역배열 ✗</span>'}</div>
-          ${maLayout}
-        </div>
-      </td>
-      <td>
-        <div class="ls-wrap">
-          <div class="ls-bar">
-            <div class="ls-l" style="width:${ls15mW}%"></div>
-            <div class="ls-s" style="width:${100-ls15mW}%"></div>
-          </div>
-          <div class="ls-nums">
-            <span class="ln">L ${ls15mW}%</span>
-            <span class="sn">S ${100-ls15mW}%</span>
-          </div>
-          <div class="ls-label" style="color:${d.lsOk_15m?'var(--green)':'var(--red)'}">
-            ${d.lsOk_15m?'롱 우세':'숏 우세'}
-          </div>
-        </div>
-      </td>
-      <td>
-        <div class="ls-wrap">
-          <div class="ls-bar">
-            <div class="ls-l" style="width:${ls1hW}%"></div>
-            <div class="ls-s" style="width:${100-ls1hW}%"></div>
-          </div>
-          <div class="ls-nums">
-            <span class="ln">L ${ls1hW}%</span>
-            <span class="sn">S ${100-ls1hW}%</span>
-          </div>
-          <div class="ls-label" style="color:${d.lsOk_1h?'var(--green)':'var(--red)'}">
-            ${d.lsOk_1h?'롱 우세':'숏 우세'}
-          </div>
-        </div>
-      </td>
-      <td>
-        <div class="oi-wrap">
-          <div class="oi-track"><div class="oi-fill" style="width:${oiPct}%"></div></div>
-          <div class="oi-num">${fmt(d.oi)}</div>
-        </div>
-      </td>
-      <td>
-        <div class="score-wrap">
-          <div class="score-dots">
-            <div class="score-dot ${d.maOk?'on':''}" title="MA 정배열"></div>
-            <div class="score-dot ${d.lsOk_15m?'on':''}" title="15m 롱 우세"></div>
-            <div class="score-dot ${d.lsOk_1h?'on':''}" title="1h 롱 우세"></div>
-          </div>
-          <div class="score-num score-${d.score}">${d.score}/3</div>
-        </div>
-      </td>
-    </tr>`;
-  }).join('');
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;">${statsHtml}</div>`;
+
+    container.insertBefore(card, container.firstChild);
+}
+
+function clearLogs() {
+    document.getElementById('logContainer').innerHTML = `
+        <div id="emptyLogText" style="text-align:center;padding:40px 0;color:var(--text-dim);font-size:11px;">
+            <i class="fa-solid fa-ban" style="display:block;font-size:22px;margin-bottom:8px;color:var(--border-hi);"></i>
+            감지된 포착 데이터가 없습니다
+        </div>`;
+    dismissAlert();
+}
+
+// ─────────────────────────────────────────────
+//  필터 / 정렬
+// ─────────────────────────────────────────────
+function filterTable() {
+    const search = document.getElementById('searchInput').value.trim().toUpperCase();
+    const filter = document.getElementById('filterSelect').value;
+    allSymbolsList.forEach(symbol => {
+        const row  = document.getElementById(`row-${symbol}`);
+        if (!row) return;
+        const data = symbolsDataMap[symbol];
+        const ms   = symbol.includes(search);
+        let mf = false;
+        if      (filter==='all')         mf = true;
+        else if (filter==='under095')    mf = data.alertShort;
+        else if (filter==='over125')     mf = data.alertLong;
+        else if (filter==='oiRising')    mf = data.alertOI;
+        else if (filter==='oiShortCombo')mf = data.alertOIShortCombo;
+        else if (filter==='anyAlert')    mf = data.alertShort || data.alertLong || data.alertOI || data.alertOIShortCombo;
+        row.style.display = (ms && mf) ? '' : 'none';
+    });
+}
+
+function sortTable(colIdx) {
+    const tbody = document.querySelector("table tbody");
+    const rows  = Array.from(tbody.rows);
+    const asc   = sortDirection[colIdx];
+    rows.sort((rA, rB) => {
+        const sA = rA.id.replace('row-',''), sB = rB.id.replace('row-','');
+        const dA = symbolsDataMap[sA], dB = symbolsDataMap[sB];
+        let vA, vB;
+        switch(colIdx) {
+            case 1: vA=dA.priceChangePercent??-9999; vB=dB.priceChangePercent??-9999; break;
+            case 2: vA=dA.v1_30m??9999;             vB=dB.v1_30m??9999;             break;
+            case 3: vA=dA.v1_5m??-9999;             vB=dB.v1_5m??-9999;             break;
+            case 4: vA=(dA.alertShort?2:0)+(dA.alertLong?1:0); vB=(dB.alertShort?2:0)+(dB.alertLong?1:0); break;
+            case 5: vA=dA.oiChange??-9999;          vB=dB.oiChange??-9999;          break;
+            case 6: vA=dA.alertOI?1:0;              vB=dB.alertOI?1:0;              break;
+            default: return asc?sA.localeCompare(sB):sB.localeCompare(sA);
+        }
+        return asc?vA-vB:vB-vA;
+    });
+    sortDirection[colIdx] = !asc;
+    rows.forEach(r => tbody.appendChild(r));
+}
+
+// ─────────────────────────────────────────────
+//  유틸
+// ─────────────────────────────────────────────
+function formatOI(val) {
+    if (val===null||val===undefined) return '--';
+    if (val>=1_000_000) return (val/1_000_000).toFixed(2)+'M';
+    if (val>=1_000)     return (val/1_000).toFixed(1)+'K';
+    return val.toFixed(1);
+}
+function chunkArray(arr, size) {
+    const out=[]; for(let i=0;i<arr.length;i+=size) out.push(arr.slice(i,i+size)); return out;
+}
+function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }
+function getFormattedTime() {
+    return new Date().toLocaleTimeString('ko-KR',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
 }
 </script>
 </body>
