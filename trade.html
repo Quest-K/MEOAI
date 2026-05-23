@@ -5,799 +5,847 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Binance Futures Scanner</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Noto+Sans+KR:wght@300;400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Pretendard:wght@300;400;500;600;700&display=swap');
 
-  :root {
-    --bg: #060a10;
-    --bg2: #0d1520;
-    --bg3: #121d2e;
-    --border: #1e3050;
-    --accent: #00e5ff;
-    --accent2: #39ff7a;
-    --danger: #ff3b5c;
-    --warning: #ffb800;
-    --text: #c8d8f0;
-    --muted: #4a6080;
-    --long: #39ff7a;
-    --short: #ff3b5c;
-  }
+:root {
+  --bg:      #07090f;
+  --bg2:     #0c1118;
+  --bg3:     #111822;
+  --bg4:     #16202e;
+  --border:  #1c2d42;
+  --border2: #243550;
+  --accent:  #0af;
+  --green:   #00e676;
+  --red:     #ff3d6a;
+  --yellow:  #ffc107;
+  --purple:  #c084fc;
+  --text:    #d0e4f8;
+  --muted:   #3d5870;
+  --muted2:  #5a7a99;
+}
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'Noto Sans KR', sans-serif;
-    font-size: 13px;
-    min-height: 100vh;
-  }
+html { scroll-behavior: smooth; }
 
-  .header {
-    background: var(--bg2);
-    border-bottom: 1px solid var(--border);
-    padding: 16px 24px;
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-  }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Pretendard', 'Noto Sans KR', sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
 
-  .logo {
-    font-family: 'Space Mono', monospace;
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--accent);
-    letter-spacing: 2px;
-    white-space: nowrap;
-  }
+/* ── TOPBAR ── */
+#topbar {
+  position: sticky; top: 0; z-index: 200;
+  background: rgba(7,9,15,0.92);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 16px;
+  padding: 0 20px; height: 52px;
+}
 
-  .logo span { color: var(--warning); }
+.logo {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 15px; font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 2px;
+  flex-shrink: 0;
+  display: flex; align-items: center; gap: 8px;
+}
+.logo-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(1.4)} }
 
-  .header-stats {
-    display: flex;
-    gap: 20px;
-    flex-wrap: wrap;
-  }
+.topbar-pills { display: flex; gap: 8px; flex-wrap: nowrap; overflow-x: auto; }
+.topbar-pills::-webkit-scrollbar { display:none; }
 
-  .stat-pill {
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 4px 14px;
-    font-family: 'Space Mono', monospace;
-    font-size: 11px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
+.t-pill {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  white-space: nowrap;
+  display: flex; align-items: center; gap: 5px;
+  flex-shrink: 0;
+}
+.t-pill .pl { color: var(--muted2); }
+.t-pill .pv { color: var(--accent); font-weight: 600; }
 
-  .stat-pill .label { color: var(--muted); }
-  .stat-pill .val { color: var(--accent); font-weight: 700; }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 
-  .scan-btn {
-    margin-left: auto;
-    background: var(--accent);
-    color: #000;
-    border: none;
-    padding: 8px 20px;
-    font-family: 'Space Mono', monospace;
-    font-size: 12px;
-    font-weight: 700;
-    cursor: pointer;
-    border-radius: 4px;
-    letter-spacing: 1px;
-    transition: all 0.2s;
-    white-space: nowrap;
-  }
+.last-updated { font-size: 10px; color: var(--muted2); font-family: 'IBM Plex Mono', monospace; }
 
-  .scan-btn:hover { background: #33f0ff; transform: translateY(-1px); }
-  .scan-btn:disabled { background: var(--muted); cursor: not-allowed; transform: none; }
+#scanBtn {
+  background: var(--accent);
+  color: #000;
+  border: none; cursor: pointer;
+  padding: 7px 18px;
+  border-radius: 6px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px; font-weight: 700;
+  letter-spacing: .5px;
+  transition: background .15s, transform .1s, box-shadow .15s;
+  display: flex; align-items: center; gap: 6px;
+}
+#scanBtn:hover { background: #3df; box-shadow: 0 0 16px rgba(0,170,255,.35); }
+#scanBtn:active { transform: scale(.97); }
+#scanBtn:disabled { background: var(--muted); cursor: not-allowed; box-shadow: none; }
 
-  .filter-bar {
-    background: var(--bg2);
-    border-bottom: 1px solid var(--border);
-    padding: 10px 24px;
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    flex-wrap: wrap;
-  }
+/* ── CONTROLS STRIP ── */
+#ctrlStrip {
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 20px;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
 
-  .filter-label { color: var(--muted); font-size: 11px; font-family: 'Space Mono', monospace; }
+.section-label {
+  font-size: 10px; color: var(--muted2);
+  font-family: 'IBM Plex Mono', monospace;
+  letter-spacing: 1px; text-transform: uppercase;
+  flex-shrink: 0;
+}
 
-  .filter-chip {
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 4px 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 11px;
-    font-family: 'Space Mono', monospace;
-    transition: all 0.15s;
-    white-space: nowrap;
-  }
+.chip-group { display: flex; gap: 6px; flex-wrap: wrap; }
 
-  .filter-chip.active {
-    border-color: var(--accent);
-    color: var(--accent);
-    background: rgba(0, 229, 255, 0.07);
-  }
+.chip {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--muted2);
+  padding: 4px 12px; border-radius: 20px;
+  cursor: pointer; font-size: 11px; font-weight: 500;
+  transition: all .15s; white-space: nowrap;
+  user-select: none;
+}
+.chip:hover { border-color: var(--accent); color: var(--text); }
+.chip.active { border-color: var(--accent); color: var(--accent); background: rgba(0,170,255,.1); font-weight: 600; }
+.chip.active.green-chip { border-color: var(--green); color: var(--green); background: rgba(0,230,118,.08); }
+.chip.active.red-chip   { border-color: var(--red);   color: var(--red);   background: rgba(255,61,106,.08); }
+.chip.active.yellow-chip{ border-color: var(--yellow); color: var(--yellow); background: rgba(255,193,7,.08); }
+.chip.active.purple-chip{ border-color: var(--purple); color: var(--purple); background: rgba(192,132,252,.08); }
 
-  .filter-chip:hover { border-color: var(--accent); }
+.divider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
 
-  .search-input {
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 4px 12px;
-    border-radius: 4px;
-    font-size: 12px;
-    outline: none;
-    width: 140px;
-    font-family: 'Space Mono', monospace;
-  }
+.search-wrap {
+  position: relative; margin-left: auto;
+}
+.search-wrap svg {
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  color: var(--muted2); width: 13px; height: 13px; pointer-events: none;
+}
+#searchInput {
+  background: var(--bg3); border: 1px solid var(--border);
+  color: var(--text); padding: 5px 10px 5px 30px;
+  border-radius: 6px; font-size: 12px; outline: none;
+  width: 160px; font-family: 'IBM Plex Mono', monospace;
+  transition: border-color .15s, width .2s;
+}
+#searchInput:focus { border-color: var(--accent); width: 200px; }
 
-  .search-input:focus { border-color: var(--accent); }
+/* ── PROGRESS ── */
+#progressOverlay {
+  display: none;
+  background: var(--bg2); border-bottom: 1px solid var(--border);
+  padding: 14px 20px;
+}
+#progressOverlay.show { display: block; }
 
-  .content { padding: 20px 24px; }
+.prog-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.prog-label { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--accent); }
+.prog-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--muted2); }
+.prog-track { background: var(--bg4); border-radius: 4px; height: 4px; overflow: hidden; }
+.prog-fill {
+  height: 100%; border-radius: 4px; width: 0%;
+  background: linear-gradient(90deg, var(--accent), var(--green));
+  transition: width .25s ease;
+}
+.prog-sub { margin-top: 6px; font-size: 10px; color: var(--muted2); font-family: 'IBM Plex Mono', monospace; }
 
-  .progress-wrap {
-    display: none;
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 20px;
-    margin-bottom: 16px;
-    text-align: center;
-  }
+/* ── SUMMARY CARDS ── */
+#summarySection {
+  display: none;
+  padding: 14px 20px 0;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+#summarySection.show { display: flex; }
 
-  .progress-wrap.show { display: block; }
+.sum-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+  min-width: 110px;
+  flex: 1;
+}
+.sum-card:hover { border-color: var(--border2); background: var(--bg3); }
+.sum-card.active-card { border-color: var(--accent); background: rgba(0,170,255,.06); }
+.sum-card .sv { font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 700; line-height: 1; }
+.sum-card .sl { font-size: 10px; color: var(--muted2); margin-top: 4px; text-transform: uppercase; letter-spacing: .5px; }
+.sum-card .sb { margin-top: 6px; height: 2px; border-radius: 2px; }
 
-  .progress-bar-outer {
-    background: var(--bg3);
-    border-radius: 4px;
-    height: 6px;
-    margin: 12px 0 8px;
-    overflow: hidden;
-  }
+/* ── ERROR ── */
+#errorBanner {
+  display: none;
+  margin: 12px 20px;
+  background: rgba(255,61,106,.08); border: 1px solid rgba(255,61,106,.4);
+  border-radius: 8px; padding: 12px 16px;
+  color: var(--red); font-size: 12px;
+  display: flex; align-items: flex-start; gap: 10px;
+}
+#errorBanner.show { display: flex; }
+#errorBanner .ei { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
 
-  .progress-bar-inner {
-    height: 100%;
-    background: linear-gradient(90deg, var(--accent), var(--accent2));
-    border-radius: 4px;
-    transition: width 0.3s;
-  }
+/* ── TABLE WRAP ── */
+#tableSection { padding: 12px 20px 24px; }
 
-  .progress-text {
-    font-family: 'Space Mono', monospace;
-    font-size: 11px;
-    color: var(--muted);
-  }
+#tableInfo {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px;
+}
+.table-count { font-size: 11px; color: var(--muted2); font-family: 'IBM Plex Mono', monospace; }
+.table-hint  { font-size: 10px; color: var(--muted); }
 
-  .table-wrap {
-    overflow-x: auto;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-  }
+.table-wrap {
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
 
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12px;
-  }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
 
-  thead {
-    background: var(--bg3);
-    position: sticky;
-    top: 57px;
-    z-index: 10;
-  }
+thead { background: var(--bg3); }
 
-  th {
-    padding: 10px 12px;
-    text-align: center;
-    color: var(--muted);
-    font-family: 'Space Mono', monospace;
-    font-size: 10px;
-    letter-spacing: 0.5px;
-    border-bottom: 1px solid var(--border);
-    white-space: nowrap;
-    cursor: pointer;
-    user-select: none;
-  }
+th {
+  padding: 9px 12px;
+  color: var(--muted2); font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; letter-spacing: .5px; font-weight: 600;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap; cursor: pointer; user-select: none;
+  text-align: center;
+  transition: color .15s;
+}
+th:hover { color: var(--accent); }
+th.th-left { text-align: left; }
+th .sort-arrow { margin-left: 3px; opacity: 0; transition: opacity .15s; }
+th.sort-asc .sort-arrow::after  { content: '↑'; opacity: 1; color: var(--accent); }
+th.sort-desc .sort-arrow::after { content: '↓'; opacity: 1; color: var(--accent); }
 
-  th:hover { color: var(--accent); }
-  th.sort-asc::after { content: ' ↑'; color: var(--accent); }
-  th.sort-desc::after { content: ' ↓'; color: var(--accent); }
+td {
+  padding: 8px 12px; text-align: center;
+  border-bottom: 1px solid rgba(28,45,66,.6);
+  transition: background .1s;
+}
 
-  td {
-    padding: 9px 12px;
-    text-align: center;
-    border-bottom: 1px solid rgba(30, 48, 80, 0.5);
-    white-space: nowrap;
-  }
+tbody tr { transition: background .1s; }
+tbody tr:hover td { background: rgba(0,170,255,.035); }
+tbody tr:last-child td { border-bottom: none; }
 
-  tr:hover td { background: rgba(0, 229, 255, 0.03); }
+tbody tr.row-match td { background: rgba(0,230,118,.025); }
+tbody tr.row-match:hover td { background: rgba(0,230,118,.05); }
 
-  .symbol-cell {
-    font-family: 'Space Mono', monospace;
-    font-weight: 700;
-    font-size: 12px;
-    color: #fff;
-    text-align: left;
-  }
+/* cells */
+.c-num { color: var(--muted); font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
 
-  .price-cell {
-    font-family: 'Space Mono', monospace;
-    font-size: 11px;
-    color: var(--text);
-  }
+.c-symbol {
+  text-align: left;
+  display: flex; align-items: center; gap: 8px;
+}
+.sym-name {
+  font-family: 'IBM Plex Mono', monospace; font-weight: 700;
+  font-size: 13px; color: #fff;
+}
+.sym-quote { color: var(--muted2); font-weight: 400; font-size: 11px; }
 
-  .check { color: var(--accent2); font-size: 14px; }
-  .cross { color: var(--muted); font-size: 14px; }
-  .cross-no { color: var(--danger); font-size: 14px; }
+.badge {
+  font-size: 9px; font-family: 'IBM Plex Mono', monospace; font-weight: 700;
+  padding: 2px 6px; border-radius: 4px; letter-spacing: .5px;
+  flex-shrink: 0;
+}
+.badge-all { background: rgba(0,230,118,.18); color: var(--green); border: 1px solid rgba(0,230,118,.4); }
+.badge-hot { background: rgba(255,193,7,.18); color: var(--yellow); border: 1px solid rgba(255,193,7,.4); }
 
-  .match-score {
-    font-family: 'Space Mono', monospace;
-    font-weight: 700;
-    font-size: 13px;
-  }
+.c-price { font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
 
-  .score-4 { color: var(--accent2); }
-  .score-3 { color: var(--accent); }
-  .score-2 { color: var(--warning); }
-  .score-1 { color: #ff8c00; }
-  .score-0 { color: var(--muted); }
+/* MA cell */
+.ma-result {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+}
+.ma-icon { font-size: 16px; line-height: 1; }
+.ma-vals { font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: var(--muted2); text-align: center; }
 
-  .ls-bar {
-    display: flex;
-    height: 14px;
-    border-radius: 3px;
-    overflow: hidden;
-    width: 80px;
-    margin: 0 auto;
-  }
+/* LS bar */
+.ls-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.ls-bar { display: flex; width: 90px; height: 12px; border-radius: 6px; overflow: hidden; }
+.ls-l { background: var(--green); }
+.ls-s { background: var(--red); }
+.ls-nums {
+  display: flex; justify-content: space-between; width: 90px;
+  font-family: 'IBM Plex Mono', monospace; font-size: 9px;
+}
+.ls-nums .ln { color: var(--green); }
+.ls-nums .sn { color: var(--red); }
+.ls-label { font-size: 9px; }
 
-  .ls-long { background: var(--long); }
-  .ls-short { background: var(--short); }
+/* OI */
+.oi-wrap { display: flex; align-items: center; gap: 6px; justify-content: center; }
+.oi-track { width: 56px; height: 8px; background: var(--bg4); border-radius: 4px; overflow: hidden; }
+.oi-fill { height: 100%; background: linear-gradient(90deg, #0af4, var(--accent)); border-radius: 4px; }
+.oi-num { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--accent); min-width: 44px; text-align: left; }
 
-  .ls-text {
-    font-family: 'Space Mono', monospace;
-    font-size: 10px;
-    display: flex;
-    justify-content: space-between;
-    width: 80px;
-    margin: 2px auto 0;
-  }
+/* MACD */
+.macd-wrap { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.macd-num { font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+.macd-neg { color: var(--red); }
+.macd-pos { color: var(--green); }
+.macd-icon { font-size: 14px; }
 
-  .ls-text .l { color: var(--long); }
-  .ls-text .s { color: var(--short); }
+/* Score */
+.score-wrap {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.score-dots { display: flex; gap: 4px; }
+.score-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--bg4); border: 1px solid var(--border2);
+  transition: background .2s, border-color .2s;
+}
+.score-dot.on { background: var(--green); border-color: var(--green); box-shadow: 0 0 6px rgba(0,230,118,.5); }
+.score-num { font-family: 'IBM Plex Mono', monospace; font-size: 10px; }
+.score-2 { color: var(--green); }
+.score-1 { color: var(--yellow); }
+.score-0 { color: var(--muted); }
 
-  .oi-bar-wrap {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    justify-content: center;
-  }
+/* empty */
+.empty-state {
+  padding: 80px 20px; text-align: center;
+  color: var(--muted2); font-family: 'IBM Plex Mono', monospace;
+}
+.empty-icon { font-size: 48px; margin-bottom: 16px; }
+.empty-title { font-size: 14px; margin-bottom: 6px; }
+.empty-sub { font-size: 11px; color: var(--muted); line-height: 1.8; }
 
-  .oi-bar-bg {
-    background: var(--bg3);
-    border-radius: 2px;
-    height: 10px;
-    width: 60px;
-    overflow: hidden;
-  }
+/* tooltip */
+[data-tip] { position: relative; }
+[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  background: var(--bg4); border: 1px solid var(--border2);
+  color: var(--text); font-size: 10px; font-family: 'IBM Plex Mono', monospace;
+  padding: 4px 8px; border-radius: 5px; white-space: nowrap; z-index: 999;
+  pointer-events: none;
+}
 
-  .oi-bar-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #1e3a5f, var(--accent));
-    border-radius: 2px;
-    transition: width 0.4s;
-  }
+/* ── ONBOARDING SPLASH ── */
+#splash {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 60px 20px; text-align: center;
+  gap: 20px;
+}
+.splash-icon { font-size: 56px; }
+.splash-title { font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 700; color: var(--accent); }
+.splash-desc { font-size: 13px; color: var(--muted2); line-height: 1.8; max-width: 520px; }
+.splash-grid {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;
+  max-width: 420px; width: 100%; margin: 4px 0;
+}
+.splash-tag {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 14px;
+  display: flex; align-items: center; gap: 10px;
+  text-align: left;
+}
+.splash-tag .st-icon { font-size: 20px; flex-shrink: 0; }
+.splash-tag .st-text { font-size: 11px; color: var(--text); line-height: 1.5; }
+.splash-tag .st-sub  { font-size: 10px; color: var(--muted2); }
+.splash-cta {
+  background: var(--accent); color: #000;
+  border: none; cursor: pointer;
+  padding: 12px 32px; border-radius: 8px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 14px; font-weight: 700; letter-spacing: 1px;
+  transition: all .2s;
+  box-shadow: 0 0 24px rgba(0,170,255,.3);
+}
+.splash-cta:hover { background: #3df; box-shadow: 0 0 32px rgba(0,170,255,.5); transform: translateY(-2px); }
 
-  .oi-val {
-    font-family: 'Space Mono', monospace;
-    font-size: 10px;
-    color: var(--accent);
-    min-width: 40px;
-    text-align: left;
-  }
+/* scanning live row highlight */
+@keyframes rowIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }
+tbody tr { animation: rowIn .2s ease; }
 
-  .ma-cell {
-    font-family: 'Space Mono', monospace;
-    font-size: 10px;
-  }
+/* scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
 
-  .macd-val {
-    font-family: 'Space Mono', monospace;
-    font-size: 11px;
-  }
-
-  .macd-neg { color: var(--short); }
-  .macd-pos { color: var(--long); }
-
-  .empty-state {
-    text-align: center;
-    padding: 60px;
-    color: var(--muted);
-    font-family: 'Space Mono', monospace;
-  }
-
-  .empty-state .big { font-size: 40px; margin-bottom: 12px; }
-
-  .summary-bar {
-    display: flex;
-    gap: 16px;
-    margin-bottom: 16px;
-    flex-wrap: wrap;
-  }
-
-  .sum-card {
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 12px 18px;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 100px;
-  }
-
-  .sum-card .sum-val {
-    font-family: 'Space Mono', monospace;
-    font-size: 22px;
-    font-weight: 700;
-    color: var(--accent2);
-  }
-
-  .sum-card .sum-lbl {
-    font-size: 10px;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-  }
-
-  .error-msg {
-    background: rgba(255,59,92,0.1);
-    border: 1px solid var(--danger);
-    border-radius: 6px;
-    padding: 12px 16px;
-    color: var(--danger);
-    font-size: 12px;
-    margin-bottom: 12px;
-    display: none;
-  }
-
-  .error-msg.show { display: block; }
-
-  .tag-all4 {
-    background: rgba(57,255,122,0.15);
-    border: 1px solid var(--accent2);
-    border-radius: 3px;
-    font-size: 9px;
-    padding: 1px 5px;
-    color: var(--accent2);
-    font-family: 'Space Mono', monospace;
-    margin-left: 4px;
-  }
-
-  .loading-dot::after {
-    content: '...';
-    animation: dots 1.5s infinite;
-  }
-
-  @keyframes dots {
-    0%,20%  { content: '.'; }
-    40%,60% { content: '..'; }
-    80%,100%{ content: '...'; }
-  }
-
-  tr.highlight-all td { background: rgba(57,255,122,0.04); }
-
-  .col-num { color: var(--muted); font-size: 11px; font-family: 'Space Mono', monospace; }
+/* responsive */
+@media (max-width: 700px) {
+  #topbar { padding: 0 12px; }
+  #ctrlStrip { padding: 8px 12px; }
+  #tableSection { padding: 10px 12px 20px; }
+  #summarySection { padding: 10px 12px 0; }
+  .topbar-pills { display: none; }
+  .splash-grid { grid-template-columns: 1fr; }
+}
 </style>
 </head>
 <body>
 
-<div class="header">
-  <div class="logo">FUTURES<span>SCAN</span></div>
-  <div class="header-stats">
-    <div class="stat-pill">
-      <span class="label">SYMBOLS</span>
-      <span class="val" id="hdr-total">-</span>
-    </div>
-    <div class="stat-pill">
-      <span class="label">SCANNED</span>
-      <span class="val" id="hdr-scanned">0</span>
-    </div>
-    <div class="stat-pill">
-      <span class="label">MA✓</span>
-      <span class="val" id="hdr-ma">0</span>
-    </div>
-    <div class="stat-pill">
-      <span class="label">MACD-✓</span>
-      <span class="val" id="hdr-macd">0</span>
-    </div>
-    <div class="stat-pill">
-      <span class="label">ALL4✓</span>
-      <span class="val" id="hdr-all4">0</span>
-    </div>
+<!-- TOPBAR -->
+<div id="topbar">
+  <div class="logo">
+    <div class="logo-dot"></div>
+    FUTURES<span style="color:var(--yellow)">SCAN</span>
   </div>
-  <button class="scan-btn" id="scanBtn" onclick="startScan()">▶ SCAN START</button>
+  <div class="topbar-pills">
+    <div class="t-pill"><span class="pl">전체</span><span class="pv" id="hd-total">—</span></div>
+    <div class="t-pill"><span class="pl">스캔</span><span class="pv" id="hd-done">0</span></div>
+    <div class="t-pill"><span class="pl" style="color:var(--accent)">MA✓</span><span class="pv" id="hd-ma" style="color:var(--accent)">0</span></div>
+    <div class="t-pill"><span class="pl" style="color:var(--red)">MACD-</span><span class="pv" id="hd-macd" style="color:var(--red)">0</span></div>
+    <div class="t-pill"><span class="pl" style="color:var(--green)">ALL✓</span><span class="pv" id="hd-all" style="color:var(--green)">0</span></div>
+  </div>
+  <div class="topbar-right">
+    <span class="last-updated" id="lastUpdated"></span>
+    <button id="scanBtn" onclick="startScan()">
+      <span id="scanBtnIcon">▶</span>
+      <span id="scanBtnText">스캔 시작</span>
+    </button>
+  </div>
 </div>
 
-<div class="filter-bar">
-  <span class="filter-label">FILTER:</span>
-  <div class="filter-chip active" onclick="setFilter('all', this)">ALL</div>
-  <div class="filter-chip" onclick="setFilter('all4', this)">조건 전부 (4/4)</div>
-  <div class="filter-chip" onclick="setFilter('ma', this)">MA 정배열</div>
-  <div class="filter-chip" onclick="setFilter('macd', this)">MACD 음수</div>
-  <div class="filter-chip" onclick="setFilter('ls_long', this)">롱 우세</div>
-  <div class="filter-chip" onclick="setFilter('ls_short', this)">숏 우세</div>
-  <input class="search-input" id="searchInput" placeholder="심볼 검색..." oninput="renderTable()" />
+<!-- CONTROLS -->
+<div id="ctrlStrip">
+  <span class="section-label">필터</span>
+  <div class="chip-group" id="chipGroup">
+    <div class="chip active"        data-filter="all"      onclick="setChip(this,'all')">전체 보기</div>
+    <div class="chip green-chip"    data-filter="all2"     onclick="setChip(this,'all2')">🎯 조건 전부</div>
+    <div class="chip"               data-filter="ma"       onclick="setChip(this,'ma')">📈 MA 정배열</div>
+    <div class="chip red-chip"      data-filter="macd"     onclick="setChip(this,'macd')">📉 MACD 음수</div>
+    <div class="chip yellow-chip"   data-filter="ls_long"  onclick="setChip(this,'ls_long')">🟢 롱 우세</div>
+    <div class="chip purple-chip"   data-filter="ls_short" onclick="setChip(this,'ls_short')">🔴 숏 우세</div>
+  </div>
+  <div class="divider"></div>
+  <div class="search-wrap">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+    </svg>
+    <input id="searchInput" type="text" placeholder="BTC, ETH..." oninput="renderTable()" />
+  </div>
 </div>
 
-<div class="content">
-  <div class="error-msg" id="errorMsg"></div>
-  <div class="progress-wrap" id="progressWrap">
-    <div style="font-family:'Space Mono',monospace;font-size:13px;color:var(--accent)">
-      스캔 중 <span class="loading-dot" id="scanStatus"></span>
-    </div>
-    <div class="progress-bar-outer">
-      <div class="progress-bar-inner" id="progressBar" style="width:0%"></div>
-    </div>
-    <div class="progress-text" id="progressText">심볼 목록 불러오는 중...</div>
+<!-- PROGRESS -->
+<div id="progressOverlay">
+  <div class="prog-top">
+    <span class="prog-label" id="progLabel">📡 심볼 목록 로딩 중...</span>
+    <span class="prog-count" id="progCount">0 / 0</span>
   </div>
+  <div class="prog-track"><div class="prog-fill" id="progFill"></div></div>
+  <div class="prog-sub" id="progSub">바이낸스 API 연결 중</div>
+</div>
 
-  <div class="summary-bar" id="summaryBar" style="display:none">
-    <div class="sum-card">
-      <div class="sum-val" id="sum-total">0</div>
-      <div class="sum-lbl">전체 심볼</div>
-    </div>
-    <div class="sum-card">
-      <div class="sum-val" id="sum-ma" style="color:var(--accent)">0</div>
-      <div class="sum-lbl">MA 정배열</div>
-    </div>
-    <div class="sum-card">
-      <div class="sum-val" id="sum-macd" style="color:var(--short)">0</div>
-      <div class="sum-lbl">MACD 음수</div>
-    </div>
-    <div class="sum-card">
-      <div class="sum-val" id="sum-ls_long" style="color:var(--long)">0</div>
-      <div class="sum-lbl">롱 우세</div>
-    </div>
-    <div class="sum-card">
-      <div class="sum-val" id="sum-all4" style="color:var(--accent2)">0</div>
-      <div class="sum-lbl">조건 전부</div>
+<!-- ERROR -->
+<div id="errorBanner">
+  <div class="ei">⚠️</div>
+  <div>
+    <div style="font-weight:600;margin-bottom:4px">API 오류</div>
+    <div id="errorText" style="font-size:11px;opacity:.8"></div>
+    <div style="font-size:11px;margin-top:6px;color:var(--muted2)">
+      💡 이 파일을 <strong>로컬 브라우저(Chrome/Safari)</strong>에서 직접 열어야 바이낸스 API에 접근 가능합니다.
     </div>
   </div>
+</div>
 
+<!-- SUMMARY CARDS -->
+<div id="summarySection">
+  <div class="sum-card" id="sc-all" onclick="setChipById('all')" data-tip="전체 심볼 수">
+    <div class="sv" style="color:var(--text)" id="sv-total">0</div>
+    <div class="sl">전체 심볼</div>
+    <div class="sb" style="background:var(--border2)"></div>
+  </div>
+  <div class="sum-card" id="sc-ma" onclick="setChipById('ma')" data-tip="MA5 > MA20 > MA60 정배열">
+    <div class="sv" style="color:var(--accent)" id="sv-ma">0</div>
+    <div class="sl">MA 정배열</div>
+    <div class="sb" style="background:var(--accent)"></div>
+  </div>
+  <div class="sum-card" id="sc-macd" onclick="setChipById('macd')" data-tip="MACD 히스토그램 음수">
+    <div class="sv" style="color:var(--red)" id="sv-macd">0</div>
+    <div class="sl">MACD 음수</div>
+    <div class="sb" style="background:var(--red)"></div>
+  </div>
+  <div class="sum-card" id="sc-ls_long" onclick="setChipById('ls_long')" data-tip="롱 포지션 비율 50% 초과">
+    <div class="sv" style="color:var(--green)" id="sv-lslong">0</div>
+    <div class="sl">롱 우세</div>
+    <div class="sb" style="background:var(--green)"></div>
+  </div>
+  <div class="sum-card" id="sc-all2" onclick="setChipById('all2')" data-tip="MA정배열 + MACD음수 동시 만족">
+    <div class="sv" style="color:var(--green)" id="sv-all2">0</div>
+    <div class="sl">조건 전부 ⭐</div>
+    <div class="sb" style="background:linear-gradient(90deg,var(--accent),var(--green))"></div>
+  </div>
+</div>
+
+<!-- TABLE -->
+<div id="tableSection">
+  <div id="tableInfo" style="display:none">
+    <span class="table-count" id="tableCount"></span>
+    <span class="table-hint">헤더 클릭으로 정렬 · 카드 클릭으로 필터</span>
+  </div>
   <div class="table-wrap">
     <table>
       <thead>
         <tr>
-          <th onclick="sortBy('no')">#</th>
-          <th onclick="sortBy('symbol')" style="text-align:left">SYMBOL</th>
-          <th onclick="sortBy('price')">현재가</th>
-          <th onclick="sortBy('ma')">MA<br>5>20>60</th>
-          <th onclick="sortBy('ls_ratio')">롱/숏 비율<br>(고래)</th>
-          <th onclick="sortBy('oi')">OI<br>시각화</th>
-          <th onclick="sortBy('macd')">MACD</th>
-          <th onclick="sortBy('score')">매칭<br>점수</th>
+          <th onclick="sortBy('no')" style="width:36px">#<span class="sort-arrow"></span></th>
+          <th onclick="sortBy('symbol')" class="th-left">심볼<span class="sort-arrow"></span></th>
+          <th onclick="sortBy('price')">현재가<span class="sort-arrow"></span></th>
+          <th onclick="sortBy('ma')" data-tip="MA5 > MA20 > MA60">MA 정배열<span class="sort-arrow"></span></th>
+          <th onclick="sortBy('ls')" data-tip="고래 롱/숏 비율 (globalLongShortAccountRatio)">롱/숏 비율<span class="sort-arrow"></span></th>
+          <th onclick="sortBy('oi')" data-tip="미결제약정 (USDT 환산)">OI 규모<span class="sort-arrow"></span></th>
+          <th onclick="sortBy('macd')" data-tip="EMA12 - EMA26">MACD<span class="sort-arrow"></span></th>
+          <th onclick="sortBy('score')" style="width:80px">점수<span class="sort-arrow"></span></th>
         </tr>
       </thead>
       <tbody id="tableBody">
-        <tr>
-          <td colspan="8">
-            <div class="empty-state">
-              <div class="big">🔍</div>
-              <div>SCAN START 버튼을 눌러 바이낸스 선물 전체 심볼을 스캔하세요</div>
-              <div style="margin-top:8px;font-size:11px;color:var(--muted)">USDT 마진 선물 · 1시간 봉 기준 · MA / MACD / 롱숏비율 / OI</div>
+        <tr><td colspan="8" style="padding:0">
+          <div id="splash">
+            <div class="splash-icon">🚀</div>
+            <div class="splash-title">FUTURES SCANNER</div>
+            <div class="splash-desc">바이낸스 USDT 무기한 선물 전체 심볼을 실시간 분석합니다.<br>1시간봉 기준 기술 지표를 자동 계산하여 조건을 충족하는 심볼을 찾아드립니다.</div>
+            <div class="splash-grid">
+              <div class="splash-tag">
+                <div class="st-icon">📈</div>
+                <div><div class="st-text">MA 정배열</div><div class="st-sub">5 &gt; 20 &gt; 60 (1H)</div></div>
+              </div>
+              <div class="splash-tag">
+                <div class="st-icon">🐋</div>
+                <div><div class="st-text">롱/숏 비율</div><div class="st-sub">고래 계좌 기준</div></div>
+              </div>
+              <div class="splash-tag">
+                <div class="st-icon">📊</div>
+                <div><div class="st-text">OI 시각화</div><div class="st-sub">미결제약정 규모</div></div>
+              </div>
+              <div class="splash-tag">
+                <div class="st-icon">📉</div>
+                <div><div class="st-text">MACD 음수</div><div class="st-sub">EMA12 − EMA26 &lt; 0</div></div>
+              </div>
             </div>
-          </td>
-        </tr>
+            <button class="splash-cta" onclick="startScan()">▶ 스캔 시작하기</button>
+          </div>
+        </td></tr>
       </tbody>
     </table>
   </div>
 </div>
 
 <script>
+/* ===== STATE ===== */
 const BASE = 'https://fapi.binance.com';
-let allData = [];
-let currentFilter = 'all';
-let sortKey = 'score';
-let sortDir = 'desc';
-let maxOI = 1;
+let allData = [], maxOI = 1;
+let curFilter = 'all', sortKey = 'score', sortDir = 'desc';
 
-function setFilter(f, el) {
-  currentFilter = f;
-  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
-  el.classList.add('active');
-  renderTable();
-}
-
-function sortBy(key) {
-  if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-  else { sortKey = key; sortDir = 'desc'; }
-  document.querySelectorAll('th').forEach(th => {
-    th.classList.remove('sort-asc', 'sort-desc');
-  });
-  renderTable();
-}
-
-function fmtNum(n) {
+/* ===== UTILS ===== */
+const $ = id => document.getElementById(id);
+const fmt = n => {
+  if (!n || isNaN(n)) return '—';
   if (n >= 1e9) return (n/1e9).toFixed(2)+'B';
   if (n >= 1e6) return (n/1e6).toFixed(2)+'M';
   if (n >= 1e3) return (n/1e3).toFixed(1)+'K';
   return n.toFixed(2);
-}
+};
+const fmtPrice = p => {
+  if (!p) return '—';
+  if (p < 0.0001) return p.toFixed(7);
+  if (p < 0.01)   return p.toFixed(5);
+  if (p < 1)      return p.toFixed(4);
+  if (p < 100)    return p.toFixed(3);
+  return p.toFixed(2);
+};
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function fetchWithRetry(url, retries=2) {
-  for (let i=0; i<=retries; i++) {
+async function fetchRetry(url, tries=3) {
+  for (let i=0; i<tries; i++) {
     try {
       const r = await fetch(url);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
       return await r.json();
     } catch(e) {
-      if (i===retries) throw e;
-      await new Promise(r=>setTimeout(r,500*(i+1)));
+      if (i===tries-1) throw e;
+      await sleep(400*(i+1));
     }
   }
 }
 
-function calcMA(closes, period) {
-  if (closes.length < period) return null;
-  const slice = closes.slice(-period);
-  return slice.reduce((a,b)=>a+b,0)/period;
+/* ===== FILTER / SORT ===== */
+function setChip(el, filter) {
+  curFilter = filter;
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  // update card active states
+  document.querySelectorAll('.sum-card').forEach(c => c.classList.remove('active-card'));
+  const sc = $('sc-'+filter);
+  if (sc) sc.classList.add('active-card');
+  renderTable();
+}
+function setChipById(filter) {
+  const el = document.querySelector(`.chip[data-filter="${filter}"]`);
+  if (el) setChip(el, filter);
 }
 
+function sortBy(key) {
+  if (sortKey === key) sortDir = sortDir==='asc'?'desc':'asc';
+  else { sortKey = key; sortDir = 'desc'; }
+  document.querySelectorAll('th').forEach(th => th.classList.remove('sort-asc','sort-desc'));
+  renderTable();
+}
+
+/* ===== MA / MACD ===== */
+function calcMA(closes, p) {
+  if (closes.length < p) return null;
+  return closes.slice(-p).reduce((a,b)=>a+b,0)/p;
+}
+function calcEMA(arr, p) {
+  const k = 2/(p+1);
+  let e = arr[0];
+  for (let i=1;i<arr.length;i++) e = arr[i]*k + e*(1-k);
+  return e;
+}
 function calcMACD(closes) {
   if (closes.length < 35) return null;
-  const ema = (arr, period) => {
-    const k = 2/(period+1);
-    let e = arr[0];
-    for (let i=1;i<arr.length;i++) e = arr[i]*k + e*(1-k);
-    return e;
-  };
-  // Use last 60 candles
-  const data = closes.slice(-60);
-  const ema12 = ema(data, 12);
-  const ema26 = ema(data, 26);
-  return ema12 - ema26;
+  const d = closes.slice(-60);
+  return calcEMA(d,12) - calcEMA(d,26);
 }
 
+/* ===== SCAN ===== */
 async function startScan() {
-  const btn = document.getElementById('scanBtn');
+  const btn = $('scanBtn');
   btn.disabled = true;
-  btn.textContent = '스캔 중...';
-  document.getElementById('progressWrap').classList.add('show');
-  document.getElementById('summaryBar').style.display = 'none';
-  document.getElementById('errorMsg').classList.remove('show');
-  allData = [];
-  maxOI = 1;
+  $('scanBtnIcon').textContent = '⏳';
+  $('scanBtnText').textContent = '스캔 중...';
+  $('progressOverlay').classList.add('show');
+  $('summarySection').classList.remove('show');
+  $('tableInfo').style.display = 'none';
+  $('errorBanner').classList.remove('show');
+  allData = []; maxOI = 1;
+
+  // hide splash
+  document.getElementById('splash') && (document.getElementById('splash').style.display = 'none');
 
   try {
-    // 1. Get all USDT perp symbols
-    document.getElementById('progressText').textContent = '바이낸스 선물 심볼 목록 로딩...';
-    const exInfo = await fetchWithRetry(`${BASE}/fapi/v1/exchangeInfo`);
+    $('progLabel').textContent = '📡 심볼 목록 로딩 중...';
+    $('progSub').textContent = 'fapi.binance.com/exchangeInfo';
+
+    const exInfo = await fetchRetry(`${BASE}/fapi/v1/exchangeInfo`);
     const symbols = exInfo.symbols
-      .filter(s => s.quoteAsset === 'USDT' && s.contractType === 'PERPETUAL' && s.status === 'TRADING')
+      .filter(s => s.quoteAsset==='USDT' && s.contractType==='PERPETUAL' && s.status==='TRADING')
       .map(s => s.symbol);
 
-    document.getElementById('hdr-total').textContent = symbols.length;
-    document.getElementById('progressText').textContent = `총 ${symbols.length}개 심볼 스캔 시작`;
+    $('hd-total').textContent = symbols.length;
+    $('progCount').textContent = `0 / ${symbols.length}`;
 
-    // 2. Get OI for all (bulk)
-    let oiMap = {};
-    try {
-      const oiData = await fetchWithRetry(`${BASE}/fapi/v1/openInterest?symbol=`).catch(()=>null);
-      // We'll get OI per symbol during individual fetch
-    } catch(e) {}
-
-    // 3. Scan each symbol (batched)
-    const BATCH = 5;
+    const BATCH = 6;
     let done = 0;
     const results = [];
 
     for (let i=0; i<symbols.length; i+=BATCH) {
       const batch = symbols.slice(i, i+BATCH);
-      const batchResults = await Promise.allSettled(batch.map(sym => scanSymbol(sym)));
-      batchResults.forEach((res, j) => {
-        if (res.status === 'fulfilled' && res.value) {
-          results.push(res.value);
-        }
-      });
-      done += batch.length;
-      const pct = Math.round(done/symbols.length*100);
-      document.getElementById('progressBar').style.width = pct+'%';
-      document.getElementById('progressText').textContent = `${done} / ${symbols.length} 스캔 완료 (${pct}%)`;
-      document.getElementById('hdr-scanned').textContent = done;
+      const settled = await Promise.allSettled(batch.map(scanOne));
+      settled.forEach(r => { if (r.status==='fulfilled' && r.value) results.push(r.value); });
 
-      // Update table incrementally
-      allData = results;
-      if (allData.length > 0) {
-        maxOI = Math.max(...allData.map(d=>d.oi||0), 1);
-        updateStats();
-        renderTable();
-      }
-      // Small delay to avoid rate limit
-      await new Promise(r=>setTimeout(r,120));
+      done += batch.length;
+      const pct = (done/symbols.length*100).toFixed(1);
+      $('progFill').style.width = pct+'%';
+      $('progCount').textContent = `${done} / ${symbols.length}`;
+      $('progLabel').textContent = `📡 스캔 중... ${pct}%`;
+      $('hd-done').textContent = done;
+      $('progSub').textContent = batch.join(', ');
+
+      allData = [...results];
+      if (allData.length>0) { maxOI = Math.max(...allData.map(d=>d.oi||0),1); updateStats(); renderTable(); }
+      await sleep(100);
     }
 
-    document.getElementById('progressWrap').classList.remove('show');
-    document.getElementById('summaryBar').style.display = 'flex';
-    updateStats();
-    renderTable();
+    $('progressOverlay').classList.remove('show');
+    $('summarySection').classList.add('show');
+    $('tableInfo').style.display = 'flex';
+    $('lastUpdated').textContent = '업데이트: ' + new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
+    updateStats(); renderTable();
 
   } catch(e) {
-    document.getElementById('errorMsg').textContent = '오류: ' + e.message + ' (CORS 또는 네트워크 문제일 수 있습니다. 브라우저에서 직접 열어주세요)';
-    document.getElementById('errorMsg').classList.add('show');
-    document.getElementById('progressWrap').classList.remove('show');
+    $('progressOverlay').classList.remove('show');
+    $('errorBanner').classList.add('show');
+    $('errorText').textContent = e.message;
   }
 
   btn.disabled = false;
-  btn.textContent = '▶ RE-SCAN';
+  $('scanBtnIcon').textContent = '🔄';
+  $('scanBtnText').textContent = '다시 스캔';
 }
 
-async function scanSymbol(sym) {
+async function scanOne(sym) {
   try {
-    // Klines 1h (80 candles for MA60 + buffer)
-    const [klines, oiRes, lsRes] = await Promise.allSettled([
-      fetchWithRetry(`${BASE}/fapi/v1/klines?symbol=${sym}&interval=1h&limit=80`),
-      fetchWithRetry(`${BASE}/fapi/v1/openInterest?symbol=${sym}`),
-      fetchWithRetry(`${BASE}/futures/data/globalLongShortAccountRatio?symbol=${sym}&period=1h&limit=1`),
+    const [kR, oiR, lsR] = await Promise.allSettled([
+      fetchRetry(`${BASE}/fapi/v1/klines?symbol=${sym}&interval=1h&limit=80`),
+      fetchRetry(`${BASE}/fapi/v1/openInterest?symbol=${sym}`),
+      fetchRetry(`${BASE}/futures/data/globalLongShortAccountRatio?symbol=${sym}&period=1h&limit=1`),
     ]);
+    if (kR.status!=='fulfilled') return null;
+    const k = kR.value;
+    if (!k || k.length < 62) return null;
 
-    if (klines.status !== 'fulfilled') return null;
-    const k = klines.value;
-    if (!k || k.length < 61) return null;
-
-    const closes = k.map(c => parseFloat(c[4]));
-    const lastClose = closes[closes.length-1];
-
-    const ma5  = calcMA(closes, 5);
-    const ma20 = calcMA(closes, 20);
-    const ma60 = calcMA(closes, 60);
+    const closes = k.map(c=>parseFloat(c[4]));
+    const last = closes.at(-1);
+    const ma5=calcMA(closes,5), ma20=calcMA(closes,20), ma60=calcMA(closes,60);
     const macd = calcMACD(closes);
-
-    const maOk = ma5 !== null && ma20 !== null && ma60 !== null && ma5 > ma20 && ma20 > ma60;
-    const macdOk = macd !== null && macd < 0;
+    const maOk = ma5&&ma20&&ma60 && ma5>ma20 && ma20>ma60;
+    const macdOk = macd!==null && macd<0;
 
     let oi = 0;
-    if (oiRes.status === 'fulfilled') {
-      oi = parseFloat(oiRes.value.openInterest || 0) * lastClose;
+    if (oiR.status==='fulfilled') oi = parseFloat(oiR.value.openInterest||0)*last;
+
+    let lsLong=50, lsShort=50;
+    if (lsR.status==='fulfilled' && lsR.value?.length>0) {
+      const ratio = parseFloat(lsR.value[0].longShortRatio);
+      lsLong = ratio/(1+ratio)*100; lsShort = 100-lsLong;
     }
 
-    let lsLong = 50, lsShort = 50;
-    let lsOk_long = false, lsOk_short = false;
-    if (lsRes.status === 'fulfilled' && lsRes.value && lsRes.value.length > 0) {
-      const ls = lsRes.value[0];
-      const ratio = parseFloat(ls.longShortRatio);
-      lsLong = ratio / (1+ratio) * 100;
-      lsShort = 100 - lsLong;
-      lsOk_long = lsLong > 50;
-      lsOk_short = lsShort > 50;
-    }
-
-    const score = [maOk, macdOk].filter(Boolean).length;
-
-    return {
-      symbol: sym,
-      price: lastClose,
-      ma5, ma20, ma60,
-      maOk,
-      macd,
-      macdOk,
-      oi,
-      lsLong,
-      lsShort,
-      lsOk_long,
-      lsOk_short,
-      score,
-    };
-  } catch(e) {
-    return null;
-  }
+    const score = [maOk,macdOk].filter(Boolean).length;
+    return { symbol:sym, price:last, ma5,ma20,ma60, maOk, macd, macdOk, oi, lsLong, lsShort, lsOk_long:lsLong>50, score };
+  } catch { return null; }
 }
 
+/* ===== STATS ===== */
 function updateStats() {
   const d = allData;
-  const ma = d.filter(x=>x.maOk).length;
-  const macd = d.filter(x=>x.macdOk).length;
-  const all4 = d.filter(x=>x.maOk && x.macdOk).length;
-  const lsLong = d.filter(x=>x.lsOk_long).length;
-
-  document.getElementById('hdr-ma').textContent = ma;
-  document.getElementById('hdr-macd').textContent = macd;
-  document.getElementById('hdr-all4').textContent = all4;
-
-  document.getElementById('sum-total').textContent = d.length;
-  document.getElementById('sum-ma').textContent = ma;
-  document.getElementById('sum-macd').textContent = macd;
-  document.getElementById('sum-ls_long').textContent = lsLong;
-  document.getElementById('sum-all4').textContent = all4;
+  const ma=d.filter(x=>x.maOk).length;
+  const macd=d.filter(x=>x.macdOk).length;
+  const all2=d.filter(x=>x.maOk&&x.macdOk).length;
+  const lsl=d.filter(x=>x.lsOk_long).length;
+  $('hd-ma').textContent=ma; $('hd-macd').textContent=macd; $('hd-all').textContent=all2;
+  $('sv-total').textContent=d.length; $('sv-ma').textContent=ma; $('sv-macd').textContent=macd;
+  $('sv-lslong').textContent=lsl; $('sv-all2').textContent=all2;
 }
 
+/* ===== RENDER ===== */
 function renderTable() {
-  const search = document.getElementById('searchInput').value.toUpperCase();
+  const q = $('searchInput').value.trim().toUpperCase();
   let data = allData.filter(d => {
-    if (search && !d.symbol.includes(search)) return false;
-    if (currentFilter === 'all4') return d.maOk && d.macdOk;
-    if (currentFilter === 'ma') return d.maOk;
-    if (currentFilter === 'macd') return d.macdOk;
-    if (currentFilter === 'ls_long') return d.lsOk_long;
-    if (currentFilter === 'ls_short') return d.lsOk_short;
+    if (q && !d.symbol.includes(q)) return false;
+    if (curFilter==='all2')     return d.maOk && d.macdOk;
+    if (curFilter==='ma')       return d.maOk;
+    if (curFilter==='macd')     return d.macdOk;
+    if (curFilter==='ls_long')  return d.lsOk_long;
+    if (curFilter==='ls_short') return !d.lsOk_long;
     return true;
   });
 
-  // Sort
-  data.sort((a,b) => {
-    let av = a[sortKey], bv = b[sortKey];
-    if (sortKey === 'no') { av = allData.indexOf(a); bv = allData.indexOf(b); }
-    if (sortKey === 'symbol') { return sortDir==='asc' ? a.symbol.localeCompare(b.symbol) : b.symbol.localeCompare(a.symbol); }
-    if (sortKey === 'ma') { av = a.maOk?1:0; bv = b.maOk?1:0; }
-    if (sortKey === 'macd') { av = a.macdOk?1:0; bv = b.macdOk?1:0; }
-    if (sortKey === 'ls_ratio') { av = a.lsLong; bv = b.lsLong; }
-    return sortDir === 'asc' ? av-bv : bv-av;
+  // sort
+  const dir = sortDir==='asc'?1:-1;
+  data.sort((a,b)=>{
+    switch(sortKey){
+      case 'symbol': return dir*(a.symbol<b.symbol?-1:1);
+      case 'price':  return dir*(a.price-b.price);
+      case 'ma':     return dir*((a.maOk?1:0)-(b.maOk?1:0));
+      case 'macd':   return dir*((a.macdOk?1:0)-(b.macdOk?1:0));
+      case 'ls':     return dir*(a.lsLong-b.lsLong);
+      case 'oi':     return dir*(a.oi-b.oi);
+      case 'score':  return dir*(a.score-b.score);
+      default:       return 0;
+    }
   });
 
-  const tbody = document.getElementById('tableBody');
-  if (data.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="big">📭</div><div>조건에 맞는 심볼이 없습니다</div></div></td></tr>`;
+  // update sort arrows
+  document.querySelectorAll('th').forEach(th => th.classList.remove('sort-asc','sort-desc'));
+  const thMap={no:0,symbol:1,price:2,ma:3,ls:4,oi:5,macd:6,score:7};
+  const thIdx = thMap[sortKey];
+  if (thIdx!==undefined) {
+    const ths = document.querySelectorAll('thead th');
+    if (ths[thIdx]) ths[thIdx].classList.add(sortDir==='asc'?'sort-asc':'sort-desc');
+  }
+
+  const cnt = data.length;
+  $('tableCount').textContent = `${cnt}개 심볼 표시 중 (전체 ${allData.length}개)`;
+
+  const tbody = $('tableBody');
+  if (cnt===0) {
+    tbody.innerHTML = `<tr><td colspan="8">
+      <div class="empty-state">
+        <div class="empty-icon">📭</div>
+        <div class="empty-title">조건에 맞는 심볼 없음</div>
+        <div class="empty-sub">필터를 변경하거나 검색어를 확인해 주세요.</div>
+      </div></td></tr>`;
     return;
   }
 
-  const rows = data.map((d, i) => {
-    const isAll = d.maOk && d.macdOk;
+  tbody.innerHTML = data.map((d,i)=>{
     const lsW = Math.round(d.lsLong);
-    const oiPct = maxOI > 0 ? Math.min(100, (d.oi/maxOI)*100) : 0;
-    const maStr = d.ma5 && d.ma20 && d.ma60
-      ? `<div style="font-size:10px;color:var(--muted)">${d.ma5.toFixed(2)}<br>${d.ma20.toFixed(2)}<br>${d.ma60.toFixed(2)}</div>`
-      : '<span style="color:var(--muted)">-</span>';
+    const oiPct = Math.min(100,(d.oi/maxOI)*100).toFixed(1);
+    const isAll = d.maOk && d.macdOk;
+    const shortSym = d.symbol.replace('USDT','');
 
-    return `<tr class="${isAll?'highlight-all':''}">
-      <td class="col-num">${i+1}</td>
-      <td class="symbol-cell">${d.symbol.replace('USDT','')}
-        <span style="color:var(--muted);font-weight:300">/USDT</span>
-        ${isAll?'<span class="tag-all4">ALL</span>':''}
-      </td>
-      <td class="price-cell">${d.price < 0.001 ? d.price.toFixed(6) : d.price < 1 ? d.price.toFixed(4) : d.price.toFixed(2)}</td>
+    const maVal = d.ma5&&d.ma20&&d.ma60
+      ? `<div class="ma-vals">5: ${fmtPrice(d.ma5)}<br>20: ${fmtPrice(d.ma20)}<br>60: ${fmtPrice(d.ma60)}</div>`
+      : '';
+
+    const macd4 = d.macd!==null ? (Math.abs(d.macd)<0.0001?d.macd.toExponential(2):d.macd.toFixed(4)) : '—';
+
+    return `<tr class="${isAll?'row-match':''}">
+      <td class="c-num">${i+1}</td>
       <td>
-        <div style="font-size:18px">${d.maOk ? '<span class="check">✓</span>' : '<span class="cross">✗</span>'}</div>
-        ${maStr}
-      </td>
-      <td>
-        <div class="ls-bar">
-          <div class="ls-long" style="width:${lsW}%"></div>
-          <div class="ls-short" style="width:${100-lsW}%"></div>
+        <div class="c-symbol">
+          <span class="sym-name">${shortSym}<span class="sym-quote">/USDT</span></span>
+          ${isAll?'<span class="badge badge-all">ALL</span>':''}
         </div>
-        <div class="ls-text">
-          <span class="l">${lsW}%</span>
-          <span class="s">${100-lsW}%</span>
-        </div>
-        <div style="font-size:9px;color:var(--muted);margin-top:2px">${d.lsOk_long?'<span style="color:var(--long)">롱 우세</span>':'<span style="color:var(--short)">숏 우세</span>'}</div>
       </td>
+      <td class="c-price">${fmtPrice(d.price)}</td>
       <td>
-        <div class="oi-bar-wrap">
-          <div class="oi-bar-bg"><div class="oi-bar-fill" style="width:${oiPct.toFixed(1)}%"></div></div>
-          <div class="oi-val">${fmtNum(d.oi)}</div>
+        <div class="ma-result">
+          <div class="ma-icon">${d.maOk?'<span style="color:var(--green)">✓</span>':'<span style="color:var(--muted)">✗</span>'}</div>
+          ${maVal}
         </div>
       </td>
       <td>
-        <div class="macd-val ${d.macd<0?'macd-neg':'macd-pos'}">${d.macd!==null?d.macd.toFixed(4):'?'}</div>
-        <div style="font-size:18px">${d.macdOk ? '<span class="check">✓</span>' : '<span class="cross-no">✗</span>'}</div>
+        <div class="ls-wrap">
+          <div class="ls-bar">
+            <div class="ls-l" style="width:${lsW}%"></div>
+            <div class="ls-s" style="width:${100-lsW}%"></div>
+          </div>
+          <div class="ls-nums">
+            <span class="ln">L ${lsW}%</span>
+            <span class="sn">S ${100-lsW}%</span>
+          </div>
+          <div class="ls-label" style="color:${d.lsOk_long?'var(--green)':'var(--red)'}">
+            ${d.lsOk_long?'롱 우세':'숏 우세'}
+          </div>
+        </div>
       </td>
       <td>
-        <div class="match-score score-${d.score}">${d.score}/2</div>
-        <div style="font-size:9px;color:var(--muted);margin-top:2px">${d.score===2?'완전 매칭':d.score===1?'부분 매칭':'미매칭'}</div>
+        <div class="oi-wrap">
+          <div class="oi-track"><div class="oi-fill" style="width:${oiPct}%"></div></div>
+          <div class="oi-num">${fmt(d.oi)}</div>
+        </div>
+      </td>
+      <td>
+        <div class="macd-wrap">
+          <div class="macd-num ${d.macd<0?'macd-neg':'macd-pos'}">${macd4}</div>
+          <div class="macd-icon">${d.macdOk?'<span style="color:var(--red)">▼</span>':'<span style="color:var(--green)">▲</span>'}</div>
+        </div>
+      </td>
+      <td>
+        <div class="score-wrap">
+          <div class="score-dots">
+            <div class="score-dot ${d.maOk?'on':''}" title="MA 정배열"></div>
+            <div class="score-dot ${d.macdOk?'on':''}" title="MACD 음수"></div>
+          </div>
+          <div class="score-num score-${d.score}">${d.score}/2</div>
+        </div>
       </td>
     </tr>`;
-  });
-
-  tbody.innerHTML = rows.join('');
+  }).join('');
 }
 </script>
 </body>
