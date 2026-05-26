@@ -6,7 +6,7 @@
     <title>Synchro-Trade | Futures Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 
@@ -264,6 +264,86 @@
         }
 
         .panel-hidden { display: none !important; }
+
+        /* ── Lightweight Charts override ── */
+        .lw-chart-wrap { width:100%; height:100%; position:relative; }
+        .lw-chart-wrap > * { border-radius:0 !important; }
+
+        /* ── Alert / Notification System ── */
+        #alert-panel {
+            position: fixed;
+            top: 60px; right: 12px;
+            width: 300px;
+            z-index: 500;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            pointer-events: none;
+        }
+        @media (max-width: 900px) {
+            #alert-panel { width: calc(100vw - 24px); right: 12px; top: 60px; }
+        }
+        .alert-card {
+            background: #111720;
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            pointer-events: all;
+            animation: alertSlideIn 0.3s ease-out;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+        }
+        @keyframes alertSlideIn {
+            from { opacity:0; transform: translateX(20px); }
+            to   { opacity:1; transform: translateX(0); }
+        }
+        @keyframes alertSlideOut {
+            from { opacity:1; transform: translateX(0); max-height:100px; }
+            to   { opacity:0; transform: translateX(20px); max-height:0; padding:0; margin:0; }
+        }
+        .alert-card.removing { animation: alertSlideOut 0.25s ease-in forwards; }
+        .alert-card.type-warn  { border-left: 3px solid #f59e0b; }
+        .alert-card.type-up    { border-left: 3px solid #00d4aa; }
+        .alert-card.type-down  { border-left: 3px solid #ff4d6d; }
+        .alert-card.type-info  { border-left: 3px solid #0ea5e9; }
+        .alert-close { margin-left:auto; color:#4a6080; cursor:pointer; flex-shrink:0; line-height:1; }
+        .alert-close:hover { color:#c8d6e5; }
+
+        /* Alert settings modal */
+        #alert-settings-modal {
+            position: fixed; inset:0; z-index:400;
+            background: rgba(8,11,15,0.85);
+            backdrop-filter: blur(4px);
+            display:none;
+            align-items:center;
+            justify-content:center;
+        }
+        #alert-settings-modal.open { display:flex; }
+        .modal-box {
+            background: #111720;
+            border: 1px solid #1e2a38;
+            border-radius: 12px;
+            width: min(420px, calc(100vw - 32px));
+            padding: 24px;
+            position: relative;
+        }
+
+        /* Bell badge */
+        #alert-bell-wrap { position:relative; }
+        #alert-badge {
+            position:absolute; top:-4px; right:-4px;
+            width:14px; height:14px;
+            background:#ff4d6d;
+            border-radius:50%;
+            font-size:8px;
+            display:flex; align-items:center; justify-content:center;
+            color:#fff;
+            font-family:'JetBrains Mono',monospace;
+            display:none;
+        }
     </style>
 </head>
 
@@ -324,8 +404,131 @@
                 <div id="ws-status-dot" class="w-2 h-2 rounded-full bg-warn animate-pulse flex-shrink-0"></div>
                 <span id="ws-status-text" class="text-muted hidden sm:block">연결 중...</span>
             </div>
+
+            <!-- Alert Bell -->
+            <div id="alert-bell-wrap" class="border-l border-border pl-3">
+                <button id="alert-bell-btn" title="알림 설정" class="p-1.5 rounded border border-border hover:border-warn text-muted hover:text-warn transition-colors relative">
+                    <i data-lucide="bell" class="w-4 h-4"></i>
+                    <span id="alert-badge">0</span>
+                </button>
+            </div>
         </div>
     </header>
+
+    <!-- ═══ ALERT PANEL (floating notifications) ═══ -->
+    <div id="alert-panel"></div>
+
+    <!-- ═══ ALERT SETTINGS MODAL ═══ -->
+    <div id="alert-settings-modal">
+        <div class="modal-box">
+            <div class="flex items-center justify-between mb-5">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="bell" class="w-4 h-4 text-warn"></i>
+                    <span class="font-display font-700 text-white" style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px;">알림 설정</span>
+                </div>
+                <button id="alert-modal-close" class="text-muted hover:text-white transition-colors">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+            <!-- Notification permission -->
+            <div class="mb-4 p-3 bg-surface rounded border border-border flex items-center justify-between">
+                <div>
+                    <div class="text-xs text-white font-bold mb-0.5">브라우저 알림</div>
+                    <div class="text-xs text-muted" id="notif-perm-status">권한 확인 중...</div>
+                </div>
+                <button id="notif-request-btn" class="text-xs px-3 py-1.5 rounded border border-accent/40 bg-accent/10 text-accent hover:bg-accent/20 transition-colors hidden">
+                    권한 허용
+                </button>
+            </div>
+
+            <div class="space-y-3 text-xs">
+                <!-- Funding rate alert -->
+                <div class="p-3 bg-surface rounded border border-border">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-white font-bold">펀딩비 임계값 알림</span>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="alert-funding-on" class="sr-only peer" checked>
+                            <div class="w-8 h-4 bg-border rounded-full peer peer-checked:bg-accent after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:after:translate-x-4"></div>
+                        </label>
+                    </div>
+                    <div class="flex items-center gap-2 text-muted">
+                        <span>펀딩비</span>
+                        <span class="text-warn">±</span>
+                        <input id="alert-funding-thresh" type="number" value="0.05" step="0.01" min="0.01"
+                            class="w-16 bg-card border border-border rounded px-2 py-1 text-white font-mono text-center focus:border-accent">
+                        <span>% 초과 시</span>
+                    </div>
+                </div>
+
+                <!-- Price alert -->
+                <div class="p-3 bg-surface rounded border border-border">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-white font-bold">가격 도달 알림</span>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="alert-price-on" class="sr-only peer" checked>
+                            <div class="w-8 h-4 bg-border rounded-full peer peer-checked:bg-accent after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:after:translate-x-4"></div>
+                        </label>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <div class="text-up mb-1">상단 가격</div>
+                            <input id="alert-price-upper" type="number" placeholder="설정 안함"
+                                class="w-full bg-card border border-border rounded px-2 py-1 text-white font-mono focus:border-up text-xs">
+                        </div>
+                        <div>
+                            <div class="text-down mb-1">하단 가격</div>
+                            <input id="alert-price-lower" type="number" placeholder="설정 안함"
+                                class="w-full bg-card border border-border rounded px-2 py-1 text-white font-mono focus:border-down text-xs">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Big trade alert -->
+                <div class="p-3 bg-surface rounded border border-border">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-white font-bold">대량 체결 알림</span>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="alert-trade-on" class="sr-only peer" checked>
+                            <div class="w-8 h-4 bg-border rounded-full peer peer-checked:bg-accent after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:after:translate-x-4"></div>
+                        </label>
+                    </div>
+                    <div class="flex items-center gap-2 text-muted">
+                        <span>평균 대비</span>
+                        <input id="alert-trade-mult" type="number" value="10" step="1" min="3"
+                            class="w-14 bg-card border border-border rounded px-2 py-1 text-white font-mono text-center focus:border-accent">
+                        <span>배 이상 체결</span>
+                    </div>
+                </div>
+
+                <!-- Order wall alert -->
+                <div class="p-3 bg-surface rounded border border-border">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-white font-bold">오더북 벽 알림</span>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="alert-wall-on" class="sr-only peer" checked>
+                            <div class="w-8 h-4 bg-border rounded-full peer peer-checked:bg-accent after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:after:translate-x-4"></div>
+                        </label>
+                    </div>
+                    <div class="flex items-center gap-2 text-muted">
+                        <span>최대 잔량 대비</span>
+                        <input id="alert-wall-pct" type="number" value="70" step="5" min="50" max="100"
+                            class="w-14 bg-card border border-border rounded px-2 py-1 text-white font-mono text-center focus:border-accent">
+                        <span>% 이상</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-4 flex gap-2">
+                <button id="alert-save-btn" class="flex-1 py-2 rounded bg-accent/10 border border-accent/40 text-accent hover:bg-accent/20 transition-colors font-mono text-xs font-bold">
+                    ✓ 저장
+                </button>
+                <button id="alert-clear-btn" class="px-4 py-2 rounded bg-surface border border-border text-muted hover:text-white transition-colors font-mono text-xs">
+                    알림 초기화
+                </button>
+            </div>
+        </div>
+    </div>
 
     <!-- ═══════════════════ DESKTOP LAYOUT ═══════════════════ -->
     <div class="desktop-layout grid-cols-12 gap-0 desktop-main" style="display:none;">
@@ -457,8 +660,8 @@
                     </div>
                 </div>
                 <div class="flex-1 relative">
-                    <canvas id="priceChart"></canvas>
-                    <div id="chart-loading" class="absolute inset-0 flex items-center justify-center bg-card">
+                    <div id="priceChart" class="lw-chart-wrap" style="height:100%;min-height:280px;"></div>
+                    <div id="chart-loading" class="absolute inset-0 flex items-center justify-center bg-card" style="z-index:10;">
                         <div class="flex flex-col items-center gap-2">
                             <i data-lucide="loader-2" class="w-6 h-6 text-accent loading-spin"></i>
                             <span class="text-xs text-muted">차트 로딩...</span>
@@ -694,8 +897,8 @@
                         </div>
                     </div>
                     <div class="flex-1 relative">
-                        <canvas id="m-priceChart"></canvas>
-                        <div id="m-chart-loading" class="absolute inset-0 flex items-center justify-center bg-card">
+                        <div id="m-priceChart" class="lw-chart-wrap" style="height:100%;min-height:220px;"></div>
+                        <div id="m-chart-loading" class="absolute inset-0 flex items-center justify-center bg-card" style="z-index:10;">
                             <div class="flex flex-col items-center gap-2">
                                 <i data-lucide="loader-2" class="w-5 h-5 text-accent loading-spin"></i>
                                 <span class="text-xs text-muted">차트 로딩...</span>
@@ -1154,16 +1357,16 @@ async function fetchLSRatio(sym) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// KLINES + CHARTS
+// KLINES + LIGHTWEIGHT CHARTS (Candlestick)
 // ═══════════════════════════════════════════════════════════════
 async function fetchKlines(sym, interval) {
     ['chart-loading','m-chart-loading'].forEach(id=>{const e=el(id);if(e)e.style.display='flex';});
     try {
-        const r = await fetch(`${BINANCE_REST}/fapi/v1/klines?symbol=${sym}&interval=${interval}&limit=100`);
+        const r = await fetch(`${BINANCE_REST}/fapi/v1/klines?symbol=${sym}&interval=${interval}&limit=200`);
         const d = await r.json();
         STATE.chartData = d;
-        renderChart(d, interval);
-        if(STATE.activePanel==='chart') renderMobileChart(d, interval);
+        renderLWChart(d, 'priceChart', 'desktop');
+        if(STATE.activePanel==='chart') renderLWChart(d, 'm-priceChart', 'mobile');
         if(d.length>0) {
             const last = d[d.length-1];
             const dec = getPriceDecimals(sym);
@@ -1182,112 +1385,173 @@ async function fetchKlines(sym, interval) {
     }
 }
 
-function buildChartConfig(data, canvasId) {
-    const closes = data.map(k=>parseFloat(k[4]));
-    const vols   = data.map(k=>parseFloat(k[5]));
-    const maxVol = Math.max(...vols);
-    const isRising = closes[closes.length-1] >= closes[0];
-    const ctx = document.getElementById(canvasId);
-    if(!ctx) return null;
-    const cg = ctx.getContext('2d');
-    const grad = cg.createLinearGradient(0,0,0,300);
-    grad.addColorStop(0, isRising?'rgba(0,212,170,0.25)':'rgba(255,77,109,0.25)');
-    grad.addColorStop(1,'rgba(0,0,0,0)');
-    const labels = data.map((k,i)=>{
-        const d=new Date(k[0]);
-        return (i%Math.max(1,Math.floor(data.length/8))===0)?`${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`:'';
+// Lightweight Charts instances
+const LW_CHARTS = { desktop: null, mobile: null };
+const LW_SERIES = { desktop: { candle:null, vol:null, ma20:null }, mobile: { candle:null, vol:null, ma20:null } };
+
+function renderLWChart(data, containerId, key) {
+    const container = el(containerId);
+    if(!container) return;
+
+    // Destroy previous instance
+    if(LW_CHARTS[key]) {
+        try { LW_CHARTS[key].remove(); } catch(e){}
+        LW_CHARTS[key] = null;
+        LW_SERIES[key] = { candle:null, vol:null, ma20:null };
+    }
+
+    // Build candle + volume data
+    const candleData = data.map(k => ({
+        time: Math.floor(k[0] / 1000),
+        open:  parseFloat(k[1]),
+        high:  parseFloat(k[2]),
+        low:   parseFloat(k[3]),
+        close: parseFloat(k[4]),
+    }));
+    const volData = data.map(k => {
+        const isUp = parseFloat(k[4]) >= parseFloat(k[1]);
+        return {
+            time:  Math.floor(k[0] / 1000),
+            value: parseFloat(k[5]),
+            color: isUp ? 'rgba(0,212,170,0.35)' : 'rgba(255,77,109,0.35)',
+        };
     });
-    return { labels, closes, vols, maxVol, grad, isRising, ctx };
-}
 
-function renderChart(data) {
-    const b = buildChartConfig(data, 'priceChart');
-    if(!b) return;
-    if(STATE.chart) { STATE.chart.destroy(); STATE.chart=null; }
-    STATE.chart = buildChartInstance('priceChart', b);
-}
+    // MA20
+    const closes = data.map(k => parseFloat(k[4]));
+    const ma20Data = closes.map((v, i) => {
+        if(i < 19) return null;
+        return {
+            time:  Math.floor(data[i][0] / 1000),
+            value: closes.slice(i-19, i+1).reduce((a,b)=>a+b) / 20,
+        };
+    }).filter(Boolean);
 
-function renderMobileChart(data) {
-    const b = buildChartConfig(data, 'm-priceChart');
-    if(!b) return;
-    if(STATE.mChart) { STATE.mChart.destroy(); STATE.mChart=null; }
-    STATE.mChart = buildChartInstance('m-priceChart', b);
-}
-
-function buildChartInstance(canvasId, b) {
-    const {labels, closes, vols, maxVol, grad, isRising} = b;
-    const dec = getPriceDecimals(STATE.symbol);
-    return new Chart(document.getElementById(canvasId), {
-        type: 'line',
-        data: {
-            labels,
-            datasets: [
-                {
-                    label:'Close',
-                    data: closes,
-                    borderColor: isRising?'#00d4aa':'#ff4d6d',
-                    borderWidth:1.5,
-                    backgroundColor: grad,
-                    fill:true,
-                    tension:0.15,
-                    pointRadius:0,
-                    pointHoverRadius:3,
-                    order:1,
-                },
-                {
-                    label:'MA20',
-                    data: closes.map((v,i)=>i<19?null:closes.slice(i-19,i+1).reduce((a,b)=>a+b)/20),
-                    borderColor:'#4a6080',
-                    borderWidth:1,
-                    borderDash:[4,4],
-                    fill:false,
-                    pointRadius:0,
-                    tension:0,
-                    order:2,
-                },
-                {
-                    label:'Volume',
-                    data: vols.map(v=>(v/maxVol)*(Math.max(...closes)-Math.min(...closes))*0.3+Math.min(...closes)),
-                    borderColor:'rgba(14,165,233,0.3)',
-                    backgroundColor:'rgba(14,165,233,0.07)',
-                    borderWidth:0,
-                    fill:true,
-                    pointRadius:0,
-                    tension:0,
-                    order:3,
-                    type:'bar',
-                }
-            ]
+    // Create chart
+    const chart = LightweightCharts.createChart(container, {
+        layout: {
+            background: { color: '#111720' },
+            textColor: '#4a6080',
+            fontSize: 10,
+            fontFamily: "'JetBrains Mono', monospace",
         },
-        options: {
-            responsive:true,
-            maintainAspectRatio:false,
-            animation:{duration:250},
-            interaction:{mode:'index',intersect:false},
-            plugins:{
-                legend:{display:false},
-                tooltip:{
-                    backgroundColor:'#111720',
-                    titleColor:'#c8d6e5',
-                    bodyColor:'#c8d6e5',
-                    borderColor:'#1e2a38',
-                    borderWidth:1,
-                    titleFont:{family:'JetBrains Mono',size:10},
-                    bodyFont:{family:'JetBrains Mono',size:10},
-                }
-            },
-            scales:{
-                x:{
-                    grid:{color:'#1e2a38',drawBorder:false},
-                    ticks:{color:'#4a6080',font:{family:'JetBrains Mono',size:9},maxRotation:0}
-                },
-                y:{
-                    position:'right',
-                    grid:{color:'#1e2a38',drawBorder:false},
-                    ticks:{color:'#4a6080',font:{family:'JetBrains Mono',size:9},callback:v=>fmtPrice(v,dec)}
-                }
-            }
+        grid: {
+            vertLines: { color: '#1e2a38' },
+            horzLines: { color: '#1e2a38' },
+        },
+        crosshair: {
+            mode: LightweightCharts.CrosshairMode.Normal,
+            vertLine: { color: '#0ea5e9', width: 1, style: 3, labelBackgroundColor: '#0ea5e9' },
+            horzLine: { color: '#0ea5e9', width: 1, style: 3, labelBackgroundColor: '#0ea5e9' },
+        },
+        rightPriceScale: {
+            borderColor: '#1e2a38',
+            textColor: '#4a6080',
+            scaleMargins: { top: 0.08, bottom: 0.22 },
+        },
+        timeScale: {
+            borderColor: '#1e2a38',
+            textColor: '#4a6080',
+            timeVisible: true,
+            secondsVisible: false,
+            fixLeftEdge: false,
+            fixRightEdge: false,
+        },
+        handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+        handleScale:  { axisPressedMouseMove: true, mouseWheel: true, pinch: true },
+        width:  container.clientWidth  || container.offsetWidth  || 600,
+        height: container.clientHeight || container.offsetHeight || 300,
+    });
+
+    // Candlestick series
+    const candleSeries = chart.addCandlestickSeries({
+        upColor:          '#00d4aa',
+        downColor:        '#ff4d6d',
+        borderUpColor:    '#00d4aa',
+        borderDownColor:  '#ff4d6d',
+        wickUpColor:      '#00d4aa',
+        wickDownColor:    '#ff4d6d',
+        priceLineVisible: false,
+    });
+    candleSeries.setData(candleData);
+
+    // Volume histogram (separate price scale)
+    const volSeries = chart.addHistogramSeries({
+        priceFormat: { type: 'volume' },
+        priceScaleId: 'vol',
+        lastValueVisible: false,
+        priceLineVisible: false,
+    });
+    chart.priceScale('vol').applyOptions({
+        scaleMargins: { top: 0.82, bottom: 0 },
+        borderVisible: false,
+    });
+    volSeries.setData(volData);
+
+    // MA20 line
+    const ma20Series = chart.addLineSeries({
+        color: '#4a6080',
+        lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        lastValueVisible: false,
+        priceLineVisible: false,
+        crosshairMarkerVisible: false,
+    });
+    ma20Series.setData(ma20Data);
+
+    // OHLC tooltip on crosshair move
+    chart.subscribeCrosshairMove(param => {
+        if(!param.time || !param.seriesData) return;
+        const cd = param.seriesData.get(candleSeries);
+        if(!cd) return;
+        const dec = getPriceDecimals(STATE.symbol);
+        // Update OHLC display
+        setTxt('c-open',  fmtPrice(cd.open, dec));
+        setTxt('c-high',  fmtPrice(cd.high, dec));
+        setTxt('c-low',   fmtPrice(cd.low,  dec));
+        setTxt('c-close', fmtPrice(cd.close,dec));
+        setTxt('m-c-open',  fmtPrice(cd.open, dec));
+        setTxt('m-c-high',  fmtPrice(cd.high, dec));
+        setTxt('m-c-low',   fmtPrice(cd.low,  dec));
+        setTxt('m-c-close', fmtPrice(cd.close,dec));
+        setTxt('m-c-open2',  fmtPrice(cd.open, dec));
+        setTxt('m-c-close2', fmtPrice(cd.close,dec));
+    });
+
+    // Fit content & scroll to right
+    chart.timeScale().fitContent();
+    chart.timeScale().scrollToRealTime();
+
+    // Responsive resize
+    const ro = new ResizeObserver(entries => {
+        for(const entry of entries) {
+            const {width, height} = entry.contentRect;
+            if(width>0 && height>0) chart.resize(width, height);
         }
+    });
+    ro.observe(container);
+
+    LW_CHARTS[key]  = chart;
+    LW_SERIES[key]  = { candle: candleSeries, vol: volSeries, ma20: ma20Series };
+}
+
+// Live candle update from WS kline stream (called from WS handler)
+function updateLiveCandle(k) {
+    const candle = {
+        time:  Math.floor(k.t / 1000),
+        open:  parseFloat(k.o),
+        high:  parseFloat(k.h),
+        low:   parseFloat(k.l),
+        close: parseFloat(k.c),
+    };
+    const vol = {
+        time:  Math.floor(k.t / 1000),
+        value: parseFloat(k.v),
+        color: parseFloat(k.c) >= parseFloat(k.o) ? 'rgba(0,212,170,0.35)' : 'rgba(255,77,109,0.35)',
+    };
+    ['desktop','mobile'].forEach(key => {
+        if(LW_SERIES[key].candle) LW_SERIES[key].candle.update(candle);
+        if(LW_SERIES[key].vol)    LW_SERIES[key].vol.update(vol);
     });
 }
 
