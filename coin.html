@@ -145,6 +145,47 @@ body{
 .dot.live{background:var(--green);box-shadow:0 0 6px var(--green);animation:blink 2s infinite;}
 @keyframes blink{0%,100%{opacity:1;}50%{opacity:0.25;}}
 
+.tf-toggle{
+  display:flex;
+  background:var(--surface2);
+  border:1px solid var(--border);
+  border-radius:6px;
+  overflow:hidden;
+  flex-shrink:0;
+}
+.tf-btn{
+  padding:5px 13px;
+  font-family:var(--mono);
+  font-size:11px;
+  font-weight:600;
+  color:var(--sub);
+  background:none;
+  border:none;
+  cursor:pointer;
+  letter-spacing:0.5px;
+  transition:all 0.15s;
+}
+.tf-btn:hover{color:var(--text);}
+.tf-btn.active{
+  background:var(--surface3);
+  color:var(--text);
+}
+.tf-btn:first-child{border-right:1px solid var(--border);}
+
+/* stat-cell tf badge */
+.tf-badge{
+  display:inline-block;
+  font-size:9px;
+  font-weight:700;
+  padding:1px 5px;
+  border-radius:3px;
+  margin-left:5px;
+  vertical-align:middle;
+  letter-spacing:0.5px;
+}
+.tf-badge.h{background:rgba(124,92,252,0.15);color:var(--purple);}
+.tf-badge.d{background:rgba(245,197,24,0.15);color:var(--yellow);}
+
 .btn-scan{
   height:32px;
   padding:0 16px;
@@ -426,6 +467,10 @@ tbody tr.row-2nd td:first-child{
       <div class="dot" id="dot"></div>
       <span id="statusTxt">대기</span>
     </div>
+    <div class="tf-toggle">
+      <button class="tf-btn active" id="tfBtn1h" onclick="setTF('1h')">1H</button>
+      <button class="tf-btn" id="tfBtn1d" onclick="setTF('1d')">1D</button>
+    </div>
     <button class="btn-scan" id="scanBtn" onclick="startScan()">스캔 시작</button>
   </div>
 </header>
@@ -444,6 +489,7 @@ tbody tr.row-2nd td:first-child{
 <!-- STAT ROW -->
 <div class="stat-row">
   <div class="stat-cell"><div class="sl">전체 심볼</div><div class="sv b" id="sTotal">—</div></div>
+  <div class="stat-cell"><div class="sl">타임프레임</div><div class="sv" id="sTF"><span class="tf-badge h">1H</span></div></div>
   <div class="stat-cell"><div class="sl">1차 통과</div><div class="sv y" id="s1st">—</div></div>
   <div class="stat-cell"><div class="sl">2차 충족</div><div class="sv g" id="s2nd">—</div></div>
   <div class="stat-cell"><div class="sl">최근 스캔</div><div class="sv m" id="sTime">—</div></div>
@@ -508,6 +554,7 @@ let oiMap = {};
 let sortKey = 'pct';
 let sortDir = 'desc';
 let activeTab = 'second';
+let activeInterval = '1h'; // '1h' | '1d'
 
 // ── DOM ──
 const $ = id => document.getElementById(id);
@@ -528,10 +575,11 @@ function fOI(v) {
   if (v >= 1e3) return (v/1e3).toFixed(1)+'K';
   return v.toFixed(0);
 }
-function fTime(ts) {
+function fTime(ts, interval) {
   const d = new Date(ts);
   const mo = String(d.getMonth()+1).padStart(2,'0');
   const dy = String(d.getDate()).padStart(2,'0');
+  if (interval === '1d') return `${d.getFullYear().toString().slice(2)}/${mo}/${dy}`;
   const hh = String(d.getHours()).padStart(2,'0');
   const mm = String(d.getMinutes()).padStart(2,'0');
   return `${mo}/${dy} ${hh}:${mm}`;
@@ -542,6 +590,18 @@ function pctColor(p) {
   return 'up5';
 }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── TIMEFRAME ──
+function setTF(tf) {
+  if (scanning) return;
+  activeInterval = tf;
+  $('tfBtn1h').classList.toggle('active', tf === '1h');
+  $('tfBtn1d').classList.toggle('active', tf === '1d');
+  const badge = $('sTF');
+  if (badge) badge.innerHTML = tf === '1h'
+    ? '<span class="tf-badge h">1H</span>'
+    : '<span class="tf-badge d">1D</span>';
+}
 
 // ── STATUS ──
 function setStatus(state, txt) {
@@ -709,7 +769,7 @@ function renderFirstTable() {
     if (has2nd) tr.classList.add('row-2nd');
     tr.innerHTML = `
       <td class="sym-cell">${r.symbol}</td>
-      <td style="color:var(--sub)">${fTime(r.fc.openTime)}</td>
+      <td style="color:var(--sub)">${fTime(r.fc.openTime, r.interval)}</td>
       <td style="color:var(--text)">${fPrice(r.fc.open)}</td>
       <td style="color:var(--yellow)">${fPrice(r.fc.close)}</td>
       <td style="color:var(--sub)">${fPrice(r.fc.high)}</td>
@@ -766,14 +826,17 @@ function renderCards() {
     card.innerHTML = `
       <div class="card-top">
         <span class="card-sym">${r.symbol}</span>
-        <span class="card-badge">2차 충족</span>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span class="tf-badge ${r.interval==='1d'?'d':'h'}">${r.interval==='1d'?'1D':'1H'}</span>
+          <span class="card-badge">2차 충족</span>
+        </div>
       </div>
       <div class="card-body">
 
         <div class="c-block">
           <div class="c-head"><span class="c-dot y"></span>1차 양봉</div>
           <div class="c-grid">
-            <div class="c-item"><div class="c-lbl">시간</div><div class="c-val cv-w">${fTime(fc.openTime)}</div></div>
+            <div class="c-item"><div class="c-lbl">시간</div><div class="c-val cv-w">${fTime(fc.openTime, r.interval)}</div></div>
             <div class="c-item"><div class="c-lbl">종가</div><div class="c-val cv-y">${fPrice(fc.close)}</div></div>
             <div class="c-item"><div class="c-lbl">상승률</div><div class="c-val cv-y">+${fc.pct.toFixed(2)}%</div></div>
             <div class="c-item"><div class="c-lbl">OI</div><div class="c-val cv-b">${fOI(r.oi)}</div></div>
@@ -783,7 +846,7 @@ function renderCards() {
         <div class="c-block">
           <div class="c-head"><span class="c-dot g"></span>2차 양봉</div>
           <div class="c-grid">
-            <div class="c-item"><div class="c-lbl">시간</div><div class="c-val cv-w">${fTime(sc.openTime)}</div></div>
+            <div class="c-item"><div class="c-lbl">시간</div><div class="c-val cv-w">${fTime(sc.openTime, r.interval)}</div></div>
             <div class="c-item"><div class="c-lbl">종가</div><div class="c-val cv-g">${fPrice(sc.close)}</div></div>
             <div class="c-item"><div class="c-lbl">상승률</div><div class="c-val cv-g">+${sc.pct.toFixed(2)}%</div></div>
             <div class="c-item"><div class="c-lbl">조건</div><div class="c-val cv-g">4/4 ✓</div></div>
@@ -889,7 +952,7 @@ async function startScan() {
     setProgress(0, '심볼 목록 불러오는 중...');
     const symbols = await fetchSymbols();
     $('sTotal').textContent = symbols.length;
-    setProgress(2, `${symbols.length}개 심볼 스캔 시작`);
+    setProgress(2, `${symbols.length}개 심볼 스캔 시작 · ${activeInterval.toUpperCase()}`);
 
     const BATCH = 6;
     for (let i = 0; i < symbols.length; i += BATCH) {
@@ -913,7 +976,7 @@ async function startScan() {
 
     const now = new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
     $('sTime').textContent = now;
-    setStatus('live', `완료 ${now} · OI 30초 갱신`);
+    setStatus('live', `${activeInterval.toUpperCase()} · 완료 ${now} · OI 30초 갱신`);
 
     // OI 자동 갱신 루프 시작
     startOILoop();
@@ -945,7 +1008,9 @@ async function startScan() {
 
 async function scanOne(symbol) {
   try {
-    const klines = await fetchKlines(symbol, '1h', 200);
+    const interval = activeInterval;
+    // 1H: 최근 200봉(충분히 MA120 커버) / 1D: 200일봉
+    const klines = await fetchKlines(symbol, interval, 200);
     if (klines.length < 60) return;
 
     const fc = findFirstCandle(klines);
@@ -955,11 +1020,11 @@ async function scanOne(symbol) {
     const oiVal = (oi && price) ? oi * price : 0;
     oiMap[symbol] = oiVal;
 
-    firstResults.push({ symbol, fc, oi: oiVal });
+    firstResults.push({ symbol, fc, oi: oiVal, interval });
 
     const res = checkSecond(klines, fc);
     if (res) {
-      secondResults.push({ symbol, fc, oi: oiVal, sc: res.candle, conds: res.conds });
+      secondResults.push({ symbol, fc, oi: oiVal, sc: res.candle, conds: res.conds, interval });
     }
   } catch {}
 }
