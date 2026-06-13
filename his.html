@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>APEX — Binance Futures Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:       #0A0E1A;
+    --surface:  #111827;
+    --surface2: #1A2235;
+    --border:   #1E2D45;
+    --gold:     #F0B90B;
+    --gold-dim: rgba(240,185,11,0.12);
+    --long:     #26A69A;
+    --short:    #EF5350;
+    --text:     #E2E8F0;
+    --muted:    #8B9ABB;
+    --mono:     'JetBrains Mono', monospace;
+    --sans:     'Inter', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; }
+
+  /* ── HEADER ── */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 28px; border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(10,14,26,0.92); backdrop-filter: blur(12px);
+  }
+  .logo { font-family: var(--mono); font-weight: 700; font-size: 18px; letter-spacing: 0.12em; color: var(--gold); }
+  .logo span { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 10px; letter-spacing: 0.05em; }
+  .header-status { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); font-family: var(--mono); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #334155; }
+  .dot.live { background: var(--long); box-shadow: 0 0 6px var(--long); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  /* ── MAIN LAYOUT ── */
+  main { max-width: 1400px; margin: 0 auto; padding: 28px 24px; }
+
+  /* ── API CONFIG PANEL ── */
+  .api-panel {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 24px; margin-bottom: 24px;
+    transition: all 0.3s;
+  }
+  .api-panel.connected { border-color: rgba(38,166,154,0.4); }
+  .panel-title {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.15em;
+    color: var(--gold); text-transform: uppercase; margin-bottom: 18px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .panel-title::after { content:''; flex:1; height:1px; background: var(--border); }
+  .api-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; }
+  .field label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 6px; font-family: var(--mono); letter-spacing: 0.08em; }
+  .field input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 14px; color: var(--text);
+    font-family: var(--mono); font-size: 13px; outline: none;
+    transition: border-color 0.2s;
+  }
+  .field input:focus { border-color: var(--gold); }
+  .field input::placeholder { color: #374151; }
+  .btn {
+    padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer;
+    font-family: var(--mono); font-size: 12px; font-weight: 700;
+    letter-spacing: 0.1em; transition: all 0.2s; white-space: nowrap;
+  }
+  .btn-primary { background: var(--gold); color: #000; }
+  .btn-primary:hover { background: #d4a509; transform: translateY(-1px); }
+  .btn-secondary {
+    background: transparent; color: var(--muted);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { border-color: var(--gold); color: var(--gold); }
+  .btn-danger { background: rgba(239,83,80,0.15); color: var(--short); border: 1px solid rgba(239,83,80,0.3); }
+  .btn-danger:hover { background: rgba(239,83,80,0.25); }
+
+  /* ── CONTROLS BAR ── */
+  .controls {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 20px; margin-bottom: 24px;
+    display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap;
+  }
+  .controls .field { flex: 1; min-width: 140px; }
+  select {
+    width: 100%; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 14px; color: var(--text);
+    font-family: var(--mono); font-size: 13px; outline: none;
+    transition: border-color 0.2s; appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238B9ABB' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center;
+    cursor: pointer;
+  }
+  select:focus { border-color: var(--gold); }
+  input[type="date"] {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 14px; color: var(--text);
+    font-family: var(--mono); font-size: 13px; outline: none;
+    width: 100%; transition: border-color 0.2s;
+    color-scheme: dark;
+  }
+  input[type="date"]:focus { border-color: var(--gold); }
+
+  /* ── STATS ROW ── */
+  .stats-row {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px; margin-bottom: 24px;
+  }
+  .stat-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px; text-align: center;
+  }
+  .stat-card .val {
+    font-family: var(--mono); font-size: 22px; font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .stat-card .lbl { font-size: 11px; color: var(--muted); letter-spacing: 0.08em; }
+  .pos { color: var(--long); }
+  .neg { color: var(--short); }
+  .gold { color: var(--gold); }
+
+  /* ── TRADE GROUP CARDS ── */
+  .trades-section { }
+  .section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .section-title { font-family: var(--mono); font-size: 11px; letter-spacing: 0.15em; color: var(--gold); text-transform: uppercase; }
+  .trade-group {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; margin-bottom: 10px;
+    overflow: hidden; transition: border-color 0.2s;
+  }
+  .trade-group:hover { border-color: #2d3f5c; }
+  .trade-group-header {
+    display: grid;
+    grid-template-columns: 26px 110px 80px 80px 100px 100px 90px 90px 1fr 26px;
+    gap: 12px; align-items: center;
+    padding: 14px 16px; cursor: pointer;
+    transition: background 0.15s;
+  }
+  .trade-group-header:hover { background: var(--surface2); }
+  .trade-group-header.expanded { background: var(--surface2); border-bottom: 1px solid var(--border); }
+  .col-hdr { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+  .col-val { font-size: 13px; font-family: var(--mono); }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.08em; font-family: var(--mono);
+  }
+  .badge-long { background: rgba(38,166,154,0.15); color: var(--long); }
+  .badge-short { background: rgba(239,83,80,0.15); color: var(--short); }
+  .badge-mixed { background: rgba(240,185,11,0.15); color: var(--gold); }
+  .symbol-tag { font-family: var(--mono); font-weight: 700; font-size: 13px; }
+  .expand-icon { color: var(--muted); transition: transform 0.25s; font-size: 12px; }
+  .expand-icon.open { transform: rotate(180deg); }
+  .count-badge {
+    background: var(--border); color: var(--muted);
+    border-radius: 10px; padding: 1px 7px; font-size: 10px;
+    font-family: var(--mono);
+  }
+
+  .trade-group-body { display: none; padding: 0 12px 12px; }
+  .trade-group-body.open { display: block; animation: fadeIn 0.2s ease; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:none} }
+
+  .sub-trade {
+    display: grid;
+    grid-template-columns: 80px 80px 100px 100px 90px 90px 1fr;
+    gap: 12px; align-items: center;
+    padding: 8px 4px;
+    border-top: 1px solid var(--border);
+    font-size: 12px; font-family: var(--mono);
+  }
+  .sub-trade:first-child { border-top: none; margin-top: 6px; }
+
+  /* chart area */
+  .chart-area {
+    margin-top: 12px; padding: 16px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .chart-tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .chart-tab {
+    padding: 5px 14px; border-radius: 6px; border: 1px solid var(--border);
+    background: transparent; color: var(--muted); font-size: 11px;
+    font-family: var(--mono); cursor: pointer; transition: all 0.15s;
+    letter-spacing: 0.06em;
+  }
+  .chart-tab.active { background: var(--gold-dim); border-color: var(--gold); color: var(--gold); }
+  .chart-tab:hover:not(.active) { border-color: #334155; color: var(--text); }
+  .chart-wrap { position: relative; height: 180px; }
+  .chart-note { font-size: 11px; color: var(--muted); margin-top: 8px; font-family: var(--mono); }
+
+  /* ── TABLE HEADER ROW ── */
+  .table-header {
+    display: grid;
+    grid-template-columns: 26px 110px 80px 80px 100px 100px 90px 90px 1fr 26px;
+    gap: 12px; padding: 8px 16px;
+    border-bottom: 1px solid var(--border); margin-bottom: 6px;
+  }
+  .th { font-size: 10px; color: #374151; font-family: var(--mono); letter-spacing: 0.08em; text-transform: uppercase; }
+
+  /* ── EMPTY / LOADING STATES ── */
+  .state-box {
+    text-align: center; padding: 60px 20px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .state-box .icon { font-size: 36px; margin-bottom: 14px; }
+  .state-box h3 { font-family: var(--mono); font-size: 14px; color: var(--text); margin-bottom: 6px; }
+  .state-box p { font-size: 12px; color: var(--muted); }
+  .spinner {
+    width: 28px; height: 28px; border: 2px solid var(--border);
+    border-top-color: var(--gold); border-radius: 50%;
+    animation: spin 0.7s linear infinite; margin: 0 auto 14px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── TOAST ── */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px;
+    padding: 12px 20px; border-radius: 8px; font-size: 13px;
+    font-family: var(--mono); z-index: 999;
+    animation: slideUp 0.3s ease; pointer-events: none;
+  }
+  .toast.success { background: rgba(38,166,154,0.2); border: 1px solid var(--long); color: var(--long); }
+  .toast.error { background: rgba(239,83,80,0.2); border: 1px solid var(--short); color: var(--short); }
+  .toast.info { background: var(--gold-dim); border: 1px solid var(--gold); color: var(--gold); }
+  @keyframes slideUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:none} }
+
+  /* ── PAGINATION ── */
+  .pagination { display: flex; gap: 8px; justify-content: center; margin-top: 16px; align-items: center; flex-wrap: wrap; }
+  .page-btn {
+    padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--muted); font-family: var(--mono);
+    font-size: 12px; cursor: pointer; transition: all 0.15s;
+  }
+  .page-btn:hover:not(:disabled) { border-color: var(--gold); color: var(--gold); }
+  .page-btn.active { background: var(--gold-dim); border-color: var(--gold); color: var(--gold); }
+  .page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .page-info { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+
+  /* notice bar */
+  .notice {
+    background: rgba(240,185,11,0.06); border: 1px solid rgba(240,185,11,0.2);
+    border-radius: 8px; padding: 10px 14px; margin-bottom: 20px;
+    font-size: 11px; color: var(--muted); font-family: var(--mono); line-height: 1.7;
+  }
+  .notice strong { color: var(--gold); }
+
+  @media (max-width: 900px) {
+    .api-grid { grid-template-columns: 1fr; }
+    .table-header, .trade-group-header { display: none; }
+    .trade-group-header { display: flex; flex-wrap: wrap; gap: 8px; }
+    .col-hdr { display: none; }
+    .sub-trade { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">APEX <span>FUTURES ANALYZER</span></div>
+  <div class="header-status">
+    <div class="dot" id="statusDot"></div>
+    <span id="statusText">연결 안됨</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- NOTICE -->
+  <div class="notice">
+    <strong>⚠ CORS 안내</strong> &nbsp;바이낸스 API는 브라우저에서 직접 호출 시 CORS 차단이 발생할 수 있습니다.
+    <strong>CORS 프록시</strong>를 통해 요청하거나, 로컬 서버(Node.js 등)에서 실행을 권장합니다.
+    현재는 <strong>공개 프록시(allorigins)</strong>를 경유해 시도하며, 차단 시 알림이 표시됩니다.
+    &nbsp;|&nbsp; OI·롱숏 데이터는 <strong>현재 시점 기준</strong>으로 조회됩니다 (과거 시점 데이터는 Binance 유료 API 필요).
+  </div>
+
+  <!-- API CONFIG -->
+  <div class="api-panel" id="apiPanel">
+    <div class="panel-title">API 연동 설정</div>
+    <div class="api-grid">
+      <div class="field">
+        <label>API KEY</label>
+        <input type="password" id="apiKey" placeholder="Binance API Key 입력" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>SECRET KEY</label>
+        <input type="password" id="secretKey" placeholder="Binance Secret Key 입력" autocomplete="off">
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary" onclick="connectApi()">연결</button>
+        <button class="btn btn-danger" onclick="disconnectApi()" id="disconnectBtn" style="display:none">해제</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTROLS -->
+  <div class="controls">
+    <div class="field">
+      <label>심볼</label>
+      <select id="symbolFilter">
+        <option value="">전체 심볼</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>시작일</label>
+      <input type="date" id="startDate">
+    </div>
+    <div class="field">
+      <label>종료일</label>
+      <input type="date" id="endDate">
+    </div>
+    <div class="field" style="min-width:120px;max-width:140px;">
+      <label>방향 필터</label>
+      <select id="sideFilter">
+        <option value="">전체</option>
+        <option value="BUY">롱 (BUY)</option>
+        <option value="SELL">숏 (SELL)</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="loadTrades()">조회</button>
+    <button class="btn btn-secondary" onclick="exportCsv()">CSV 내보내기</button>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats-row" id="statsRow" style="display:none">
+    <div class="stat-card"><div class="val gold" id="s-total">0</div><div class="lbl">총 체결 건수</div></div>
+    <div class="stat-card"><div class="val gold" id="s-groups">0</div><div class="lbl">묶음 그룹 수</div></div>
+    <div class="stat-card"><div class="val" id="s-pnl">0.00 USDT</div><div class="lbl">실현 손익 합계</div></div>
+    <div class="stat-card"><div class="val" id="s-win">-</div><div class="lbl">승률</div></div>
+    <div class="stat-card"><div class="val" id="s-fee">0.00 USDT</div><div class="lbl">총 수수료</div></div>
+    <div class="stat-card"><div class="val" id="s-symbols">0</div><div class="lbl">거래 심볼 수</div></div>
+  </div>
+
+  <!-- TRADES -->
+  <div class="trades-section" id="tradesSection">
+    <div class="state-box" id="emptyState">
+      <div class="icon">📊</div>
+      <h3>API 연결 후 거래 내역 조회</h3>
+      <p>API 키를 입력하고 연결한 뒤 조회 버튼을 누르세요.</p>
+    </div>
+  </div>
+
+</main>
+
+<div id="toast" class="toast" style="display:none"></div>
+
+<script>
+// ══════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════
+let state = {
+  connected: false,
+  apiKey: '',
+  secretKey: '',
+  trades: [],
+  groups: [],
+  currentPage: 1,
+  pageSize: 20,
+  charts: {},      // chartjs instances keyed by groupId
+  expandedGroups: new Set()
+};
+
+const PROXY = 'https://api.allorigins.win/raw?url=';
+const BASE   = 'https://fapi.binance.com';
+
+// ══════════════════════════════════════════
+//  UTILS
+// ══════════════════════════════════════════
+function showToast(msg, type = 'info', ms = 3000) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `toast ${type}`;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', ms);
+}
+
+function fmt(n, dec = 2) {
+  const v = parseFloat(n);
+  if (isNaN(v)) return '—';
+  return v.toLocaleString('ko-KR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+
+function fmtTime(ts) {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} `
+       + `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+// HMAC-SHA256 via Web Crypto
+async function sign(queryString) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw', enc.encode(state.secretKey),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(queryString));
+  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+async function apiFetch(path, params = {}) {
+  params.timestamp = Date.now();
+  const qs = new URLSearchParams(params).toString();
+  const signature = await sign(qs);
+  const url = `${BASE}${path}?${qs}&signature=${signature}`;
+  const proxied = PROXY + encodeURIComponent(url);
+  const res = await fetch(proxied, {
+    headers: { 'X-MBX-APIKEY': state.apiKey }
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+async function publicFetch(path, params = {}) {
+  const qs = new URLSearchParams(params).toString();
+  const url = `${BASE}${path}${qs ? '?' + qs : ''}`;
+  const proxied = PROXY + encodeURIComponent(url);
+  const res = await fetch(proxied);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// ══════════════════════════════════════════
+//  API CONNECT / DISCONNECT
+// ══════════════════════════════════════════
+async function connectApi() {
+  const k = document.getElementById('apiKey').value.trim();
+  const s = document.getElementById('secretKey').value.trim();
+  if (!k || !s) { showToast('API Key와 Secret Key를 모두 입력하세요.', 'error'); return; }
+  state.apiKey = k; state.secretKey = s;
+  showToast('연결 테스트 중…', 'info');
+  try {
+    await apiFetch('/fapi/v2/account', {});
+    state.connected = true;
+    document.getElementById('statusDot').className = 'dot live';
+    document.getElementById('statusText').textContent = '연결됨';
+    document.getElementById('apiPanel').classList.add('connected');
+    document.getElementById('disconnectBtn').style.display = 'inline-block';
+    showToast('✓ 바이낸스 선물 계정 연결 성공', 'success');
+    await loadSymbolList();
+  } catch(e) {
+    showToast('연결 실패: ' + e.message, 'error', 5000);
+    console.error(e);
+  }
+}
+
+function disconnectApi() {
+  state.connected = false; state.apiKey = ''; state.secretKey = '';
+  state.trades = []; state.groups = [];
+  document.getElementById('apiKey').value = '';
+  document.getElementById('secretKey').value = '';
+  document.getElementById('statusDot').className = 'dot';
+  document.getElementById('statusText').textContent = '연결 안됨';
+  document.getElementById('apiPanel').classList.remove('connected');
+  document.getElementById('disconnectBtn').style.display = 'none';
+  document.getElementById('tradesSection').innerHTML = `
+    <div class="state-box" id="emptyState">
+      <div class="icon">📊</div>
+      <h3>API 연결 후 거래 내역 조회</h3>
+      <p>API 키를 입력하고 연결한 뒤 조회 버튼을 누르세요.</p>
+    </div>`;
+  document.getElementById('statsRow').style.display = 'none';
+  showToast('연결 해제됨', 'info');
+}
+
+// ══════════════════════════════════════════
+//  LOAD SYMBOL LIST
+// ══════════════════════════════════════════
+async function loadSymbolList() {
+  try {
+    const data = await publicFetch('/fapi/v1/exchangeInfo');
+    const sel = document.getElementById('symbolFilter');
+    sel.innerHTML = '<option value="">전체 심볼</option>';
+    (data.symbols || []).filter(s => s.status === 'TRADING' && s.contractType === 'PERPETUAL')
+      .sort((a,b) => a.symbol.localeCompare(b.symbol))
+      .forEach(s => {
+        const o = document.createElement('option');
+        o.value = s.symbol; o.textContent = s.symbol;
+        sel.appendChild(o);
+      });
+  } catch(e) { console.warn('심볼 목록 로드 실패', e); }
+}
+
+// ══════════════════════════════════════════
+//  LOAD TRADES
+// ══════════════════════════════════════════
+async function loadTrades() {
+  if (!state.connected) { showToast('먼저 API를 연결하세요.', 'error'); return; }
+  const symbol  = document.getElementById('symbolFilter').value;
+  const start   = document.getElementById('startDate').value;
+  const end     = document.getElementById('endDate').value;
+  const side    = document.getElementById('sideFilter').value;
+
+  const section = document.getElementById('tradesSection');
+  section.innerHTML = `<div class="state-box"><div class="spinner"></div><h3>거래 내역 불러오는 중…</h3><p>최대 1000건 조회</p></div>`;
+  document.getElementById('statsRow').style.display = 'none';
+
+  const params = { limit: 1000 };
+  if (symbol) params.symbol = symbol;
+  if (start)  params.startTime = new Date(start).getTime();
+  if (end)    params.endTime   = new Date(end).getTime() + 86399999;
+
+  try {
+    let trades = await apiFetch('/fapi/v1/userTrades', params);
+    if (!Array.isArray(trades)) trades = [];
+
+    // Side filter
+    if (side) trades = trades.filter(t => t.side === side);
+
+    state.trades = trades;
+    state.groups = groupTrades(trades);
+    state.currentPage = 1;
+    state.expandedGroups = new Set();
+    state.charts = {};
+
+    updateStats();
+    renderPage();
+    showToast(`${trades.length}건 조회 완료 (${state.groups.length}개 그룹)`, 'success');
+  } catch(e) {
+    section.innerHTML = `<div class="state-box"><div class="icon">⚠️</div><h3>조회 실패</h3><p>${e.message}</p></div>`;
+    showToast('조회 실패: ' + e.message, 'error', 5000);
+  }
+}
+
+// ══════════════════════════════════════════
+//  GROUP TRADES (same symbol + same YYMMDDhhmm)
+// ══════════════════════════════════════════
+function groupTrades(trades) {
+  const map = new Map();
+  trades.forEach(t => {
+    const d = new Date(t.time);
+    // key: symbol + YYYY-MM-DD HH:mm
+    const key = `${t.symbol}__${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}_${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    if (!map.has(key)) map.set(key, { key, symbol: t.symbol, time: t.time, trades: [] });
+    map.get(key).trades.push(t);
+  });
+
+  return Array.from(map.values()).sort((a,b) => b.time - a.time).map(g => {
+    const totalQty  = g.trades.reduce((s,t) => s + parseFloat(t.qty), 0);
+    const totalAmt  = g.trades.reduce((s,t) => s + parseFloat(t.quoteQty), 0);
+    const avgPrice  = totalAmt / totalQty;
+    const realPnl   = g.trades.reduce((s,t) => s + parseFloat(t.realizedPnl || 0), 0);
+    const totalFee  = g.trades.reduce((s,t) => s + parseFloat(t.commission || 0), 0);
+    const sides     = [...new Set(g.trades.map(t => t.side))];
+    const side      = sides.length > 1 ? 'MIXED' : sides[0];
+    return { ...g, totalQty, avgPrice, realPnl, totalFee, side };
+  });
+}
+
+// ══════════════════════════════════════════
+//  STATS
+// ══════════════════════════════════════════
+function updateStats() {
+  const g = state.groups;
+  const totalPnl = g.reduce((s,x) => s + x.realPnl, 0);
+  const totalFee = g.reduce((s,x) => s + x.totalFee, 0);
+  const winners  = g.filter(x => x.realPnl > 0).length;
+  const symbols  = new Set(g.map(x => x.symbol)).size;
+  document.getElementById('s-total').textContent   = state.trades.length.toLocaleString();
+  document.getElementById('s-groups').textContent  = g.length.toLocaleString();
+  const pnlEl = document.getElementById('s-pnl');
+  pnlEl.textContent = `${totalPnl >= 0 ? '+' : ''}${fmt(totalPnl)} USDT`;
+  pnlEl.className   = `val ${totalPnl >= 0 ? 'pos' : 'neg'}`;
+  document.getElementById('s-win').textContent   = g.length ? `${Math.round(winners/g.length*100)}%` : '-';
+  document.getElementById('s-fee').textContent   = `-${fmt(totalFee)} USDT`;
+  document.getElementById('s-symbols').textContent = symbols;
+  document.getElementById('statsRow').style.display = 'grid';
+}
+
+// ══════════════════════════════════════════
+//  RENDER
+// ══════════════════════════════════════════
+function renderPage() {
+  const section = document.getElementById('tradesSection');
+  if (!state.groups.length) {
+    section.innerHTML = `<div class="state-box"><div class="icon">🔍</div><h3>거래 내역 없음</h3><p>조건을 변경해 다시 조회하세요.</p></div>`;
+    return;
+  }
+
+  const total = state.groups.length;
+  const pages = Math.ceil(total / state.pageSize);
+  const start = (state.currentPage - 1) * state.pageSize;
+  const pageGroups = state.groups.slice(start, start + state.pageSize);
+
+  let html = `
+    <div class="section-header">
+      <div class="section-title">거래 그룹 목록</div>
+      <div style="font-size:12px;color:var(--muted);font-family:var(--mono)">${total}개 그룹</div>
+    </div>
+    <div class="table-header">
+      <div class="th"></div>
+      <div class="th">시간</div>
+      <div class="th">방향</div>
+      <div class="th">심볼</div>
+      <div class="th">평균가</div>
+      <div class="th">수량</div>
+      <div class="th">실현 손익</div>
+      <div class="th">수수료</div>
+      <div class="th">체결수</div>
+      <div class="th"></div>
+    </div>
+  `;
+
+  pageGroups.forEach((g, i) => {
+    const gid = `g${start + i}`;
+    const isOpen = state.expandedGroups.has(gid);
+    const badgeCls = g.side === 'BUY' ? 'badge-long' : g.side === 'SELL' ? 'badge-short' : 'badge-mixed';
+    const badgeTxt = g.side === 'BUY' ? 'LONG' : g.side === 'SELL' ? 'SHORT' : 'MIXED';
+    const pnlCls   = g.realPnl > 0 ? 'pos' : g.realPnl < 0 ? 'neg' : '';
+
+    html += `
+    <div class="trade-group" id="tg-${gid}">
+      <div class="trade-group-header ${isOpen ? 'expanded' : ''}" onclick="toggleGroup('${gid}')">
+        <div style="color:var(--muted);font-size:11px;font-family:var(--mono)">${start+i+1}</div>
+        <div class="col-val" style="font-size:12px;">${fmtTime(g.time)}</div>
+        <div><span class="badge ${badgeCls}">${badgeTxt}</span></div>
+        <div class="symbol-tag">${g.symbol}</div>
+        <div class="col-val">${fmt(g.avgPrice, 4)}</div>
+        <div class="col-val">${fmt(g.totalQty, 4)}</div>
+        <div class="col-val ${pnlCls}">${g.realPnl >= 0 ? '+' : ''}${fmt(g.realPnl)}</div>
+        <div class="col-val" style="color:var(--muted)">-${fmt(g.totalFee)}</div>
+        <div><span class="count-badge">${g.trades.length}건</span></div>
+        <div class="expand-icon ${isOpen ? 'open' : ''}">▼</div>
+      </div>
+      <div class="trade-group-body ${isOpen ? 'open' : ''}" id="body-${gid}">
+        ${renderSubTrades(g, gid)}
+      </div>
+    </div>`;
+  });
+
+  // Pagination
+  if (pages > 1) {
+    html += `<div class="pagination">`;
+    html += `<button class="page-btn" onclick="goPage(${state.currentPage-1})" ${state.currentPage===1?'disabled':''}>◀</button>`;
+    const range = pageRange(state.currentPage, pages);
+    range.forEach(p => {
+      if (p === '…') html += `<span class="page-info">…</span>`;
+      else html += `<button class="page-btn ${p===state.currentPage?'active':''}" onclick="goPage(${p})">${p}</button>`;
+    });
+    html += `<button class="page-btn" onclick="goPage(${state.currentPage+1})" ${state.currentPage===pages?'disabled':''}>▶</button>`;
+    html += `<span class="page-info">${state.currentPage} / ${pages}</span>`;
+    html += `</div>`;
+  }
+
+  section.innerHTML = html;
+
+  // Restore expanded states
+  state.expandedGroups.forEach(gid => {
+    const body = document.getElementById(`body-${gid}`);
+    if (body) initChart(gid);
+  });
+}
+
+function pageRange(cur, total) {
+  if (total <= 7) return Array.from({length:total},(_,i)=>i+1);
+  if (cur <= 4)   return [1,2,3,4,5,'…',total];
+  if (cur >= total-3) return [1,'…',total-4,total-3,total-2,total-1,total];
+  return [1,'…',cur-1,cur,cur+1,'…',total];
+}
+
+function renderSubTrades(g, gid) {
+  let html = `<div>`;
+  g.trades.forEach(t => {
+    const pnl = parseFloat(t.realizedPnl || 0);
+    const pnlCls = pnl > 0 ? 'pos' : pnl < 0 ? 'neg' : '';
+    html += `
+    <div class="sub-trade">
+      <div style="color:var(--muted);font-size:11px">${new Date(t.time).toLocaleTimeString('ko-KR')}</div>
+      <div><span class="badge ${t.side==='BUY'?'badge-long':'badge-short'}">${t.side==='BUY'?'LONG':'SHORT'}</span></div>
+      <div>${fmt(t.price, 4)}</div>
+      <div style="color:var(--text)">${fmt(t.qty, 4)}</div>
+      <div class="${pnlCls}">${pnl>=0?'+':''}${fmt(pnl)}</div>
+      <div style="color:var(--muted)">-${fmt(t.commission)}</div>
+      <div style="color:#334155;font-size:10px">ID: ${t.id}</div>
+    </div>`;
+  });
+  html += `</div>`;
+
+  // Chart area
+  html += `
+  <div class="chart-area">
+    <div class="chart-tabs">
+      <button class="chart-tab active" onclick="switchChartTab('${gid}','oi',this)">📈 OI (현재)</button>
+      <button class="chart-tab" onclick="switchChartTab('${gid}','lsr',this)">⚖️ 롱숏비율</button>
+      <button class="chart-tab" onclick="switchChartTab('${gid}','funding',this)">💰 펀딩비율</button>
+      <button class="chart-tab" onclick="switchChartTab('${gid}','price',this)">🕯 최근 가격</button>
+    </div>
+    <div class="chart-wrap"><canvas id="chart-${gid}"></canvas></div>
+    <div class="chart-note" id="note-${gid}">※ 현재 시점 기준 최근 데이터 표시. 체결 당시 정확한 과거 OI/LSR은 Binance 유료 데이터 필요.</div>
+  </div>`;
+
+  return html;
+}
+
+// ══════════════════════════════════════════
+//  TOGGLE GROUP
+// ══════════════════════════════════════════
+function toggleGroup(gid) {
+  const body = document.getElementById(`body-${gid}`);
+  const header = body.previousElementSibling;
+  const icon = header.querySelector('.expand-icon');
+
+  if (state.expandedGroups.has(gid)) {
+    state.expandedGroups.delete(gid);
+    body.classList.remove('open');
+    header.classList.remove('expanded');
+    icon.classList.remove('open');
+    if (state.charts[gid]) { state.charts[gid].destroy(); delete state.charts[gid]; }
+  } else {
+    state.expandedGroups.add(gid);
+    body.classList.add('open');
+    header.classList.add('expanded');
+    icon.classList.add('open');
+    // Determine group index from gid (e.g. "g5" → 5)
+    const idx = parseInt(gid.replace('g',''));
+    const g = state.groups[idx];
+    if (g) initChart(gid, g.symbol, 'oi');
+  }
+}
+
+// ══════════════════════════════════════════
+//  CHARTS
+// ══════════════════════════════════════════
+async function initChart(gid, symbol, type = 'oi') {
+  const idx = parseInt(gid.replace('g',''));
+  const g = state.groups[idx];
+  if (!g) return;
+  if (!symbol) symbol = g.symbol;
+  await loadChart(gid, symbol, type);
+}
+
+async function switchChartTab(gid, type, btn) {
+  btn.closest('.chart-tabs').querySelectorAll('.chart-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const idx = parseInt(gid.replace('g',''));
+  const g = state.groups[idx];
+  if (!g) return;
+  await loadChart(gid, g.symbol, type);
+}
+
+async function loadChart(gid, symbol, type) {
+  const canvas = document.getElementById(`chart-${gid}`);
+  const noteEl = document.getElementById(`note-${gid}`);
+  if (!canvas) return;
+  if (state.charts[gid]) { state.charts[gid].destroy(); delete state.charts[gid]; }
+
+  canvas.style.opacity = '0.4';
+  try {
+    let labels = [], data1 = [], data2 = [], cfg = {};
+    if (type === 'oi') {
+      const d = await publicFetch('/futures/data/openInterestHist', { symbol, period: '5m', limit: 50 });
+      if (!Array.isArray(d) || !d.length) throw new Error('데이터 없음');
+      labels = d.map(x => new Date(x.timestamp).toLocaleTimeString('ko-KR', {hour:'2-digit',minute:'2-digit'}));
+      data1  = d.map(x => parseFloat(x.sumOpenInterestValue) / 1e6);
+      cfg = { label: 'OI (백만 USDT)', color: '#F0B90B', fill: true };
+      noteEl.textContent = `${symbol} OI (최근 50개 × 5분봉, 현재 기준)`;
+    } else if (type === 'lsr') {
+      const d = await publicFetch('/futures/data/globalLongShortAccountRatio', { symbol, period: '5m', limit: 50 });
+      if (!Array.isArray(d) || !d.length) throw new Error('데이터 없음');
+      labels = d.map(x => new Date(x.timestamp).toLocaleTimeString('ko-KR', {hour:'2-digit',minute:'2-digit'}));
+      data1  = d.map(x => parseFloat(x.longAccount) * 100);
+      data2  = d.map(x => parseFloat(x.shortAccount) * 100);
+      cfg = { multiLine: true };
+      noteEl.textContent = `${symbol} 롱/숏 계좌 비율 (%)`;
+    } else if (type === 'funding') {
+      const d = await publicFetch('/fapi/v1/fundingRate', { symbol, limit: 50 });
+      if (!Array.isArray(d) || !d.length) throw new Error('데이터 없음');
+      labels = d.map(x => new Date(x.fundingTime).toLocaleDateString('ko-KR', {month:'2-digit',day:'2-digit'}));
+      data1  = d.map(x => parseFloat(x.fundingRate) * 100);
+      cfg = { label: '펀딩비율 (%)', color: '#8B9ABB', fill: false };
+      noteEl.textContent = `${symbol} 펀딩비율 이력 (최근 50회)`;
+    } else if (type === 'price') {
+      const d = await publicFetch('/fapi/v1/klines', { symbol, interval: '5m', limit: 50 });
+      if (!Array.isArray(d) || !d.length) throw new Error('데이터 없음');
+      labels = d.map(x => new Date(x[0]).toLocaleTimeString('ko-KR', {hour:'2-digit',minute:'2-digit'}));
+      data1  = d.map(x => parseFloat(x[4])); // close
+      cfg = { label: `${symbol} 종가`, color: '#26A69A', fill: true };
+      noteEl.textContent = `${symbol} 최근 50개 × 5분봉 종가 (현재 기준)`;
+    }
+
+    const ctx = canvas.getContext('2d');
+    let chartConfig;
+    if (cfg.multiLine) {
+      chartConfig = {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            { label: '롱 (%)', data: data1, borderColor: '#26A69A', backgroundColor: 'rgba(38,166,154,0.1)', borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true },
+            { label: '숏 (%)', data: data2, borderColor: '#EF5350', backgroundColor: 'rgba(239,83,80,0.1)', borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true }
+          ]
+        },
+        options: chartOpts()
+      };
+    } else {
+      chartConfig = {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: cfg.label,
+            data: data1,
+            borderColor: cfg.color,
+            backgroundColor: cfg.fill ? hexAlpha(cfg.color, 0.12) : 'transparent',
+            borderWidth: 1.5,
+            pointRadius: 0,
+            tension: 0.3,
+            fill: cfg.fill
+          }]
+        },
+        options: chartOpts()
+      };
+    }
+    state.charts[gid] = new Chart(ctx, chartConfig);
+    canvas.style.opacity = '1';
+  } catch(e) {
+    canvas.style.opacity = '1';
+    noteEl.textContent = `⚠ 데이터 로드 실패: ${e.message}`;
+  }
+}
+
+function chartOpts() {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { labels: { color: '#8B9ABB', font: { family: 'JetBrains Mono', size: 11 }, boxWidth: 12 } },
+      tooltip: {
+        backgroundColor: '#1A2235',
+        borderColor: '#1E2D45',
+        borderWidth: 1,
+        titleColor: '#8B9ABB',
+        bodyColor: '#E2E8F0',
+        titleFont: { family: 'JetBrains Mono', size: 10 },
+        bodyFont: { family: 'JetBrains Mono', size: 12 }
+      }
+    },
+    scales: {
+      x: { ticks: { color: '#374151', font: { family: 'JetBrains Mono', size: 9 }, maxTicksLimit: 10 }, grid: { color: '#1E2D45' } },
+      y: { ticks: { color: '#8B9ABB', font: { family: 'JetBrains Mono', size: 10 } }, grid: { color: '#1E2D45' } }
+    }
+  };
+}
+
+function hexAlpha(hex, a) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+// ══════════════════════════════════════════
+//  PAGINATION
+// ══════════════════════════════════════════
+function goPage(p) {
+  const pages = Math.ceil(state.groups.length / state.pageSize);
+  if (p < 1 || p > pages) return;
+  state.currentPage = p;
+  state.expandedGroups = new Set();
+  Object.values(state.charts).forEach(c => c.destroy());
+  state.charts = {};
+  renderPage();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ══════════════════════════════════════════
+//  CSV EXPORT
+// ══════════════════════════════════════════
+function exportCsv() {
+  if (!state.trades.length) { showToast('내보낼 데이터가 없습니다.', 'error'); return; }
+  const headers = ['시간','심볼','방향','가격','수량','실현손익','수수료','주문ID'];
+  const rows = state.trades.map(t => [
+    fmtTime(t.time), t.symbol, t.side,
+    t.price, t.qty, t.realizedPnl, t.commission, t.orderId
+  ]);
+  const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `binance_futures_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  showToast('CSV 내보내기 완료', 'success');
+}
+
+// ── Init defaults ──
+(() => {
+  const today = new Date();
+  const d30   = new Date(today - 30*86400000);
+  document.getElementById('endDate').value   = today.toISOString().slice(0,10);
+  document.getElementById('startDate').value = d30.toISOString().slice(0,10);
+})();
+</script>
+</body>
+</html>
