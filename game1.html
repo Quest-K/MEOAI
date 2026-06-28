@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>한밤의 도둑: 모기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy-deep:#0a0e23;
+    --navy-mid:#161b3a;
+    --navy-panel:#1d2350ee;
+    --lamp-glow:#ffd27a;
+    --blood:#e63950;
+    --blood-dark:#9c1f33;
+    --safe:#52d6a8;
+    --warn:#ffb454;
+    --text-soft:#dfe3f5;
+    --text-dim:#9aa1cc;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0; padding:0; height:100%; background:#000;
+    font-family:'Noto Sans KR', 'Malgun Gothic', sans-serif;
+    color:var(--text-soft); overflow:hidden;
+    user-select:none; -webkit-user-select:none;
+  }
+  .display{font-family:'Black Han Sans','Noto Sans KR',sans-serif; letter-spacing:0.5px;}
+  #app{
+    position:relative; width:100%; max-width:520px; height:100vh; max-height:900px;
+    margin:0 auto; background:var(--navy-deep);
+    display:flex; flex-direction:column; overflow:hidden;
+    box-shadow:0 0 40px rgba(0,0,0,0.6);
+  }
+  #stage{
+    position:relative; width:100%; flex:1; overflow:hidden;
+    display:flex; align-items:center; justify-content:center;
+    background:var(--navy-deep);
+  }
+  #gameCanvas{
+    width:100%; height:auto; max-height:100%; display:block; touch-action:none;
+    background:radial-gradient(ellipse at 50% 30%, #141a3a 0%, #070a1a 100%);
+  }
+  /* ---------- overlay screens ---------- */
+  .screen{
+    position:absolute; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; padding:28px 22px;
+    background:linear-gradient(180deg, rgba(6,8,20,0.96), rgba(10,12,30,0.98));
+    text-align:center; z-index:30; gap:14px;
+  }
+  .hidden{display:none !important;}
+  .title-main{font-size:clamp(28px,8vw,40px); color:var(--blood); text-shadow:0 0 18px rgba(230,57,80,0.55); line-height:1.25;}
+  .title-sub{font-size:14px; color:var(--text-dim); margin-bottom:6px;}
+  .mosquito-emoji{font-size:46px; filter:drop-shadow(0 0 10px rgba(230,57,80,0.5)); animation:float 2.4s ease-in-out infinite;}
+  @keyframes float{0%,100%{transform:translateY(0) rotate(-4deg);}50%{transform:translateY(-10px) rotate(4deg);}}
+  .rule-box{
+    background:var(--navy-panel); border:1px solid #2b3266; border-radius:14px;
+    padding:14px 16px; max-width:380px; text-align:left; font-size:13px; line-height:1.7; color:var(--text-soft);
+  }
+  .rule-box b{color:var(--warn);}
+  .btn{
+    font-family:'Noto Sans KR',sans-serif; font-weight:700; font-size:16px;
+    border:none; border-radius:30px; padding:13px 30px; cursor:pointer;
+    background:linear-gradient(180deg,#ff5d72,var(--blood-dark)); color:#fff;
+    box-shadow:0 6px 0 #6e1322, 0 8px 16px rgba(0,0,0,0.4);
+    transition:transform .08s ease;
+  }
+  .btn:active{transform:translateY(4px); box-shadow:0 2px 0 #6e1322;}
+  .btn.secondary{background:linear-gradient(180deg,#3a4280,#222756); box-shadow:0 6px 0 #14163a, 0 8px 16px rgba(0,0,0,0.4);}
+  .btn.small{padding:9px 18px; font-size:13px; box-shadow:0 4px 0 #6e1322;}
+  .btn:disabled{filter:grayscale(0.6) brightness(0.6); cursor:not-allowed;}
+
+  /* hub */
+  #hubScreen{justify-content:flex-start; padding-top:26px; gap:10px; overflow-y:auto;}
+  .currency-chip{
+    display:inline-flex; align-items:center; gap:6px; background:#241038; border:1px solid var(--blood-dark);
+    border-radius:20px; padding:6px 16px; font-size:14px; font-weight:700; color:var(--warn);
+  }
+  .upgrade-card{
+    width:100%; max-width:380px; background:var(--navy-panel); border:1px solid #2b3266; border-radius:14px;
+    padding:12px 14px; display:flex; align-items:center; justify-content:space-between; gap:10px;
+  }
+  .upgrade-info{text-align:left; flex:1;}
+  .upgrade-info .name{font-size:14px; font-weight:700;}
+  .upgrade-info .desc{font-size:11px; color:var(--text-dim); margin-top:2px;}
+  .dots{display:flex; gap:4px; margin-top:6px;}
+  .dot{width:10px; height:10px; border-radius:50%; background:#383d6f;}
+  .dot.filled{background:var(--safe);}
+  .level-card{
+    width:100%; max-width:380px; display:flex; align-items:center; justify-content:space-between;
+    background:var(--navy-panel); border:1px solid #2b3266; border-radius:14px; padding:12px 16px; gap:10px;
+  }
+  .level-card .name{font-size:15px; font-weight:700; text-align:left;}
+  .level-card .tag{font-size:11px; color:var(--text-dim); text-align:left;}
+  .section-label{font-size:12px; color:var(--text-dim); letter-spacing:1px; margin-top:8px; align-self:flex-start; margin-left:calc(50% - 190px);}
+
+  /* result */
+  .result-title{font-size:24px;}
+  .result-stat{font-size:14px; color:var(--text-dim);}
+  .result-stat b{color:var(--lamp-glow); font-size:18px;}
+
+  /* HUD during play */
+  #hud{position:absolute; inset:0; pointer-events:none; z-index:20;}
+  .hud-top{position:absolute; top:10px; left:10px; right:10px; display:flex; justify-content:space-between; align-items:flex-start;}
+  .hearts{display:flex; gap:3px; font-size:18px; filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));}
+  .heart.lost{opacity:0.25;}
+  .blood-readout{
+    background:rgba(10,12,30,0.65); border:1px solid var(--blood-dark); border-radius:10px;
+    padding:5px 10px; font-size:12px; font-weight:700; color:var(--lamp-glow); text-align:right;
+  }
+  .level-name-tag{
+    position:absolute; top:10px; left:50%; transform:translateX(-50%);
+    background:rgba(10,12,30,0.6); border-radius:8px; padding:3px 10px; font-size:11px; color:var(--text-dim);
+  }
+  #alertGaugeWrap{position:absolute; top:34px; left:50%; transform:translateX(-50%); width:120px; height:46px;}
+  .exit-btn{
+    position:absolute; bottom:10px; left:10px; pointer-events:auto;
+    background:rgba(10,12,30,0.7); border:1px solid #2b3266; color:var(--text-dim);
+    border-radius:20px; padding:6px 14px; font-size:12px; font-family:'Noto Sans KR',sans-serif;
+  }
+  .hint-text{
+    position:absolute; bottom:10px; right:10px; max-width:55%; font-size:11px; color:var(--text-dim);
+    text-align:right; line-height:1.4; background:rgba(10,12,30,0.5); border-radius:8px; padding:5px 8px;
+  }
+  .flash-overlay{
+    position:absolute; inset:0; background:#fff3c4; opacity:0; pointer-events:none; z-index:25;
+    transition:opacity .15s ease;
+  }
+  .flash-overlay.show{opacity:0.85;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <canvas id="gameCanvas" width="900" height="520"></canvas>
+    <div class="flash-overlay" id="flashOverlay"></div>
+
+    <!-- HUD -->
+    <div id="hud" class="hidden">
+      <div class="hud-top">
+        <div class="hearts" id="heartsRow"></div>
+        <div class="blood-readout" id="bloodReadout">피 0 / 0</div>
+      </div>
+      <div class="level-name-tag" id="levelNameTag"></div>
+      <div id="alertGaugeWrap"><canvas id="alertCanvas" width="120" height="46"></canvas></div>
+      <div class="exit-btn" id="exitBtn">↩ 나가기</div>
+      <div class="hint-text">화면을 눌러 드래그 · 빛나는 곳에서 가만히 멈추기</div>
+    </div>
+
+    <!-- TITLE -->
+    <div class="screen" id="titleScreen">
+      <div class="mosquito-emoji">🦟</div>
+      <div class="title-main display">한밤의 도둑<br>: 모기</div>
+      <div class="title-sub">들키지 않고, 최대한 많은 피를 모아라</div>
+      <div class="rule-box">
+        · 화면을 <b>터치(드래그)</b>해서 모기를 조종하세요<br>
+        · 피부의 <b>빛나는 곳</b> 위에서 가만히 멈추면 흡혈 시작<br>
+        · 너무 빠르게 움직이거나 가까이 가면 <b>경계도</b>가 올라가요<br>
+        · 경계도가 차면 손바닥이 날아옵니다! 맞으면 목숨 -1<br>
+        · 모기향 연기는 피하세요. 선풍기 바람은 소음을 가려줍니다
+      </div>
+      <button class="btn" id="startBtn">게임 시작</button>
+    </div>
+
+    <!-- HUB -->
+    <div class="screen hidden" id="hubScreen">
+      <div class="title-main display" style="font-size:24px; margin-top:6px;">출격 준비</div>
+      <div class="currency-chip" id="currencyChip">🩸 0</div>
+
+      <div class="section-label">능력 강화</div>
+      <div class="upgrade-card" data-up="noise">
+        <div class="upgrade-info">
+          <div class="name">🔇 조용한 날갯짓</div>
+          <div class="desc">날갯소리를 줄여 경계도 상승을 늦춥니다</div>
+          <div class="dots" id="dots-noise"></div>
+        </div>
+        <button class="btn small" data-buy="noise">강화 (<span class="cost">-</span>)</button>
+      </div>
+      <div class="upgrade-card" data-up="suck">
+        <div class="upgrade-info">
+          <div class="name">🩸 빠른 흡혈</div>
+          <div class="desc">같은 시간에 더 많은 피를 빨아들입니다</div>
+          <div class="dots" id="dots-suck"></div>
+        </div>
+        <button class="btn small" data-buy="suck">강화 (<span class="cost">-</span>)</button>
+      </div>
+      <div class="upgrade-card" data-up="speed">
+        <div class="upgrade-info">
+          <div class="name">💨 빠른 비행</div>
+          <div class="desc">최고 이동 속도가 올라갑니다</div>
+          <div class="dots" id="dots-speed"></div>
+        </div>
+        <button class="btn small" data-buy="speed">강화 (<span class="cost">-</span>)</button>
+      </div>
+
+      <div class="section-label">표적 선택</div>
+      <div class="level-card" id="levelCard0">
+        <div><div class="name">1. 순한 인간</div><div class="tag">깊은 잠 · 위협 적음 · 목표 피 40</div></div>
+        <button class="btn small" data-level="0">도전</button>
+      </div>
+      <div class="level-card" id="levelCard1">
+        <div><div class="name">2. 평범한 인간</div><div class="tag">선풍기·모기향 등장 · 목표 피 60</div></div>
+        <button class="btn small" data-level="1">도전</button>
+      </div>
+      <div class="level-card" id="levelCard2">
+        <div><div class="name">3. 예민한 인간</div><div class="tag">불을 켬 · 빠른 경계 · 목표 피 80</div></div>
+        <button class="btn small" data-level="2">도전</button>
+      </div>
+    </div>
+
+    <!-- RESULT -->
+    <div class="screen hidden" id="resultScreen">
+      <div class="mosquito-emoji" id="resultEmoji">🎉</div>
+      <div class="result-title display" id="resultTitle">레벨 클리어!</div>
+      <div class="result-stat">이번 판 흡혈량: <b id="resultGained">0</b></div>
+      <div class="result-stat">보유 흡혈량: <b id="resultTotal">0</b></div>
+      <button class="btn" id="resultContinueBtn">계속하기</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ---------------- canvas & dom refs ---------------- */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+const alertCanvas = document.getElementById('alertCanvas');
+const actx = alertCanvas.getContext('2d');
+
+const titleScreen = document.getElementById('titleScreen');
+const hubScreen = document.getElementById('hubScreen');
+const resultScreen = document.getElementById('resultScreen');
+const hud = document.getElementById('hud');
+const flashOverlay = document.getElementById('flashOverlay');
+
+/* ---------------- helpers ---------------- */
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function dist(ax,ay,bx,by){return Math.hypot(ax-bx,ay-by);}
+function rand(a,b){return a+Math.random()*(b-a);}
+function lerp(a,b,t){return a+(b-a)*t;}
+
+/* simple beep using WebAudio, no external assets */
+let audioCtx=null;
+function beep(freq, dur, type, vol){
+  try{
+    if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = type||'sine'; o.frequency.value = freq;
+    g.gain.value = vol||0.05;
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start();
+    g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime+dur);
+    o.stop(audioCtx.currentTime+dur);
+  }catch(e){}
+}
+
+/* ---------------- persistent (session) progression ---------------- */
+let totalBlood = 0;
+let upgrades = { noise:0, suck:0, speed:0 };
+let unlockedLevels = [true, false, false];
+const UPGRADE_MAX = 5;
+function upgradeCost(level){ return 12 + level*9; }
+
+/* ---------------- level definitions ---------------- */
+const LEVELS = [
+  { name:'순한 인간', alertMul:0.55, decay:9,  swatT:72, wakeT:105, bloodGoal:40, hazards:{fan:false,coil:false,light:false} },
+  { name:'평범한 인간', alertMul:1.0,  decay:6.5, swatT:62, wakeT:96,  bloodGoal:60, hazards:{fan:true, coil:true, light:false} },
+  { name:'예민한 인간', alertMul:1.6,  decay:4.5, swatT:52, wakeT:86,  bloodGoal:80, hazards:{fan:true, coil:true, light:true} },
+];
+
+/* ---------------- world layout (fixed positions in 900x520 space) ---------------- */
+const WINDOW_POS = {x:55, y:60, w:90, h:64};
+const FAN_POS = {x:230, y:300, r:26};
+const WIND_ZONE = {x:330, y:300, r:120, dir:{x:1,y:-0.15}};
+const COIL_POS = {x:470, y:455, r:26};
+const COIL_HAZARD_R = 62;
+const LAMP_POS = {x:560, y:300};
+const BED = {x:520, y:250, w:340, h:240};
+const SPAWN = {x:WINDOW_POS.x+30, y:WINDOW_POS.y+70};
+
+/* ---------------- mutable game state ---------------- */
+let state = 'title'; // title | hub | playing | result
+let levelIdx = 0;
+let level = LEVELS[0];
+
+let player, human, feeding, fan, coil, smokeParticles, floats, biteSpot, levelBlood, lives, invulnTimer, lightFlashTimer, lastResultSuccess;
+
+function resetRunState(){
+  player = {x:SPAWN.x, y:SPAWN.y, vx:0, vy:0};
+  human = {alert:0, state:'sleep', swatTimer:0, swatTargetX:0, swatTargetY:0, swatCooldown:0, lightOn:false, lightTimer:rand(5,8), zzzTimer:0};
+  feeding = {active:false, stillTimer:0, itchTimer:rand(0.8,1.4)};
+  fan = {on:false, timer:rand(2,3.5), bladeAngle:0};
+  coil = {timer:0};
+  smokeParticles = [];
+  floats = [];
+  biteSpot = {x: rand(610,760), y: rand(360,420), bob:0};
+  levelBlood = 0;
+  lives = 3;
+  invulnTimer = 0;
+  lightFlashTimer = 0;
+}
+
+/* ---------------- input ---------------- */
+let pointer = {active:false, x:0, y:0};
+let keys = {};
+canvas.style.touchAction = 'none';
+
+function canvasPosFromEvent(e){
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W/rect.width, scaleY = H/rect.height;
+  return { x:(e.clientX-rect.left)*scaleX, y:(e.clientY-rect.top)*scaleY };
+}
+canvas.addEventListener('pointerdown', (e)=>{
+  pointer.active = true;
+  const p = canvasPosFromEvent(e); pointer.x=p.x; pointer.y=p.y;
+  canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', (e)=>{
+  if(!pointer.active) return;
+  const p = canvasPosFromEvent(e); pointer.x=p.x; pointer.y=p.y;
+});
+function pointerEnd(){ pointer.active = false; }
+canvas.addEventListener('pointerup', pointerEnd);
+canvas.addEventListener('pointercancel', pointerEnd);
+canvas.addEventListener('pointerleave', pointerEnd);
+window.addEventListener('keydown', (e)=>{keys[e.key]=true;});
+window.addEventListener('keyup', (e)=>{keys[e.key]=false;});
+
+/* ---------------- screen management ---------------- */
+function showScreen(name){
+  state = name;
+  titleScreen.classList.toggle('hidden', name!=='title');
+  hubScreen.classList.toggle('hidden', name!=='hub');
+  resultScreen.classList.toggle('hidden', name!=='result');
+  hud.classList.toggle('hidden', name!=='playing');
+  if(name==='hub') renderHub();
+}
+
+document.getElementById('startBtn').addEventListener('click', ()=>{ showScreen('hub'); });
+document.getElementById('exitBtn').addEventListener('click', ()=>{ endLevel(false, true); });
+document.getElementById('resultContinueBtn').addEventListener('click', ()=>{ showScreen('hub'); });
+
+document.querySelectorAll('[data-buy]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const key = btn.getAttribute('data-buy');
+    const lvl = upgrades[key];
+    if(lvl>=UPGRADE_MAX) return;
+    const cost = upgradeCost(lvl);
+    if(totalBlood>=cost){
+      totalBlood -= cost; upgrades[key]++;
+      renderHub();
+    }
+  });
+});
+document.querySelectorAll('[data-level]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const idx = parseInt(btn.getAttribute('data-level'),10);
+    if(!unlockedLevels[idx]) return;
+    startLevel(idx);
+  });
+});
+
+function renderHub(){
+  document.getElementById('currencyChip').textContent = '🩸 ' + Math.floor(totalBlood);
+  ['noise','suck','speed'].forEach(key=>{
+    const lvl = upgrades[key];
+    const card = document.querySelector('.upgrade-card[data-up="'+key+'"]');
+    const dotsWrap = document.getElementById('dots-'+key);
+    dotsWrap.innerHTML = '';
+    for(let i=0;i<UPGRADE_MAX;i++){
+      const d = document.createElement('div');
+      d.className = 'dot' + (i<lvl ? ' filled':'');
+      dotsWrap.appendChild(d);
+    }
+    const btn = card.querySelector('[data-buy]');
+    const costSpan = btn.querySelector('.cost');
+    if(lvl>=UPGRADE_MAX){
+      costSpan.textContent = 'MAX'; btn.disabled = true;
+    } else {
+      const cost = upgradeCost(lvl);
+      costSpan.textContent = cost; btn.disabled = totalBlood < cost;
+    }
+  });
+  for(let i=0;i<3;i++){
+    const card = document.getElementById('levelCard'+i);
+    const btn = card.querySelector('[data-level]');
+    btn.disabled = !unlockedLevels[i];
+    btn.textContent = unlockedLevels[i] ? '도전' : '🔒';
+  }
+}
+
+function startLevel(idx){
+  levelIdx = idx; level = LEVELS[idx];
+  resetRunState();
+  document.getElementById('levelNameTag').textContent = level.name + '  ·  목표 피 ' + level.bloodGoal;
+  showScreen('playing');
+}
+
+function endLevel(success, manualExit){
+  totalBlood += levelBlood;
+  lastResultSuccess = success;
+  if(success && levelIdx+1<LEVELS.length) unlockedLevels[levelIdx+1] = true;
+
+  document.getElementById('resultEmoji').textContent = success ? '🎉' : '😱';
+  document.getElementById('resultTitle').textContent = manualExit ? '철수 완료' : (success ? '레벨 클리어!' : '들켜버렸다...');
+  document.getElementById('resultGained').textContent = Math.floor(levelBlood);
+  document.getElementById('resultTotal').textContent = Math.floor(totalBlood);
+  showScreen('result');
+}
+
+/* ---------------- floating text ---------------- */
+function addFloat(x,y,text,color){
+  floats.push({x,y,text,color,life:0,maxLife:1.1,vy:-26});
+}
+
+/* ---------------- swat / wake logic ---------------- */
+function triggerSwat(){
+  human.state = 'swat-warn';
+  human.swatTimer = 0.62;
+  human.swatTargetX = player.x; human.swatTargetY = player.y;
+  beep(180,0.18,'square',0.04);
+}
+function resolveSwat(){
+  const d = dist(player.x,player.y,human.swatTargetX,human.swatTargetY);
+  if(d < 46 && invulnTimer<=0){
+    loseLife();
+    human.alert = Math.max(0, human.alert-35);
+  } else {
+    human.alert = Math.max(0, human.alert-16);
+    addFloat(human.swatTargetX, human.swatTargetY-30, '휴...', '#9aa1cc');
+  }
+  human.state = 'sleep';
+  human.swatCooldown = 1.0;
+}
+function loseLife(){
+  lives--;
+  invulnTimer = 1.0;
+  const cx = BED.x+40, cy = BED.y+60;
+  const dx = player.x-cx, dy=player.y-cy; const m = Math.hypot(dx,dy)||1;
+  player.vx += (dx/m)*260; player.vy += (dy/m)*260;
+  beep(90,0.25,'sawtooth',0.06);
+  addFloat(player.x, player.y-20, '맞았다!', '#e63950');
+  if(lives<=0){
+    triggerWake(true);
+  }
+}
+function triggerWake(forced){
+  if(human.state==='awake') return;
+  human.state = 'awake';
+  human.lightOn = true;
+  flashOverlay.classList.add('show');
+  beep(440,0.3,'triangle',0.05);
+  setTimeout(()=>{
+    flashOverlay.classList.remove('show');
+    endLevel(false, false);
+  }, 1100);
+}
+
+/* ---------------- main update ---------------- */
+let lastT = null;
+function update(dt){
+  dt = Math.min(dt, 0.033);
+
+  // ---- input -> acceleration ----
+  let ax=0, ay=0;
+  if(human.state!=='awake'){
+    if(pointer.active){
+      const dx = pointer.x-player.x, dy = pointer.y-player.y;
+      const d = Math.hypot(dx,dy);
+      if(d>3){ ax = dx/d; ay = dy/d; }
+    } else {
+      if(keys['ArrowLeft']||keys['a']) ax-=1;
+      if(keys['ArrowRight']||keys['d']) ax+=1;
+      if(keys['ArrowUp']||keys['w']) ay-=1;
+      if(keys['ArrowDown']||keys['s']) ay+=1;
+      const m = Math.hypot(ax,ay); if(m>0){ax/=m; ay/=m;}
+    }
+  }
+
+  const maxSpeed = 92 * (1 + upgrades.speed*0.16);
+  const accel = 560;
+  const drag = 6.2;
+  player.vx += (ax*accel - player.vx*drag)*dt;
+  player.vy += (ay*accel - player.vy*drag)*dt;
+
+  // wind zone
+  const inWind = fan.on && dist(player.x,player.y,WIND_ZONE.x,WIND_ZONE.y) < WIND_ZONE.r;
+  if(inWind){
+    player.vx += WIND_ZONE.dir.x * 70 * dt;
+    player.vy += WIND_ZONE.dir.y * 70 * dt;
+  }
+
+  let sp = Math.hypot(player.vx,player.vy);
+  if(sp > maxSpeed){ player.vx *= maxSpeed/sp; player.vy *= maxSpeed/sp; sp = maxSpeed; }
+
+  player.x = clamp(player.x + player.vx*dt, 14, W-14);
+  player.y = clamp(player.y + player.vy*dt, 14, H-14);
+
+  if(invulnTimer>0) invulnTimer -= dt;
+
+  // ---- fan cycle ----
+  if(level.hazards.fan){
+    fan.timer -= dt;
+    fan.bladeAngle += (fan.on?14:2)*dt;
+    if(fan.timer<=0){ fan.on = !fan.on; fan.timer = fan.on ? rand(2.6,3.4) : rand(2.8,4); }
+  }
+
+  // ---- coil hazard ----
+  if(level.hazards.coil){
+    if(Math.random()<0.5) smokeParticles.push({x:COIL_POS.x+rand(-6,6), y:COIL_POS.y, vy:rand(-22,-32), vx:rand(-6,6), life:0, maxLife:rand(1.6,2.4), size:rand(6,11)});
+    const dC = dist(player.x,player.y,COIL_POS.x,COIL_POS.y);
+    if(dC < COIL_HAZARD_R){
+      coil.timer += dt;
+      if(coil.timer>1.0 && invulnTimer<=0){
+        coil.timer = 0;
+        loseLife();
+        addFloat(player.x,player.y-24,'콜록!','#c9d16b');
+      }
+    } else {
+      coil.timer = Math.max(0, coil.timer - dt*2);
+    }
+  }
+  smokeParticles.forEach(p=>{ p.life+=dt; p.x+=p.vx*dt; p.y+=p.vy*dt; });
+  smokeParticles = smokeParticles.filter(p=>p.life<p.maxLife);
+
+  // ---- sensitive light events ----
+  if(level.hazards.light && human.state!=='awake'){
+    if(human.lightOn){
+      lightFlashTimer -= dt;
+      if(lightFlashTimer<=0){ human.lightOn = false; human.lightTimer = rand(7,12); }
+    } else {
+      human.lightTimer -= dt;
+      if(human.lightTimer<=0){
+        human.lightOn = true; lightFlashTimer = 2.6;
+        human.alert = clamp(human.alert+15,0,100);
+        addFloat(LAMP_POS.x, LAMP_POS.y-26, '불을 켰다!', '#ffd27a');
+        beep(300,0.12,'square',0.04);
+      }
+    }
+  }
+
+  // ---- feeding logic ----
+  biteSpot.bob += dt;
+  const dBite = dist(player.x,player.y,biteSpot.x,biteSpot.y);
+  const speedNow = Math.hypot(player.vx,player.vy);
+  if(human.state!=='awake' && human.state!=='swat-warn' && dBite < 24 && speedNow < 22){
+    feeding.stillTimer += dt;
+    if(feeding.stillTimer > 0.15){
+      feeding.active = true;
+      const rate = 9 * (1 + upgrades.suck*0.25);
+      levelBlood += rate*dt;
+    }
+  } else {
+    feeding.stillTimer = Math.max(0, feeding.stillTimer-dt*2);
+    feeding.active = false;
+  }
+
+  // ---- alert / noise model ----
+  if(human.state==='sleep' || human.state==='stir'){
+    const hx = BED.x+90, hy = BED.y+90;
+    const dHuman = dist(player.x,player.y,hx,hy);
+    const hearingR = 240;
+    let noiseLevel = 0;
+    if(dHuman < hearingR){
+      const speedFactor = clamp(speedNow/maxSpeed,0,1);
+      const proxFactor = 1 - dHuman/hearingR;
+      noiseLevel = speedFactor*0.65 + proxFactor*0.55;
+      if(inWind) noiseLevel *= 0.42;
+      noiseLevel *= (1 - upgrades.noise*0.14);
+      if(human.lightOn) noiseLevel *= 2.4;
+    }
+
+    if(noiseLevel > 0.04){
+      human.alert = clamp(human.alert + noiseLevel*level.alertMul*15*dt, 0, 100);
+    } else {
+      human.alert = clamp(human.alert - level.decay*dt, 0, 100);
+    }
+
+    // itch spikes while feeding
+    if(feeding.active){
+      feeding.itchTimer -= dt;
+      if(feeding.itchTimer<=0){
+        feeding.itchTimer = rand(0.8,1.5);
+        const chance = 0.3*level.alertMul;
+        if(Math.random() < chance){
+          human.alert = clamp(human.alert + rand(9,17), 0, 100);
+          addFloat(hx, hy-50, '...!', '#ffb454');
+        }
+      }
+    }
+
+    if(human.swatCooldown>0) human.swatCooldown -= dt;
+    if(human.alert >= level.swatT && human.swatCooldown<=0){
+      triggerSwat();
+    } else if(human.alert >= level.wakeT){
+      triggerWake(false);
+    }
+  } else if(human.state==='swat-warn'){
+    human.swatTimer -= dt;
+    if(human.swatTimer<=0) resolveSwat();
+  }
+
+  // floating texts
+  floats.forEach(f=>{ f.life+=dt; f.y += f.vy*dt; });
+  floats = floats.filter(f=>f.life<f.maxLife);
+
+  // win check
+  if(human.state!=='awake' && levelBlood >= level.bloodGoal){
+    endLevel(true,false);
+  }
+}
+
+/* ---------------- rendering ---------------- */
+function drawRoom(){
+  ctx.clearRect(0,0,W,H);
+  // floor/wall gradient
+  const g = ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#11163a'); g.addColorStop(1,'#0a0d22');
+  ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle = '#0d1130'; ctx.fillRect(0,H-70,W,70);
+
+  // window
+  ctx.fillStyle = '#1c2150'; ctx.fillRect(WINDOW_POS.x,WINDOW_POS.y,WINDOW_POS.w,WINDOW_POS.h);
+  ctx.strokeStyle = '#3b4280'; ctx.lineWidth=4; ctx.strokeRect(WINDOW_POS.x,WINDOW_POS.y,WINDOW_POS.w,WINDOW_POS.h);
+  ctx.strokeStyle = 'rgba(150,160,220,0.35)'; ctx.lineWidth=1;
+  for(let i=1;i<4;i++){ ctx.beginPath(); ctx.moveTo(WINDOW_POS.x+i*WINDOW_POS.w/4,WINDOW_POS.y); ctx.lineTo(WINDOW_POS.x+i*WINDOW_POS.w/4,WINDOW_POS.y+WINDOW_POS.h); ctx.stroke(); }
+  ctx.beginPath(); ctx.ellipse(WINDOW_POS.x+25,WINDOW_POS.y+40,9,7,0.4,0,Math.PI*2); ctx.fillStyle='#0a0d22'; ctx.fill();
+
+  // fan
+  if(level.hazards.fan){
+    if(fan.on){
+      ctx.beginPath(); ctx.arc(WIND_ZONE.x,WIND_ZONE.y,WIND_ZONE.r,0,Math.PI*2);
+      ctx.fillStyle='rgba(140,180,255,0.05)'; ctx.fill();
+      ctx.strokeStyle='rgba(160,190,255,0.18)'; ctx.lineWidth=2;
+      for(let i=0;i<3;i++){
+        const yy = FAN_POS.y-14+i*14 + Math.sin(Date.now()/180+i)*4;
+        ctx.beginPath(); ctx.moveTo(FAN_POS.x+22,yy); ctx.quadraticCurveTo(FAN_POS.x+70,yy-10,FAN_POS.x+120,yy+6); ctx.stroke();
+      }
+    }
+    ctx.fillStyle='#2a3068'; ctx.fillRect(FAN_POS.x-4,FAN_POS.y+20,8,46);
+    ctx.beginPath(); ctx.arc(FAN_POS.x,FAN_POS.y,FAN_POS.r,0,Math.PI*2); ctx.fillStyle='#272c5e'; ctx.fill();
+    ctx.strokeStyle='#5a62a8'; ctx.lineWidth=2; ctx.stroke();
+    ctx.save(); ctx.translate(FAN_POS.x,FAN_POS.y); ctx.rotate(fan.bladeAngle);
+    ctx.fillStyle='#7b82c9';
+    for(let i=0;i<3;i++){ ctx.save(); ctx.rotate(i*2.094); ctx.beginPath(); ctx.ellipse(0,-14,6,13,0,0,Math.PI*2); ctx.fill(); ctx.restore(); }
+    ctx.restore();
+    ctx.fillStyle = fan.on ? '#52d6a8' : '#4a4f80';
+    ctx.beginPath(); ctx.arc(FAN_POS.x,FAN_POS.y,4,0,Math.PI*2); ctx.fill();
+  }
+
+  // coil
+  if(level.hazards.coil){
+    ctx.beginPath(); ctx.arc(COIL_POS.x,COIL_POS.y,COIL_HAZARD_R,0,Math.PI*2);
+    ctx.fillStyle='rgba(180,160,80,0.06)'; ctx.fill();
+    ctx.save(); ctx.translate(COIL_POS.x,COIL_POS.y);
+    ctx.strokeStyle='#c9a24a'; ctx.lineWidth=3;
+    ctx.beginPath();
+    for(let a=0;a<=14;a+=0.4){ const r=2+a*1.1; ctx.lineTo(Math.cos(a)*r, Math.sin(a)*r*0.6); }
+    ctx.stroke(); ctx.restore();
+    smokeParticles.forEach(p=>{
+      const t = p.life/p.maxLife;
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.size*(1+t),0,Math.PI*2);
+      ctx.fillStyle = `rgba(190,195,210,${0.22*(1-t)})`; ctx.fill();
+    });
+  }
+
+  // bed
+  ctx.fillStyle='#23284f'; ctx.beginPath(); ctx.roundRect(BED.x-20,BED.y-10,BED.w+40,BED.h+40,18); ctx.fill();
+  ctx.fillStyle='#2f376e'; ctx.beginPath(); ctx.roundRect(BED.x,BED.y,BED.w,BED.h,22); ctx.fill();
+  // pillow
+  ctx.fillStyle='#e9e6f2'; ctx.beginPath(); ctx.roundRect(BED.x+10,BED.y+10,80,55,16); ctx.fill();
+  // human head
+  const headX = BED.x+50, headY = BED.y+38;
+  ctx.fillStyle='#caa07a'; ctx.beginPath(); ctx.arc(headX,headY,26,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#2c2030'; ctx.beginPath(); ctx.arc(headX,headY-10,24,Math.PI*0.9,Math.PI*2.05); ctx.fill();
+  // closed eyes (sleeping) or alert face
+  ctx.strokeStyle='#3a2a22'; ctx.lineWidth=2.4; ctx.lineCap='round';
+  if(human.state==='awake'){
+    ctx.beginPath(); ctx.arc(headX-9,headY+2,4,0,Math.PI*2); ctx.arc(headX+9,headY+2,4,0,Math.PI*2);
+    ctx.strokeStyle='#241a14'; ctx.stroke();
+  } else {
+    ctx.beginPath(); ctx.moveTo(headX-13,headY+2); ctx.quadraticCurveTo(headX-9,headY+6,headX-5,headY+2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(headX+5,headY+2); ctx.quadraticCurveTo(headX+9,headY+6,headX+13,headY+2); ctx.stroke();
+  }
+  // blanket body
+  ctx.fillStyle='#39418a'; ctx.beginPath(); ctx.roundRect(BED.x+30,BED.y+58,BED.w-60,BED.h-90,30); ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,0.06)'; ctx.lineWidth=2;
+  for(let i=1;i<4;i++){ ctx.beginPath(); ctx.moveTo(BED.x+30+i*(BED.w-60)/4,BED.y+58); ctx.lineTo(BED.x+30+i*(BED.w-60)/4,BED.y+BED.h-32); ctx.stroke(); }
+
+  // exposed arm + bite spot
+  ctx.fillStyle='#caa07a'; ctx.beginPath();
+  ctx.roundRect(biteSpot.x-46,biteSpot.y-14,92,28,14); ctx.fill();
+  if(human.state!=='awake' && levelBlood < level.bloodGoal){
+    const pulse = 5 + Math.sin(biteSpot.bob*4)*2.5;
+    const grd = ctx.createRadialGradient(biteSpot.x,biteSpot.y,0,biteSpot.x,biteSpot.y,16+pulse);
+    grd.addColorStop(0,'rgba(255,210,120,0.95)'); grd.addColorStop(1,'rgba(255,210,120,0)');
+    ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(biteSpot.x,biteSpot.y,16+pulse,0,Math.PI*2); ctx.fill();
+  }
+
+  // lamp
+  ctx.fillStyle='#2a2f63'; ctx.fillRect(LAMP_POS.x-3,LAMP_POS.y+6,6,40);
+  ctx.beginPath(); ctx.moveTo(LAMP_POS.x-16,LAMP_POS.y+6); ctx.lineTo(LAMP_POS.x+16,LAMP_POS.y+6); ctx.lineTo(LAMP_POS.x+10,LAMP_POS.y-16); ctx.lineTo(LAMP_POS.x-10,LAMP_POS.y-16); ctx.closePath();
+  ctx.fillStyle = human.lightOn ? '#ffe9b0' : '#4a4f80'; ctx.fill();
+  if(human.lightOn){
+    ctx.beginPath(); ctx.arc(LAMP_POS.x,LAMP_POS.y-4,90,0,Math.PI*2);
+    const lg = ctx.createRadialGradient(LAMP_POS.x,LAMP_POS.y-4,0,LAMP_POS.x,LAMP_POS.y-4,90);
+    lg.addColorStop(0,'rgba(255,230,160,0.35)'); lg.addColorStop(1,'rgba(255,230,160,0)');
+    ctx.fillStyle=lg; ctx.fill();
+  }
+
+  // full-room light overlay when fully awake
+  if(human.state==='awake'){
+    ctx.fillStyle='rgba(255,240,190,0.30)'; ctx.fillRect(0,0,W,H);
+  }
+}
+
+function drawPlayer(){
+  const speedNow = Math.hypot(player.vx,player.vy);
+  const angle = speedNow>5 ? Math.atan2(player.vy,player.vx) : 0;
+  ctx.save();
+  ctx.translate(player.x,player.y);
+
+  // buzz trail dots scale with speed (visual noise indicator)
+  const buzzCount = Math.round(clamp(speedNow/14,0,5));
+  for(let i=0;i<buzzCount;i++){
+    const t = Date.now()/90 + i*1.3;
+    ctx.beginPath();
+    ctx.arc(-Math.cos(angle)*(8+i*4), -Math.sin(angle)*(8+i*4), 1.6, 0, Math.PI*2);
+    ctx.fillStyle = `rgba(230,57,80,${0.35-i*0.06})`;
+    ctx.fill();
+  }
+
+  ctx.rotate(angle);
+  if(invulnTimer>0 && Math.floor(invulnTimer*14)%2===0){ ctx.globalAlpha = 0.35; }
+  // wings
+  const flap = Math.sin(Date.now()/40)*0.5+0.5;
+  ctx.fillStyle='rgba(200,210,255,0.55)';
+  ctx.beginPath(); ctx.ellipse(-2,-6-flap*2,7,3.2,-0.3,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-2,6+flap*2,7,3.2,0.3,0,Math.PI*2); ctx.fill();
+  // body
+  ctx.fillStyle='#241018';
+  ctx.beginPath(); ctx.ellipse(0,0,9,4,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#3d1220';
+  ctx.beginPath(); ctx.ellipse(2,0,5,3,0,0,Math.PI*2); ctx.fill();
+  // proboscis
+  ctx.strokeStyle='#241018'; ctx.lineWidth=1.4;
+  ctx.beginPath(); ctx.moveTo(9,0); ctx.lineTo(15,0); ctx.stroke();
+  ctx.restore();
+
+  // feeding progress ring
+  if(feeding.active){
+    const pct = clamp(levelBlood/level.bloodGoal,0,1);
+    ctx.beginPath(); ctx.arc(biteSpot.x,biteSpot.y,20,-Math.PI/2,-Math.PI/2+pct*Math.PI*2);
+    ctx.strokeStyle='#e63950'; ctx.lineWidth=3; ctx.stroke();
+  }
+}
+
+function drawSwatWarning(){
+  if(human.state==='swat-warn'){
+    const t = 1-(human.swatTimer/0.62);
+    const r = lerp(60,14,t);
+    ctx.beginPath(); ctx.arc(human.swatTargetX,human.swatTargetY,r,0,Math.PI*2);
+    ctx.strokeStyle = `rgba(230,57,80,${0.8})`; ctx.lineWidth=4; ctx.stroke();
+    ctx.font='bold 30px sans-serif'; ctx.fillStyle='#ffce3a'; ctx.textAlign='center';
+    ctx.fillText('!', human.swatTargetX, human.swatTargetY-r-14 + Math.sin(Date.now()/60)*3);
+  }
+}
+
+function drawFloats(){
+  ctx.textAlign='center';
+  floats.forEach(f=>{
+    const t = f.life/f.maxLife;
+    ctx.globalAlpha = 1-t;
+    ctx.font = '700 14px Noto Sans KR, sans-serif';
+    ctx.fillStyle = f.color;
+    ctx.fillText(f.text, f.x, f.y);
+    ctx.globalAlpha = 1;
+  });
+}
+
+function drawVignette(){
+  const t = human.alert/100;
+  if(t<=0.02) return;
+  const grd = ctx.createRadialGradient(W/2,H/2,H*0.3,W/2,H/2,H*0.75);
+  grd.addColorStop(0,'rgba(230,57,80,0)');
+  grd.addColorStop(1,`rgba(230,57,80,${0.05+t*0.35})`);
+  ctx.fillStyle = grd; ctx.fillRect(0,0,W,H);
+}
+
+function drawAlertGauge(){
+  actx.clearRect(0,0,120,46);
+  const pct = human.alert/100;
+  // teardrop shape (blood-drop) filling bottom-up, signature gauge
+  const cx=60, topY=6, bottomY=38, rad=15;
+  actx.save();
+  actx.beginPath();
+  actx.moveTo(cx, topY);
+  actx.bezierCurveTo(cx+rad*1.15, topY+22, cx+rad, bottomY, cx, bottomY);
+  actx.bezierCurveTo(cx-rad, bottomY, cx-rad*1.15, topY+22, cx, topY);
+  actx.closePath();
+  actx.clip();
+  actx.fillStyle = 'rgba(255,255,255,0.06)';
+  actx.fillRect(0,0,120,46);
+  const fillH = (bottomY-topY)*pct;
+  const fillY = bottomY-fillH;
+  let color = pct<0.5 ? '#52d6a8' : pct<0.8 ? '#ffb454' : '#e63950';
+  actx.fillStyle = color;
+  actx.fillRect(0, fillY, 120, fillH+4);
+  actx.restore();
+  actx.beginPath();
+  actx.moveTo(cx, topY);
+  actx.bezierCurveTo(cx+rad*1.15, topY+22, cx+rad, bottomY, cx, bottomY);
+  actx.bezierCurveTo(cx-rad, bottomY, cx-rad*1.15, topY+22, cx, topY);
+  actx.closePath();
+  actx.strokeStyle = 'rgba(255,255,255,0.5)'; actx.lineWidth=1.6; actx.stroke();
+  actx.font='700 9px Noto Sans KR, sans-serif'; actx.fillStyle='#dfe3f5'; actx.textAlign='center';
+  actx.fillText('경계도', cx, 44);
+}
+
+function updateHUD(){
+  const heartsRow = document.getElementById('heartsRow');
+  heartsRow.innerHTML = '';
+  for(let i=0;i<3;i++){
+    const span = document.createElement('span');
+    span.className = 'heart' + (i<lives?'':' lost');
+    span.textContent = '♥';
+    heartsRow.appendChild(span);
+  }
+  document.getElementById('bloodReadout').textContent = '🩸 ' + Math.floor(levelBlood) + ' / ' + level.bloodGoal;
+  drawAlertGauge();
+}
+
+function render(){
+  drawRoom();
+  drawPlayer();
+  drawSwatWarning();
+  drawFloats();
+  drawVignette();
+  updateHUD();
+}
+
+/* ---------------- main loop ---------------- */
+function loop(ts){
+  if(lastT===null) lastT = ts;
+  const dt = (ts-lastT)/1000;
+  lastT = ts;
+  if(state==='playing'){
+    update(dt);
+    render();
+  } else if(state==='title' || state==='hub'){
+    // ambient idle render of the room for atmosphere
+    biteSpot = biteSpot || {x:680,y:400,bob:0};
+    human = human || {alert:0,state:'sleep',lightOn:false};
+    level = level || LEVELS[0];
+    fan = fan || {on:false,bladeAngle:0};
+    coil = coil || {timer:0};
+    smokeParticles = smokeParticles || [];
+    floats = floats || [];
+    feeding = feeding || {active:false};
+    player = player || {x:-100,y:-100,vx:0,vy:0};
+    levelBlood = levelBlood||0;
+    biteSpot.bob += dt;
+    drawRoom();
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>
