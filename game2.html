@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>도형 그리기 정확도 게임 MVP</title>
+    <style>
+        body { text-align: center; font-family: sans-serif; background: #f0f0f0; }
+        #canvas-container { position: relative; display: inline-block; margin-top: 20px; }
+        canvas { border: 2px solid #333; background: #fff; cursor: crosshair; touch-action: none; }
+        #timer-bar { width: 400px; height: 10px; background: #ddd; margin: 10px auto; position: relative; }
+        #timer-progress { width: 100%; height: 100%; background: red; transition: width 0.1s linear; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <h1>도형 그리기 게임 MVP 🎯</h1>
+    <p>가이드 점선을 따라 원을 최대한 정확하게 그리세요! (제한시간 3초)</p>
+    
+    <button id="start-btn">도전하기</button>
+    
+    <div id="timer-bar">
+        <div id="timer-progress"></div>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="gameCanvas" width="400" height="400"></canvas>
+    </div>
+
+    <h2 id="result-text"></h2>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('start-btn');
+        const timerProgress = document.getElementById('timer-progress');
+        const resultText = document.getElementById('result-text');
+
+        let isDrawing = false;
+        let gameActive = false;
+        let userPoints = []; // 유저가 그린 좌표 저장
+        let guidePoints = []; // 가이드 도형 좌표 저장
+        let limitTime = 3000; // 3초
+        let timeLeft = limitTime;
+        let timerInterval;
+
+        // 1. 가이드 도형 데이터 생성 (예시: 완벽한 원)
+        function generateCircleGuide() {
+            guidePoints = [];
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = 120; // 랜덤 사이즈 조절 가능
+
+            // 원을 이루는 360개의 점 데이터 확보
+            for (let i = 0; i < 360; i += 5) {
+                const angle = (i * Math.PI) / 180;
+                guidePoints.push({
+                    x: centerX + radius * Math.cos(angle),
+                    y: centerY + radius * Math.sin(angle)
+                });
+            }
+        }
+
+        // 2. 화면 화면 그리기 (점선 가이드 포함)
+        function drawCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 가이드 점선 그리기
+            if (guidePoints.length > 0) {
+                ctx.strokeStyle = '#aaa';
+                ctx.lineWidth = 3;
+                ctx.setLineDash([5, 5]); // 점선 효과
+                ctx.beginPath();
+                ctx.arc(canvas.width/2, canvas.height/2, 120, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.setLineDash([]); // 점선 리셋
+            }
+
+            // 유저가 그린 선 그리기
+            if (userPoints.length > 1) {
+                ctx.strokeStyle = '#222';
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.moveTo(userPoints[0].x, userPoints[0].y);
+                for (let i = 1; i < userPoints.length; i++) {
+                    ctx.lineTo(userPoints[i].x, userPoints[i].y);
+                }
+                ctx.stroke();
+            }
+        }
+
+        // 3. 게임 시작 (도전하기)
+        startBtn.addEventListener('click', () => {
+            gameActive = true;
+            userPoints = [];
+            timeLeft = limitTime;
+            resultText.innerText = "";
+            generateCircleGuide();
+            drawCanvas();
+            
+            startBtn.disabled = true;
+
+            // 타이머 작동
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timeLeft -= 100;
+                timerProgress.style.width = (timeLeft / limitTime) * 100 + "%";
+
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 100);
+        });
+
+        // 4. 게임 종료 및 정확도 채점 (MVP 알고리즘)
+        function endGame() {
+            gameActive = false;
+            clearInterval(timerInterval);
+            startBtn.disabled = false;
+            timerProgress.style.width = "0%";
+
+            if (userPoints.length === 0) {
+                resultText.innerText = "그림을 그리지 않았습니다! 😢";
+                return;
+            }
+
+            // 평균 거리 오차(MSE) 기반 정확도 계산
+            let totalError = 0;
+            userPoints.forEach(uPt => {
+                // 유저 점 각각에서 가장 가까운 가이드 점 찾기
+                let minDst = Infinity;
+                guidePoints.forEach(gPt => {
+                    let dst = Math.pow(uPt.x - gPt.x, 2) + Math.pow(uPt.y - gPt.y, 2);
+                    if (dst < minDst) minDst = dst;
+                });
+                totalError += Math.sqrt(minDst);
+            });
+
+            let avgError = totalError / userPoints.length;
+            // 오차 거리를 점수(%)로 변환 (기본 감점 방식 적용)
+            let accuracy = Math.max(0, 100 - (avgError * 2)); 
+            
+            resultText.innerText = `정확도: ${accuracy.toFixed(1)}% ✨`;
+        }
+
+        // 5. 드로잉 이벤트 리스너 (PC & 모바일 공통 지원)
+        function getPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return { x: clientX - rect.left, y: clientY - rect.top };
+        }
+
+        function startDraw(e) {
+            if (!gameActive) return;
+            isDrawing = true;
+            userPoints.push(getPos(e));
+            drawCanvas();
+        }
+
+        function moveDraw(e) {
+            if (!isDrawing || !gameActive) return;
+            userPoints.push(getPos(e));
+            drawCanvas();
+        }
+
+        function stopDraw() {
+            isDrawing = false;
+        }
+
+        canvas.addEventListener('mousedown', startDraw);
+        canvas.addEventListener('mousemove', moveDraw);
+        window.addEventListener('mouseup', stopDraw);
+
+        canvas.addEventListener('touchstart', startDraw);
+        canvas.addEventListener('touchmove', moveDraw);
+        window.addEventListener('touchend', stopDraw);
+    </script>
+</body>
+</html>
