@@ -5,35 +5,214 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>도형 그리기 정확도 게임 MVP</title>
     <style>
-        body { text-align: center; font-family: sans-serif; background: #f0f0f0; }
-        #canvas-container { position: relative; display: inline-block; margin-top: 20px; }
-        canvas { border: 2px solid #333; background: #fff; cursor: crosshair; touch-action: none; }
-        #timer-bar { width: 400px; height: 10px; background: #ddd; margin: 10px auto; position: relative; }
+        * { box-sizing: border-box; }
+        body {
+            text-align: center;
+            font-family: sans-serif;
+            background: #f0f0f0;
+            margin: 0;
+            padding: 20px 10px 40px;
+        }
+        .screen { display: none; }
+        .screen.active { display: block; }
+
+        /* ---- 홈 화면(난이도 선택) ---- */
+        #home-title { font-size: 26px; margin-bottom: 4px; }
+        #home-subtitle { color: #666; margin-bottom: 24px; }
+
+        .difficulty-list {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            max-width: 420px;
+            margin: 0 auto;
+        }
+        .difficulty-card {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 18px 20px;
+            border-radius: 14px;
+            border: none;
+            cursor: pointer;
+            text-align: left;
+            font-family: inherit;
+            transition: transform 0.12s ease, box-shadow 0.12s ease;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        }
+        .difficulty-card:active { transform: scale(0.98); }
+        .difficulty-icon { font-size: 30px; flex-shrink: 0; }
+        .difficulty-text { flex: 1; }
+        .difficulty-name { font-size: 18px; font-weight: bold; margin-bottom: 2px; }
+        .difficulty-desc { font-size: 13px; opacity: 0.85; }
+        .difficulty-badge {
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 20px;
+            background: rgba(255,255,255,0.6);
+            white-space: nowrap;
+        }
+
+        .card-easy { background: #d7f2df; color: #1c5c33; }
+        .card-medium { background: #ffe9c2; color: #7a4d00; }
+        .card-hard { background: #ffd7d7; color: #7a1c1c; }
+
+        /* ---- 공통 상단바 ---- */
+        .top-bar {
+            max-width: 420px;
+            margin: 0 auto 10px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+        }
+        .back-btn {
+            padding: 8px 14px;
+            font-size: 14px;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            background: #fff;
+            cursor: pointer;
+        }
+
+        /* ---- 게임 공통 ---- */
+        #canvas-container { position: relative; display: inline-block; margin-top: 10px; }
+        canvas { border: 2px solid #333; background: #fff; cursor: crosshair; touch-action: none; max-width: 90vw; }
+        #timer-bar { width: 400px; max-width: 90vw; height: 10px; background: #ddd; margin: 10px auto; position: relative; }
         #timer-progress { width: 100%; height: 100%; background: red; transition: width 0.1s linear; }
-        button { padding: 10px 20px; font-size: 16px; cursor: pointer; margin-top: 10px; }
+        button.primary { padding: 10px 20px; font-size: 16px; cursor: pointer; margin-top: 10px; border: none; border-radius: 8px; background: #333; color: #fff; }
         #shape-label { font-size: 20px; font-weight: bold; color: #333; margin-top: 10px; }
+
+        /* ---- 준비중 화면(보통/어려움) ---- */
+        .coming-soon-box {
+            max-width: 420px;
+            margin: 60px auto 0;
+            padding: 40px 20px;
+            background: #fff;
+            border-radius: 14px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        }
+        .coming-soon-emoji { font-size: 48px; margin-bottom: 12px; }
+        .coming-soon-title { font-size: 20px; font-weight: bold; margin-bottom: 8px; }
+        .coming-soon-desc { color: #666; font-size: 14px; line-height: 1.5; }
+        .upload-btn {
+            margin-top: 20px;
+            padding: 12px 22px;
+            font-size: 15px;
+            border-radius: 8px;
+            border: none;
+            background: #ccc;
+            color: #666;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
 
-    <h1>도형 그리기 게임 MVP 🎯</h1>
-    <p>가이드 점선을 따라 도형을 최대한 정확하게 그리세요! (제한시간 10초)</p>
+    <!-- ================= 홈 화면: 난이도 선택 ================= -->
+    <div id="screen-home" class="screen active">
+        <h1 id="home-title">도형 그리기 게임 🎯</h1>
+        <p id="home-subtitle">난이도를 선택하세요</p>
 
-    <button id="start-btn">도전하기</button>
+        <div class="difficulty-list">
+            <button class="difficulty-card card-easy" onclick="showScreen('easy')">
+                <div class="difficulty-icon">🟢</div>
+                <div class="difficulty-text">
+                    <div class="difficulty-name">쉬움</div>
+                    <div class="difficulty-desc">기본 도형을 따라 그려보세요</div>
+                </div>
+                <div class="difficulty-badge">시작 가능</div>
+            </button>
 
-    <div id="shape-label"></div>
+            <button class="difficulty-card card-medium" onclick="showScreen('medium')">
+                <div class="difficulty-icon">🟡</div>
+                <div class="difficulty-text">
+                    <div class="difficulty-name">보통</div>
+                    <div class="difficulty-desc">복잡한 기하학 무늬에 도전</div>
+                </div>
+                <div class="difficulty-badge">준비중</div>
+            </button>
 
-    <div id="timer-bar">
-        <div id="timer-progress"></div>
+            <button class="difficulty-card card-hard" onclick="showScreen('hard')">
+                <div class="difficulty-icon">🔴</div>
+                <div class="difficulty-text">
+                    <div class="difficulty-name">어려움</div>
+                    <div class="difficulty-desc">내 사진으로 실루엣 그리기</div>
+                </div>
+                <div class="difficulty-badge">준비중</div>
+            </button>
+        </div>
     </div>
 
-    <div id="canvas-container">
-        <canvas id="gameCanvas" width="400" height="400"></canvas>
+    <!-- ================= 쉬움: 도형 그리기 게임 ================= -->
+    <div id="screen-easy" class="screen">
+        <div class="top-bar">
+            <button class="back-btn" onclick="showScreen('home')">← 난이도 선택</button>
+        </div>
+
+        <p>가이드 점선을 따라 도형을 최대한 정확하게 그리세요! (제한시간 10초)</p>
+
+        <button id="start-btn" class="primary">도전하기</button>
+
+        <div id="shape-label"></div>
+
+        <div id="timer-bar">
+            <div id="timer-progress"></div>
+        </div>
+
+        <div id="canvas-container">
+            <canvas id="gameCanvas" width="400" height="400"></canvas>
+        </div>
+
+        <h2 id="result-text"></h2>
     </div>
 
-    <h2 id="result-text"></h2>
+    <!-- ================= 보통: 기하학 무늬 (준비중) ================= -->
+    <div id="screen-medium" class="screen">
+        <div class="top-bar">
+            <button class="back-btn" onclick="showScreen('home')">← 난이도 선택</button>
+        </div>
+
+        <div class="coming-soon-box">
+            <div class="coming-soon-emoji">🟡</div>
+            <div class="coming-soon-title">기하학 무늬 모드</div>
+            <div class="coming-soon-desc">
+                별, 나선, 만다라 같은 복잡한 기하학 무늬를<br>
+                따라 그리는 모드를 준비 중입니다.<br>
+                조금만 기다려주세요!
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= 어려움: 사진 실루엣 (준비중) ================= -->
+    <div id="screen-hard" class="screen">
+        <div class="top-bar">
+            <button class="back-btn" onclick="showScreen('home')">← 난이도 선택</button>
+        </div>
+
+        <div class="coming-soon-box">
+            <div class="coming-soon-emoji">🔴</div>
+            <div class="coming-soon-title">사진 실루엣 모드</div>
+            <div class="coming-soon-desc">
+                본인 사진을 업로드하면 윤곽선(누끼)을 추출해서<br>
+                그 실루엣을 따라 그리는 모드를 준비 중입니다.
+            </div>
+            <button class="upload-btn" disabled>사진 업로드 (준비중)</button>
+        </div>
+    </div>
 
     <script>
+        // ================= 화면 전환 =================
+        function showScreen(name) {
+            document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
+            document.getElementById('screen-' + name).classList.add('active');
+
+            // 쉬움 화면을 벗어나면 진행 중이던 게임/타이머 정리
+            if (name !== 'easy') {
+                stopGameCleanup();
+            }
+        }
+
+        // ================= 쉬움 모드: 도형 그리기 게임 =================
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const startBtn = document.getElementById('start-btn');
@@ -47,7 +226,7 @@
         let guidePoints = []; // 채점용 가이드 도형 좌표 (조밀)
         let guideVertices = []; // 렌더링용 가이드 도형 꼭짓점
         let currentShape = 'circle';
-        let limitTime = 10000; // 10초로 변경
+        let limitTime = 10000; // 10초
         let timeLeft = limitTime;
         let timerInterval;
 
@@ -67,7 +246,6 @@
         };
         const SHAPE_KEYS = Object.keys(SHAPE_INFO);
 
-        // ---- 도형 정점(꼭짓점) 생성 헬퍼 ----
         function polygonVertices(sides, rx, ry, startAngleDeg) {
             const verts = [];
             for (let i = 0; i < sides; i++) {
@@ -94,7 +272,6 @@
             return verts;
         }
 
-        // 꼭짓점 사이를 촘촘한 점들로 보간 (채점용 정확도 향상)
         function interpolateEdges(verts, pointsPerEdge) {
             const pts = [];
             for (let i = 0; i < verts.length; i++) {
@@ -117,7 +294,6 @@
             return pts;
         }
 
-        // 1. 가이드 도형 데이터 생성
         function generateGuide(shape) {
             currentShape = shape;
             guideVertices = [];
@@ -162,7 +338,6 @@
             }
         }
 
-        // 2. 화면 그리기 (점선 가이드 포함)
         function drawGuide() {
             ctx.strokeStyle = '#aaa';
             ctx.lineWidth = 3;
@@ -192,7 +367,6 @@
                 drawGuide();
             }
 
-            // 유저가 그린 선 그리기
             if (userPoints.length > 1) {
                 ctx.strokeStyle = '#222';
                 ctx.lineWidth = 4;
@@ -205,7 +379,6 @@
             }
         }
 
-        // 3. 게임 시작 (도전하기)
         startBtn.addEventListener('click', () => {
             gameActive = true;
             userPoints = [];
@@ -219,7 +392,6 @@
 
             startBtn.disabled = true;
 
-            // 타이머 작동
             clearInterval(timerInterval);
             timerInterval = setInterval(() => {
                 timeLeft -= 100;
@@ -231,7 +403,6 @@
             }, 100);
         });
 
-        // 4. 게임 종료 및 정확도 채점 (MVP 알고리즘)
         function endGame() {
             gameActive = false;
             clearInterval(timerInterval);
@@ -243,7 +414,6 @@
                 return;
             }
 
-            // 평균 거리 오차(MSE) 기반 정확도 계산
             let totalError = 0;
             userPoints.forEach(uPt => {
                 let minDst = Infinity;
@@ -260,7 +430,15 @@
             resultText.innerText = `정확도: ${accuracy.toFixed(1)}% ✨`;
         }
 
-        // 5. 드로잉 이벤트 리스너 (PC & 모바일 공통 지원)
+        // 다른 화면으로 이동 시 타이머/상태 정리
+        function stopGameCleanup() {
+            clearInterval(timerInterval);
+            gameActive = false;
+            isDrawing = false;
+            startBtn.disabled = false;
+            timerProgress.style.width = "0%";
+        }
+
         function getPos(e) {
             const rect = canvas.getBoundingClientRect();
             const clientX = e.touches ? e.touches[0].clientX : e.clientX;
