@@ -11,15 +11,18 @@
         #timer-bar { width: 400px; height: 10px; background: #ddd; margin: 10px auto; position: relative; }
         #timer-progress { width: 100%; height: 100%; background: red; transition: width 0.1s linear; }
         button { padding: 10px 20px; font-size: 16px; cursor: pointer; margin-top: 10px; }
+        #shape-label { font-size: 20px; font-weight: bold; color: #333; margin-top: 10px; }
     </style>
 </head>
 <body>
 
     <h1>도형 그리기 게임 MVP 🎯</h1>
-    <p>가이드 점선을 따라 원을 최대한 정확하게 그리세요! (제한시간 3초)</p>
-    
+    <p>가이드 점선을 따라 도형을 최대한 정확하게 그리세요! (제한시간 10초)</p>
+
     <button id="start-btn">도전하기</button>
-    
+
+    <div id="shape-label"></div>
+
     <div id="timer-bar">
         <div id="timer-progress"></div>
     </div>
@@ -36,45 +39,157 @@
         const startBtn = document.getElementById('start-btn');
         const timerProgress = document.getElementById('timer-progress');
         const resultText = document.getElementById('result-text');
+        const shapeLabel = document.getElementById('shape-label');
 
         let isDrawing = false;
         let gameActive = false;
         let userPoints = []; // 유저가 그린 좌표 저장
-        let guidePoints = []; // 가이드 도형 좌표 저장
-        let limitTime = 3000; // 3초
+        let guidePoints = []; // 채점용 가이드 도형 좌표 (조밀)
+        let guideVertices = []; // 렌더링용 가이드 도형 꼭짓점
+        let currentShape = 'circle';
+        let limitTime = 10000; // 10초로 변경
         let timeLeft = limitTime;
         let timerInterval;
 
-        // 1. 가이드 도형 데이터 생성 (예시: 완벽한 원)
-        function generateCircleGuide() {
-            guidePoints = [];
-            const centerX = canvas.width / 2;
-            const centerY = canvas.height / 2;
-            const radius = 120; // 랜덤 사이즈 조절 가능
+        const centerX = 200;
+        const centerY = 200;
 
-            // 원을 이루는 360개의 점 데이터 확보
+        const SHAPE_INFO = {
+            circle:   { label: '원' },
+            ellipse:  { label: '타원' },
+            square:   { label: '사각형' },
+            triangle: { label: '삼각형' },
+            pentagon: { label: '오각형' },
+            hexagon:  { label: '육각형' },
+            octagon:  { label: '팔각형' },
+            rhombus:  { label: '마름모' },
+            star:     { label: '별표' }
+        };
+        const SHAPE_KEYS = Object.keys(SHAPE_INFO);
+
+        // ---- 도형 정점(꼭짓점) 생성 헬퍼 ----
+        function polygonVertices(sides, rx, ry, startAngleDeg) {
+            const verts = [];
+            for (let i = 0; i < sides; i++) {
+                const angle = (startAngleDeg + i * 360 / sides) * Math.PI / 180;
+                verts.push({
+                    x: centerX + rx * Math.cos(angle),
+                    y: centerY + ry * Math.sin(angle)
+                });
+            }
+            return verts;
+        }
+
+        function starVertices(outerR, innerR, points, startAngleDeg) {
+            const verts = [];
+            const totalPoints = points * 2;
+            for (let i = 0; i < totalPoints; i++) {
+                const r = (i % 2 === 0) ? outerR : innerR;
+                const angle = (startAngleDeg + i * 360 / totalPoints) * Math.PI / 180;
+                verts.push({
+                    x: centerX + r * Math.cos(angle),
+                    y: centerY + r * Math.sin(angle)
+                });
+            }
+            return verts;
+        }
+
+        // 꼭짓점 사이를 촘촘한 점들로 보간 (채점용 정확도 향상)
+        function interpolateEdges(verts, pointsPerEdge) {
+            const pts = [];
+            for (let i = 0; i < verts.length; i++) {
+                const a = verts[i];
+                const b = verts[(i + 1) % verts.length];
+                for (let t = 0; t < pointsPerEdge; t++) {
+                    const f = t / pointsPerEdge;
+                    pts.push({ x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f });
+                }
+            }
+            return pts;
+        }
+
+        function circlePoints(rx, ry) {
+            const pts = [];
             for (let i = 0; i < 360; i += 5) {
                 const angle = (i * Math.PI) / 180;
-                guidePoints.push({
-                    x: centerX + radius * Math.cos(angle),
-                    y: centerY + radius * Math.sin(angle)
-                });
+                pts.push({ x: centerX + rx * Math.cos(angle), y: centerY + ry * Math.sin(angle) });
+            }
+            return pts;
+        }
+
+        // 1. 가이드 도형 데이터 생성
+        function generateGuide(shape) {
+            currentShape = shape;
+            guideVertices = [];
+
+            switch (shape) {
+                case 'circle':
+                    guidePoints = circlePoints(120, 120);
+                    break;
+                case 'ellipse':
+                    guidePoints = circlePoints(150, 95);
+                    break;
+                case 'square':
+                    guideVertices = polygonVertices(4, 120, 120, 45);
+                    guidePoints = interpolateEdges(guideVertices, 30);
+                    break;
+                case 'triangle':
+                    guideVertices = polygonVertices(3, 130, 130, -90);
+                    guidePoints = interpolateEdges(guideVertices, 30);
+                    break;
+                case 'pentagon':
+                    guideVertices = polygonVertices(5, 125, 125, -90);
+                    guidePoints = interpolateEdges(guideVertices, 25);
+                    break;
+                case 'hexagon':
+                    guideVertices = polygonVertices(6, 125, 125, -90);
+                    guidePoints = interpolateEdges(guideVertices, 22);
+                    break;
+                case 'octagon':
+                    guideVertices = polygonVertices(8, 125, 125, -67.5);
+                    guidePoints = interpolateEdges(guideVertices, 18);
+                    break;
+                case 'rhombus':
+                    guideVertices = polygonVertices(4, 90, 130, 0);
+                    guidePoints = interpolateEdges(guideVertices, 30);
+                    break;
+                case 'star':
+                    guideVertices = starVertices(135, 55, 5, -90);
+                    guidePoints = interpolateEdges(guideVertices, 12);
+                    break;
+                default:
+                    guidePoints = circlePoints(120, 120);
             }
         }
 
-        // 2. 화면 화면 그리기 (점선 가이드 포함)
+        // 2. 화면 그리기 (점선 가이드 포함)
+        function drawGuide() {
+            ctx.strokeStyle = '#aaa';
+            ctx.lineWidth = 3;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+
+            if (currentShape === 'circle') {
+                ctx.arc(centerX, centerY, 120, 0, Math.PI * 2);
+            } else if (currentShape === 'ellipse') {
+                ctx.ellipse(centerX, centerY, 150, 95, 0, 0, Math.PI * 2);
+            } else if (guideVertices.length > 0) {
+                ctx.moveTo(guideVertices[0].x, guideVertices[0].y);
+                for (let i = 1; i < guideVertices.length; i++) {
+                    ctx.lineTo(guideVertices[i].x, guideVertices[i].y);
+                }
+                ctx.closePath();
+            }
+
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
         function drawCanvas() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // 가이드 점선 그리기
-            if (guidePoints.length > 0) {
-                ctx.strokeStyle = '#aaa';
-                ctx.lineWidth = 3;
-                ctx.setLineDash([5, 5]); // 점선 효과
-                ctx.beginPath();
-                ctx.arc(canvas.width/2, canvas.height/2, 120, 0, Math.PI * 2);
-                ctx.stroke();
-                ctx.setLineDash([]); // 점선 리셋
+            if (guidePoints.length > 0 || guideVertices.length > 0) {
+                drawGuide();
             }
 
             // 유저가 그린 선 그리기
@@ -96,9 +211,12 @@
             userPoints = [];
             timeLeft = limitTime;
             resultText.innerText = "";
-            generateCircleGuide();
+
+            const randomShape = SHAPE_KEYS[Math.floor(Math.random() * SHAPE_KEYS.length)];
+            generateGuide(randomShape);
+            shapeLabel.innerText = `그려야 할 도형: ${SHAPE_INFO[randomShape].label}`;
             drawCanvas();
-            
+
             startBtn.disabled = true;
 
             // 타이머 작동
@@ -128,7 +246,6 @@
             // 평균 거리 오차(MSE) 기반 정확도 계산
             let totalError = 0;
             userPoints.forEach(uPt => {
-                // 유저 점 각각에서 가장 가까운 가이드 점 찾기
                 let minDst = Infinity;
                 guidePoints.forEach(gPt => {
                     let dst = Math.pow(uPt.x - gPt.x, 2) + Math.pow(uPt.y - gPt.y, 2);
@@ -138,9 +255,8 @@
             });
 
             let avgError = totalError / userPoints.length;
-            // 오차 거리를 점수(%)로 변환 (기본 감점 방식 적용)
-            let accuracy = Math.max(0, 100 - (avgError * 2)); 
-            
+            let accuracy = Math.max(0, 100 - (avgError * 2));
+
             resultText.innerText = `정확도: ${accuracy.toFixed(1)}% ✨`;
         }
 
