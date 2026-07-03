@@ -115,12 +115,12 @@
 
         /* ---- 게임 화면 ---- */
         #game-mode-label { font-size: 14px; color: #777; margin-bottom: 6px; }
-        #canvas-container { position: relative; display: inline-block; margin-top: 10px; }
+        #instruction-text { font-size: 14px; color: #444; margin: 4px 0; }
+        #elapsed-label { font-size: 22px; font-weight: bold; color: #333; margin: 8px 0; font-variant-numeric: tabular-nums; }
+        #canvas-container { position: relative; display: inline-block; margin-top: 6px; }
         canvas { border: 2px solid #333; background: #fff; cursor: crosshair; touch-action: none; max-width: 90vw; }
-        #timer-bar { width: 400px; max-width: 90vw; height: 10px; background: #ddd; margin: 10px auto; position: relative; }
-        #timer-progress { width: 100%; height: 100%; background: red; transition: width 0.1s linear; }
         button.primary { padding: 10px 20px; font-size: 16px; cursor: pointer; margin-top: 6px; border: none; border-radius: 8px; background: #333; color: #fff; }
-        #shape-label { font-size: 20px; font-weight: bold; color: #333; margin-top: 10px; }
+        #shape-label { font-size: 20px; font-weight: bold; color: #333; margin-top: 6px; }
 
         /* ---- 준비중 화면(어려움 / 누끼) ---- */
         .coming-soon-box {
@@ -219,15 +219,12 @@
         </div>
 
         <div id="game-mode-label"></div>
-        <p>가이드 점선을 따라 도형을 최대한 정확하게 그리세요! (제한시간 10초)</p>
+        <p id="instruction-text"></p>
 
         <button id="start-btn" class="primary">도전하기</button>
 
         <div id="shape-label"></div>
-
-        <div id="timer-bar">
-            <div id="timer-progress"></div>
-        </div>
+        <div id="elapsed-label">경과 시간: 0.00초</div>
 
         <div id="canvas-container">
             <canvas id="gameCanvas" width="400" height="400"></canvas>
@@ -290,6 +287,9 @@
             star:      { label: '별모양',   icon: '⭐' }
         };
 
+        // 열린 도형(선/곡선) 목록 - 빨간점->파란점 방식
+        const OPEN_SHAPES = ['line', 'curve'];
+
         const DIFFICULTY_LABEL = { easy: '쉬움', medium: '보통' };
 
         // ================= 화면 전환 =================
@@ -326,26 +326,39 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const startBtn = document.getElementById('start-btn');
-        const timerProgress = document.getElementById('timer-progress');
         const resultText = document.getElementById('result-text');
         const shapeLabel = document.getElementById('shape-label');
         const gameModeLabel = document.getElementById('game-mode-label');
+        const instructionText = document.getElementById('instruction-text');
+        const elapsedLabel = document.getElementById('elapsed-label');
 
-        let isDrawing = false;
-        let gameActive = false;
+        let isDrawing = false;   // 손가락/마우스가 눌려있는 상태
+        let armed = false;       // '도전하기'를 눌러 대기 중인 상태
+        let gameActive = false;  // 빨간점을 찍고 실제로 타이밍 측정 중인 상태
+        let hasLeftStart = false; // 닫힌 도형에서 시작점을 벗어났는지 여부
+
         let userPoints = [];
         let guidePoints = [];
         let guideVertices = [];
+        let guideStart = null;
+        let guideEnd = null;     // 열린 도형에서만 사용
         let currentShape = 'circle';
         let shapeRenderType = 'polygon'; // 'circle' | 'polygon' | 'open'
         let selectedDifficulty = 'easy';
-        let selectedShapeChoice = 'random'; // 'random' 또는 특정 도형 키
-        let limitTime = 10000; // 10초
-        let timeLeft = limitTime;
-        let timerInterval;
+        let selectedShapeChoice = 'random';
+
+        let startTimestamp = 0;
+        let elapsedInterval;
+
+        const HIT_RADIUS = 26;      // 시작/종료점 인식 반경(px, 캔버스 내부 좌표 기준)
+        const LEAVE_THRESHOLD = 45; // 닫힌 도형에서 "시작점을 벗어났다"고 볼 거리
 
         const centerX = 200;
         const centerY = 200;
+
+        function dist(a, b) {
+            return Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2));
+        }
 
         // ---- 도형 정점/좌표 생성 헬퍼 ----
         function polygonVertices(sides, rx, ry, startAngleDeg) {
@@ -374,7 +387,6 @@
             return verts;
         }
 
-        // 닫힌 도형(다각형/별): 마지막 점 -> 첫 점까지 보간
         function interpolateClosedPath(verts, pointsPerEdge) {
             const pts = [];
             for (let i = 0; i < verts.length; i++) {
@@ -388,7 +400,6 @@
             return pts;
         }
 
-        // 열린 도형(선/곡선): 끝점까지만 보간, 되돌아가지 않음
         function interpolateOpenPath(verts, pointsPerEdge) {
             const pts = [];
             for (let i = 0; i < verts.length - 1; i++) {
@@ -425,61 +436,80 @@
         function generateGuide(shape) {
             currentShape = shape;
             guideVertices = [];
+            guideStart = null;
+            guideEnd = null;
 
             switch (shape) {
                 case 'circle':
                     guidePoints = circlePoints(120, 120);
                     shapeRenderType = 'circle';
+                    guideStart = guidePoints[0];
                     break;
                 case 'square':
                     guideVertices = polygonVertices(4, 120, 120, 45);
                     guidePoints = interpolateClosedPath(guideVertices, 30);
                     shapeRenderType = 'polygon';
+                    guideStart = guideVertices[0];
                     break;
                 case 'triangle':
                     guideVertices = polygonVertices(3, 130, 130, -90);
                     guidePoints = interpolateClosedPath(guideVertices, 30);
                     shapeRenderType = 'polygon';
+                    guideStart = guideVertices[0];
                     break;
                 case 'line':
                     guideVertices = [{ x: 70, y: 200 }, { x: 330, y: 200 }];
                     guidePoints = interpolateOpenPath(guideVertices, 60);
                     shapeRenderType = 'open';
+                    guideStart = guideVertices[0];
+                    guideEnd = guideVertices[guideVertices.length - 1];
                     break;
                 case 'curve':
                     guidePoints = curvePoints();
                     guideVertices = guidePoints;
                     shapeRenderType = 'open';
+                    guideStart = guidePoints[0];
+                    guideEnd = guidePoints[guidePoints.length - 1];
                     break;
                 case 'pentagon':
                     guideVertices = polygonVertices(5, 125, 125, -90);
                     guidePoints = interpolateClosedPath(guideVertices, 25);
                     shapeRenderType = 'polygon';
+                    guideStart = guideVertices[0];
                     break;
                 case 'hexagon':
                     guideVertices = polygonVertices(6, 125, 125, -90);
                     guidePoints = interpolateClosedPath(guideVertices, 22);
                     shapeRenderType = 'polygon';
+                    guideStart = guideVertices[0];
                     break;
                 case 'octagon':
                     guideVertices = polygonVertices(8, 125, 125, -67.5);
                     guidePoints = interpolateClosedPath(guideVertices, 18);
                     shapeRenderType = 'polygon';
+                    guideStart = guideVertices[0];
                     break;
                 case 'dodecagon':
                     guideVertices = polygonVertices(12, 130, 130, -90);
                     guidePoints = interpolateClosedPath(guideVertices, 12);
                     shapeRenderType = 'polygon';
+                    guideStart = guideVertices[0];
                     break;
                 case 'star':
                     guideVertices = starVertices(135, 55, 5, -90);
                     guidePoints = interpolateClosedPath(guideVertices, 12);
                     shapeRenderType = 'polygon';
+                    guideStart = guideVertices[0];
                     break;
                 default:
                     guidePoints = circlePoints(120, 120);
                     shapeRenderType = 'circle';
+                    guideStart = guidePoints[0];
             }
+        }
+
+        function isOpenShape(shape) {
+            return OPEN_SHAPES.indexOf(shape) !== -1;
         }
 
         // ================= 그리기 =================
@@ -505,11 +535,26 @@
             ctx.setLineDash([]);
         }
 
+        function drawDot(point, color) {
+            if (!point) return;
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, 9, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#fff';
+            ctx.stroke();
+        }
+
         function drawCanvas() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             if (guidePoints.length > 0 || guideVertices.length > 0) {
                 drawGuide();
+                drawDot(guideStart, '#e53935'); // 빨간점: 시작
+                if (guideEnd) {
+                    drawDot(guideEnd, '#1e88e5'); // 파란점: 종료 (열린 도형만)
+                }
             }
 
             if (userPoints.length > 1) {
@@ -532,8 +577,14 @@
             userPoints = [];
             guidePoints = [];
             guideVertices = [];
+            guideStart = null;
+            guideEnd = null;
             resultText.innerText = '';
             shapeLabel.innerText = '';
+            instructionText.innerText = '';
+            elapsedLabel.innerText = '경과 시간: 0.00초';
+            armed = false;
+            gameActive = false;
             drawCanvas();
 
             const shapeText = shapeKey === 'random' ? '랜덤' : SHAPE_INFO[shapeKey].label;
@@ -542,13 +593,8 @@
             showScreen('game');
         }
 
-        // ================= 도전하기 =================
+        // ================= 도전하기 (새 시도 준비) =================
         startBtn.addEventListener('click', () => {
-            gameActive = true;
-            userPoints = [];
-            timeLeft = limitTime;
-            resultText.innerText = "";
-
             let shapeToUse;
             if (selectedShapeChoice === 'random') {
                 const pool = SHAPE_SETS[selectedDifficulty];
@@ -559,55 +605,74 @@
 
             generateGuide(shapeToUse);
             shapeLabel.innerText = `그려야 할 도형: ${SHAPE_INFO[shapeToUse].label}`;
+            instructionText.innerText = isOpenShape(shapeToUse)
+                ? '🔴 빨간점에서 시작해서 🔵 파란점까지 그리세요!'
+                : '🔴 빨간점에서 시작해서 한 바퀴 돌아 다시 빨간점으로 돌아오세요!';
+
+            userPoints = [];
+            hasLeftStart = false;
+            gameActive = false;
+            armed = true;
+            resultText.innerText = '';
+            elapsedLabel.innerText = '경과 시간: 0.00초';
+            clearInterval(elapsedInterval);
+
             drawCanvas();
-
-            startBtn.disabled = true;
-
-            clearInterval(timerInterval);
-            timerInterval = setInterval(() => {
-                timeLeft -= 100;
-                timerProgress.style.width = (timeLeft / limitTime) * 100 + "%";
-
-                if (timeLeft <= 0) {
-                    endGame();
-                }
-            }, 100);
         });
 
-        // ================= 채점 =================
-        function endGame() {
-            gameActive = false;
-            clearInterval(timerInterval);
-            startBtn.disabled = false;
-            timerProgress.style.width = "0%";
-
-            if (userPoints.length === 0) {
-                resultText.innerText = "그림을 그리지 않았습니다! 😢";
-                return;
+        // ================= 완주 판정 =================
+        function checkCompletion(pos) {
+            if (isOpenShape(currentShape)) {
+                if (guideEnd && dist(pos, guideEnd) <= HIT_RADIUS) {
+                    completeAttempt();
+                }
+            } else {
+                const d = dist(pos, guideStart);
+                if (d > LEAVE_THRESHOLD) {
+                    hasLeftStart = true;
+                }
+                if (hasLeftStart && d <= HIT_RADIUS) {
+                    completeAttempt();
+                }
             }
+        }
+
+        function completeAttempt() {
+            gameActive = false;
+            armed = false;
+            isDrawing = false;
+            clearInterval(elapsedInterval);
+
+            const elapsedSec = (Date.now() - startTimestamp) / 1000;
+            elapsedLabel.innerText = `경과 시간: ${elapsedSec.toFixed(2)}초`;
 
             let totalError = 0;
             userPoints.forEach(uPt => {
                 let minDst = Infinity;
                 guidePoints.forEach(gPt => {
-                    let dst = Math.pow(uPt.x - gPt.x, 2) + Math.pow(uPt.y - gPt.y, 2);
+                    const dst = Math.pow(uPt.x - gPt.x, 2) + Math.pow(uPt.y - gPt.y, 2);
                     if (dst < minDst) minDst = dst;
                 });
                 totalError += Math.sqrt(minDst);
             });
+            const avgError = totalError / userPoints.length;
+            const accuracy = Math.max(0, 100 - (avgError * 2));
 
-            let avgError = totalError / userPoints.length;
-            let accuracy = Math.max(0, 100 - (avgError * 2));
+            resultText.innerText = `⏱ ${elapsedSec.toFixed(2)}초 · 정확도 ${accuracy.toFixed(1)}% ✨`;
+        }
 
-            resultText.innerText = `정확도: ${accuracy.toFixed(1)}% ✨`;
+        function abortAttempt() {
+            gameActive = false;
+            armed = false;
+            clearInterval(elapsedInterval);
+            resultText.innerText = '완주하지 못했어요 🙁 다시 도전해보세요!';
         }
 
         function stopGameCleanup() {
-            clearInterval(timerInterval);
+            clearInterval(elapsedInterval);
             gameActive = false;
+            armed = false;
             isDrawing = false;
-            startBtn.disabled = false;
-            timerProgress.style.width = "0%";
         }
 
         // ================= 드로잉 이벤트 =================
@@ -615,24 +680,58 @@
             const rect = canvas.getBoundingClientRect();
             const clientX = e.touches ? e.touches[0].clientX : e.clientX;
             const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            return { x: clientX - rect.left, y: clientY - rect.top };
+            // 캔버스 표시 크기(rect)와 내부 해상도(canvas.width/height)가 다를 수 있으므로 비율 보정
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            return {
+                x: (clientX - rect.left) * scaleX,
+                y: (clientY - rect.top) * scaleY
+            };
+        }
+
+        function startElapsedTimer() {
+            clearInterval(elapsedInterval);
+            elapsedInterval = setInterval(() => {
+                const sec = (Date.now() - startTimestamp) / 1000;
+                elapsedLabel.innerText = `경과 시간: ${sec.toFixed(2)}초`;
+            }, 100);
         }
 
         function startDraw(e) {
-            if (!gameActive) return;
+            if (!armed) return;
+            const pos = getPos(e);
+
+            if (!gameActive) {
+                // 아직 타이밍이 시작되지 않음: 빨간점을 정확히 눌러야 시작
+                if (dist(pos, guideStart) > HIT_RADIUS) return;
+                gameActive = true;
+                hasLeftStart = false;
+                startTimestamp = Date.now();
+                userPoints = [pos];
+                startElapsedTimer();
+            } else {
+                userPoints.push(pos);
+            }
+
             isDrawing = true;
-            userPoints.push(getPos(e));
             drawCanvas();
+            checkCompletion(pos);
         }
 
         function moveDraw(e) {
             if (!isDrawing || !gameActive) return;
-            userPoints.push(getPos(e));
+            const pos = getPos(e);
+            userPoints.push(pos);
             drawCanvas();
+            checkCompletion(pos);
         }
 
         function stopDraw() {
             isDrawing = false;
+            if (gameActive) {
+                // 완주 전에 손을 뗀 경우 시도 중단
+                abortAttempt();
+            }
         }
 
         canvas.addEventListener('mousedown', startDraw);
@@ -644,5 +743,4 @@
         window.addEventListener('touchend', stopDraw);
     </script>
 </body>
-
 </html>
