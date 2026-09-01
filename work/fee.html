@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>통신사 및 상품별 수수료 계산기</title>
+    <style>
+        :root {
+            --primary-color: #2b4c7e;
+            --secondary-color: #52796f;
+            --bg-color: #f4f6f9;
+            --card-bg: #ffffff;
+            --text-color: #333333;
+            --border-color: #dcdcdc;
+        }
+        body {
+            font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 600px;
+            margin: 40px auto;
+            background: var(--card-bg);
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+        h2 {
+            text-align: center;
+            color: var(--primary-color);
+            margin-bottom: 25px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #444;
+        }
+        select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 15px;
+            background-color: #fff;
+            box-sizing: border-box;
+        }
+        .result-box {
+            margin-top: 30px;
+            background-color: #f9fbfd;
+            border: 1px solid #e1e8ed;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        .result-box h3 {
+            margin-top: 0;
+            color: var(--primary-color);
+            font-size: 18px;
+            border-bottom: 2px solid #e1e8ed;
+            padding-bottom: 10px;
+        }
+        .result-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            font-size: 15px;
+        }
+        .result-row.total {
+            font-weight: bold;
+            font-size: 18px;
+            color: #d90429;
+            border-top: 1px dashed var(--border-color);
+            padding-top: 12px;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>통신사 상품 수수료 계산기</h2>
+    
+    <div class="form-group">
+        <label for="carrierSelect">1) 통신사 선택</label>
+        <select id="carrierSelect" onchange="updateProducts()">
+            <option value="">통신사를 선택하세요</option>
+            <option value="SKB">SKB (브로드밴드)</option>
+            <option value="SKT">SKT (유선)</option>
+            <option value="KT">KT</option>
+            <option value="LG">LG (유플러스)</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="internetSelect">2-1) 인터넷 상품 선택</label>
+        <select id="internetSelect" onchange="calculateFee()">
+            <option value="">인터넷 상품을 먼저 선택하세요</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="tvSelect">2-2) TV 상품 선택</label>
+        <select id="tvSelect" onchange="calculateFee()">
+            <option value="">TV 상품을 먼저 선택하세요</option>
+        </select>
+    </div>
+
+    <div class="result-box">
+        <h3>3) 수수료 합계 금액</h3>
+        <div class="result-row">
+            <span>인터넷 수수료</span>
+            <span id="internetFee">0 원</span>
+        </div>
+        <div class="result-row">
+            <span>TV 수수료</span>
+            <span id="tvFee">0 원</span>
+        </div>
+        <div class="result-row total">
+            <span>합계 수수료</span>
+            <span id="totalFee">0 원</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 학습된 정책표 데이터를 기반으로 한 수수료 데이터
+    const policyData = {
+        "SKB": {
+            internet: [
+                { name: "B우리집(100M)", fee: 345000 },
+                { name: "B우리집(500M)", fee: 435000 },
+                { name: "B우리집(1G)", fee: 435000 }
+            ],
+            tv: [
+                { name: "100M_TV(이코노미)", fee: 250000 },
+                { name: "100M_TV(스탠다드)", fee: 360000 },
+                { name: "100M_TV(올)", fee: 400000 },
+                { name: "100M_TV(MAX)", fee: 400000 },
+                { name: "500M_TV(스탠다드)", fee: 360000 },
+                { name: "500M_TV(올)", fee: 400000 }
+            ]
+        },
+        "SKT": {
+            internet: [
+                { name: "T우리집(100M)", fee: 230000 },
+                { name: "T우리집(500M)", fee: 380000 },
+                { name: "T우리집(1G)", fee: 430000 }
+            ],
+            tv: [
+                { name: "100M_TV(스탠다드)", fee: 420000 },
+                { name: "100M_TV(올)", fee: 460000 },
+                { name: "500M_TV(스탠다드)", fee: 410000 },
+                { name: "500M_TV(올)", fee: 450000 }
+            ]
+        },
+        "KT": {
+            internet: [
+                { name: "인터넷슬림(100M)", fee: 300000 },
+                { name: "인터넷베이직(500M)", fee: 400000 },
+                { name: "인터넷에센스(1G)", fee: 420000 }
+            ],
+            tv: [
+                { name: "100M_TV(베이직)", fee: 325000 },
+                { name: "100M_TV(에센스)", fee: 325000 },
+                { name: "100M_TV(모든G)", fee: 445000 },
+                { name: "500M_TV(에센스)", fee: 335000 }
+            ]
+        },
+        "LG": {
+            internet: [
+                { name: "U+와이파이기본(100M)", fee: 380000 },
+                { name: "U+와이파이기본(500M)", fee: 470000 },
+                { name: "U+와이파이기본_1G", fee: 520000 }
+            ],
+            tv: [
+                { name: "100M_TV실속형", fee: 325000 },
+                { name: "100M_TV프리미엄", fee: 355000 },
+                { name: "500M_TV실속형", fee: 315000 },
+                { name: "500M_TV프리미엄", fee: 345000 }
+            ]
+        }
+    };
+
+    function updateProducts() {
+        const carrier = document.getElementById("carrierSelect").value;
+        const internetSelect = document.getElementById("internetSelect");
+        const tvSelect = document.getElementById("tvSelect");
+
+        // 초기화
+        internetSelect.innerHTML = '<option value="">인터넷 상품을 선택하세요</option>';
+        tvSelect.innerHTML = '<option value="">TV 상품을 선택하세요</option>';
+        
+        resetFee();
+
+        if (!carrier || !policyData[carrier]) return;
+
+        // 인터넷 상품 목록 채우기
+        policyData[carrier].internet.forEach((item) => {
+            let opt = document.createElement("option");
+            opt.value = item.fee;
+            opt.textContent = `${item.name} (${item.fee.toLocaleString()}원)`;
+            internetSelect.appendChild(opt);
+        });
+
+        // TV 상품 목록 채우기
+        policyData[carrier].tv.forEach((item) => {
+            let opt = document.createElement("option");
+            opt.value = item.fee;
+            opt.textContent = `${item.name} (${item.fee.toLocaleString()}원)`;
+            tvSelect.appendChild(opt);
+        });
+    }
+
+    function calculateFee() {
+        const internetFee = parseInt(document.getElementById("internetSelect").value) || 0;
+        const tvFee = parseInt(document.getElementById("tvSelect").value) || 0;
+        const totalFee = internetFee + tvFee;
+
+        document.getElementById("internetFee").textContent = internetFee.toLocaleString() + " 원";
+        document.getElementById("tvFee").textContent = tvFee.toLocaleString() + " 원";
+        document.getElementById("totalFee").textContent = totalFee.toLocaleString() + " 원";
+    }
+
+    function resetFee() {
+        document.getElementById("internetFee").textContent = "0 원";
+        document.getElementById("tvFee").textContent = "0 원";
+        document.getElementById("totalFee").textContent = "0 원";
+    }
+</script>
+
+</body>
+</html>
