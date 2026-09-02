@@ -129,7 +129,7 @@
             color: #444;
             font-size: 13px;
         }
-        select, textarea {
+        select, textarea, input[type="text"] {
             width: 100%;
             padding: 10px;
             border: 1px solid var(--border-color);
@@ -146,8 +146,15 @@
         .result-row {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 12px;
+            align-items: center;
+            margin-bottom: 10px;
             font-size: 14px;
+        }
+        .result-row.sub-item {
+            font-size: 13px;
+            color: #555;
+            padding-left: 15px;
+            margin-bottom: 6px;
         }
         .result-row.total {
             font-weight: bold;
@@ -162,15 +169,39 @@
             font-size: 15px;
             color: #2b4c7e;
             background-color: #eef3f9;
-            padding: 8px;
-            border-radius: 4px;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 15px;
         }
         .result-row.gift {
             font-weight: bold;
             color: #2f3e46;
-            background-color: #e8f4f8;
-            padding: 8px;
-            border-radius: 4px;
+            background-color: #f1f5f9;
+            padding: 8px 10px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+        }
+        .result-row.margin {
+            font-weight: bold;
+            font-size: 16px;
+            color: #0d9488;
+            background-color: #f0fdf4;
+            border: 1px solid #ccfbf1;
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 15px;
+        }
+        .gift-input-wrap {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            width: 130px;
+        }
+        .gift-input-wrap input {
+            text-align: right;
+            padding: 5px 8px;
+            font-size: 13px;
+            font-weight: bold;
         }
         .memo-info {
             font-size: 12px;
@@ -265,25 +296,47 @@
         <div class="section-box">
             <h3>2) 결과 요약</h3>
             
-            <div class="result-row" style="margin-top: 10px;">
-                <span>ㅇ 인터넷 수수료</span>
-                <span id="internetFee">0 원</span>
-            </div>
-            <div class="result-row">
-                <span>ㅇ TV 수수료</span>
-                <span id="tvFee">0 원</span>
-            </div>
-            <div class="result-row total">
-                <span>ㅇ 합계 수수료</span>
-                <span id="totalFee">0 원</span>
-            </div>
-            <div class="result-row monthly" style="margin-top: 20px;">
+            <!-- 월 청구 요금 최상단 배치 -->
+            <div class="result-row monthly" style="margin-top: 5px;">
                 <span>월 청구 요금 (VAT 포함)</span>
                 <span id="monthlyPrice">0 원</span>
             </div>
-            <div class="result-row gift" style="margin-top: 15px;">
-                <span>기본 사은품 (경품공시)</span>
+
+            <!-- 합계 수수료 및 하단 세부 수수료 -->
+            <div class="result-row total" style="margin-top: 5px;">
+                <span>ㅇ 합계 수수료</span>
+                <span id="totalFee">0 원</span>
+            </div>
+            <div class="result-row sub-item">
+                <span>- 인터넷 수수료</span>
+                <span id="internetFee">0 원</span>
+            </div>
+            <div class="result-row sub-item" style="margin-bottom: 15px;">
+                <span>- TV 수수료</span>
+                <span id="tvFee">0 원</span>
+            </div>
+
+            <!-- 사은품 관련 항목 -->
+            <div class="result-row gift">
+                <span>ㅇ 기본 사은품 (경품공시)</span>
                 <span id="baseGift">0 원</span>
+            </div>
+            <div class="result-row gift">
+                <span>ㅇ 총 사은품 (실제 지급)</span>
+                <div class="gift-input-wrap">
+                    <input type="text" id="totalGiftInput" value="0" oninput="onTotalGiftInput(this)">
+                    <span>원</span>
+                </div>
+            </div>
+            <div class="result-row gift" style="background-color: #e0f2fe;">
+                <span>ㅇ 추가 사은품 (추가지급)</span>
+                <span id="extraGift">0 원</span>
+            </div>
+
+            <!-- 인생비서 마진 -->
+            <div class="result-row margin">
+                <span>인생비서 마진</span>
+                <span id="netMargin">0 원</span>
             </div>
         </div>
 
@@ -537,7 +590,6 @@ ${settopLine}
             return;
         }
 
-        // 해당 통신사의 인터넷 속도 목록 추가
         const speeds = Object.keys(policyData[carrier]);
         speeds.forEach((speed) => {
             let opt = document.createElement("option");
@@ -561,7 +613,6 @@ ${settopLine}
 
         if (!carrier || !speed) return;
 
-        // LG는 와이파이가 기본 포함(Y)이므로 선택지 제한
         if (carrier === "LG") {
             wifiSelect.value = "Y";
             wifiSelect.disabled = true;
@@ -592,7 +643,6 @@ ${settopLine}
 
         const netData = policyData[carrier][speed];
         if (!netData || !netData.wifiOptions[wifi]) {
-            // 해당 와이파이 조합이 없는 경우 (예: KT 1기가 Y 등 데이터 보완 대응)
             const availableWifi = Object.keys(netData.wifiOptions)[0];
             wifiSelect.value = availableWifi;
         }
@@ -641,7 +691,12 @@ ${settopLine}
         const tvName = selectedTvOpt.dataset.tvName || "";
         const settopName = selectedTvOpt.dataset.settop || "";
 
-        // 수수료 내역 분배 (인터넷/TV 대략적 분할 또는 총합 표시)
+        // 기본 사은품 입력란 초기값 세팅
+        document.getElementById("baseGift").textContent = baseGift.toLocaleString() + " 원";
+        const totalGiftInput = document.getElementById("totalGiftInput");
+        totalGiftInput.value = baseGift.toLocaleString();
+
+        // 수수료 내역 분배
         let internetFee = Math.round(totalFee * 0.55 / 10000) * 10000;
         let tvFee = totalFee - internetFee;
 
@@ -649,10 +704,10 @@ ${settopLine}
         document.getElementById("tvFee").textContent = tvFee.toLocaleString() + " 원";
         document.getElementById("totalFee").textContent = totalFee.toLocaleString() + " 원";
         document.getElementById("monthlyPrice").textContent = monthlyPrice.toLocaleString() + " 원";
-        document.getElementById("baseGift").textContent = baseGift.toLocaleString() + " 원";
+
+        computeMarginAndExtra(totalFee, baseGift);
 
         let internetFullName = `${carrierText} ${speed} (${wifi === "Y" ? "와이파이포함" : "단독"})`;
-        
         updateCustomerSms(
             carrierText,
             internetFullName,
@@ -664,12 +719,58 @@ ${settopLine}
         );
     }
 
+    function onTotalGiftInput(inputElement) {
+        // 숫자 외 문자 제거 및 천단위 콤마 포맷팅
+        let rawVal = inputElement.value.replace(/[^0-9]/g, "");
+        let numVal = rawVal ? parseInt(rawVal, 10) : 0;
+        inputElement.value = numVal.toLocaleString();
+
+        const totalFeeText = document.getElementById("totalFee").textContent.replace(/[^0-9]/g, "");
+        const totalFee = totalFeeText ? parseInt(totalFeeText, 10) : 0;
+        const baseGiftText = document.getElementById("baseGift").textContent.replace(/[^0-9]/g, "");
+        const baseGift = baseGiftText ? parseInt(baseGiftText, 10) : 0;
+
+        // 추가 사은품 = 총 사은품 - 기본 사은품
+        let extraGift = numVal - baseGift;
+        document.getElementById("extraGift").textContent = extraGift.toLocaleString() + " 원";
+
+        // 인생비서 마진 = 합계 수수료 - 총 사은품
+        let netMargin = totalFee - numVal;
+        const marginEl = document.getElementById("netMargin");
+        marginEl.textContent = netMargin.toLocaleString() + " 원";
+        
+        if (netMargin < 0) {
+            marginEl.style.color = "#d90429"; // 마이너스일 경우 빨간색 강조
+        } else {
+            marginEl.style.color = "#0d9488";
+        }
+    }
+
+    function computeMarginAndExtra(totalFee, baseGift) {
+        let totalGift = baseGift; // 기본값으로 초기화
+        let extraGift = totalGift - baseGift;
+        let netMargin = totalFee - totalGift;
+
+        document.getElementById("extraGift").textContent = extraGift.toLocaleString() + " 원";
+        
+        const marginEl = document.getElementById("netMargin");
+        marginEl.textContent = netMargin.toLocaleString() + " 원";
+        if (netMargin < 0) {
+            marginEl.style.color = "#d90429";
+        } else {
+            marginEl.style.color = "#0d9488";
+        }
+    }
+
     function resetResult() {
         document.getElementById("internetFee").textContent = "0 원";
         document.getElementById("tvFee").textContent = "0 원";
         document.getElementById("totalFee").textContent = "0 원";
         document.getElementById("monthlyPrice").textContent = "0 원";
         document.getElementById("baseGift").textContent = "0 원";
+        document.getElementById("totalGiftInput").value = "0";
+        document.getElementById("extraGift").textContent = "0 원";
+        document.getElementById("netMargin").textContent = "0 원";
         
         const carrierSelect = document.getElementById("carrierSelect");
         const carrierText = carrierSelect.selectedIndex > 0 ? carrierSelect.options[carrierSelect.selectedIndex].text : "";
