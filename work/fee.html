@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>통신사 및 속도별 상품 수수료 & 요금 계산기</title>
+    <title>통신사 상품 수수료, 요금 및 경품공시금액 계산기</title>
     <style>
         :root {
             --primary-color: #2b4c7e;
@@ -87,24 +87,33 @@
             padding: 8px;
             border-radius: 4px;
         }
+        .result-row.gift {
+            font-weight: bold;
+            color: #2f3e46;
+            background-color: #e8f4f8;
+            padding: 8px;
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>통신사 통합 수수료 및 요금 계산기</h2>
+    <h2>통신사 통합 수수료, 요금 및 경품 계산기</h2>
     
+    <!-- 1) 통신사 선택 (KT 소매, SKB, SKT, LG 포함 / SKY, LGHV 제외) -->
     <div class="form-group">
         <label for="carrierSelect">1) 통신사 선택</label>
         <select id="carrierSelect" onchange="onCarrierChange()">
             <option value="">통신사를 선택하세요</option>
             <option value="SKB">SKB (브로드밴드)</option>
             <option value="SKT">SKT (유선)</option>
-            <option value="KT">KT</option>
+            <option value="KT">KT (소매)</option>
             <option value="LG">LG (유플러스)</option>
         </select>
     </div>
 
+    <!-- 2) 상품선택 (인터넷 100M, 500M, 1G) + (TV) + (공유기) -->
     <div class="form-group">
         <label for="internetSelect">2-1) 인터넷 상품 선택</label>
         <select id="internetSelect" onchange="onInternetChange()">
@@ -114,19 +123,20 @@
 
     <div class="form-group">
         <label for="tvSelect">2-2) TV 상품 선택 (요금표 연동)</label>
-        <select id="tvSelect" onchange="calculateFeeAndPrice()">
+        <select id="tvSelect" onchange="calculateAll()">
             <option value="">인터넷 상품을 먼저 선택하세요</option>
         </select>
     </div>
 
     <div class="form-group">
         <label for="wifiSelect">2-3) 와이파이(공유기) 선택</label>
-        <select id="wifiSelect" onchange="calculateFeeAndPrice()">
+        <select id="wifiSelect" onchange="calculateAll()">
             <option value="N">미사용 (N)</option>
             <option value="Y">사용 (Y)</option>
         </select>
     </div>
 
+    <!-- 3) 결과 요약 (수수료, 요금, 기본/최대 사은품 표기) -->
     <div class="result-box">
         <h3>3) 결과 요약</h3>
         <div class="result-row">
@@ -141,97 +151,105 @@
             <span>수수료 합계</span>
             <span id="totalFee">0 원</span>
         </div>
-        <div class="result-row monthly" style="margin-top: 20px;">
+        <div class="result-row monthly" style="margin-top: 15px;">
             <span>월 청구 요금 (VAT 포함)</span>
             <span id="monthlyPrice">0 원</span>
+        </div>
+        <div class="result-row gift" style="margin-top: 15px;">
+            <span>기본 사은품 (경품공시)</span>
+            <span id="baseGift">0 만 원</span>
+        </div>
+        <div class="result-row gift" style="margin-top: 8px;">
+            <span>최대 사은품</span>
+            <span id="maxGift">0 만 원</span>
         </div>
     </div>
 </div>
 
 <script>
-    // 수수료 및 요금표 이미지를 종합한 통합 데이터 구조
+    // 경품공시금액(DPS 기준) 및 수수료/요금 데이터 통합 구조
     const policyData = {
         "SKB": {
             internet: [
-                { speed: "100M", name: "B우리집(100M)", fee: 345000 },
-                { speed: "500M", name: "B우리집(500M)", fee: 435000 },
-                { speed: "1G", name: "B우리집(1G)", fee: 435000 }
+                { speed: "100M", name: "B우리집(100M)", fee: 345000, baseGift: 39 },
+                { speed: "500M", name: "B우리집(500M)", fee: 435000, baseGift: 49 },
+                { speed: "1G", name: "B우리집(1G)", fee: 435000, baseGift: 49 }
             ],
             tv: {
                 "100M": [
-                    { name: "100M_TV(이코노미 / 스탠다드)", fee: 360000, priceN: 34100, priceY: 36300 },
-                    { name: "100M_TV(올 / MAX)", fee: 400000, priceN: 37400, priceY: 39600 }
+                    { name: "100M_TV(이코노미 / 스탠다드)", fee: 360000, priceN: 34100, priceY: 36300, maxGift: 45 },
+                    { name: "100M_TV(올 / MAX)", fee: 400000, priceN: 37400, priceY: 39600, maxGift: 45 }
                 ],
                 "500M": [
-                    { name: "500M_TV(이코노미 / 스탠다드)", fee: 360000, priceN: 41800, priceY: 42900 },
-                    { name: "500M_TV(올 / MAX)", fee: 400000, priceN: 45100, priceY: 46200 }
+                    { name: "500M_TV(이코노미 / 스탠다드)", fee: 360000, priceN: 41800, priceY: 42900, maxGift: 50 },
+                    { name: "500M_TV(올 / MAX)", fee: 400000, priceN: 45100, priceY: 46200, maxGift: 50 }
                 ],
                 "1G": [
-                    { name: "1G_TV(이코노미 / 스탠다드)", fee: 410000, priceN: 47300, priceY: 48400 },
-                    { name: "1G_TV(올 / MAX)", fee: 450000, priceN: 50600, priceY: 51700 }
+                    { name: "1G_TV(이코노미 / 스탠다드)", fee: 410000, priceN: 47300, priceY: 48400, maxGift: 50 },
+                    { name: "1G_TV(올 / MAX)", fee: 450000, priceN: 50600, priceY: 51700, maxGift: 50 }
                 ]
             }
         },
         "SKT": {
             internet: [
-                { speed: "100M", name: "T우리집(100M)", fee: 230000 },
-                { speed: "500M", name: "T우리집(500M)", fee: 380000 },
-                { speed: "1G", name: "T우리집(1G)", fee: 430000 }
+                { speed: "100M", name: "T우리집(100M)", fee: 230000, baseGift: 40 },
+                { speed: "500M", name: "T우리집(500M)", fee: 380000, baseGift: 43 },
+                { speed: "1G", name: "T우리집(1G)", fee: 430000, baseGift: 52 }
             ],
             tv: {
                 "100M": [
-                    { name: "100M_TV(이코노미)", fee: 290000, priceN: 34100, priceY: 36300 },
-                    { name: "100M_TV(스탠다드/올 등)", fee: 420000, priceN: 37400, priceY: 39600 }
+                    { name: "100M_TV(이코노미)", fee: 290000, priceN: 34100, priceY: 36300, maxGift: 45 },
+                    { name: "100M_TV(스탠다드/올 등)", fee: 420000, priceN: 37400, priceY: 39600, maxGift: 45 }
                 ],
                 "500M": [
-                    { name: "500M_TV(이코노미)", fee: 270000, priceN: 41800, priceY: 42900 },
-                    { name: "500M_TV(스탠다드/올 등)", fee: 410000, priceN: 45100, priceY: 46200 }
+                    { name: "500M_TV(이코노미)", fee: 270000, priceN: 41800, priceY: 42900, maxGift: 50 },
+                    { name: "500M_TV(스탠다드/올 등)", fee: 410000, priceN: 45100, priceY: 46200, maxGift: 50 }
                 ],
                 "1G": [
-                    { name: "1G_TV(이코노미)", fee: 270000, priceN: 47300, priceY: 48400 },
-                    { name: "1G_TV(스탠다드/올 등)", fee: 410000, priceN: 50600, priceY: 51700 }
+                    { name: "1G_TV(이코노미)", fee: 270000, priceN: 47300, priceY: 48400, maxGift: 50 },
+                    { name: "1G_TV(스탠다드/올 등)", fee: 410000, priceN: 50600, priceY: 51700, maxGift: 50 }
                 ]
             }
         },
         "KT": {
             internet: [
-                { speed: "100M", name: "인터넷슬림(100M)", fee: 300000 },
-                { speed: "500M", name: "인터넷베이직(500M)", fee: 400000 },
-                { speed: "1G", name: "인터넷에센스(1G)", fee: 420000 }
+                { speed: "100M", name: "인터넷슬림(100M)", fee: 300000, baseGift: 30 }, // 소매 기준
+                { speed: "500M", name: "인터넷베이직(500M)", fee: 400000, baseGift: 40 }, // 소매 기준
+                { speed: "1G", name: "인터넷에센스(1G)", fee: 420000, baseGift: 40 } // 소매 기준
             ],
             tv: {
                 "100M": [
-                    { name: "100M_TV(베이직/라이트/에센스)", fee: 325000, priceN: 37400, priceY: 38500 },
-                    { name: "100M_TV(모든G)", fee: 445000, priceN: 42900, priceY: 44000 }
+                    { name: "100M_TV(베이직/라이트/에센스)", fee: 325000, priceN: 37400, priceY: 38500, maxGift: 45 },
+                    { name: "100M_TV(모든G)", fee: 445000, priceN: 42900, priceY: 44000, maxGift: 45 }
                 ],
                 "500M": [
-                    { name: "500M_TV(베이직/라이트/에센스)", fee: 335000, priceN: 42900, priceY: 44000 },
-                    { name: "500M_TV(모든G)", fee: 455000, priceN: 48400, priceY: 49500 }
+                    { name: "500M_TV(베이직/라이트/에센스)", fee: 335000, priceN: 42900, priceY: 44000, maxGift: 50 },
+                    { name: "500M_TV(모든G)", fee: 455000, priceN: 48400, priceY: 49500, maxGift: 50 }
                 ],
                 "1G": [
-                    { name: "1G_TV(베이직/라이트/에센스)", fee: 335000, priceN: 48400, priceY: 48400 },
-                    { name: "1G_TV(모든G)", fee: 455000, priceN: 53900, priceY: 53900 }
+                    { name: "1G_TV(베이직/라이트/에센스)", fee: 335000, priceN: 48400, priceY: 48400, maxGift: 50 },
+                    { name: "1G_TV(모든G)", fee: 455000, priceN: 53900, priceY: 53900, maxGift: 50 }
                 ]
             }
         },
         "LG": {
             internet: [
-                { speed: "100M", name: "U+와이파이기본(100M)", fee: 380000 },
-                { speed: "500M", name: "U+와이파이기본(500M)", fee: 470000 },
-                { speed: "1G", name: "U+와이파이기본_1G", fee: 520000 }
+                { speed: "100M", name: "U+와이파이기본(100M)", fee: 380000, baseGift: 33 },
+                { speed: "500M", name: "U+와이파이기본(500M)", fee: 470000, baseGift: 47 },
+                { speed: "1G", name: "U+와이파이기본_1G", fee: 520000, baseGift: 47 }
             ],
             tv: {
                 "100M": [
-                    { name: "100M_TV실속형", fee: 325000, priceN: 39600, priceY: 39600 },
-                    { name: "100M_TV프리미엄", fee: 355000, priceN: 42900, priceY: 42900 }
+                    { name: "100M_TV실속형", fee: 325000, priceN: 39600, priceY: 39600, maxGift: 45 },
+                    { name: "100M_TV프리미엄", fee: 355000, priceN: 42900, priceY: 42900, maxGift: 45 }
                 ],
                 "500M": [
-                    { name: "500M_TV실속형", fee: 315000, priceN: 45100, priceY: 45100 },
-                    { name: "500M_TV프리미엄", fee: 345000, priceN: 48400, priceY: 48400 }
+                    { name: "500M_TV실속형", fee: 315000, priceN: 45100, priceY: 45100, maxGift: 50 },
+                    { name: "500M_TV프리미엄", fee: 345000, priceN: 48400, priceY: 48400, maxGift: 50 }
                 ],
                 "1G": [
-                    { name: "1G_TV실속형", fee: 305000, priceN: 50600, priceY: 50600 },
-                    { name: "1G_TV프리미엄", fee: 335000, priceN: 53900, priceY: 53900 }
+                    { name: "1G_TV실속형", fee: 305000, priceN: 50600, priceY: 50600, maxGift: 50 },
+                    { name: "1G_TV프리미엄", fee: 335000, priceN: 53900, priceY: 53900, maxGift: 50 }
                 ]
             }
         }
@@ -252,6 +270,7 @@
             let opt = document.createElement("option");
             opt.value = item.speed; 
             opt.dataset.fee = item.fee;
+            opt.dataset.baseGift = item.baseGift;
             opt.textContent = `${item.name} (${item.fee.toLocaleString()}원)`;
             internetSelect.appendChild(opt);
         });
@@ -277,22 +296,25 @@
                 opt.value = item.fee;
                 opt.dataset.priceN = item.priceN;
                 opt.dataset.priceY = item.priceY;
+                opt.dataset.maxGift = item.maxGift;
                 opt.textContent = `${item.name} (수수료: ${item.fee.toLocaleString()}원 / 요금: ${item.priceN.toLocaleString()}원~)`;
                 tvSelect.appendChild(opt);
             });
         }
 
-        calculateFeeAndPrice();
+        calculateAll();
     }
 
-    function calculateFeeAndPrice() {
+    function calculateAll() {
         const internetSelect = document.getElementById("internetSelect");
         const selectedInternetOpt = internetSelect.options[internetSelect.selectedIndex];
         const internetFee = selectedInternetOpt && selectedInternetOpt.dataset.fee ? parseInt(selectedInternetOpt.dataset.fee) : 0;
+        const baseGift = selectedInternetOpt && selectedInternetOpt.dataset.baseGift ? parseInt(selectedInternetOpt.dataset.baseGift) : 0;
         
         const tvSelect = document.getElementById("tvSelect");
         const selectedTvOpt = tvSelect.options[tvSelect.selectedIndex];
         const tvFee = parseInt(tvSelect.value) || 0;
+        const maxGift = selectedTvOpt && selectedTvOpt.dataset.maxGift ? parseInt(selectedTvOpt.dataset.maxGift) : 0;
 
         const wifi = document.getElementById("wifiSelect").value;
         let monthlyPrice = 0;
@@ -307,6 +329,8 @@
         document.getElementById("tvFee").textContent = tvFee.toLocaleString() + " 원";
         document.getElementById("totalFee").textContent = totalFee.toLocaleString() + " 원";
         document.getElementById("monthlyPrice").textContent = monthlyPrice.toLocaleString() + " 원";
+        document.getElementById("baseGift").textContent = baseGift + " 만 원";
+        document.getElementById("maxGift").textContent = maxGift + " 만 원";
     }
 
     function resetResult() {
@@ -314,6 +338,8 @@
         document.getElementById("tvFee").textContent = "0 원";
         document.getElementById("totalFee").textContent = "0 원";
         document.getElementById("monthlyPrice").textContent = "0 원";
+        document.getElementById("baseGift").textContent = "0 만 원";
+        document.getElementById("maxGift").textContent = "0 만 원";
     }
 </script>
 
