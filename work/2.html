@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>통신사 통합 상담, 수수료 및 사은품 계산 시스템</title>
+    <!-- Supabase 클라이언트 라이브러리 CDN 로드 -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root {
+            --primary-color: #2b4c7e;
+            --secondary-color: #52796f;
+            --bg-color: #f4f6f9;
+            --card-bg: #ffffff;
+            --text-color: #333333;
+            --border-color: #dcdcdc;
+        }
+        body { font-family: 'Malgun Gothic', sans-serif; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding: 20px; }
+        .container { max-width: 1400px; margin: 10px auto; background: var(--card-bg); padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        h2 { text-align: center; color: var(--primary-color); margin-bottom: 25px; }
+        
+        .consult-box { background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+        .consult-box h3 { margin-top: 0; color: var(--primary-color); font-size: 17px; border-bottom: 2px solid #cbd5e1; padding-bottom: 10px; margin-bottom: 15px; }
+        .consult-grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+        .consult-sub-box { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 15px; }
+        .consult-sub-box h4 { margin-top: 0; margin-bottom: 12px; font-size: 14px; color: #334155; border-left: 3px solid var(--primary-color); padding-left: 8px; }
+        .input-row { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; }
+        .input-row label { min-width: 110px; font-size: 12px; font-weight: bold; color: #475569; margin-bottom: 0; }
+        .input-row input, .input-row select { flex: 1; padding: 7px 10px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 13px; }
+
+        .main-grid { display: grid; grid-template-columns: 1.1fr 0.9fr 1.3fr; gap: 20px; }
+        @media (max-width: 1200px) { .main-grid { grid-template-columns: 1fr; } }
+        
+        .section-box { background-color: #fafbfc; border: 1px solid #e1e8ed; border-radius: 8px; padding: 20px; display: flex; flex-direction: column; }
+        .section-box h3 { margin-top: 0; color: var(--primary-color); font-size: 17px; border-bottom: 2px solid #e1e8ed; padding-bottom: 10px; margin-bottom: 15px; }
+
+        .form-group { margin-bottom: 16px; }
+        label { display: block; font-weight: bold; margin-bottom: 6px; color: #444; font-size: 13px; }
+        select, textarea, input[type="text"] { width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; background-color: #fff; box-sizing: border-box; }
+        textarea { resize: vertical; line-height: 1.5; }
+        
+        .result-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 14px; }
+        .result-row.sub-item { font-size: 13px; color: #555; padding-left: 15px; margin-bottom: 6px; }
+        .result-row.total { font-weight: bold; font-size: 15px; color: #d90429; border-top: 1px dashed var(--border-color); padding-top: 12px; margin-top: 12px; }
+        .result-row.monthly { font-weight: bold; font-size: 15px; color: #2b4c7e; background-color: #eef3f9; padding: 10px; border-radius: 6px; margin-bottom: 15px; }
+        .result-row.gift-total { font-weight: bold; font-size: 14.5px; color: #d90429; background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 10px; border-radius: 6px; margin-top: 15px; margin-bottom: 10px; }
+        .result-row.gift-sub { font-size: 13px; color: #555; padding-left: 15px; margin-bottom: 8px; }
+        .result-row.margin { font-weight: bold; font-size: 16px; color: #0d9488; background-color: #f0fdf4; border: 1px solid #ccfbf1; padding: 10px; border-radius: 6px; margin-top: 15px; }
+        .gift-input-wrap { display: flex; align-items: center; gap: 5px; width: 125px; }
+        .gift-input-wrap input { text-align: right; padding: 4px 6px; font-size: 13px; font-weight: bold; color: #d90429; }
+        .memo-info { font-size: 12px; color: #666; margin-bottom: 8px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>통신사 통합 상담, 수수료 및 사은품 계산 시스템</h2>
+    
+    <!-- 상단: 고객 상담 정보 입력 영역 -->
+    <div class="consult-box">
+        <h3>고객 상담 정보 파악</h3>
+        <div class="consult-grid">
+            <div class="consult-sub-box">
+                <h4>기존 상품</h4>
+                <div class="input-row"><label>[인터넷] 통신사</label><input type="text" id="oldNetCarrier" placeholder="예: SKB"></div>
+                <div class="input-row"><label>[인터넷] 스펙</label><input type="text" id="oldNetSpec" placeholder="속도/와이파이/TV채널/셋탑/갯수"></div>
+                <div class="input-row"><label>[인터넷] 약정/위약</label><input type="text" id="oldNetContract" placeholder="예: 3년만기 / 위약금 0원"></div>
+                <div class="input-row"><label>[휴대폰] 통신사</label><input type="text" id="oldPhoneCarrier" placeholder="예: KT"></div>
+                <div class="input-row"><label>[휴대폰] 요금/약정</label><input type="text" id="oldPhoneSpec" placeholder="요금제 / 약정기간 / 위약금"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3분할 본문 영역 -->
+    <div class="main-grid">
+        <!-- 왼쪽: 상품 선택 -->
+        <div class="section-box">
+            <h3>1) 상품 선택</h3>
+            <div class="form-group">
+                <label for="carrierSelect">1. 통신사 선택</label>
+                <select id="carrierSelect" onchange="onCarrierChange()">
+                    <option value="">통신사를 선택하세요</option>
+                    <option value="SKB(08/24~)">SKB(08/24~)</option>
+                    <option value="SKB(09/03~)">SKB(09/03~)</option>
+                    <option value="SKT">SKT</option>
+                    <option value="KT">KT</option>
+                    <option value="LG홈">LG홈</option>
+                    <option value="LG소호">LG소호</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="internetSelect">2. 인터넷 속도 선택</label>
+                <select id="internetSelect" onchange="onInternetChange()"><option value="">통신사를 먼저 선택하세요</option></select>
+            </div>
+            <div class="form-group">
+                <label for="wifiSelect">와이파이(공유기) 여부</label>
+                <select id="wifiSelect" onchange="onWifiChange()"><option value="N">미사용 (N)</option><option value="Y">사용 (Y)</option></select>
+            </div>
+            <div class="form-group">
+                <label for="tvSelect">3. TV 상품 선택 (선택사항)</label>
+                <select id="tvSelect" onchange="calculateAll()"><option value="">인터넷 단독 적용됨 (TV 추가 시 선택)</option></select>
+            </div>
+            <div class="form-group">
+                <label for="settopSelect">셋탑박스 선택</label>
+                <select id="settopSelect" disabled><option value="">자동 선택됩니다</option></select>
+            </div>
+            <div class="form-group" style="margin-bottom: 0; border-top: 1px dashed #cbd5e1; padding-top: 15px;">
+                <label for="discountSelect">4. 할인 정보 선택</label>
+                <select id="discountSelect" onchange="onDiscountChange()"><option value="">통신사를 먼저 선택하세요</option></select>
+            </div>
+        </div>
+
+        <!-- 중앙: 결과 요약 -->
+        <div class="section-box">
+            <h3>2) 결과 요약</h3>
+            <div class="result-row monthly" style="margin-top: 5px;"><span>월 청구 요금 (VAT 포함)</span><span id="monthlyPrice">0 원</span></div>
+            <div class="result-row total" style="margin-top: 5px;"><span>ㅇ 합계 수수료</span><span id="totalFee">0 원</span></div>
+            <div class="result-row sub-item"><span>- 인터넷 수수료</span><span id="internetFee">0 원</span></div>
+            <div class="result-row sub-item" style="margin-bottom: 15px;"><span>- TV 수수료</span><span id="tvFee">0 원</span></div>
+            <div class="result-row gift-total"><span>ㅇ 총 사은품 (실제 지급)</span><div class="gift-input-wrap"><input type="text" id="totalGiftInput" value="0" oninput="onTotalGiftInput(this)"><span>원</span></div></div>
+            <div class="result-row gift-sub"><span>- 기본 사은품 (경품공시)</span><span id="baseGift">0 원</span></div>
+            <div class="result-row gift-sub" style="margin-bottom: 15px;"><span>- 추가 사은품 (추가지급)</span><span id="extraGift">0 원</span></div>
+            <div class="result-row margin"><span>인생비서 마진</span><span id="netMargin">0 원</span></div>
+        </div>
+
+        <!-- 오른쪽: 고객 안내 문자 -->
+        <div class="section-box">
+            <h3>3) 고객 안내 문자</h3>
+            <div class="memo-info">상품 선택 시 내용이 자동으로 반영됩니다. 수정 및 편집 가능합니다.</div>
+            <div class="form-group" style="flex-grow: 1; display: flex; flex-direction: column; margin-bottom: 0;">
+                <textarea id="memoTextarea" style="flex-grow: 1; height: 380px;" placeholder="통신사 및 상품을 선택하면 안내 문자가 자동으로 생성됩니다."></textarea>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // [참고] Supabase 연동을 활성화하려면 아래 키를 입력하고 fetchPolicyData()를 호출하여 policyData 객체를 동적으로 채울 수 있습니다.
+    const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+    const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // 기존 정책 데이터 구조 (Supabase 연동 전 기본 백업용 데이터)
+    const policyData = {
+        "SKT": {
+            "100메가": {
+                wifiOptions: {
+                    "N": { price: 22000, name: "SKT 100메가 단독", standalone: { price: 22000, fee: 230000, gift: 400000 }, tvs: {
+                        "이코노미": { tvName: "이코노미", settop: "스마트3", price: 34100, fee: 520000, gift: 430000 },
+                        "스탠다드": { tvName: "스탠다드", settop: "스마트3", price: 37400, fee: 650000, gift: 430000 }
+                    }}
+                }
+            }
+        }
+        // 필요시 기존 전체 policyData 구조를 여기에 유지하거나 Supabase 테이블에서 불러오도록 확장 가능
+    };
+
+    const discountData = {
+        "KT": ["총액결합", "프리미엄싱글결합", "프리미엄 가족결합", "따로살아도 결합"],
+        "LG홈": ["참쉬운가족결합", "투게더결합"],
+        "LG소호": ["참쉬운가족결합", "투게더결합"],
+        "SKT": ["요즘우리집결합", "요즘가족결합", "온가족할인"],
+        "SKB(08/24)": ["요즘우리집결합", "요즘가족결합", "온가족할인"],
+        "SKB(09/03~)": ["요즘우리집결합", "요즘가족결합", "온가족할인"]
+    };
+
+    // Supabase에서 정책 데이터를 동적으로 불러오는 함수 예시
+    async function fetchPolicyDataFromSupabase() {
+        try {
+            const { data, error } = await supabaseClient.from('policies_data').select('*');
+            if (error) throw error;
+            // 만약 Supabase DB에 테이블을 구축했다면 여기서 policyData 객체를 동적으로 매핑할 수 있습니다.
+        } catch (e) {
+            console.log("Supabase 데이터 로드 실패, 기본 로컬 데이터를 사용합니다.", e);
+        }
+    }
+
+    function updateCustomerSms(carrierStr = "", internetNameStr = "", wifiStr = "미사용 (N)", tvNameStr = "", settopStr = "", discountStr = "", monthlyStr = "0", giftStr = "00,000") {
+        const memoTextarea = document.getElementById("memoTextarea");
+        let tvLine = tvNameStr ? `  [TV 상품] ${tvNameStr}` : `  [TV 상품] 없음`;
+        let settopLine = settopStr ? `  [셋탑박스] ${settopStr}` : `  [셋탑박스] 없음`;
+        let discountLine = discountStr ? `  [결합/할인] ${discountStr}` : `  [결합/할인] 선택 없음`;
+        
+        memoTextarea.value = `안녕하세요, 인생비서입니다.
+고객님께 안내해 드릴 인터넷 가입 상품 및 요금 정보 전달해 드립니다. 
+
+1. 요금 및 사은품 안내
+- 통신사: ${carrierStr}
+- 가입 상품:
+  [인터넷] ${internetNameStr}
+  [와이파이] ${wifiStr}
+${tvLine}
+${settopLine}
+${discountLine}
+
+- 총 월 요금: ${monthlyStr}원 (부가가치세 포함)
+- 설치비: 56,200원
+- 총 사은품 혜택: ${giftStr}원
+
+궁금하신 점이 있으시면 언제든지 편하게 연락 주세요. 감사합니다!`;
+    }
+
+    function onCarrierChange() {
+        const carrierSelect = document.getElementById("carrierSelect");
+        const carrier = carrierSelect.value;
+        const internetSelect = document.getElementById("internetSelect");
+        const wifiSelect = document.getElementById("wifiSelect");
+        const tvSelect = document.getElementById("tvSelect");
+        const settopSelect = document.getElementById("settopSelect");
+        const discountSelect = document.getElementById("discountSelect");
+
+        internetSelect.innerHTML = '<option value="">인터넷 속도를 선택하세요</option>';
+        tvSelect.innerHTML = '<option value="">인터넷 단독 적용됨 (TV 추가 시 선택)</option>';
+        settopSelect.innerHTML = '<option value="">자동 선택됩니다</option>';
+        
+        discountSelect.innerHTML = '<option value="">할인 항목을 선택하세요</option>';
+        if (carrier && discountData[carrier]) {
+            discountData[carrier].forEach((disc) => {
+                let opt = document.createElement("option");
+                opt.value = disc;
+                opt.textContent = disc;
+                discountSelect.appendChild(opt);
+            });
+        }
+
+        resetResult();
+        if (!carrier || !policyData[carrier]) return;
+
+        const speeds = Object.keys(policyData[carrier]);
+        speeds.forEach((speed) => {
+            let opt = document.createElement("option");
+            opt.value = speed;
+            opt.textContent = speed;
+            internetSelect.appendChild(opt);
+        });
+
+        updateCustomerSms(carrierSelect.options[carrierSelect.selectedIndex].text);
+    }
+
+    function onInternetChange() {
+        const carrier = document.getElementById("carrierSelect").value;
+        const internetSelect = document.getElementById("internetSelect");
+        const speed = internetSelect.value;
+        const wifiSelect = document.getElementById("wifiSelect");
+
+        if (!carrier || !speed) return;
+        if (carrier.includes("LG")) {
+            wifiSelect.value = "Y";
+            wifiSelect.disabled = true;
+        } else {
+            wifiSelect.disabled = false;
+        }
+
+        updateTvOptions();
+        calculateAll();
+    }
+
+    function onWifiChange() { updateTvOptions(); calculateAll(); }
+    function onDiscountChange() { calculateAll(); }
+
+    function updateTvOptions() {
+        const carrier = document.getElementById("carrierSelect").value;
+        const speed = document.getElementById("internetSelect").value;
+        const wifiSelect = document.getElementById("wifiSelect");
+        const wifi = wifiSelect.value;
+        const tvSelect = document.getElementById("tvSelect");
+
+        tvSelect.innerHTML = '<option value="">인터넷 단독 적용됨 (TV 추가 시 선택)</option>';
+        if (!carrier || !speed || !policyData[carrier]) return;
+
+        const netData = policyData[carrier][speed];
+        if (!netData || !netData.wifiOptions[wifi]) return;
+
+        const tvs = netData.wifiOptions[wifi].tvs;
+        if (!tvs) return;
+
+        for (let tvKey in tvs) {
+            let tvObj = tvs[tvKey];
+            let opt = document.createElement("option");
+            opt.value = tvKey;
+            opt.dataset.price = tvObj.price;
+            opt.dataset.fee = tvObj.fee;
+            opt.dataset.gift = tvObj.gift;
+            opt.dataset.tvName = tvObj.tvName;
+            opt.dataset.settop = tvObj.settop;
+            opt.textContent = `TV 결합 (${tvObj.tvName} / 셋탑: ${tvObj.settop}) - 월 ${tvObj.price.toLocaleString()}원`;
+            tvSelect.appendChild(opt);
+        }
+    }
+
+    function calculateAll() {
+        const carrierSelect = document.getElementById("carrierSelect");
+        const carrierText = carrierSelect.selectedIndex > 0 ? carrierSelect.options[carrierSelect.selectedIndex].text : "";
+        const speed = document.getElementById("internetSelect").value;
+        const wifi = document.getElementById("wifiSelect").value;
+        const tvSelect = document.getElementById("tvSelect");
+        const selectedTvOpt = tvSelect.options[tvSelect.selectedIndex];
+
+        if (!carrierText || !speed || !policyData[carrierText]) {
+            resetResult();
+            return;
+        }
+
+        const netData = policyData[carrierText][speed].wifiOptions[wifi];
+        if (!netData) return;
+
+        let monthlyPrice = 0, totalFee = 0, baseGift = 0, tvName = "", settopName = "";
+
+        if (!tvSelect.value || tvSelect.selectedIndex === 0) {
+            monthlyPrice = netData.standalone.price;
+            totalFee = netData.standalone.fee;
+            baseGift = netData.standalone.gift;
+        } else {
+            monthlyPrice = parseInt(selectedTvOpt.dataset.price) || 0;
+            totalFee = parseInt(selectedTvOpt.dataset.fee) || 0;
+            baseGift = parseInt(selectedTvOpt.dataset.gift) || 0;
+            tvName = selectedTvOpt.dataset.tvName || "";
+            settopName = selectedTvOpt.dataset.settop || "";
+        }
+
+        document.getElementById("baseGift").textContent = baseGift.toLocaleString() + " 원";
+        document.getElementById("totalGiftInput").value = baseGift.toLocaleString();
+
+        let internetFee = Math.round(totalFee * 0.55 / 10000) * 10000;
+        let tvFee = totalFee - internetFee;
+
+        document.getElementById("internetFee").textContent = internetFee.toLocaleString() + " 원";
+        document.getElementById("tvFee").textContent = tvFee.toLocaleString() + " 원";
+        document.getElementById("totalFee").textContent = totalFee.toLocaleString() + " 원";
+        document.getElementById("monthlyPrice").textContent = monthlyPrice.toLocaleString() + " 원";
+
+        computeMarginAndExtra(totalFee, baseGift);
+    }
+
+    function onTotalGiftInput(inputElement) {
+        let rawVal = inputElement.value.replace(/[^0-9]/g, "");
+        let numVal = rawVal ? parseInt(rawVal, 10) : 0;
+        inputElement.value = numVal.toLocaleString();
+
+        const totalFee = parseInt(document.getElementById("totalFee").textContent.replace(/[^0-9]/g, ""), 10) || 0;
+        const baseGift = parseInt(document.getElementById("baseGift").textContent.replace(/[^0-9]/g, ""), 10) || 0;
+
+        let extraGift = numVal - baseGift;
+        document.getElementById("extraGift").textContent = extraGift.toLocaleString() + " 원";
+
+        let netMargin = totalFee - numVal;
+        const marginEl = document.getElementById("netMargin");
+        marginEl.textContent = netMargin.toLocaleString() + " 원";
+        marginEl.style.color = netMargin < 0 ? "#d90429" : "#0d9488";
+    }
+
+    function computeMarginAndExtra(totalFee, baseGift) {
+        let extraGift = 0;
+        let netMargin = totalFee - baseGift;
+        document.getElementById("extraGift").textContent = extraGift.toLocaleString() + " 원";
+        const marginEl = document.getElementById("netMargin");
+        marginEl.textContent = netMargin.toLocaleString() + " 원";
+        marginEl.style.color = netMargin < 0 ? "#d90429" : "#0d9488";
+    }
+
+    function resetResult() {
+        document.getElementById("internetFee").textContent = "0 원";
+        document.getElementById("tvFee").textContent = "0 원";
+        document.getElementById("totalFee").textContent = "0 원";
+        document.getElementById("monthlyPrice").textContent = "0 원";
+        document.getElementById("baseGift").textContent = "0 원";
+        document.getElementById("totalGiftInput").value = "0";
+        document.getElementById("extraGift").textContent = "0 원";
+        document.getElementById("netMargin").textContent = "0 원";
+    }
+
+    window.onload = function() {
+        fetchPolicyDataFromSupabase();
+        updateCustomerSms();
+    };
+</script>
+
+</body>
+</html>
