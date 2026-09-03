@@ -1,176 +1,301 @@
-/**
- * [파일 설명] 통신사 인터넷/TV/와이파이/셋탑 선택 및 수수료·사은품·인생비서 마진 계산 모듈 (하드코딩 버전)
- * 작성일: 2026-09-03
- * 기능:
- * 1. 통신사 및 인터넷 속도, 와이파이(기본 Y), TV 상품, 셋탑박스 선택 처리
- * 2. [항목 1] 월 청구 요금 산출 (인터넷 + 와이파이 + TV + 셋탑)
- * 3. [항목 2] 합계 수수료 산출 (인터넷 수수료 + TV 수수료)
- * 4. [항목 3] 사은품 정보 산출 (총사은품 직접 입력, 기본사은품-경품고시 기준 상품권 및 현금 MAX, 추가사은품)
- * 5. [항목 4] 총 마진("인생비서 마진" = 합계수수료 - 총사은품) 산출
- */
-
-// 1. 통신사별 마스터 데이터 (수수료합계 및 경품고시 기본사은품, 월 요금 하드코딩 매핑)
-const carrierMasterData = {
-    KT: {
-        internetSpeeds: {
-            '100M': { monthlyFee: 22000, internetFee: 300000, baseGuide: 30, cashMax: 24, voucher: 6 },
-            '500M': { monthlyFee: 33000, internetFee: 400000, baseGuide: 40, cashMax: 34, voucher: 6 },
-            '1G':   { monthlyFee: 38500, internetFee: 420000, baseGuide: 40, cashMax: 31, voucher: 9 }
-        },
-        tvProducts: [
-            { channelName: '100M_TV베이직', monthlyFee: 12100, tvFee: 32500 },
-            { channelName: '500M_TV에센스', monthlyFee: 16500, tvFee: 33500 },
-            { channelName: '1G_TV프라임',   monthlyFee: 22000, tvFee: 45500 }
-        ]
-    },
-    SKB: {
-        internetSpeeds: {
-            '100M': { monthlyFee: 22000, internetFee: 345000, baseGuide: 39, cashMax: 32, voucher: 7 },
-            '500M': { monthlyFee: 33000, internetFee: 435000, baseGuide: 49, cashMax: 42, voucher: 7 },
-            '1G':   { monthlyFee: 38500, internetFee: 435000, baseGuide: 49, cashMax: 42, voucher: 7 }
-        },
-        tvProducts: [
-            { channelName: '100M_TV스탠다드', monthlyFee: 13200, tvFee: 360000 },
-            { channelName: '500M_TV올(All)',   monthlyFee: 15400, tvFee: 400000 },
-            { channelName: '1G_TV맥스(MAX)',   monthlyFee: 18700, tvFee: 450000 }
-        ]
-    },
-    SKT: {
-        internetSpeeds: {
-            '100M': { monthlyFee: 22000, internetFee: 230000, baseGuide: 40, cashMax: 40, voucher: 0 },
-            '500M': { monthlyFee: 33000, internetFee: 380000, baseGuide: 43, cashMax: 43, voucher: 0 },
-            '1G':   { monthlyFee: 38500, internetFee: 430000, baseGuide: 52, cashMax: 52, voucher: 0 }
-        },
-        tvProducts: [
-            { channelName: '100M_TV스탠다드', monthlyFee: 13200, tvFee: 420000 },
-            { channelName: '500M_TV올(All)',   monthlyFee: 15400, tvFee: 450000 },
-            { channelName: '1G_TV맥스(MAX)',   monthlyFee: 18700, tvFee: 485000 }
-        ]
-    },
-    LG: {
-        internetSpeeds: {
-            '100M': { monthlyFee: 22000, internetFee: 380000, baseGuide: 33, cashMax: 33, voucher: 0 },
-            '500M': { monthlyFee: 33000, internetFee: 470000, baseGuide: 47, cashMax: 47, voucher: 0 },
-            '1G':   { monthlyFee: 38500, internetFee: 520000, baseGuide: 47, cashMax: 47, voucher: 0 }
-        },
-        tvProducts: [
-            { channelName: '100M_TV실속형',   monthlyFee: 12100, tvFee: 325000 },
-            { channelName: '500M_TV프리미엄', monthlyFee: 15400, tvFee: 325000 },
-            { channelName: '1G_TV프리미엄VOD',monthlyFee: 18700, tvFee: 325000 }
-        ]
-    }
-};
-
-/**
- * 견적 및 수수료, 마진 계산 함수
- * @param {Object} input 
- * @param {string} input.carrier - 통신사 ('KT', 'SKB', 'SKT', 'LG')
- * @param {string} input.internetSpeed - 인터넷 속도 ('100M', '500M', '1G')
- * @param {boolean} input.hasWifi - 와이파이 사용 여부 (기본값 true / Y)
- * @param {string} input.tvChannelName - 선택한 TV 채널 상품명 (미선택 시 null)
- * @param {number} input.settopFee - 셋탑박스 월 요금 (현재 값 그대로 적용)
- * @param {number} input.userTotalReward - 사용자가 직접 입력한 총사은품 금액 (만 원 단위, 예: 45)
- */
-function calculateProductEstimate(input) {
-    const carrier = input.carrier;
-    const speed = input.internetSpeed;
-    const hasWifi = input.hasWifi !== undefined ? input.hasWifi : true; // 기본값 Y
-    const settopFee = input.settopFee || 0;
-    const userTotalReward = input.userTotalReward || 0; // 만 원 단위
-
-    const carrierInfo = carrierMasterData[carrier];
-    if (!carrierInfo) throw new Error('유효하지 않은 통신사입니다.');
-
-    const speedInfo = carrierInfo.internetSpeeds[speed];
-    if (!speedInfo) throw new Error('유효하지 않은 인터넷 속도입니다.');
-
-    // 1. 월 청구 요금 계산
-    const internetMonthly = speedInfo.monthlyFee;
-    const wifiMonthly = hasWifi ? 3300 : 0;
-    
-    let tvMonthly = 0;
-    let tvFeeSum = 0;
-    let selectedTv = '미선택';
-
-    if (input.tvChannelName) {
-        const tvItem = carrierInfo.tvProducts.find(item => item.channelName === input.tvChannelName);
-        if (tvItem) {
-            tvMonthly = tvItem.monthlyFee;
-            tvFeeSum = tvItem.tvFee;
-            selectedTv = tvItem.channelName;
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>인생비서 - 통신 상품 견적 및 마진 계산기</title>
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-color: #1e293b;
+            --border-color: #e2e8f0;
         }
-    }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: var(--card-bg);
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+        h1 {
+            font-size: 24px;
+            margin-bottom: 24px;
+            text-align: center;
+            color: var(--primary-color);
+        }
+        .grid-form {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        label {
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        select, input {
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .result-section {
+            background: #f1f5f9;
+            padding: 24px;
+            border-radius: 8px;
+        }
+        .result-title {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 8px;
+        }
+        .result-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+        }
+        .result-card {
+            background: #ffffff;
+            padding: 16px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+        }
+        .result-card h3 {
+            font-size: 14px;
+            color: #64748b;
+            margin: 0 0 8px 0;
+        }
+        .result-card .value {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-color);
+        }
+        .highlight-margin {
+            background: #dbeafe !important;
+            border-color: #93c5fd !important;
+        }
+        .highlight-margin .value {
+            color: #1d4ed8;
+            font-size: 22px;
+        }
+        .sub-text {
+            font-size: 12px;
+            color: #64748b;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
 
-    const totalMonthlyFee = internetMonthly + wifiMonthly + tvMonthly + settopFee;
-
-    // 2. 합계 수수료 (인터넷 수수료 + TV 수수료)
-    const internetFee = speedInfo.internetFee;
-    const totalFeeSum = internetFee + tvFeeSum;
-
-    // 3. 사은품 정보 (기본사은품 경품고시 및 추가사은품)
-    const baseGuide = speedInfo.baseGuide; // 경품가이드 기본사은품
-    const cashMax = speedInfo.cashMax;
-    const voucher = speedInfo.voucher;
+<div class="container">
+    <h1>🚀 인생비서 통신 상품 견적 및 마진 계산기</h1>
     
-    // 추가사은품 = 총사은품 - 기본사은품(경품가이드 기준)
-    const additionalReward = userTotalReward - baseGuide;
+    <!-- 입력 폼 영역 -->
+    <div class="grid-form">
+        <div class="form-group">
+            <label for="carrierSelect">통신사</label>
+            <select id="carrierSelect" onchange="updateForm()">
+                <option value="KT">KT</option>
+                <option value="SKB">SK브로드밴드</option>
+                <option value="SKT">SKT</option>
+                <option value="LG">LG유플러스</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="speedSelect">인터넷 속도</label>
+            <select id="speedSelect" onchange="calculate()">
+                <option value="100M">100M</option>
+                <option value="500M" selected>500M</option>
+                <option value="1G">1G</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="tvSelect">TV 채널 상품</label>
+            <select id="tvSelect" onchange="calculate()">
+                <!-- 동적으로 채워짐 -->
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="settopFeeInput">셋탑박스 월요금 (원)</label>
+            <input type="number" id="settopFeeInput" value="4400" oninput="calculate()">
+        </div>
+        <div class="form-group">
+            <label for="rewardInput">총사은품 입력 (만 원)</label>
+            <input type="number" id="rewardInput" value="45" oninput="calculate()">
+        </div>
+    </div>
 
-    // 4. 총 마진 ("인생비서 마진" = 합계수수료 - 총사은품)
-    // 주의: 수수료는 원 단위(예: 620,000원), 사은품은 만 원 단위(예: 45 = 450,000원)이므로 단위를 맞춰서 계산
-    const totalRewardInWon = userTotalReward * 10000;
-    const inmulMargin = totalFeeSum - totalRewardInWon;
+    <!-- 결과 출력 영역 -->
+    <div class="result-section">
+        <div class="result-title">📊 실시간 계산 결과</div>
+        <div class="result-grid">
+            <!-- 1. 월 청구 요금 -->
+            <div class="result-card">
+                <h3>1. 월 청구 요금</h3>
+                <div class="value" id="resMonthlyFee">0원</div>
+                <div class="sub-text" id="resMonthlyDetail">인터넷+와이파이+TV+셋탑</div>
+            </div>
+            <!-- 2. 합계 수수료 -->
+            <div class="result-card">
+                <h3>2. 합계 수수료</h3>
+                <div class="value" id="resTotalFee">0원</div>
+                <div class="sub-text" id="resFeeDetail">인터넷 + TV 수수료</div>
+            </div>
+            <!-- 3. 총 사은품 -->
+            <div class="result-card">
+                <h3>3. 총사은품 / 추가사은품</h3>
+                <div class="value" id="resReward">0만 원</div>
+                <div class="sub-text" id="resRewardDetail">상품권 0 / 현금MAX 0 / 추가 0</div>
+            </div>
+            <!-- 4. 총 마진 (인생비서 마진) -->
+            <div class="result-card highlight-margin">
+                <h3>4. 인생비서 마진</h3>
+                <div class="value" id="resMargin">0원</div>
+                <div class="sub-text">합계수수료 - 총사은품</div>
+            </div>
+        </div>
+    </div>
+</div>
 
-    // 결과 출력 구조 리턴
-    return {
-        선택정보: {
-            통신사: carrier,
-            인터넷속도: speed,
-            와이파이: hasWifi ? 'Y' : 'N',
-            TV상품: selectedTv,
-            셋탑박스요금: settopFee
-        },
-        "1_월청구요금": {
-            인터넷요금: internetMonthly,
-            와이파이요금: wifiMonthly,
-            TV요금: tvMonthly,
-            셋탑요금: settopFee,
-            총월청구요금: totalMonthlyFee
-        },
-        "2_합계수수료": {
-            인터넷수수료: internetFee,
-            TV수수료: tvFeeSum,
-            합계수수료금액: totalFeeSum
-        },
-        "3_사은품": {
-            총사은품_입력값: `${userTotalReward}만 원`,
-            기본사은품_경품고시: {
-                상품권: `${voucher}만 원`,
-                현금MAX: `${cashMax}만 원`,
-                경품가이드기준: `${baseGuide}만 원`
+<script>
+    // 통신사별 마스터 데이터 하드코딩
+    const carrierMasterData = {
+        KT: {
+            internetSpeeds: {
+                '100M': { monthlyFee: 22000, internetFee: 300000, baseGuide: 30, cashMax: 24, voucher: 6 },
+                '500M': { monthlyFee: 33000, internetFee: 400000, baseGuide: 40, cashMax: 34, voucher: 6 },
+                '1G':   { monthlyFee: 38500, internetFee: 420000, baseGuide: 40, cashMax: 31, voucher: 9 }
             },
-            추가사은품: `${additionalReward >= 0 ? additionalReward : 0}만 원`
+            tvProducts: [
+                { channelName: 'TV 베이직', monthlyFee: 12100, tvFee: 325000 },
+                { channelName: 'TV 에센스', monthlyFee: 16500, tvFee: 335000 },
+                { channelName: 'TV 프라임', monthlyFee: 22000, tvFee: 455000 }
+            ]
         },
-        "4_총마진": {
-            표기명: "인생비서 마진",
-            금액: `${inmulMargin.toLocaleString()}원`
+        SKB: {
+            internetSpeeds: {
+                '100M': { monthlyFee: 22000, internetFee: 345000, baseGuide: 39, cashMax: 32, voucher: 7 },
+                '500M': { monthlyFee: 33000, internetFee: 435000, baseGuide: 49, cashMax: 42, voucher: 7 },
+                '1G':   { monthlyFee: 38500, internetFee: 435000, baseGuide: 49, cashMax: 42, voucher: 7 }
+            },
+            tvProducts: [
+                { channelName: 'TV 스탠다드', monthlyFee: 13200, tvFee: 360000 },
+                { channelName: 'TV 올(All)', monthlyFee: 15400, tvFee: 400000 },
+                { channelName: 'TV 맥스(MAX)', monthlyFee: 18700, tvFee: 450000 }
+            ]
+        },
+        SKT: {
+            internetSpeeds: {
+                '100M': { monthlyFee: 22000, internetFee: 230000, baseGuide: 40, cashMax: 40, voucher: 0 },
+                '500M': { monthlyFee: 33000, internetFee: 380000, baseGuide: 43, cashMax: 43, voucher: 0 },
+                '1G':   { monthlyFee: 38500, internetFee: 430000, baseGuide: 52, cashMax: 52, voucher: 0 }
+            },
+            tvProducts: [
+                { channelName: 'TV 스탠다드', monthlyFee: 13200, tvFee: 420000 },
+                { channelName: 'TV 올(All)', monthlyFee: 15400, tvFee: 450000 },
+                { channelName: 'TV 맥스(MAX)', monthlyFee: 18700, tvFee: 485000 }
+            ]
+        },
+        LG: {
+            internetSpeeds: {
+                '100M': { monthlyFee: 22000, internetFee: 380000, baseGuide: 33, cashMax: 33, voucher: 0 },
+                '500M': { monthlyFee: 33000, internetFee: 470000, baseGuide: 47, cashMax: 47, voucher: 0 },
+                '1G':   { monthlyFee: 38500, internetFee: 520000, baseGuide: 47, cashMax: 47, voucher: 0 }
+            },
+            tvProducts: [
+                { channelName: 'TV 실속형', monthlyFee: 12100, tvFee: 325000 },
+                { channelName: 'TV 프리미엄', monthlyFee: 15400, tvFee: 325000 },
+                { channelName: 'TV 프리미엄VOD', monthlyFee: 18700, tvFee: 325000 }
+            ]
         }
     };
-}
 
-// ==========================================
-// 검증 테스트 실행
-// ==========================================
-try {
-    console.log('=== [테스트 결과: KT 500M + TV 에센스 선택 시] ===');
-    const result = calculateProductEstimate({
-        carrier: 'KT',
-        internetSpeed: '500M',
-        hasWifi: true, // 기본값 Y
-        tvChannelName: '500M_TV에센스',
-        settopFee: 4400,
-        userTotalReward: 45 // 총사은품 45만 원 입력 가정
-    });
-    console.log(JSON.stringify(result, null, 2));
-} catch (error) {
-    console.error('오류 발생:', error.message);
-}
+    // 통신사 변경 시 TV 채널 옵션 동적 갱신
+    function updateForm() {
+        const carrier = document.getElementById('carrierSelect').value;
+        const tvSelect = document.getElementById('tvSelect');
+        tvSelect.innerHTML = '';
+
+        const tvList = carrierMasterData[carrier].tvProducts;
+        tvList.forEach((tv, index) => {
+            const option = document.createElement('option');
+            option.value = tv.channelName;
+            option.textContent = tv.channelName;
+            if(index === 0) option.selected = true;
+            tvSelect.appendChild(option);
+        });
+
+        calculate();
+    }
+
+    // 핵심 계산 로직 수행 함수
+    function calculate() {
+        const carrier = document.getElementById('carrierSelect').value;
+        const speed = document.getElementById('speedSelect').value;
+        const tvName = document.getElementById('tvSelect').value;
+        const settopFee = Number(document.getElementById('settopFeeInput').value) || 0;
+        const userRewardWan = Number(document.getElementById('rewardInput').value) || 0;
+
+        const carrierData = carrierMasterData[carrier];
+        const speedData = carrierData.internetSpeeds[speed];
+        const tvData = carrierData.tvProducts.find(item => item.channelName === tvName) || { monthlyFee: 0, tvFee: 0 };
+
+        // 1. 월 청구 요금 (인터넷 + 와이파이(기본 3,300원 고정) + TV + 셋탑)
+        const internetMonthly = speedData.monthlyFee;
+        const wifiMonthly = 3300; // 기본 Y 적용
+        const tvMonthly = tvData.monthlyFee;
+        const totalMonthly = internetMonthly + wifiMonthly + tvMonthly + settopFee;
+
+        // 2. 합계 수수료 (인터넷 수수료 + TV 수수료)
+        const internetFee = speedData.internetFee;
+        const tvFee = tvData.tvFee;
+        const totalFeeSum = internetFee + tvFee;
+
+        // 3. 사은품 정보
+        const baseGuide = speedData.baseGuide;
+        const cashMax = speedData.cashMax;
+        const voucher = speedData.voucher;
+        const additionalReward = userRewardWan - baseGuide;
+
+        // 4. 총 마진 (인생비서 마진 = 합계수수료 - 총사은품)
+        const totalRewardWon = userRewardWan * 10000;
+        const inmulMargin = totalFeeSum - totalRewardWon;
+
+        // 화면 렌더링
+        document.getElementById('resMonthlyFee').textContent = totalMonthly.toLocaleString() + '원';
+        document.getElementById('resMonthlyDetail').textContent = `인터넷 ${internetMonthly.toLocaleString()} + 와이파이 3,300 + TV ${tvMonthly.toLocaleString()} + 셋탑 ${settopFee.toLocaleString()}`;
+
+        document.getElementById('resTotalFee').textContent = totalFeeSum.toLocaleString() + '원';
+        document.getElementById('resFeeDetail').textContent = `인터넷 수수료(${internetFee.toLocaleString()}) + TV 수수료(${tvFee.toLocaleString()})`;
+
+        document.getElementById('resReward').textContent = userRewardWan + '만 원';
+        document.getElementById('resRewardDetail').textContent = `기본(상품권 ${voucher}만 / 현금MAX ${cashMax}만) | 추가 ${additionalReward >= 0 ? additionalReward : 0}만 원`;
+
+        document.getElementById('resMargin').textContent = inmulMargin.toLocaleString() + '원';
+    }
+
+    // 초기 실행
+    window.onload = function() {
+        updateForm();
+    };
+</script>
+
+</body>
+</html>
