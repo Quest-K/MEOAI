@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>통신사 정책 문서 업로드 및 Supabase 연동</title>
+    <!-- Supabase 클라이언트 라이브러리 CDN 로드 -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: 'Malgun Gothic', sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; color: #333; }
+        .container { max-width: 600px; margin: 40px auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        h2 { color: #2b4c7e; text-align: center; margin-bottom: 25px; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; font-weight: bold; margin-bottom: 8px; font-size: 14px; }
+        input[type="file"], select, input[type="text"] { width: 100%; padding: 10px; border: 1px solid #dcdcdc; border-radius: 6px; box-sizing: border-box; font-size: 14px; }
+        button { background-color: #2b4c7e; color: white; border: none; padding: 12px; width: 100%; font-size: 16px; font-weight: bold; border-radius: 6px; cursor: pointer; }
+        button:hover { background-color: #1e355d; }
+        #statusMessage { margin-top: 15px; text-align: center; font-weight: bold; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>정책 문서(PDF, 이미지) 업로드 시스템</h2>
+    
+    <div class="form-group">
+        <label for="carrierCategory">통신사 분류 선택</label>
+        <select id="carrierCategory">
+            <option value="SKT">SKT</option>
+            <option value="SKB">SKB</option>
+            <option value="KT">KT</option>
+            <option value="LG홈">LG홈</option>
+            <option value="LG소호">LG소호</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="policyFile">파일 선택 (PDF, JPG, PNG)</label>
+        <!-- PDF 및 이미지 파일만 선택 가능하도록 설정 -->
+        <input type="file" id="policyFile" accept=".pdf, .jpg, .jpeg, .png">
+    </div>
+
+    <button onclick="uploadFileToSupabase()">Supabase로 업로드 및 데이터 입력</button>
+    
+    <div id="statusMessage"></div>
+</div>
+
+<script>
+    // [주의] 본인의 Supabase 프로젝트 URL과 Anon Key를 입력해주세요.
+    const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+    const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+    
+    // Supabase 클라이언트 초기화
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    async function uploadFileToSupabase() {
+        const fileInput = document.getElementById('policyFile');
+        const carrierCategory = document.getElementById('carrierCategory').value;
+        const statusMessage = document.getElementById('statusMessage');
+
+        if (fileInput.files.length === 0) {
+            alert('업로드할 파일을 선택해주세요.');
+            return;
+        }
+
+        const file = fileInput.files[0];
+        const fileName = `${Date.now()}_${file.name}`;
+        const filePath = `${carrierCategory}/${fileName}`;
+
+        statusMessage.style.color = '#2b4c7e';
+        statusMessage.textContent = '파일을 업로드 중입니다...';
+
+        try {
+            // 1. Supabase Storage에 파일 업로드 ('policies' 버킷 기준 예시)
+            const { data: storageData, error: storageError } = await supabaseClient.storage
+                .from('policies')
+                .upload(filePath, file);
+
+            if (storageError) throw storageError;
+
+            // 2. 업로드된 파일의 공개 URL 가져오기
+            const { data: publicUrlData } = supabaseClient.storage
+                .from('policies')
+                .getPublicUrl(filePath);
+
+            const fileUrl = publicUrlData.publicUrl;
+
+            // 3. Supabase Database(테이블명: policy_files)에 파일 정보 기록
+            const { error: dbError } = await supabaseClient
+                .from('policy_files')
+                .insert([
+                    { 
+                        carrier: carrierCategory, 
+                        file_name: file.name, 
+                        file_url: fileUrl,
+                        created_at: new Date()
+                    }
+                ]);
+
+            if (dbError) throw dbError;
+
+            statusMessage.style.color = '#0d9488';
+            statusMessage.textContent = '성공적으로 업로드되고 데이터베이스에 기록되었습니다!';
+            fileInput.value = '';
+
+        } catch (error) {
+            console.error('업로드 오류:', error);
+            statusMessage.style.color = '#d90429';
+            statusMessage.textContent = '업로드 실패: ' + error.message;
+        }
+    }
+</script>
+
+</body>
+</html>
