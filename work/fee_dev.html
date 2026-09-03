@@ -1,882 +1,176 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>통신사 통합 상담, 수수료 계산 및 접수 시스템</title>
-    <style>
-        :root {
-            --primary-color: #2b4c7e;
-            --secondary-color: #52796f;
-            --bg-color: #f4f6f9;
-            --card-bg: #ffffff;
-            --text-color: #333333;
-            --border-color: #dcdcdc;
-        }
-        /* 기본 문서 본문 스타일 설정 */
-        body {
-            font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            margin: 0;
-            padding: 20px;
-        }
-        /* 전체 콘텐츠를 감싸는 메인 컨테이너 박스 스타일 */
-        .container {
-            max-width: 1400px;
-            margin: 10px auto;
-            background: var(--card-bg);
-            padding: 25px;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-        }
-        /* 상단 메인 타이틀 제목 스타일 */
-        h2 {
-            text-align: center;
-            color: var(--primary-color);
-            margin-bottom: 25px;
-        }
+/**
+ * [파일 설명] 통신사 인터넷/TV/와이파이/셋탑 선택 및 수수료·사은품·인생비서 마진 계산 모듈 (하드코딩 버전)
+ * 작성일: 2026-09-03
+ * 기능:
+ * 1. 통신사 및 인터넷 속도, 와이파이(기본 Y), TV 상품, 셋탑박스 선택 처리
+ * 2. [항목 1] 월 청구 요금 산출 (인터넷 + 와이파이 + TV + 셋탑)
+ * 3. [항목 2] 합계 수수료 산출 (인터넷 수수료 + TV 수수료)
+ * 4. [항목 3] 사은품 정보 산출 (총사은품 직접 입력, 기본사은품-경품고시 기준 상품권 및 현금 MAX, 추가사은품)
+ * 5. [항목 4] 총 마진("인생비서 마진" = 합계수수료 - 총사은품) 산출
+ */
 
-        /* 3분할 레이아웃 스타일 설정 */
-        .main-grid {
-            display: grid;
-            grid-template-columns: 1.1fr 0.9fr 1.3fr;
-            gap: 20px;
-        }
-        @media (max-width: 1200px) {
-            .main-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-        
-        /* 각 기능별 카드 섹션 박스 스타일 */
-        .section-box {
-            background-color: #fafbfc;
-            border: 1px solid #e1e8ed;
-            border-radius: 8px;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-        }
-        .section-box h3 {
-            margin-top: 0;
-            color: var(--primary-color);
-            font-size: 17px;
-            border-bottom: 2px solid #e1e8ed;
-            padding-bottom: 10px;
-            margin-bottom: 15px;
-        }
-
-        .form-group {
-            margin-bottom: 16px;
-        }
-        label {
-            display: block;
-            font-weight: bold;
-            margin-bottom: 6px;
-            color: #444;
-            font-size: 13px;
-        }
-        select, textarea, input[type="text"] {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            font-size: 14px;
-            background-color: #fff;
-            box-sizing: border-box;
-            font-family: 'Malgun Gothic', sans-serif;
-        }
-        textarea {
-            resize: vertical;
-            line-height: 1.5;
-        }
-        .result-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-            font-size: 14px;
-        }
-        .result-row.sub-item {
-            font-size: 13px;
-            color: #555;
-            padding-left: 15px;
-            margin-bottom: 6px;
-        }
-        .result-row.total {
-            font-weight: bold;
-            font-size: 15px;
-            color: #d90429;
-            border-top: 1px dashed var(--border-color);
-            padding-top: 12px;
-            margin-top: 12px;
-            white-space: nowrap;
-        }
-        .result-row.monthly {
-            font-weight: bold;
-            font-size: 15px;
-            color: #2b4c7e;
-            background-color: #eef3f9;
-            padding: 10px;
-            border-radius: 6px;
-            margin-bottom: 15px;
-        }
-        .result-row.gift-total {
-            font-weight: bold;
-            font-size: 14.5px;
-            color: #d90429;
-            background-color: #f8fafc;
-            border: 1px solid #e2e8f0;
-            padding: 10px;
-            border-radius: 6px;
-            margin-top: 15px;
-            margin-bottom: 10px;
-            white-space: nowrap;
-        }
-        .result-row.gift-sub {
-            font-size: 13px;
-            color: #555;
-            padding-left: 15px;
-            margin-bottom: 8px;
-        }
-        .result-row.margin {
-            font-weight: bold;
-            font-size: 16px;
-            color: #0d9488;
-            background-color: #f0fdf4;
-            border: 1px solid #ccfbf1;
-            padding: 10px;
-            border-radius: 6px;
-            margin-top: 15px;
-        }
-        .gift-input-wrap {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            width: 125px;
-        }
-        .gift-input-wrap input {
-            text-align: right;
-            padding: 4px 6px;
-            font-size: 13px;
-            font-weight: bold;
-            color: #d90429;
-        }
-        .memo-info {
-            font-size: 12px;
-            color: #666;
-            margin-bottom: 8px;
-        }
-        .gift-sub-standard {
-            font-size: 11px;
-            color: #777;
-            text-align: right;
-            margin-top: -4px;
-            margin-bottom: 12px;
-        }
-    </style>
-</head>
-<body>
-
-<div class="container">
-    <h2>통신사 통합 상담, 수수료 및 사은품 계산 시스템</h2>
-
-    <!-- 3분할 본문 영역 (상품 선택, 결과 요약, 고객 안내 문자) -->
-    <div class="main-grid">
-        <!-- 왼쪽: 상품 선택 영역 -->
-        <div class="section-box">
-            <h3>1) 상품 선택</h3>
-            
-            <div class="form-group">
-                <label for="carrierSelect">1. 통신사 선택</label>
-                <!-- 통신사 선택 변경 시 하위 인터넷 속도 및 할인 목록을 갱신하는 함수 호출 -->
-                <select id="carrierSelect" onchange="onCarrierChange()">
-                    <option value="">통신사를 선택하세요</option>
-                    <option value="SKB(08/24~)">SKB(08/24~)</option>
-                    <option value="SKB(09/03~)">SKB(09/03~)</option>
-                    <option value="SKT">SKT</option>
-                    <option value="KT">KT</option>
-                    <option value="LG홈">LG홈</option>
-                    <option value="LG소호">LG소호</option>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label for="internetSelect">2. 인터넷 속도 선택</label>
-                <!-- 인터넷 속도 변경 시 와이파이 고정 및 TV 옵션을 갱신하는 함수 호출 -->
-                <select id="internetSelect" onchange="onInternetChange()">
-                    <option value="">통신사를 먼저 선택하세요</option>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label for="wifiSelect">와이파이(공유기) 여부</label>
-                <!-- 와이파이 선택 변경 시 요금 및 TV 옵션을 재계산하는 함수 호출 -->
-                <select id="wifiSelect" onchange="onWifiChange()">
-                    <option value="N">미사용 (N)</option>
-                    <option value="Y">사용 (Y)</option>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label for="tvSelect">3. TV 상품 선택 (선택사항)</label>
-                <!-- TV 상품 선택 시 전체 요금, 수수료, 사은품을 자동 계산하는 함수 호출 -->
-                <select id="tvSelect" onchange="calculateAll()">
-                    <option value="">인터넷 단독 적용됨 (TV 추가 시 선택)</option>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label for="settopSelect">셋탑박스 선택</label>
-                <select id="settopSelect" disabled>
-                    <option value="">자동 선택됩니다</option>
-                </select>
-            </div>
-
-            <!-- 하단 할인 정보 선택 공간 -->
-            <div class="form-group" style="margin-bottom: 0; border-top: 1px dashed #cbd5e1; padding-top: 15px;">
-                <label for="discountSelect">4. 할인 정보 선택</label>
-                <!-- 할인 정보 선택 변경 시 반영하는 함수 호출 -->
-                <select id="discountSelect" onchange="onDiscountChange()">
-                    <option value="">통신사를 먼저 선택하세요</option>
-                </select>
-            </div>
-        </div>
-
-        <!-- 중앙: 결과 요약 영역 -->
-        <div class="section-box">
-            <h3>2) 결과 요약</h3>
-            
-            <!-- 월 청구 요금 최상단 배치 -->
-            <div class="result-row monthly" style="margin-top: 5px;">
-                <span>월 청구 요금 (VAT 포함)</span>
-                <span id="monthlyPrice">0 원</span>
-            </div>
-
-            <!-- 합계 수수료 및 하단 세부 수수료 (요청사항: "ㅇ합계수수료" -> "합계수수료") -->
-            <div class="result-row total" style="margin-top: 5px;">
-                <span>합계수수료</span>
-                <span id="totalFee">0 원</span>
-            </div>
-            <div class="result-row sub-item">
-                <span>- 인터넷 수수료</span>
-                <span id="internetFee">0 원</span>
-            </div>
-            <div class="result-row sub-item" style="margin-bottom: 15px;">
-                <span>- TV 수수료</span>
-                <span id="tvFee">0 원</span>
-            </div>
-
-            <!-- 총 사은품 및 하단 세부 항목 (요청사항: "ㅇ총사은품(실제 지급)" -> "총사은품(실제지급)") -->
-            <div class="result-row gift-total">
-                <span>총사은품(실제지급)</span>
-                <div class="gift-input-wrap">
-                    <!-- 총 사은품 직접 입력 시 추가 사은품 및 마진을 실시간 연동 계산하는 함수 호출 -->
-                    <input type="text" id="totalGiftInput" value="0" oninput="onTotalGiftInput(this)">
-                    <span>원</span>
-                </div>
-            </div>
-            <!-- 요청사항: "기본사은품(경품공시)" -> "기본사은품(경품고시)" 수정 -->
-            <div class="result-row gift-sub">
-                <span>- 기본사은품(경품고시)</span>
-                <span id="baseGift">0 원</span>
-            </div>
-            <div class="gift-sub-standard">(상품권, 현금max)</div>
-            <div class="result-row gift-sub" style="margin-bottom: 15px;">
-                <span>- 추가 사은품 (추가지급)</span>
-                <span id="extraGift">0 원</span>
-            </div>
-
-            <!-- 인생비서 마진 -->
-            <div class="result-row margin">
-                <span>인생비서 마진</span>
-                <span id="netMargin">0 원</span>
-            </div>
-        </div>
-
-        <!-- 오른쪽: 고객 안내 문자 영역 -->
-        <div class="section-box">
-            <h3>3) 고객 안내 문자</h3>
-            <div class="memo-info">상품 선택 시 내용이 자동으로 반영됩니다. 수정 및 편집 가능합니다.</div>
-            <div class="form-group" style="flex-grow: 1; display: flex; flex-direction: column; margin-bottom: 0;">
-                <textarea id="memoTextarea" style="flex-grow: 1; height: 380px;" placeholder="통신사 및 상품을 선택하면 안내 문자가 자동으로 생성됩니다."></textarea>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script>
-    // 통신사별 요금, 수수료, 사은품 정책 데이터를 담고 있는 객체 (KT는 소매 기준, 단품 및 인+TV만 포함, 160M 제외 및 100M, 500M, 1기가 구성)
-    const policyData = {
-        "SKT": {
-            "100메가": {
-                wifiOptions: {
-                    "N": { price: 22000, name: "SKT 100메가 단독", standalone: { price: 22000, fee: 230000, gift: 400000 }, tvs: {
-                        "이코노미": { tvName: "이코노미", settop: "스마트3", price: 34100, fee: 520000, gift: 430000 },
-                        "스탠다드": { tvName: "스탠다드", settop: "스마트3", price: 37400, fee: 650000, gift: 430000 },
-                        "올": { tvName: "올", settop: "스마트3", price: 40700, fee: 650000, gift: 430000 }
-                    }},
-                    "Y": { price: 23100, name: "SKT 100메가 단독(와이파이포함)", standalone: { price: 23100, fee: 230000, gift: 400000 }, tvs: {
-                        "이코노미": { tvName: "이코노미", settop: "스마트3", price: 36300, fee: 520000, gift: 430000 },
-                        "스탠다드": { tvName: "스탠다드", settop: "스마트3", price: 39600, fee: 650000, gift: 430000 },
-                        "올": { tvName: "올", settop: "스마트3", price: 42900, fee: 650000, gift: 430000 }
-                    }}
-                }
-            },
-            "500메가": {
-                wifiOptions: {
-                    "N": { price: 33000, name: "SKT 500메가 단독", standalone: { price: 33000, fee: 380000, gift: 430000 }, tvs: {
-                        "이코노미": { tvName: "이코노미", settop: "스마트3", price: 41800, fee: 680000, gift: 470000 },
-                        "스탠다드": { tvName: "스탠다드", settop: "스마트3", price: 45100, fee: 790000, gift: 470000 },
-                        "올": { tvName: "올", settop: "스마트3", price: 48400, fee: 790000, gift: 470000 }
-                    }},
-                    "Y": { price: 34100, name: "SKT 500메가 단독(와이파이포함)", standalone: { price: 34100, fee: 380000, gift: 430000 }, tvs: {
-                        "이코노미": { tvName: "이코노미", settop: "스마트3", price: 42900, fee: 680000, gift: 470000 },
-                        "스탠다드": { tvName: "스탠다드", settop: "스마트3", price: 46200, fee: 790000, gift: 470000 },
-                        "올": { tvName: "올", settop: "스마트3", price: 49500, fee: 790000, gift: 470000 }
-                    }}
-                }
-            },
-            "1기가": {
-                wifiOptions: {
-                    "N": { price: 38500, name: "SKT 1기가 단독", standalone: { price: 38500, fee: 430000, gift: 520000 }, tvs: {
-                        "이코노미": { tvName: "이코노미", settop: "스마트3", price: 47300, fee: 700000, gift: 470000 },
-                        "스탠다드": { tvName: "스탠다드", settop: "스마트3", price: 50600, fee: 840000, gift: 470000 },
-                        "올": { tvName: "올", settop: "스마트3", price: 53900, fee: 840000, gift: 470000 }
-                    }},
-                    "Y": { price: 39600, name: "SKT 1기가 단독(와이파이포함)", standalone: { price: 39600, fee: 430000, gift: 520000 }, tvs: {
-                        "이코노미": { tvName: "이코노미", settop: "스마트3", price: 48400, fee: 700000, gift: 470000 },
-                        "스탠다드": { tvName: "스탠다드", settop: "스마트3", price: 51700, fee: 840000, gift: 470000 },
-                        "올": { tvName: "올", settop: "스마트3", price: 55000, fee: 840000, gift: 470000 }
-                    }}
-                }
-            }
+// 1. 통신사별 마스터 데이터 (수수료합계 및 경품고시 기본사은품, 월 요금 하드코딩 매핑)
+const carrierMasterData = {
+    KT: {
+        internetSpeeds: {
+            '100M': { monthlyFee: 22000, internetFee: 300000, baseGuide: 30, cashMax: 24, voucher: 6 },
+            '500M': { monthlyFee: 33000, internetFee: 400000, baseGuide: 40, cashMax: 34, voucher: 6 },
+            '1G':   { monthlyFee: 38500, internetFee: 420000, baseGuide: 40, cashMax: 31, voucher: 9 }
         },
-        "SKB(08/24~)": {
-            "100메가": {
-                wifiOptions: {
-                    "N": { price: 22000, name: "SKB(08/24~) 100메가 단독", standalone: { price: 22000, fee: 345000, gift: 390000 }, tvs: {
-                        "이코노미": { tvName: "이코노미", settop: "스마트3", price: 34100, fee: 595000, gift: 490000 },
-                        "스탠다드": { tvName: "스탠다드", settop: "스마트3", price: 37400, fee: 705000, gift: 490000 },
-                        "올": { tvName: "올", settop: "스마트3", price: 40700, fee: 745000, gift: 490000 }
-                    }},
-                    "Y": { price: 23100, name: "SKB(08/24~) 100메가 단독(와이파이포함)", standalone: { price: 23100, fee: 345000, gift: 390000 }, tvs: {
-                        "이코노미": { tvName: "이코노미", settop: "스마트3", price: 36300, fee: 595000, gift: 490000 },
-                        "스탠다드": { tvName: "스탠다드", settop: "스마트3", price: 39600, fee: 705000, gift: 490000 },
-                        "올": { tvName: "올", settop: "스마트3", price: 42900, fee: 745000, gift: 490000 }
-                    }}
-                }
-            },
-            "500메가": {
-                wifiOptions: {
-                    "N": { price: 33000, name: "SKB(08/24~) 500메가 단독", standalone: { price: 33000, fee: 435000, gift: 490000 }, tvs: {
-                        "이코노미": { tvName: "이코노미", settop: "스마트3", price: 41800, fee: 685000, gift: 490000 },
-                        "스탠다드": { tvName: "스탠다드", settop: "스마트3", price: 45100, fee: 795000, gift: 490000 },
-                        "올": { tvName: "올", settop: "스마트3", price: 48400, fee: 835000, gift: 490000 }
-                    }},
-                    "Y": { price: 34100, name: "SKB(08/24~) 500메가 단독(와이파이포함)", standalone: { price: 34100, fee: 435000, gift: 490000 }, tvs: {
-                        "이코노미": { tvName: "이코노미", settop: "스마트3", price: 42900, fee: 685000, gift: 490000 },
-                        "스탠다드": { tvName: "스탠다드", settop: "스마트3", price: 46200, fee: 795000, gift: 490000 },
-                        "올": { tvName: "올", settop: "스마트3", price: 49500, fee: 835000, gift: 490000 }
-                    }}
-                }
-            },
-            "1기가": {
-                wifiOptions: {
-                    "N": { price: 38500, name: "SKB(08/24~) 1기가 단독", standalone: { price: 38500, fee: 435000, gift: 490000 }, tvs: {
-                        "이코노미": { tvName: "이코노미", settop: "스마트3", price: 47300, fee: 735000, gift: 490000 },
-                        "스탠다드": { tvName: "스탠다드", settop: "스마트3", price: 50600, fee: 845000, gift: 490000 },
-                        "올": { tvName: "올", settop: "스마트3", price: 53900, fee: 885000, gift: 490000 }
-                    }},
-                    "Y": { price: 39600, name: "SKB(08/24~) 1기가 단독(와이파이포함)", standalone: { price: 39600, fee: 435000, gift: 490000 }, tvs: {
-                        "이코노미": { tvName: "이코노미", settop: "스마트3", price: 48400, fee: 735000, gift: 490000 },
-                        "스탠다드": { tvName: "스탠다드", settop: "스마트3", price: 51700, fee: 845000, gift: 490000 },
-                        "올": { tvName: "올", settop: "스마트3", price: 55000, fee: 885000, gift: 490000 }
-                    }}
-                }
-            }
+        tvProducts: [
+            { channelName: '100M_TV베이직', monthlyFee: 12100, tvFee: 32500 },
+            { channelName: '500M_TV에센스', monthlyFee: 16500, tvFee: 33500 },
+            { channelName: '1G_TV프라임',   monthlyFee: 22000, tvFee: 45500 }
+        ]
+    },
+    SKB: {
+        internetSpeeds: {
+            '100M': { monthlyFee: 22000, internetFee: 345000, baseGuide: 39, cashMax: 32, voucher: 7 },
+            '500M': { monthlyFee: 33000, internetFee: 435000, baseGuide: 49, cashMax: 42, voucher: 7 },
+            '1G':   { monthlyFee: 38500, internetFee: 435000, baseGuide: 49, cashMax: 42, voucher: 7 }
         },
-        "SKB(09/03~)": {
-            "100메가": {
-                wifiOptions: {
-                    "N": { price: 22000, name: "SKB(09/03) 100메가 단독", standalone: { price: 22000, fee: 340000, gift: 700000 }, tvs: {
-                        "이코노미": { tvName: "이코노미", settop: "스마트3", price: 34100, fee: 250000, gift: 700000 },
-                        "스탠다드": { tvName: "스탠다드", settop: "스마트3", price: 37400, fee: 360000, gift: 700000 },
-                        "올": { tvName: "올", settop: "스마트3", price: 40700, fee: 400000, gift: 700000 },
-                        "MAX": { tvName: "MAX", settop: "스마트3", price: 42900, fee: 400000, gift: 700000 }
-                    }},
-                    "Y": { price: 23100, name: "SKB(09/03) 100메가 단독(와이파이포함)", standalone: { price: 23100, fee: 340000, gift: 700000 }, tvs: {
-                        "이코노미": { tvName: "이코노미", settop: "스마트3", price: 36300, fee: 250000, gift: 700000 },
-                        "스탠다드": { tvName: "스탠다드", settop: "스마트3", price: 39600, fee: 360000, gift: 700000 },
-                        "올": { tvName: "올", settop: "스마트3", price: 42900, fee: 400000, gift: 700000 },
-                        "MAX": { tvName: "MAX", settop: "스마트3", price: 45100, fee: 400000, gift: 700000 }
-                    }}
-                }
-            },
-            "500메가": {
-                wifiOptions: {
-                    "N": { price: 33000, name: "SKB(09/03) 500메가 단독", standalone: { price: 33000, fee: 430000, gift: 830000 }, tvs: {
-                        "이코노미": { tvName: "이코노미", settop: "스마트3", price: 41800, fee: 250000, gift: 830000 },
-                        "스탠다드": { tvName: "스탠다드", settop: "스마트3", price: 45100, fee: 360000, gift: 830000 },
-                        "올": { tvName: "올", settop: "스마트3", price: 48400, fee: 400000, gift: 830000 },
-                        "MAX": { tvName: "MAX", settop: "스마트3", price: 50600, fee: 400000, gift: 830000 }
-                    }},
-                    "Y": { price: 34100, name: "SKB(09/03) 500메가 단독(와이파이포함)", standalone: { price: 34100, fee: 430000, gift: 830000 }, tvs: {
-                        "이코노미": { tvName: "이코노미", settop: "스마트3", price: 42900, fee: 250000, gift: 830000 },
-                        "스탠다드": { tvName: "스탠다드", settop: "스마트3", price: 46200, fee: 360000, gift: 830000 },
-                        "올": { tvName: "올", settop: "스마트3", price: 49500, fee: 400000, gift: 830000 },
-                        "MAX": { tvName: "MAX", settop: "스마트3", price: 51700, fee: 400000, gift: 830000 }
-                    }}
-                }
-            },
-            "1기가": {
-                wifiOptions: {
-                    "N": { price: 38500, name: "SKB(09/03) 1기가 단독", standalone: { price: 38500, fee: 430000, gift: 830000 }, tvs: {
-                        "이코노미": { tvName: "이코노미", settop: "스마트3", price: 47300, fee: 300000, gift: 830000 },
-                        "스탠다드": { tvName: "스탠다드", settop: "스마트3", price: 50600, fee: 410000, gift: 830000 },
-                        "올": { tvName: "올", settop: "스마트3", price: 53900, fee: 450000, gift: 830000 },
-                        "MAX": { tvName: "MAX", settop: "스마트3", price: 56100, fee: 450000, gift: 830000 }
-                    }},
-                    "Y": { price: 39600, name: "SKB(09/03) 1기가 단독(와이파이포함)", standalone: { price: 39600, fee: 430000, gift: 830000 }, tvs: {
-                        "이코노미": { tvName: "이코노미", settop: "스마트3", price: 48400, fee: 300000, gift: 830000 },
-                        "스탠다드": { tvName: "스탠다드", settop: "스마트3", price: 51700, fee: 410000, gift: 830000 },
-                        "올": { tvName: "올", settop: "스마트3", price: 55000, fee: 450000, gift: 830000 },
-                        "MAX": { tvName: "MAX", settop: "스마트3", price: 57200, fee: 450000, gift: 830000 }
-                    }}
-                }
-            }
+        tvProducts: [
+            { channelName: '100M_TV스탠다드', monthlyFee: 13200, tvFee: 360000 },
+            { channelName: '500M_TV올(All)',   monthlyFee: 15400, tvFee: 400000 },
+            { channelName: '1G_TV맥스(MAX)',   monthlyFee: 18700, tvFee: 450000 }
+        ]
+    },
+    SKT: {
+        internetSpeeds: {
+            '100M': { monthlyFee: 22000, internetFee: 230000, baseGuide: 40, cashMax: 40, voucher: 0 },
+            '500M': { monthlyFee: 33000, internetFee: 380000, baseGuide: 43, cashMax: 43, voucher: 0 },
+            '1G':   { monthlyFee: 38500, internetFee: 430000, baseGuide: 52, cashMax: 52, voucher: 0 }
         },
-        "LG홈": {
-            "100메가": {
-                wifiOptions: {
-                    "Y": { price: 22000, name: "LG홈 100메가 와이파이포함", standalone: { price: 22000, fee: 380000, gift: 330000 }, tvs: {
-                        "실속형": { tvName: "실속형", settop: "UHD4", price: 39600, fee: 705000, gift: 470000 },
-                        "기본형": { tvName: "기본형", settop: "UHD4", price: 40700, fee: 735000, gift: 470000 },
-                        "프리미엄": { tvName: "프리미엄", settop: "UHD4", price: 42900, fee: 725000, gift: 470000 }
-                    }}
-                }
-            },
-            "500메가": {
-                wifiOptions: {
-                    "Y": { price: 33000, name: "LG홈 500메가 와이파이포함", standalone: { price: 33000, fee: 470000, gift: 470000 }, tvs: {
-                        "실속형": { tvName: "실속형", settop: "UHD4", price: 45100, fee: 785000, gift: 470000 },
-                        "기본형": { tvName: "기본형", settop: "UHD4", price: 46200, fee: 815000, gift: 470000 },
-                        "프리미엄": { tvName: "프리미엄", settop: "UHD4", price: 48400, fee: 815000, gift: 470000 }
-                    }}
-                }
-            },
-            "1기가": {
-                wifiOptions: {
-                    "Y": { price: 38500, name: "LG홈 1기가 와이파이포함", standalone: { price: 38500, fee: 520000, gift: 470000 }, tvs: {
-                        "실속형": { tvName: "실속형", settop: "UHD4", price: 50600, fee: 825000, gift: 470000 },
-                        "기본형": { tvName: "기본형", settop: "UHD4", price: 51700, fee: 855000, gift: 470000 },
-                        "프리미엄": { tvName: "프리미엄", settop: "UHD4", price: 53900, fee: 855000, gift: 470000 }
-                    }}
-                }
-            }
+        tvProducts: [
+            { channelName: '100M_TV스탠다드', monthlyFee: 13200, tvFee: 420000 },
+            { channelName: '500M_TV올(All)',   monthlyFee: 15400, tvFee: 450000 },
+            { channelName: '1G_TV맥스(MAX)',   monthlyFee: 18700, tvFee: 485000 }
+        ]
+    },
+    LG: {
+        internetSpeeds: {
+            '100M': { monthlyFee: 22000, internetFee: 380000, baseGuide: 33, cashMax: 33, voucher: 0 },
+            '500M': { monthlyFee: 33000, internetFee: 470000, baseGuide: 47, cashMax: 47, voucher: 0 },
+            '1G':   { monthlyFee: 38500, internetFee: 520000, baseGuide: 47, cashMax: 47, voucher: 0 }
         },
-        "LG소호": {
-            "소호_100M": {
-                wifiOptions: {
-                    "Y": { price: 22000, name: "LG소호 100M 와이파이포함", standalone: { price: 22000, fee: 440000, gift: 440000 }, tvs: {
-                        "소호TV(실속형)": { tvName: "소호TV(실속형)", settop: "UHD4", price: 39600, fee: 620000, gift: 620000 },
-                        "소호TV(프리미엄)": { tvName: "소호TV(프리미엄)", settop: "UHD4", price: 42900, fee: 620000, gift: 620000 },
-                        "소호TV(실속형)+일반전화": { tvName: "소호TV(실속형)+일반전화", settop: "UHD4", price: 42000, fee: 630000, gift: 630000 },
-                        "소호TV(실속형)+자유통화3/4": { tvName: "소호TV(실속형)+자유통화3/4", settop: "UHD4", price: 43500, fee: 650000, gift: 650000 },
-                        "소호TV(실속형)+AI전화/자유6": { tvName: "소호TV(실속형)+AI전화/자유6", settop: "UHD4", price: 46000, fee: 730000, gift: 730000 }
-                    }}
-                }
-            },
-            "소호_500M": {
-                wifiOptions: {
-                    "Y": { price: 33000, name: "LG소호 500M 와이파이포함", standalone: { price: 33000, fee: 630000, gift: 630000 }, tvs: {
-                        "소호TV(실속형)": { tvName: "소호TV(실속형)", settop: "UHD4", price: 45100, fee: 930000, gift: 930000 },
-                        "소호TV(프리미엄)": { tvName: "소호TV(프리미엄)", settop: "UHD4", price: 48400, fee: 930000, gift: 930000 },
-                        "소호TV(실속형)+일반전화": { tvName: "소호TV(실속형)+일반전화", settop: "UHD4", price: 47100, fee: 920000, gift: 920000 },
-                        "소호TV(실속형)+자유통화3/4": { tvName: "소호TV(실속형)+자유통화3/4", settop: "UHD4", price: 48600, fee: 950000, gift: 950000 },
-                        "소호TV(실속형)+AI전화/자유6": { tvName: "소호TV(실속형)+AI전화/자유6", settop: "UHD4", price: 51100, fee: 1040000, gift: 1040000 }
-                    }}
-                }
-            },
-            "소호_1G": {
-                wifiOptions: {
-                    "Y": { price: 38500, name: "LG소호 1G 와이파이포함", standalone: { price: 38500, fee: 630000, gift: 630000 }, tvs: {
-                        "소호TV(실속형)": { tvName: "소호TV(실속형)", settop: "UHD4", price: 50600, fee: 930000, gift: 930000 },
-                        "소호TV(프리미엄)": { tvName: "소호TV(프리미엄)", settop: "UHD4", price: 53900, fee: 930000, gift: 930000 },
-                        "소호TV(실속형)+일반전화": { tvName: "소호TV(실속형)+일반전화", settop: "UHD4", price: 52600, fee: 920000, gift: 920000 },
-                        "소호TV(실속형)+자유통화3/4": { tvName: "소호TV(실속형)+자유통화3/4", settop: "UHD4", price: 54100, fee: 950000, gift: 950000 },
-                        "소호TV(실속형)+AI전화/자유6": { tvName: "소호TV(실속형)+AI전화/자유6", settop: "UHD4", price: 56600, fee: 1040000, gift: 1040000 }
-                    }}
-                }
-            }
+        tvProducts: [
+            { channelName: '100M_TV실속형',   monthlyFee: 12100, tvFee: 325000 },
+            { channelName: '500M_TV프리미엄', monthlyFee: 15400, tvFee: 325000 },
+            { channelName: '1G_TV프리미엄VOD',monthlyFee: 18700, tvFee: 325000 }
+        ]
+    }
+};
+
+/**
+ * 견적 및 수수료, 마진 계산 함수
+ * @param {Object} input 
+ * @param {string} input.carrier - 통신사 ('KT', 'SKB', 'SKT', 'LG')
+ * @param {string} input.internetSpeed - 인터넷 속도 ('100M', '500M', '1G')
+ * @param {boolean} input.hasWifi - 와이파이 사용 여부 (기본값 true / Y)
+ * @param {string} input.tvChannelName - 선택한 TV 채널 상품명 (미선택 시 null)
+ * @param {number} input.settopFee - 셋탑박스 월 요금 (현재 값 그대로 적용)
+ * @param {number} input.userTotalReward - 사용자가 직접 입력한 총사은품 금액 (만 원 단위, 예: 45)
+ */
+function calculateProductEstimate(input) {
+    const carrier = input.carrier;
+    const speed = input.internetSpeed;
+    const hasWifi = input.hasWifi !== undefined ? input.hasWifi : true; // 기본값 Y
+    const settopFee = input.settopFee || 0;
+    const userTotalReward = input.userTotalReward || 0; // 만 원 단위
+
+    const carrierInfo = carrierMasterData[carrier];
+    if (!carrierInfo) throw new Error('유효하지 않은 통신사입니다.');
+
+    const speedInfo = carrierInfo.internetSpeeds[speed];
+    if (!speedInfo) throw new Error('유효하지 않은 인터넷 속도입니다.');
+
+    // 1. 월 청구 요금 계산
+    const internetMonthly = speedInfo.monthlyFee;
+    const wifiMonthly = hasWifi ? 3300 : 0;
+    
+    let tvMonthly = 0;
+    let tvFeeSum = 0;
+    let selectedTv = '미선택';
+
+    if (input.tvChannelName) {
+        const tvItem = carrierInfo.tvProducts.find(item => item.channelName === input.tvChannelName);
+        if (tvItem) {
+            tvMonthly = tvItem.monthlyFee;
+            tvFeeSum = tvItem.tvFee;
+            selectedTv = tvItem.channelName;
+        }
+    }
+
+    const totalMonthlyFee = internetMonthly + wifiMonthly + tvMonthly + settopFee;
+
+    // 2. 합계 수수료 (인터넷 수수료 + TV 수수료)
+    const internetFee = speedInfo.internetFee;
+    const totalFeeSum = internetFee + tvFeeSum;
+
+    // 3. 사은품 정보 (기본사은품 경품고시 및 추가사은품)
+    const baseGuide = speedInfo.baseGuide; // 경품가이드 기본사은품
+    const cashMax = speedInfo.cashMax;
+    const voucher = speedInfo.voucher;
+    
+    // 추가사은품 = 총사은품 - 기본사은품(경품가이드 기준)
+    const additionalReward = userTotalReward - baseGuide;
+
+    // 4. 총 마진 ("인생비서 마진" = 합계수수료 - 총사은품)
+    // 주의: 수수료는 원 단위(예: 620,000원), 사은품은 만 원 단위(예: 45 = 450,000원)이므로 단위를 맞춰서 계산
+    const totalRewardInWon = userTotalReward * 10000;
+    const inmulMargin = totalFeeSum - totalRewardInWon;
+
+    // 결과 출력 구조 리턴
+    return {
+        선택정보: {
+            통신사: carrier,
+            인터넷속도: speed,
+            와이파이: hasWifi ? 'Y' : 'N',
+            TV상품: selectedTv,
+            셋탑박스요금: settopFee
         },
-        "KT": {
-            "100메가": {
-                wifiOptions: {
-                    "N": { price: 22000, name: "KT 100메가 단독", standalone: { price: 22000, fee: 300000, gift: 80000 }, tvs: {
-                        "베이직": { tvName: "베이직", settop: "기가지니A", price: 38500, fee: 625000, gift: 430000 }
-                    }},
-                    "Y": { price: 23100, name: "KT 100메가 단독(와이파이포함)", standalone: { price: 23100, fee: 300000, gift: 80000 }, tvs: {
-                        "베이직": { tvName: "베이직", settop: "기가지니A", price: 39600, fee: 625000, gift: 430000 }
-                    }}
-                }
+        "1_월청구요금": {
+            인터넷요금: internetMonthly,
+            와이파이요금: wifiMonthly,
+            TV요금: tvMonthly,
+            셋탑요금: settopFee,
+            총월청구요금: totalMonthlyFee
+        },
+        "2_합계수수료": {
+            인터넷수수료: internetFee,
+            TV수수료: tvFeeSum,
+            합계수수료금액: totalFeeSum
+        },
+        "3_사은품": {
+            총사은품_입력값: `${userTotalReward}만 원`,
+            기본사은품_경품고시: {
+                상품권: `${voucher}만 원`,
+                현금MAX: `${cashMax}만 원`,
+                경품가이드기준: `${baseGuide}만 원`
             },
-            "500메가": {
-                wifiOptions: {
-                    "N": { price: 33000, name: "KT 500메가 단독", standalone: { price: 33000, fee: 400000, gift: 130000 }, tvs: {
-                        "베이직": { tvName: "베이직", settop: "기가지니A", price: 44000, fee: 735000, gift: 490000 }
-                    }},
-                    "Y": { price: 34100, name: "KT 500메가 단독(와이파이포함)", standalone: { price: 34100, fee: 400000, gift: 130000 }, tvs: {
-                        "베이직": { tvName: "베이직", settop: "기가지니A", price: 45100, fee: 735000, gift: 490000 }
-                    }}
-                }
-            },
-            "1기가": {
-                wifiOptions: {
-                    "N": { price: 38500, name: "KT 1기가 단독", standalone: { price: 38500, fee: 420000, gift: 130000 }, tvs: {
-                        "베이직": { tvName: "베이직", settop: "기가지니A", price: 48400, fee: 755000, gift: 490000 }
-                    }},
-                    "Y": { price: 38500, name: "KT 1기가 단독(와이파이포함)", standalone: { price: 38500, fee: 420000, gift: 130000 }, tvs: {
-                        "베이직": { tvName: "베이직", settop: "기가지니A", price: 48400, fee: 755000, gift: 490000 }
-                    }}
-                }
-            }
+            추가사은품: `${additionalReward >= 0 ? additionalReward : 0}만 원`
+        },
+        "4_총마진": {
+            표기명: "인생비서 마진",
+            금액: `${inmulMargin.toLocaleString()}원`
         }
     };
+}
 
-    // 통신사별 할인 목록 매핑 데이터 정의 객체
-    const discountData = {
-        "KT": ["총액결합", "프리미엄싱글결합", "프리미엄 가족결합", "따로살아도 결합"],
-        "LG홈": ["참쉬운가족결합", "투게더결합"],
-        "LG소호": ["참쉬운가족결합", "투게더결합"],
-        "SKT": ["요즘우리집결합", "요즘가족결합", "온가족할인"],
-        "SK(08/24)": ["요즘우리집결합", "요즘가족결합", "온가족할인"],
-        "SKB(09/03)": ["요즘우리집결합", "요즘가족결합", "온가족할인"]
-    };
-
-    // 고객 안내 문자 자동 생성 및 갱신 함수
-    function updateCustomerSms(carrierStr = "", internetNameStr = "", wifiStr = "미사용 (N)", tvNameStr = "", settopStr = "", discountStr = "", monthlyStr = "0", giftStr = "00,000") {
-        const memoTextarea = document.getElementById("memoTextarea");
-        let tvLine = tvNameStr ? `  [TV 상품] ${tvNameStr}` : `  [TV 상품] 없음`;
-        let settopLine = settopStr ? `  [셋탑박스] ${settopStr}` : `  [셋탑박스] 없음`;
-        let discountLine = discountStr ? `  [결합/할인] ${discountStr}` : `  [결합/할인] 선택 없음`;
-        
-        memoTextarea.value = `안녕하세요, 인생비서입니다.
-고객님께 안내해 드릴 인터넷 가입 상품 및 요금 정보 전달해 드립니다. 
-
-1. 요금 및 사은품 안내
-- 통신사: ${carrierStr}
-- 가입 상품:
-  [인터넷] ${internetNameStr}
-  [와이파이] ${wifiStr}
-${tvLine}
-${settopLine}
-${discountLine}
-
-- 총 월 요금: ${monthlyStr}원 (부가가치세 포함)
-- 설치비: 56,200원 (주말 및 야간 설치 시 할증 발생)
-- 총 사은품 혜택: ${giftStr}원
-
-2. 사은품 지급 안내
-- 현금: 설치 완료 후 연락 주시면 당일 또는 다음 영업일 내로 즉시 입금해 드립니다.
-- 상품권: 설치 후 통신사에서 직접 발송하며, 보통 2~3일 정도 소요됩니다.
-
-3. 약정 및 유지 기간 안내
-- 약정 기간: 모든 통신사 공통 3년(36개월)이며, 기간 내 해지 시 위약금이 발생합니다.
-- 사은품 유지 조건: 가입 후 1년 이내 정지, 명의 변경, 해지 등이 발생할 경우 사은품이 환수됩니다.
-- 유의 사항: 본인 및 가족 명의의 기존 인터넷을 이용 중이셨던 경우라도, 신규 설치일 기준 1년은 필수로 유지하셔야 사은품이 보존됩니다.
-
-[진행 절차 안내]
- 1) 본인 인증 전화: 본인 확인을 위한 인증 절차가 진행됩니다.
- 2) 해피콜 (통신사 본사)
-    - 가입 상품 확인 전화이오니 상품 내용은 맞는지 확인해 주시고, 
-    - 사은품 관련하여 다른 금액으로 안내되더라도 "네, 맞습니다"라고 답변해 주시면 됩니다.
- 3) 설치 기사님 연락: 설치 일정 조율을 위한 연락이 오면 편하신 일정으로 조율해 주시면 됩니다.
- 4) 설치 완료 확인: 인터넷 설치가 모두 완료된 후, 완료 문자를 회신해 주시면 사은품 지급 절차가 진행됩니다.
-
-궁금하신 점이 있으시면 언제든지 편하게 연락 주세요. 감사합니다!`;
-    }
-
-    // 통신사 선택 변경 시 하위 셀렉트박스 및 할인 항목을 갱신하는 함수
-    function onCarrierChange() {
-        const carrierSelect = document.getElementById("carrierSelect");
-        const carrier = carrierSelect.value;
-        const internetSelect = document.getElementById("internetSelect");
-        const wifiSelect = document.getElementById("wifiSelect");
-        const tvSelect = document.getElementById("tvSelect");
-        const settopSelect = document.getElementById("settopSelect");
-        const discountSelect = document.getElementById("discountSelect");
-
-        internetSelect.innerHTML = '<option value="">인터넷 속도를 선택하세요</option>';
-        tvSelect.innerHTML = '<option value="">인터넷 단독 적용됨 (TV 추가 시 선택)</option>';
-        settopSelect.innerHTML = '<option value="">자동 선택됩니다</option>';
-        
-        // 통신사별 할인 목록 갱신 처리
-        discountSelect.innerHTML = '<option value="">할인 항목을 선택하세요</option>';
-        if (carrier && discountData[carrier]) {
-            discountData[carrier].forEach((disc) => {
-                let opt = document.createElement("option");
-                opt.value = disc;
-                opt.textContent = disc;
-                discountSelect.appendChild(opt);
-            });
-        } else {
-            discountSelect.innerHTML = '<option value="">통신사를 먼저 선택하세요</option>';
-        }
-
-        resetResult();
-
-        if (!carrier || !policyData[carrier]) {
-            updateCustomerSms();
-            return;
-        }
-
-        const speeds = Object.keys(policyData[carrier]);
-        speeds.forEach((speed) => {
-            let opt = document.createElement("option");
-            opt.value = speed;
-            opt.textContent = speed;
-            internetSelect.appendChild(opt);
-        });
-
-        updateCustomerSms(carrierSelect.options[carrierSelect.selectedIndex].text);
-    }
-
-    // 인터넷 속도 선택 변경 시 와이파이 고정 및 TV 옵션을 갱신하는 함수
-    function onInternetChange() {
-        const carrier = document.getElementById("carrierSelect").value;
-        const internetSelect = document.getElementById("internetSelect");
-        const speed = internetSelect.value;
-        const wifiSelect = document.getElementById("wifiSelect");
-
-        if (!carrier || !speed) return;
-
-        if (carrier === "LG홈" || carrier === "LG소호") {
-            wifiSelect.value = "Y";
-            wifiSelect.disabled = true;
-        } else {
-            wifiSelect.disabled = false;
-        }
-
-        updateTvOptions();
-        calculateAll();
-    }
-
-    // 와이파이 여부 변경 시 TV 옵션과 요금을 재계산하는 함수
-    function onWifiChange() {
-        updateTvOptions();
-        calculateAll();
-    }
-
-    // 할인 항목 변경 시 전체 요금 및 수수료를 재계산하는 함수
-    function onDiscountChange() {
-        calculateAll();
-    }
-
-    // 선택된 통신사/속도/와이파이에 맞는 TV 상품 리스트를 동적으로 구성하는 함수
-    function updateTvOptions() {
-        const carrier = document.getElementById("carrierSelect").value;
-        const internetSelect = document.getElementById("internetSelect");
-        const speed = internetSelect.value;
-        const wifiSelect = document.getElementById("wifiSelect");
-        const wifi = wifiSelect.value;
-        const tvSelect = document.getElementById("tvSelect");
-
-        tvSelect.innerHTML = '<option value="">인터넷 단독 적용됨 (TV 추가 시 선택)</option>';
-
-        if (!carrier || !speed) return;
-
-        const netData = policyData[carrier][speed];
-        if (!netData || !netData.wifiOptions[wifi]) {
-            const availableWifi = Object.keys(netData.wifiOptions)[0];
-            wifiSelect.value = availableWifi;
-        }
-
-        const currentWifiData = netData.wifiOptions[wifiSelect.value];
-        if (!currentWifiData) return;
-
-        const tvs = currentWifiData.tvs;
-        for (let tvKey in tvs) {
-            let tvObj = tvs[tvKey];
-            let opt = document.createElement("option");
-            opt.value = tvKey;
-            opt.dataset.price = tvObj.price;
-            opt.dataset.fee = tvObj.fee;
-            opt.dataset.gift = tvObj.gift;
-            opt.dataset.tvName = tvObj.tvName;
-            opt.dataset.settop = tvObj.settop;
-            
-            opt.textContent = `TV 결합 (${tvObj.tvName} / 셋탑: ${tvObj.settop}) - 월 ${tvObj.price.toLocaleString()}원`;
-            tvSelect.appendChild(opt);
-        }
-    }
-
-    // 선택된 상품 정보에 따라 요금, 수수료, 사은품 합계를 계산하여 화면에 반영하는 함수
-    function calculateAll() {
-        const carrierSelect = document.getElementById("carrierSelect");
-        const carrierText = carrierSelect.selectedIndex > 0 ? carrierSelect.options[carrierSelect.selectedIndex].text : "";
-
-        const internetSelect = document.getElementById("internetSelect");
-        const speed = internetSelect.value;
-        const wifiSelect = document.getElementById("wifiSelect");
-        const wifi = wifiSelect.value;
-        const wifiText = (wifi === "Y") ? "사용 (Y)" : "미사용 (N)";
-
-        const tvSelect = document.getElementById("tvSelect");
-        const selectedTvOpt = tvSelect.options[tvSelect.selectedIndex];
-
-        const discountSelect = document.getElementById("discountSelect");
-        const discountText = discountSelect.selectedIndex > 0 && discountSelect.value ? discountSelect.value : "";
-
-        if (!carrierText || !speed) {
-            resetResult();
-            return;
-        }
-
-        const netData = policyData[carrierText][speed].wifiOptions[wifi];
-        
-        let monthlyPrice = 0;
-        let totalFee = 0;
-        let baseGift = 0;
-        let tvName = "";
-        let settopName = "";
-
-        if (!tvSelect.value || tvSelect.selectedIndex === 0) {
-            monthlyPrice = netData.standalone.price;
-            totalFee = netData.standalone.fee;
-            baseGift = netData.standalone.gift;
-        } else {
-            monthlyPrice = parseInt(selectedTvOpt.dataset.price) || 0;
-            totalFee = parseInt(selectedTvOpt.dataset.fee) || 0;
-            baseGift = parseInt(selectedTvOpt.dataset.gift) || 0;
-            tvName = selectedTvOpt.dataset.tvName || "";
-            settopName = selectedTvOpt.dataset.settop || "";
-        }
-
-        document.getElementById("baseGift").textContent = baseGift.toLocaleString() + " 원";
-        const totalGiftInput = document.getElementById("totalGiftInput");
-        totalGiftInput.value = baseGift.toLocaleString();
-
-        let internetFee = Math.round(totalFee * 0.55 / 10000) * 10000;
-        let tvFee = totalFee - internetFee;
-
-        document.getElementById("internetFee").textContent = internetFee.toLocaleString() + " 원";
-        document.getElementById("tvFee").textContent = tvFee.toLocaleString() + " 원";
-        document.getElementById("totalFee").textContent = totalFee.toLocaleString() + " 원";
-        document.getElementById("monthlyPrice").textContent = monthlyPrice.toLocaleString() + " 원";
-
-        computeMarginAndExtra(totalFee, baseGift);
-
-        let internetFullName = `${carrierText} ${speed} (${wifi === "Y" ? "와이파이포함" : "단독"})`;
-        updateCustomerSms(
-            carrierText,
-            internetFullName,
-            wifiText,
-            tvName,
-            settopName,
-            discountText,
-            monthlyPrice.toLocaleString(),
-            baseGift.toLocaleString()
-        );
-    }
-
-    // 총 사은품 금액을 사용자가 직접 수정할 때 추가 사은품과 마진을 실시간 계산하는 함수
-    function onTotalGiftInput(inputElement) {
-        let rawVal = inputElement.value.replace(/[^0-9]/g, "");
-        let numVal = rawVal ? parseInt(rawVal, 10) : 0;
-        inputElement.value = numVal.toLocaleString();
-
-        const totalFeeText = document.getElementById("totalFee").textContent.replace(/[^0-9]/g, "");
-        const totalFee = totalFeeText ? parseInt(totalFeeText, 10) : 0;
-        const baseGiftText = document.getElementById("baseGift").textContent.replace(/[^0-9]/g, "");
-        const baseGift = baseGiftText ? parseInt(baseGiftText, 10) : 0;
-
-        let extraGift = numVal - baseGift;
-        document.getElementById("extraGift").textContent = extraGift.toLocaleString() + " 원";
-
-        let netMargin = totalFee - numVal;
-        const marginEl = document.getElementById("netMargin");
-        marginEl.textContent = netMargin.toLocaleString() + " 원";
-        
-        if (netMargin < 0) {
-            marginEl.style.color = "#d90429";
-        } else {
-            marginEl.style.color = "#0d9488";
-        }
-
-        // 고객 안내 문자 내 총 사은품 금액 실시간 연동 업데이트
-        const carrierSelect = document.getElementById("carrierSelect");
-        const carrierText = carrierSelect.selectedIndex > 0 ? carrierSelect.options[carrierSelect.selectedIndex].text : "";
-        const internetSelect = document.getElementById("internetSelect");
-        const speed = internetSelect.value;
-        const wifiSelect = document.getElementById("wifiSelect");
-        const wifi = wifiSelect.value;
-        const wifiText = (wifi === "Y") ? "사용 (Y)" : "미사용 (N)";
-        const tvSelect = document.getElementById("tvSelect");
-        const selectedTvOpt = tvSelect.options[tvSelect.selectedIndex];
-        const tvName = tvSelect.value && tvSelect.selectedIndex > 0 ? selectedTvOpt.dataset.tvName : "";
-        const settopName = tvSelect.value && tvSelect.selectedIndex > 0 ? selectedTvOpt.dataset.settop : "";
-        const discountSelect = document.getElementById("discountSelect");
-        const discountText = discountSelect.selectedIndex > 0 && discountSelect.value ? discountSelect.value : "";
-        const monthlyPrice = document.getElementById("monthlyPrice").textContent;
-
-        let internetFullName = `${carrierText} ${speed} (${wifi === "Y" ? "와이파이포함" : "단독"})`;
-        updateCustomerSms(
-            carrierText,
-            internetFullName,
-            wifiText,
-            tvName,
-            settopName,
-            discountText,
-            monthlyPrice.replace(" 원", ""),
-            numVal.toLocaleString()
-        );
-    }
-
-    // 마진 및 추가 사은품 수치를 계산하여 화면에 표시하는 공통 함수
-    function computeMarginAndExtra(totalFee, baseGift) {
-        let totalGift = baseGift;
-        let extraGift = totalGift - baseGift;
-        let netMargin = totalFee - totalGift;
-
-        document.getElementById("extraGift").textContent = extraGift.toLocaleString() + " 원";
-        
-        const marginEl = document.getElementById("netMargin");
-        marginEl.textContent = netMargin.toLocaleString() + " 원";
-        if (netMargin < 0) {
-            marginEl.style.color = "#d90429";
-        } else {
-            marginEl.style.color = "#0d9488";
-        }
-    }
-
-    // 결과 요약 패널의 데이터를 초기값(0원)으로 리셋하는 함수
-    function resetResult() {
-        document.getElementById("internetFee").textContent = "0 원";
-        document.getElementById("tvFee").textContent = "0 원";
-        document.getElementById("totalFee").textContent = "0 원";
-        document.getElementById("monthlyPrice").textContent = "0 원";
-        document.getElementById("baseGift").textContent = "0 원";
-        document.getElementById("totalGiftInput").value = "0";
-        document.getElementById("extraGift").textContent = "0 원";
-        document.getElementById("netMargin").textContent = "0 원";
-        
-        const carrierSelect = document.getElementById("carrierSelect");
-        const carrierText = carrierSelect.selectedIndex > 0 ? carrierSelect.options[carrierSelect.selectedIndex].text : "";
-        const wifiSelect = document.getElementById("wifiSelect");
-        const wifiText = wifiSelect.options[wifiSelect.selectedIndex] ? wifiSelect.options[wifiSelect.selectedIndex].text : "미사용 (N)";
-        const discountSelect = document.getElementById("discountSelect");
-        const discountText = discountSelect.selectedIndex > 0 && discountSelect.value ? discountSelect.value : "";
-        
-        updateCustomerSms(carrierText, "", wifiText, "", "", discountText, "0", "00,000");
-    }
-
-    // 웹페이지 로드가 완료될 때 초기 안내 문자를 세팅하는 이벤트 함수
-    window.onload = function() {
-        updateCustomerSms();
-    };
-</script>
-
-</body>
-</html>
+// ==========================================
+// 검증 테스트 실행
+// ==========================================
+try {
+    console.log('=== [테스트 결과: KT 500M + TV 에센스 선택 시] ===');
+    const result = calculateProductEstimate({
+        carrier: 'KT',
+        internetSpeed: '500M',
+        hasWifi: true, // 기본값 Y
+        tvChannelName: '500M_TV에센스',
+        settopFee: 4400,
+        userTotalReward: 45 // 총사은품 45만 원 입력 가정
+    });
+    console.log(JSON.stringify(result, null, 2));
+} catch (error) {
+    console.error('오류 발생:', error.message);
+}
