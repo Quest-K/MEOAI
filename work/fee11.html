@@ -1,155 +1,547 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <title>통신사 결합 요금 계산기</title>
-    <!-- Supabase 클라이언트 라이브러리를 CDN을 통해 불러옵니다 (데이터베이스 연동용) -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <style>
-        body { font-family: 'Arial', sans-serif; margin: 40px; background-color: #faf8f5; color: #333; }
-        .container { max-width: 600px; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
-        h2 { margin-bottom: 20px; color: #111; }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        select, input[type="checkbox"] { padding: 8px; width: 100%; font-size: 14px; border: 1px solid #ddd; border-radius: 4px; }
-        .checkbox-group { display: flex; align-items: center; }
-        .checkbox-group input { width: auto; margin-right: 10px; }
-        .result-box { margin-top: 30px; padding: 20px; background: #f1f3f5; border-radius: 6px; font-size: 18px; font-weight: bold; text-align: right; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>인터넷+TV 결합 요금 및 수수료 비교</title>
+<!-- 프리텐다드 및 구글 폰트 로드 -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<!-- Supabase 클라이언트 라이브러리 로드 -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --ink:#2C2E35;
+    --ink-dim:#6B6E76;
+    --bg:#F4F2EB;
+    --bg-raised:#FFFFFF;
+    --paper:#FFFFFF;
+    --paper-line:#E6E2D6;
+    --line-on-dark:#D8D3C5;
+    --gold:#C88A2B;
+    --kt:#C4763B;
+    --lg:#2F8F7E;
+    --skb:#B84A5E;
+    --skt:#5D52A3;
+    --radius:6px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Pretendard', -apple-system, sans-serif;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{
+    max-width:1200px;
+    margin:0 auto;
+    padding:56px 24px 96px;
+  }
+
+  /* ---------- Header ---------- */
+  header{
+    margin-bottom:48px;
+    padding-bottom:32px;
+    border-bottom:1px solid var(--line-on-dark);
+    position:relative;
+  }
+  .eyebrow{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12.5px;
+    color:var(--ink-dim);
+    letter-spacing:0.02em;
+    margin:0 0 14px;
+  }
+  h1{
+    font-family:'Newsreader', serif;
+    font-weight:600;
+    font-size:clamp(30px, 4.4vw, 44px);
+    margin:0 0 14px;
+    color:#1C1E24;
+  }
+  header p{
+    max-width:56ch;
+    color:var(--ink-dim);
+    font-size:15.5px;
+    margin:0;
+  }
+
+  /* ---------- Controls ---------- */
+  .controls{
+    display:flex;
+    flex-direction:column;
+    gap:26px;
+    margin-bottom:52px;
+    background:var(--bg-raised);
+    padding:28px;
+    border-radius:var(--radius);
+    box-shadow:0 4px 20px rgba(0,0,0,0.03);
+    border:1px solid var(--paper-line);
+  }
+  .control-group label.group-label{
+    display:block;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px;
+    color:var(--ink-dim);
+    margin-bottom:10px;
+    font-weight: 600;
+  }
+  .seg{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+  .seg button{
+    appearance:none;
+    border:1px solid var(--paper-line);
+    background:#FAFAF7;
+    color:var(--ink);
+    padding:10px 18px;
+    font-family:'Pretendard', sans-serif;
+    font-size:14.5px;
+    font-weight:500;
+    border-radius:var(--radius);
+    cursor:pointer;
+    transition:border-color .15s ease, background .15s ease, color .15s ease;
+  }
+  .seg button:hover{ border-color:var(--gold); background:#FFFDF9; }
+  .seg button:focus-visible{ outline:2px solid var(--gold); outline-offset:2px; }
+  .seg button.active{
+    background:var(--gold);
+    border-color:var(--gold);
+    color:#FFFFFF;
+    font-weight:600;
+  }
+
+  /* ---------- Results ---------- */
+  .results{
+    display:grid;
+    grid-template-columns:repeat(4, 1fr);
+    gap:16px;
+  }
+  @media (max-width: 1100px){
+    .results{ grid-template-columns:repeat(2, 1fr); }
+  }
+  @media (max-width: 650px){
+    .results{ grid-template-columns:1fr; }
+  }
+
+  .card{
+    background:var(--paper);
+    color:#20211D;
+    border-radius:var(--radius);
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+    box-shadow:0 10px 30px -10px rgba(0,0,0,.08);
+    border:1px solid var(--paper-line);
+  }
+  .card.best{ transform:translateY(-6px); box-shadow:0 16px 36px -12px rgba(200,138,43,.25); border-color:var(--gold); }
+
+  .card-head{
+    padding:18px 18px 14px;
+    color:#fff;
+    position:relative;
+  }
+  .card-head .brand{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px;
+    letter-spacing:0.05em;
+    opacity:.9;
+    margin:0 0 4px;
+  }
+  .card-head .plan-name{
+    font-family:'Newsreader', serif;
+    font-weight:600;
+    font-size:20px;
+    margin:0;
+  }
+  .card[data-brand="KT"] .card-head{ background:var(--kt); }
+  .card[data-brand="LG"] .card-head{ background:var(--lg); }
+  .card[data-brand="SKB"] .card-head{ background:var(--skb); }
+  .card[data-brand="SKT"] .card-head{ background:var(--skt); }
+
+  .best-tag{
+    position:absolute;
+    top:12px;
+    right:-2px;
+    background:var(--gold);
+    color:#FFFFFF;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    font-weight:600;
+    padding:4px 10px 4px 12px;
+    letter-spacing:.03em;
+  }
+  .best-tag::before{
+    content:"";
+    position:absolute;
+    left:-6px; top:0;
+    border-style:solid;
+    border-width:0 6px 18px 0;
+    border-color:transparent var(--gold) transparent transparent;
+    filter: brightness(0.85);
+  }
+
+  .price-block{
+    padding:18px 18px 14px;
+    border-bottom:1px dashed var(--paper-line);
+  }
+  .price-block .amount{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:24px;
+    font-weight:600;
+    letter-spacing:-0.01em;
+    color:#1C1E24;
+  }
+  .price-block .amount span{ font-size:13px; font-weight:500; color:#6B6C64; margin-left:4px;}
+  .price-block .note{
+    margin-top:6px;
+    font-size:11.5px;
+    color:#8A6A20;
+    background:#FDF5E2;
+    display:inline-block;
+    padding:3px 6px;
+    border-radius:2px;
+    border:1px solid #F3E2B8;
+  }
+  .price-block .unavailable{
+    font-size:13.5px;
+    color:#8C877A;
+    padding:4px 0 2px;
+  }
+
+  .items{
+    padding:14px 18px 16px;
+    flex:1;
+  }
+  .item-row{
+    display:flex;
+    align-items:baseline;
+    gap:6px;
+    font-size:13px;
+    padding:5px 0;
+    color:#4B4C45;
+  }
+  .item-row .label{ white-space:nowrap; color:#8C877A; }
+  .item-row .dots{
+    flex:1;
+    border-bottom:1px dotted #C9C4B2;
+    transform:translateY(-4px);
+  }
+  .item-row .value{ white-space:nowrap; font-weight:500; color:#20211D; }
+
+  /* ---------- Commission / Margin Section ---------- */
+  .commission-section{
+    border-top:1px solid var(--paper-line);
+    background:#FAFAF7;
+    padding:16px 18px;
+    font-size:12.5px;
+  }
+  .comm-title{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    font-weight:600;
+    color:var(--ink-dim);
+    margin-bottom:8px;
+    letter-spacing:0.03em;
+    text-transform:uppercase;
+  }
+  .comm-group{
+    margin-bottom:6px;
+  }
+  .comm-subhead{
+    font-weight:600;
+    color:#3A3C42;
+    margin-bottom:2px;
+    display:flex;
+    justify-content:space-between;
+  }
+  .comm-row{
+    display:flex;
+    justify-content:space-between;
+    padding:1px 0 1px 6px;
+    color:#5C5E66;
+    font-size:12px;
+  }
+  .comm-divider{
+    height:1px;
+    background:var(--paper-line);
+    margin:8px 0;
+  }
+  .margin-row{
+    display:flex;
+    justify-content:space-between;
+    font-weight:600;
+    color:var(--gold);
+    font-size:13.5px;
+    font-family:'IBM Plex Mono', monospace;
+  }
+
+  footer{
+    margin-top:52px;
+    font-size:12.5px;
+    color:var(--ink-dim);
+    border-top:1px solid var(--line-on-dark);
+    padding-top:20px;
+  }
+  footer p{ margin:0 0 6px; }
+</style>
 </head>
 <body>
+<div class="wrap">
 
-<div class="container">
-    <h2>통신사 결합 요금 계산기</h2>
-    
-    <!-- 1. 통신사 선택 영역 -->
-    <div class="form-group">
-        <label for="carrierSelect">통신사 선택</label>
-        <select id="carrierSelect" onchange="loadOptions()">
-            <option value="">통신사를 선택하세요</option>
-            <option value="sk">SK브로드밴드</option>
-            <option value="kt">KT</option>
-            <option value="lg">LG유플러스</option>
-            <option value="hello">LG헬로비전</option>
-            <option value="skylife">스카이라이프</option>
-            <option value="dlive">딜라이브</option>
-        </select>
+  <header>
+    <p class="eyebrow">GIGA COMPARE / 01</p>
+    <h1>인터넷 + TV, 통신사별 실시간 요금 비교</h1>
+    <p>Supabase 데이터베이스와 연동되어 속도, TV 요금제, 공유기 여부에 따른 요금 및 경품고시 구조를 정확하게 비교해드립니다.</p>
+  </header>
+
+  <!-- 상단 조건 선택 컨트롤 박스 영역 -->
+  <div class="controls">
+    <div class="control-group">
+      <label class="group-label">인터넷 속도</label>
+      <div class="seg" id="seg-speed">
+        <button data-value="100">100M</button>
+        <button data-value="500">500M</button>
+        <button data-value="1000">1기가</button>
+      </div>
     </div>
 
-    <!-- 2. 인터넷 상품 선택 영역 -->
-    <div class="form-group">
-        <label for="internetSelect">인터넷 상품</label>
-        <select id="internetSelect" onchange="calculateTotal()"></select>
+    <div class="control-group">
+      <label class="group-label">TV 요금제 타입</label>
+      <div class="seg" id="seg-tv">
+        <button data-value="none">인터넷 단독 (TV 미가입)</button>
+        <button data-value="low">저가형</button>
+        <button data-value="basic">기본형</button>
+        <button data-value="premium">고급형</button>
+      </div>
     </div>
 
-    <!-- 3. 공유기 추가 체크박스 영역 -->
-    <div class="form-group checkbox-group">
-        <input type="checkbox" id="routerCheck" onchange="calculateTotal()">
-        <label for="routerCheck" style="margin-bottom:0;">공유기 추가 (월 요금 적용)</label>
+    <div class="control-group">
+      <label class="group-label">공유기 (Wi-Fi)</label>
+      <div class="seg" id="seg-router">
+        <button data-value="N">미포함</button>
+        <button data-value="Y">포함</button>
+      </div>
     </div>
+  </div>
 
-    <!-- 4. TV 채널 상품 선택 영역 -->
-    <div class="form-group">
-        <label for="tvSelect">TV 채널 상품</label>
-        <select id="tvSelect" onchange="calculateTotal()"></select>
-    </div>
+  <!-- 통신사별 계산 결과 카드들이 동적으로 출력되는 영역 -->
+  <div class="results" id="results">
+    <div style="grid-column: span 4; text-align:center; padding: 40px; color: #6B6E76;">데이터를 불러오는 중입니다...</div>
+  </div>
 
-    <!-- 5. 셋톱박스 선택 영역 -->
-    <div class="form-group">
-        <label for="settopSelect">셋톱박스</label>
-        <select id="settopSelect" onchange="calculateTotal()"></select>
-    </div>
+  <footer>
+    <p>* Supabase DB 기준 실시간 월 요금이며, 부가세·약정 조건 등에 따라 실제 청구 금액은 달라질 수 있습니다.</p>
+  </footer>
 
-    <!-- 6. 최종 요금 출력 영역 -->
-    <div class="result-box" id="resultDisplay">
-        총 예상 월요금: 0원
-    </div>
 </div>
 
 <script>
-    // 전달해주신 Supabase 프로젝트 URL 및 Anon Key 설정
-    const SUPABASE_URL = 'https://jhfhpumhifyhauuoinxc.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpoZmhwdW1oaWZ5aGF1dW9pbnhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0MDE2NTMsImV4cCI6MjEwMzk3NzY1M30.euXk3eXtUVvEQRDGgcLhvX3JhVlpv9D7fZUEDr0i8yA';
-    
-    // Supabase 클라이언트 객체 생성 (데이터베이스 조회용)
-    const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  // Supabase 연결 설정 정보 초기화
+  const SUPABASE_URL = 'https://jhfhpumhifyhauuoinxc.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpoZmhwdW1oaWZ5aGF1dW9pbnhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0MDE2NTMsImV4cCI6MjEwMzk3NzY1M30.euXk3eXtUVvEQRDGgcLhvX3JhVlpv9D7fZUEDr0i8yA';
+  const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // 통신사가 변경될 때마다 Supabase에서 해당 통신사의 인터넷, TV, 셋톱박스 데이터를 비동기로 불러오는 함수
-    async function loadOptions() {
-        const carrier = document.getElementById('carrierSelect').value;
-        if (!carrier) return;
+  // 화면 제어용 상태 객체 정의
+  let state = { speed:'100', tv:'low', router:'N' };
 
-        // [인터넷 상품 데이터 조회] 선택한 통신사에 해당하는 인터넷 요금 및 속도 데이터를 가져옵니다.
-        const { data: internetData, error: internetError } = await _supabase
-            .from('internet_plans')
-            .select('*')
-            .eq('carrier', carrier);
+  // 각 브랜드 설정 및 고정 순서 정의 (SKB와 SKT는 통합 관리 혹은 개별 표시)
+  const BRANDS = [
+    { key: 'KT', name: 'KT', order: 1 },
+    { key: 'LG', name: 'LG', order: 2 },
+    { key: 'SKB', name: 'SKB', order: 3 },
+    { key: 'SKT', name: 'SKT', order: 4 }
+  ];
 
-        let internetHtml = '<option value="">인터넷 속도를 선택하세요</option>';
-        if (internetData) {
-            internetData.forEach(item => {
-                // 속도와 월요금을 표시하고, data-router 속성에 공유기 추가 요금을 숨겨서 저장합니다.
-                internetHtml += `<option value="${item.monthly_fee}" data-router="${item.router_fee}">${item.speed}메가 (월 ${item.monthly_fee.toLocaleString()}원)</option>`;
-            });
+  const SPEED_LABEL = { 100:'100M', 500:'500M', 1000:'1기가' };
+  const ROUTER_LABEL = { N:'미포함', Y:'포함' };
+
+  // 세그먼트 버튼 클릭 이벤트 설정 함수
+  function setupSeg(id, key){
+    const el = document.getElementById(id);
+    el.querySelectorAll('button').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        state[key] = btn.dataset.value;
+        render();
+      });
+    });
+  }
+  setupSeg('seg-speed','speed');
+  setupSeg('seg-tv','tv');
+  setupSeg('seg-router','router');
+
+  // Supabase에서 데이터를 가져와 화면을 렌더링하는 메인 비동기 함수
+  async function render() {
+    // 버튼 활성화 상태(active 클래스) 동기화
+    document.querySelectorAll('#seg-speed button').forEach(b=>b.classList.toggle('active', b.dataset.value===state.speed));
+    document.querySelectorAll('#seg-tv button').forEach(b=>b.classList.toggle('active', b.dataset.value===state.tv));
+    document.querySelectorAll('#seg-router button').forEach(b=>b.classList.toggle('active', b.dataset.value===state.router));
+
+    const container = document.getElementById('results');
+
+    try {
+      // 1. internet_plans 테이블 전체 데이터 조회
+      const { data: internetPlans, error: intError } = await _supabase.from('internet_plans').select('*');
+      if (intError) throw intError;
+
+      // 2. tv_plans 테이블 전체 데이터 조회
+      const { data: tvPlans, error: tvError } = await _supabase.from('tv_plans').select('*');
+      if (tvError) throw tvError;
+
+      // 3. settop_boxes 테이블 전체 데이터 조회
+      const { data: settopBoxes, error: settopError } = await _supabase.from('settop_boxes').select('*');
+      if (settopError) throw settopError;
+
+      const results = [];
+
+      for (let bInfo of BRANDS) {
+        const brandKey = bInfo.key;
+        // DB 저장된 carrier 코드에 맞게 매핑 (예: kt, lg, sk 등)
+        let dbCarrier = brandKey.toLowerCase();
+        if (brandKey === 'SKB') dbCarrier = 'sk'; // SK브로드밴드는 'sk'로 저장됨
+        if (brandKey === 'SKT') dbCarrier = 'sk'; // SKT도 필요시 동일 처리
+
+        // A. 인터넷 상품 필터링 (선택된 속도)
+        const speedVal = parseInt(state.speed);
+        const matchedInternet = internetPlans.find(item => item.carrier === dbCarrier && item.speed === speedVal);
+
+        if (!matchedInternet) {
+          results.push({ brand: brandKey, available: false, reason: '인터넷 상품 정보 없음' });
+          continue;
         }
-        document.getElementById('internetSelect').innerHTML = internetHtml;
 
-        // [TV 채널 상품 데이터 조회] 선택한 통신사의 TV 상품 목록을 가져옵니다.
-        const { data: tvData, error: tvError } = await _supabase
-            .from('tv_plans')
-            .select('*')
-            .eq('carrier', carrier);
-
-        let tvHtml = '<option value="0">TV 선택 안 함</option>';
-        if (tvData) {
-            tvData.forEach(item => {
-                tvHtml += `<option value="${item.monthly_fee}">${item.plan_name} - 채널 ${item.channel_count}개 (월 ${item.monthly_fee.toLocaleString()}원)</option>`;
-            });
-        }
-        document.getElementById('tvSelect').innerHTML = tvHtml;
-
-        // [셋톱박스 데이터 조회] 선택한 통신사의 셋톱박스 모델 및 임대료 목록을 가져옵니다.
-        const { data: settopData, error: settopError } = await _supabase
-            .from('settop_boxes')
-            .select('*')
-            .eq('carrier', carrier);
-
-        let settopHtml = '<option value="0">셋톱박스 선택 안 함</option>';
-        if (settopData) {
-            settopData.forEach(item => {
-                settopHtml += `<option value="${item.monthly_fee}">${item.model_name} (월 ${item.monthly_fee.toLocaleString()}원)</option>`;
-            });
-        }
-        document.getElementById('settopSelect').innerHTML = settopHtml;
-
-        // 데이터 로딩 후 요금을 다시 계산합니다.
-        calculateTotal();
-    }
-
-    // 선택된 항목들의 요금을 모두 합산하여 화면에 실시간으로 반영하는 함수
-    function calculateTotal() {
-        const internetSelect = document.getElementById('internetSelect');
-        const internetFee = internetSelect.value ? parseInt(internetSelect.value) : 0;
-        
-        // 공유기 추가 체크박스가 켜져있고 인터넷이 선택된 경우 공유기 요금을 합산에 포함합니다.
+        // 인터넷 기본 요금 및 공유기 요금 산출
+        let internetFee = matchedInternet.monthly_fee;
         let routerFee = 0;
-        const routerCheck = document.getElementById('routerCheck');
-        if (routerCheck.checked && internetSelect.selectedIndex > 0) {
-            const selectedOption = internetSelect.options[internetSelect.selectedIndex];
-            routerFee = parseInt(selectedOption.getAttribute('data-router')) || 0;
+        let isForcedRouter = false;
+
+        // LG는 전 상품 공유기 포함 정책 반영 예시 또는 공유기 추가 여부 반영
+        if (matchedInternet.router_fee > 0 && state.router === 'Y') {
+          routerFee = matchedInternet.router_fee;
+        } else if (matchedInternet.router_fee > 0 && dbCarrier === 'lg') {
+          // LG 등 일부 정책 대응
+          routerFee = matchedInternet.router_fee;
+          isForcedRouter = true;
         }
 
-        // TV 및 셋톱박스 요금 가져오기 (선택되지 않았으면 0원 처리)
-        const tvFee = parseInt(document.getElementById('tvSelect').value) || 0;
-        const settopFee = parseInt(document.getElementById('settopSelect').value) || 0;
+        // B. TV 상품 필터링 (선택된 TV 타입에 따른 매칭)
+        let matchedTv = null;
+        let tvNameDisplay = '';
 
-        // 모든 요금 합산 계산
-        const total = internetFee + routerFee + tvFee + settopFee;
+        if (state.tv === 'none') {
+          tvNameDisplay = '인터넷 단독';
+        } else {
+          // TV 목록 중 해당 통신사 데이터 필터링
+          const carrierTvList = tvPlans.filter(item => item.carrier === dbCarrier);
+          
+          if (state.tv === 'low') {
+            matchedTv = carrierTvList.find(t => t.channel_count < 200) || carrierTvList[0];
+          } else if (state.tv === 'basic') {
+            matchedTv = carrierTvList.find(t => t.channel_count >= 200 && t.channel_count < 250) || carrierTvList[1];
+          } else if (state.tv === 'premium') {
+            matchedTv = carrierTvList.find(t => t.channel_count >= 250) || carrierTvList[carrierTvList.length - 1];
+          }
+          
+          if (matchedTv) {
+            tvNameDisplay = matchedTv.plan_name;
+          } else {
+            tvNameDisplay = '기본 TV 상품';
+          }
+        }
 
-        // 결과 화면에 포맷팅하여 출력
-        document.getElementById('resultDisplay').innerHTML = `총 예상 월요금: <span style="color: #2b8a3e;">${total.toLocaleString()}원</span>`;
+        const tvFee = matchedTv ? matchedTv.monthly_fee : 0;
+
+        // C. 셋톱박스 필터링
+        let matchedSettop = null;
+        if (state.tv !== 'none') {
+          const carrierSettopList = settopBoxes.filter(item => item.carrier === dbCarrier);
+          matchedSettop = carrierSettopList[0] || null; // 첫 번째 셋톱박스 모델 기본 매칭
+        }
+        const settopFee = matchedSettop ? matchedSettop.monthly_fee : 0;
+
+        // 총 월요금 계산 합산
+        const totalPrice = internetFee + routerFee + tvFee + settopFee;
+
+        results.push({
+          brand: brandKey,
+          available: true,
+          price: totalPrice,
+          tvName: tvNameDisplay,
+          stbName: matchedSettop ? matchedSettop.model_name : null,
+          routerIncluded: (routerFee > 0 || isForcedRouter),
+          notice: { giftCard: 50000, cash: 200000 } // 기본 경품고시 데이터 예시
+        });
+      }
+
+      // 최저가 카드 산출
+      const availablePrices = results.filter(r => r.available).map(r => r.price);
+      const minPrice = availablePrices.length ? Math.min(...availablePrices) : null;
+
+      // HTML 카드 마크업 생성
+      container.innerHTML = results.map(r => {
+        const isBest = r.available && r.price === minPrice;
+
+        let priceBlock = '';
+        if (!r.available) {
+          priceBlock = `<div class="unavailable">선택하신 조건의 상품이 없어요.</div>`;
+        } else {
+          priceBlock = `
+            <div class="amount">${r.price.toLocaleString()}<span>원 / 월</span></div>
+            ${r.routerIncluded ? `<div class="note">공유기 임대료 포함됨</div>` : ''}
+          `;
+        }
+
+        const itemsHtml = r.available ? `
+          <div class="item-row"><span class="label">인터넷</span><span class="dots"></span><span class="value">${SPEED_LABEL[state.speed]}</span></div>
+          <div class="item-row"><span class="label">TV 요금제</span><span class="dots"></span><span class="value">${r.tvName}</span></div>
+          ${r.stbName ? `<div class="item-row"><span class="label">셋톱박스</span><span class="dots"></span><span class="value">${r.stbName}</span></div>` : ''}
+          <div class="item-row"><span class="label">공유기</span><span class="dots"></span><span class="value">${r.routerIncluded ? '포함' : '미포함'}</span></div>
+        ` : '';
+
+        const commHtml = r.available ? `
+          <div class="commission-section">
+            <div class="comm-title">수익 및 경품 구조</div>
+            <div class="comm-group">
+              <div class="comm-subhead"><span>0. 경품고시제</span></div>
+              <div class="comm-row"><span>· 상품권</span><span>${r.notice.giftCard.toLocaleString()}원</span></div>
+              <div class="comm-row"><span>· 현금</span><span>${r.notice.cash.toLocaleString()}원</span></div>
+            </div>
+            <div class="comm-divider"></div>
+            <div class="margin-row">
+              <span>총 마진</span>
+              <span>산정 중</span>
+            </div>
+          </div>
+        ` : '';
+
+        return `
+          <div class="card ${isBest ? 'best' : ''}" data-brand="${r.brand}">
+            <div class="card-head">
+              ${isBest ? '<div class="best-tag">최저가</div>' : ''}
+              <p class="brand">${r.brand}</p>
+              <p class="plan-name">${r.available ? r.tvName : '미제공'}</p>
+            </div>
+            <div class="price-block">${priceBlock}</div>
+            <div class="items">${itemsHtml}</div>
+            ${commHtml}
+          </div>
+        `;
+      }).join('');
+
+    } catch (err) {
+      console.error('Supabase 데이터 조회 오류:', err);
+      container.innerHTML = `<div style="grid-column: span 4; text-align:center; padding: 40px; color: #d9534f;">데이터를 불러오는 중 오류가 발생했습니다. 콘솔을 확인해주세요.</div>`;
     }
-</script>
+  }
 
+  // 초기 실행
+  render();
+</script>
 </body>
 </html>
