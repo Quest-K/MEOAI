@@ -131,10 +131,6 @@
     color:#FFFFFF;
     font-weight:600;
   }
-  .seg button:disabled{
-    opacity:.4;
-    cursor:not-allowed;
-  }
 
   .results{
     display:grid;
@@ -256,6 +252,7 @@
     text-transform:uppercase;
   }
   .comm-group{ margin-bottom:6px; }
+  .comm-group:last-child{ margin-bottom:0; }
   .comm-subhead{
     font-weight:600;
     color:#3A3C42;
@@ -267,6 +264,10 @@
     padding:1px 0 1px 6px;
     color:#5C5E66;
     font-size:12px;
+  }
+  .comm-row.highlight{
+    font-weight:600;
+    color:var(--ink);
   }
 
   footer{
@@ -285,7 +286,7 @@
   <header>
     <p class="eyebrow">GIGA COMPARE / 01</p>
     <h1>인터넷 + TV, 세 통신사 요금을 한눈에</h1>
-    <p>속도와 TV 요금제, 공유기 여부를 고르면 KT · LG · SK 결합 상품 가격을 실시간 데이터로 비교해드려요.</p>
+    <p>속도와 TV 요금제, 공유기 여부를 고르면 KT · LG · SK 결합 상품 가격과 실시간 수수료/혜택을 비교해드려요.</p>
   </header>
 
   <div id="status-banner"></div>
@@ -322,8 +323,8 @@
   <div class="results" id="results"></div>
 
   <footer>
-    <p>* 요금은 Supabase에 등록된 데이터를 실시간으로 불러온 값이며, 부가세·약정 조건 등에 따라 실제 청구 금액은 달라질 수 있습니다.</p>
-    <p>* 경품고시·수수료·마진 수치는 아직 데이터베이스화되지 않아 임시로 고정된 값입니다.</p>
+    <p>* 요금 및 수수료 정보는 Supabase에 등록된 실시간 최신 정책 데이터를 기준으로 조회됩니다.</p>
+    <p>* 부가세·약정 조건 및 프로모션에 따라 실제 청구 금액 및 지급 수수료는 달라질 수 있습니다.</p>
   </footer>
 
 </div>
@@ -337,7 +338,6 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const CARRIERS = ['kt', 'lg', 'sk'];
 const BRAND_LABEL = { kt:'KT', lg:'LG', sk:'SK' };
 
-// 요청하신 이름 그대로 매칭한 TV 요금제 (DB에 동일 계열 이름의 다른 상품이 더 있어도 아래 이름만 사용)
 const TV_TIER_MAP = {
   kt: { low:'베이직', basic:'에센스', premium:'모든G' },
   lg: { low:'실속형', basic:'기본형', premium:'프리미엄' },
@@ -348,42 +348,9 @@ const SETTOP_MAP = { kt:'셋톱박스3', lg:'UHD4셋탑', sk:'스마트3' };
 const SPEED_LABEL = { 100:'100M', 500:'500M', 1000:'1기가' };
 const ROUTER_LABEL = { N:'미포함', Y:'포함' };
 
-// ---------- 경품고시 (임시 하드코딩, 데이터베이스화 전) ----------
-function getNoticeData(brand, speed, tv) {
-  if (tv === 'none') {
-    if (brand === 'kt') {
-      if (speed === '100') return { giftCard:40000, cash:40000 };
-      if (speed === '500') return { giftCard:40000, cash:80000 };
-      if (speed === '1000') return { giftCard:50000, cash:70000 };
-    } else if (brand === 'lg') {
-      if (speed === '100') return { giftCard:0, cash:200000 };
-      if (speed === '500') return { giftCard:0, cash:170000 };
-      if (speed === '1000') return { giftCard:0, cash:170000 };
-    } else if (brand === 'sk') {
-      if (speed === '100') return { giftCard:0, cash:100000 };
-      if (speed === '500') return { giftCard:0, cash:170000 };
-      if (speed === '1000') return { giftCard:0, cash:170000 };
-    }
-  } else {
-    if (brand === 'kt') {
-      if (speed === '100') return { giftCard:60000, cash:240000 };
-      if (speed === '500') return { giftCard:60000, cash:340000 };
-      if (speed === '1000') return { giftCard:90000, cash:310000 };
-    } else if (brand === 'lg') {
-      if (speed === '100') return { giftCard:0, cash:330000 };
-      if (speed === '500') return { giftCard:0, cash:470000 };
-      if (speed === '1000') return { giftCard:0, cash:470000 };
-    } else if (brand === 'sk') {
-      if (speed === '100') return { giftCard:70000, cash:320000 };
-      if (speed === '500') return { giftCard:70000, cash:420000 };
-      if (speed === '1000') return { giftCard:70000, cash:420000 };
-    }
-  }
-  return { giftCard:0, cash:0 };
-}
-
-let DATA = null; // Supabase에서 불러온 뒤 채워짐
-let state = { speed:'100', tv:'low', router:'N' };
+let DATA = null;
+let COMMISSION_DATA = {};
+let state = { speed:'1000', tv:'basic', router:'Y' }; // 초기값 설정
 
 function showBanner(type, message){
   const el = document.getElementById('status-banner');
@@ -396,6 +363,7 @@ function hideBanner(){
   el.textContent = '';
 }
 
+// 1. 요금제 기본 구조 데이터 로드
 async function loadData(){
   showBanner('loading', '요금 데이터를 불러오는 중이에요...');
 
@@ -407,7 +375,7 @@ async function loadData(){
 
   if (internetRes.error || tvRes.error || settopRes.error) {
     const err = internetRes.error || tvRes.error || settopRes.error;
-    showBanner('error', `요금 데이터를 불러오지 못했어요 (${err.message}). Supabase 테이블에 anon 역할의 SELECT 정책(RLS)이 열려있는지 확인해주세요.`);
+    showBanner('error', `요금 데이터를 불러오지 못했어요 (${err.message}).`);
     return false;
   }
 
@@ -442,18 +410,44 @@ async function loadData(){
   return true;
 }
 
+// 2. 수수료 데이터 로드 (DB 컬럼 타입 매칭 지원)
+async function loadCommissionData() {
+  // speed 조건을 문자열/숫자 모두 대응하도록 OR 조건 검색
+  const { data, error } = await sb
+    .from('carrier_commissions')
+    .select('*')
+    .or(`speed.eq.${state.speed},speed.eq.${parseInt(state.speed)}`)
+    .eq('tv_tier', state.tv);
+
+  if (error) {
+    console.error('수수료 데이터 로드 오류:', error.message);
+    return;
+  }
+
+  COMMISSION_DATA = {};
+  if (data) {
+    data.forEach(row => {
+      COMMISSION_DATA[row.carrier] = {
+        giftCard: row.gift_card_fee || 0,
+        cash: row.cash_fee || 0,
+        totalCommission: row.total_commission || 0
+      };
+    });
+  }
+}
+
 function setupSeg(id, key){
   const el = document.getElementById(id);
   el.querySelectorAll('button').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
+    btn.addEventListener('click', async ()=>{
       state[key] = btn.dataset.value;
+      if (key === 'speed' || key === 'tv') {
+        await loadCommissionData();
+      }
       render();
     });
   });
 }
-setupSeg('seg-speed','speed');
-setupSeg('seg-tv','tv');
-setupSeg('seg-router','router');
 
 function computePrice(carrier){
   const speedData = DATA[carrier].internet[state.speed];
@@ -483,8 +477,8 @@ function render(){
 
   const results = CARRIERS.map(carrier=>{
     const r = computePrice(carrier);
-    const notice = getNoticeData(carrier, state.speed, state.tv);
-    return { carrier, ...r, notice };
+    const comm = COMMISSION_DATA[carrier] || { giftCard:0, cash:0, totalCommission:0 };
+    return { carrier, ...r, comm };
   });
 
   const availableTotals = results.filter(r=>r.available).map(r=>r.total);
@@ -513,11 +507,15 @@ function render(){
 
     const commHtml = r.available ? `
       <div class="commission-section">
-        <div class="comm-title">경품고시 (임시 데이터)</div>
+        <div class="comm-title">수수료 및 경품 정책</div>
         <div class="comm-group">
-          <div class="comm-subhead">경품고시제</div>
-          <div class="comm-row"><span>· 상품권</span><span>${r.notice.giftCard.toLocaleString()}원</span></div>
-          <div class="comm-row"><span>· 현금</span><span>${r.notice.cash.toLocaleString()}원</span></div>
+          <div class="comm-subhead">경품고시제 (고객 지급)</div>
+          <div class="comm-row"><span>· 상품권</span><span>${r.comm.giftCard.toLocaleString()}원</span></div>
+          <div class="comm-row"><span>· 현금</span><span>${r.comm.cash.toLocaleString()}원</span></div>
+        </div>
+        <div class="comm-group" style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--paper-line);">
+          <div class="comm-subhead">통신사 수수료</div>
+          <div class="comm-row highlight"><span>· 수수료 합계</span><span>${r.comm.totalCommission.toLocaleString()}원</span></div>
         </div>
       </div>
     ` : '';
@@ -537,9 +535,17 @@ function render(){
   }).join('');
 }
 
+// 최초 초기화 동기화
 (async function init(){
+  setupSeg('seg-speed','speed');
+  setupSeg('seg-tv','tv');
+  setupSeg('seg-router','router');
+
   const ok = await loadData();
-  if (ok) render();
+  if (ok) {
+    await loadCommissionData(); // 수수료 데이터를 먼저 완벽히 로드한 뒤
+    render();                   // 화면 렌더링
+  }
 })();
 </script>
 </body>
