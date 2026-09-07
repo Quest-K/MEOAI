@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>KT 인터넷 및 모바일 맞춤형 결합 할인 계산기</title>
+    <title>KT 인터넷 및 모바일 맞춤형 결합 할인 계산기 v2</title>
     <style>
         @page {
             size: A4;
@@ -159,8 +159,8 @@
 <body>
 
     <div class="header">
-        <h1>KT 맞춤형 결합 할인 계산기</h1>
-        <p>인터넷 및 가족 모바일 회선 조건을 입력하면 상품별 가입 가능 여부와 최적의 할인 금액을 자동 계산합니다.</p>
+        <h1>KT 맞춤형 결합 할인 계산기 (v2)</h1>
+        <p>인터넷 및 가족 모바일 회선수 조절, 각 회선별 요금제와 청소년 여부를 설정하여 상품별 회선별 상세 할인을 확인하세요.</p>
     </div>
 
     <!-- 1. 인터넷 조건 설정 -->
@@ -187,68 +187,29 @@
 
     <!-- 2. 가족 모바일 회선 조건 설정 -->
     <div class="card">
-        <h2>2. 가족 모바일 회선별 정보 입력</h2>
-        <div id="mobileLinesContainer">
-            <!-- 회선 1 기본 생성 -->
-            <div class="line-item" id="line-row-1">
-                <div class="row">
-                    <div class="col" style="flex: 2;">
-                        <label>회선 1 별칭 / 소유자</label>
-                        <input type="text" value="본인 (대표자)" placeholder="예: 아빠">
-                    </div>
-                    <div class="col" style="flex: 3;">
-                        <label>모바일 월정액 선택</label>
-                        <select class="mobile-fee" onchange="calculateDiscounts()">
-                            <option value="40000">4만 원대 요금제 (예: 베이직 49,000원)</option>
-                            <option value="60000">6만 원대 요금제 (예: 특화 69,000원)</option>
-                            <option value="79000" selected>8만 원 이상 요금제 (77k 이상 대상)</option>
-                            <option value="110000">11만 원 이상 프리미엄 요금제</option>
-                        </select>
-                    </div>
-                    <div class="col" style="flex: 1.5; text-align: center;">
-                        <label>만 18세 이하 청소년</label>
-                        <input type="checkbox" class="teen-check" style="width: 20px; height: 20px; margin-top: 8px;" onchange="calculateDiscounts()">
-                    </div>
-                </div>
-            </div>
-
-            <!-- 회선 2 기본 생성 -->
-            <div class="line-item" id="line-row-2">
-                <div class="row">
-                    <div class="col" style="flex: 2;">
-                        <label>회선 2 별칭 / 소유자</label>
-                        <input type="text" value="가족 구성원 1" placeholder="예: 엄마">
-                    </div>
-                    <div class="col" style="flex: 3;">
-                        <label>모바일 월정액 선택</label>
-                        <select class="mobile-fee" onchange="calculateDiscounts()">
-                            <option value="40000" selected>4만 원대 요금제 (예: 베이직 49,000원)</option>
-                            <option value="60000">6만 원대 요금제 (예: 특화 69,000원)</option>
-                            <option value="79000">8만 원 이상 요금제 (77k 이상 대상)</option>
-                            <option value="110000">11만 원 이상 프리미엄 요금제</option>
-                        </select>
-                    </div>
-                    <div class="col" style="flex: 1.5; text-align: center;">
-                        <label>만 18세 이하 청소년</label>
-                        <input type="checkbox" class="teen-check" style="width: 20px; height: 20px; margin-top: 8px;" onchange="calculateDiscounts()">
-                    </div>
-                </div>
+        <h2>2. 가족 모바일 회선 설정</h2>
+        <div class="row" style="margin-bottom: 12px;">
+            <div class="col" style="max-width: 300px;">
+                <label for="totalLineCount">총 모바일 회선 수</label>
+                <input type="number" id="totalLineCount" min="1" max="10" value="2" onchange="updateLineInputs()" style="font-weight: bold; color: #1e3a8a;">
             </div>
         </div>
 
-        <button type="button" class="btn-secondary" onclick="addMobileLine()">+ 모바일 회선 추가하기</button>
+        <div id="mobileLinesContainer">
+            <!-- 회선 동적 생성 영역 -->
+        </div>
     </div>
 
     <!-- 3. 계산 결과 및 비교표 -->
     <div class="card">
-        <h2>3. 결합 상품별 가입 가능 여부 및 할인 금액 진단 결과</h2>
+        <h2>3. 결합 상품별 가입 가능 여부 및 회선별 할인 금액 결과</h2>
         <table>
             <thead>
                 <tr>
                     <th>결합 상품명</th>
                     <th>가입 가능 여부</th>
                     <th>인터넷 할인액</th>
-                    <th>모바일 할인액 합계</th>
+                    <th>회선별 모바일 할인액 상세</th>
                     <th>월 총 할인 예상액</th>
                 </tr>
             </thead>
@@ -264,125 +225,156 @@
     </div>
 
     <script>
-        let lineCount = 2;
+        // 초기 회선 설정 데이터
+        let lineDetails = [
+            { name: "본인 (대표자)", fee: 79000, teen: false },
+            { name: "가족 구성원 1", fee: 40000, teen: false }
+        ];
 
-        function addMobileLine() {
-            lineCount++;
-            const container = document.getElementById('mobileLinesContainer');
-            const div = document.createElement('div');
-            div.className = 'line-item';
-            div.id = `line-row-${lineCount}`;
-            div.innerHTML = `
-                <div class="row">
-                    <div class="col" style="flex: 2;">
-                        <label>회선 ${lineCount} 별칭 / 소유자</label>
-                        <input type="text" value="가족 구성원 ${lineCount-1}" placeholder="이름 입력">
-                    </div>
-                    <div class="col" style="flex: 3;">
-                        <label>모바일 월정액 선택</label>
-                        <select class="mobile-fee" onchange="calculateDiscounts()">
-                            <option value="40000">4만 원대 요금제</option>
-                            <option value="60000">6만 원대 요금제</option>
-                            <option value="79000">8만 원 이상 요금제 (77k 이상)</option>
-                            <option value="110000">11만 원 이상 프리미엄</option>
-                        </select>
-                    </div>
-                    <div class="col" style="flex: 1.5; text-align: center;">
-                        <label>만 18세 이하 청소년</label>
-                        <input type="checkbox" class="teen-check" style="width: 20px; height: 20px; margin-top: 8px;" onchange="calculateDiscounts()">
-                    </div>
-                </div>
-                <button type="button" style="background-color:#ef4444; padding:4px 8px; font-size:9pt; width:auto; margin-top:4px;" onclick="removeLine(${lineCount})">회선 삭제</button>
-            `;
-            container.appendChild(div);
+        function updateLineInputs() {
+            const countInput = parseInt(document.getElementById('totalLineCount').value);
+            const count = isNaN(countInput) || countInput < 1 ? 1 : (countInput > 10 ? 10 : countInput);
+            document.getElementById('totalLineCount').value = count;
+
+            // 기존 배열 크기 조절
+            if (lineDetails.length < count) {
+                for (let i = lineDetails.length; i < count; i++) {
+                    lineDetails.push({ name: `가족 구성원 ${i}`, fee: 40000, teen: false });
+                }
+            } else if (lineDetails.length > count) {
+                lineDetails = lineDetails.slice(0, count);
+            }
+
+            renderLineInputs();
             calculateDiscounts();
         }
 
-        function removeLine(id) {
-            const el = document.getElementById(`line-row-${id}`);
-            if (el) {
-                el.remove();
-                calculateDiscounts();
-            }
+        function renderLineInputs() {
+            const container = document.getElementById('mobileLinesContainer');
+            let html = '';
+
+            lineDetails.forEach((line, idx) => {
+                html += `
+                    <div class="line-item" id="line-row-${idx+1}">
+                        <div class="row">
+                            <div class="col" style="flex: 2;">
+                                <label>회선 ${idx+1} 별칭 / 소유자</label>
+                                <input type="text" value="${line.name}" oninput="lineDetails[${idx}].name = this.value">
+                            </div>
+                            <div class="col" style="flex: 3;">
+                                <label>모바일 요금제 및 월정액 입력</label>
+                                <select onchange="lineDetails[${idx}].fee = parseInt(this.value); calculateDiscounts();">
+                                    <option value="35000" ${line.fee === 35000 ? 'selected' : ''}>3만 원대 요금제 (예: 33,000원~38,000원)</option>
+                                    <option value="49000" ${line.fee === 49000 ? 'selected' : ''}>4~5만 원대 요금제 (예: 49,000원)</option>
+                                    <option value="69000" ${line.fee === 69000 ? 'selected' : ''}>6~7만 원대 요금제 (예: 69,000원)</option>
+                                    <option value="79000" ${line.fee >= 77000 ? 'selected' : ''}>7만 7천원 이상 요금제 (77k 이상 대상)</option>
+                                    <option value="110000" ${line.fee === 110000 ? 'selected' : ''}>11만 원 이상 프리미엄 요금제</option>
+                                </select>
+                            </div>
+                            <div class="col" style="flex: 1.5; text-align: center;">
+                                <label>만 18세 이하 청소년</label>
+                                <input type="checkbox" ${line.teen ? 'checked' : ''} style="width: 20px; height: 20px; margin-top: 8px;" onchange="lineDetails[${idx}].teen = this.checked; calculateDiscounts();">
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
         }
 
         function calculateDiscounts() {
             const speed = parseInt(document.getElementById('internetSpeed').value);
             const isFamilyInternet = document.getElementById('familyInternet').value === 'yes';
 
-            const feeSelects = document.querySelectorAll('.mobile-fee');
-            const teenChecks = document.querySelectorAll('.teen-check');
-
-            let totalLines = feeSelects.length;
+            let totalLines = lineDetails.length;
             let count77kPlus = 0;
             let totalMobileFeeSum = 0;
-            let teenDiscountTotal = 0;
 
-            feeSelects.forEach((select, idx) => {
-                const fee = parseInt(select.value);
-                totalMobileFeeSum += fee;
-                if (fee >= 77000) {
+            lineDetails.forEach(line => {
+                totalMobileFeeSum += line.fee;
+                if (line.fee >= 77000) {
                     count77kPlus++;
-                }
-                if (teenChecks[idx] && teenChecks[idx].checked && fee >= 77000) {
-                    teenDiscountTotal += 5500; // 청소년 추가 5,500원 할인 (프리미엄 가족 결합 연동 가정)
                 }
             });
 
             // 1. 프리미엄 가족 결합
             let pfAvailable = (count77kPlus >= 2);
-            let pfInternetDiscount = 0; // 총액할인 연동
-            let pfMobileDiscount = 0;
-            if (pfAvailable) {
-                // 77k 이상 회선당 월정액 25% 대략적 계산 (평균 8만원 기준 약 2만원 할인 가정)
-                feeSelects.forEach(sel => {
-                    if (parseInt(sel.value) >= 77000) {
-                        pfMobileDiscount += Math.round(parseInt(sel.value) * 0.25 / 10) * 10;
-                    }
-                });
-                pfMobileDiscount += teenDiscountTotal;
-            }
-            let pfTotal = pfInternetDiscount + pfMobileDiscount;
+            let pfInternetDiscount = 0;
+            let pfLineDiscounts = [];
+            let pfTotalMobile = 0;
+
+            lineDetails.forEach(line => {
+                let d = 0;
+                if (pfAvailable && line.fee >= 77000) {
+                    d = Math.round(line.fee * 0.25 / 10) * 10;
+                    if (line.teen) d += 5500; // 청소년 추가할인
+                }
+                pfLineDiscounts.push(`${line.name || '회선'}: ${d.toLocaleString()}원`);
+                pfTotalMobile += d;
+            });
+            let pfTotal = pfInternetDiscount + pfTotalMobile;
 
             // 2. 프리미엄 싱글 결합
             let psAvailable = (speed >= 500 && count77kPlus >= 1 && totalLines === 1);
-            let psMobileDiscount = psAvailable ? Math.round(79000 * 0.25 / 10) * 10 : 0;
-            let psTotal = psMobileDiscount;
+            let psLineDiscounts = [];
+            let psTotalMobile = 0;
+            lineDetails.forEach(line => {
+                let d = 0;
+                if (psAvailable && line.fee >= 77000) {
+                    d = Math.round(line.fee * 0.25 / 10) * 10;
+                }
+                psLineDiscounts.push(`${line.name || '회선'}: ${d.toLocaleString()}원`);
+                psTotalMobile += d;
+            });
+            let psTotal = psTotalMobile;
 
-            // 3. 총액 결합할인
+            // 3. 총액 결합할인 (모바일 할인액을 각 회선별로 균등 또는 비율 배분 표기)
             let tcAvailable = true;
             let tcInternetDiscount = speed >= 500 ? 5500 : 3300;
-            let tcMobileDiscount = 0;
-            // 요금 총액 구간별 할인 대략 산정
-            if (totalMobileFeeSum >= 150000) tcMobileDiscount = 22000;
-            else if (totalMobileFeeSum >= 100000) tcMobileDiscount = 11000;
-            else tcMobileDiscount = 5500;
-            let tcTotal = tcInternetDiscount + tcMobileDiscount;
+            let tcTotalMobile = 0;
+            if (totalMobileFeeSum >= 150000) tcTotalMobile = 22000;
+            else if (totalMobileFeeSum >= 100000) tcTotalMobile = 11000;
+            else tcTotalMobile = 5500;
+
+            let tcLineDiscounts = [];
+            let tcRemaining = tcTotalMobile;
+            lineDetails.forEach((line, idx) => {
+                let share = Math.round((tcTotalMobile / totalLines) / 100) * 100;
+                if (idx === lineDetails.length - 1) share = tcRemaining;
+                tcRemaining -= share;
+                tcLineDiscounts.push(`${line.name || '회선'}: ${share.toLocaleString()}원`);
+            });
+            let tcTotal = tcInternetDiscount + tcTotalMobile;
 
             // 4. 정액 결합할인
             let dcAvailable = true;
             let dcInternetDiscount = 5500;
-            let dcMobileDiscount = 0;
-            feeSelects.forEach(sel => {
-                const f = parseInt(sel.value);
-                if (f >= 77000) dcMobileDiscount += 7000;
-                else if (f >= 61000) dcMobileDiscount += 5000;
-                else if (f >= 37000) dcMobileDiscount += 3000;
+            let dcLineDiscounts = [];
+            let dcTotalMobile = 0;
+
+            lineDetails.forEach(line => {
+                let d = 0;
+                if (line.fee >= 77000) d = 7000;
+                else if (line.fee >= 61000) d = 5000;
+                else if (line.fee >= 37000) d = 3000;
+                dcLineDiscounts.push(`${line.name || '회선'}: ${d.toLocaleString()}원`);
+                dcTotalMobile += d;
             });
-            let dcTotal = dcInternetDiscount + dcMobileDiscount;
+            let dcTotal = dcInternetDiscount + dcTotalMobile;
 
             // 5. 패밀리 할인
             let famAvailable = isFamilyInternet;
             let famInternetDiscount = speed >= 500 ? 11000 : 5500;
+            let famLineDiscounts = lineDetails.map(l => `${l.name || '회선'}: 0원`);
             let famTotal = famInternetDiscount;
 
-            // 결과 테이블 렌더링
+            // 결과 데이터 배열
             const results = [
-                { name: "프리미엄 가족 결합", avail: pfAvailable, availText: pfAvailable ? "가입 가능" : "조건 미달 (77k+ 2회선 필요)", net: pfInternetDiscount, mob: pfMobileDiscount, total: pfTotal },
-                { name: "프리미엄 싱글 결합", avail: psAvailable, availText: psAvailable ? "가입 가능" : "조건 미달 (500M+, 77k+ 1인)", net: 0, mob: psMobileDiscount, total: psTotal },
-                { name: "총액 결합할인", avail: tcAvailable, availText: "상시 가능", net: tcInternetDiscount, mob: tcMobileDiscount, total: tcTotal },
-                { name: "정액 결합할인", avail: dcAvailable, availText: "상시 가능", net: dcInternetDiscount, mob: dcMobileDiscount, total: dcTotal },
-                { name: "패밀리 할인", avail: famAvailable, availText: famAvailable ? "가입 가능" : "추가 인터넷 미선택", net: famInternetDiscount, mob: 0, total: famTotal }
+                { name: "프리미엄 가족 결합", avail: pfAvailable, availText: pfAvailable ? "가입 가능" : "조건 미달 (77k+ 2회선 필요)", net: pfInternetDiscount, lineText: pfLineDiscounts.join('<br>'), total: pfTotal },
+                { name: "프리미엄 싱글 결합", avail: psAvailable, availText: psAvailable ? "가입 가능" : "조건 미달 (500M+, 77k+ 1인)", net: 0, lineText: psLineDiscounts.join('<br>'), total: psTotal },
+                { name: "총액 결합할인", avail: tcAvailable, availText: "상시 가능", net: tcInternetDiscount, lineText: tcLineDiscounts.join('<br>'), total: tcTotal },
+                { name: "정액 결합할인", avail: dcAvailable, availText: "상시 가능", net: dcInternetDiscount, lineText: dcLineDiscounts.join('<br>'), total: dcTotal },
+                { name: "패밀리 할인", avail: famAvailable, availText: famAvailable ? "가입 가능" : "추가 인터넷 미선택", net: famInternetDiscount, lineText: famLineDiscounts.join('<br>'), total: famTotal }
             ];
 
             let tbodyHtml = '';
@@ -400,7 +392,7 @@
                         <td><strong>${r.name}</strong></td>
                         <td><span class="badge ${r.avail ? 'badge-available' : 'badge-unavailable'}">${r.availText}</span></td>
                         <td>${r.net.toLocaleString()}원</td>
-                        <td>${r.mob.toLocaleString()}원</td>
+                        <td style="text-align: left; padding-left: 15px; font-size: 9pt;">${r.lineText}</td>
                         <td><strong>${r.total.toLocaleString()}원</strong></td>
                     </tr>
                 `;
@@ -409,7 +401,7 @@
             document.getElementById('resultTableBody').innerHTML = tbodyHtml;
             
             if (maxAmount > 0) {
-                document.getElementById('bestText').innerHTML = `현재 입력하신 조건(모바일 회선수: ${totalLines개}, 77k 이상 회선: ${count77kPlus}개, 인터넷: ${speed}M)에서 가장 추천하는 상품은 <strong>[${bestName}]</strong>이며, 예상 월 총 할인액은 <strong>${maxAmount.toLocaleString()}원</strong>입니다.`;
+                document.getElementById('bestText').innerHTML = `현재 입력하신 조건(총 회선수: ${totalLines}개, 77k 이상 회선: ${count77kPlus}개, 인터넷: ${speed}M)에서 가장 추천하는 상품은 <strong>[${bestName}]</strong>이며, 예상 월 총 할인액은 <strong>${maxAmount.toLocaleString()}원</strong>입니다.`;
             } else {
                 document.getElementById('bestText').innerHTML = `현재 조건에서는 적용 가능한 결합 할인이 없거나 혜택 금액이 산정되지 않았습니다. 조건을 변경해 보세요.`;
             }
@@ -417,6 +409,7 @@
 
         // 초기 실행
         window.onload = function() {
+            renderLineInputs();
             calculateDiscounts();
         };
     </script>
