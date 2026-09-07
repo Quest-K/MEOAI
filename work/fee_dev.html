@@ -248,6 +248,7 @@
     transform:translateY(-4px);
   }
   .item-row .value{ white-space:nowrap; font-weight:500; color:#20211D; }
+  .item-row.discount .value{ color:#D9534F; font-weight:600; }
 
   .commission-section{
     border-top:1px solid var(--paper-line);
@@ -271,6 +272,10 @@
     color:#3A3C42;
     margin-bottom:4px;
   }
+  .comm-subhead.large{
+    font-size:13px;
+    color:#1C1E24;
+  }
   .comm-row{
     display:flex;
     justify-content:space-between;
@@ -279,19 +284,22 @@
     color:#5C5E66;
     font-size:12px;
   }
+  .comm-row.large{
+    font-size:13px;
+  }
   .comm-row.highlight{
     font-weight:600;
     color:var(--ink);
   }
 
-  /* 사은품 입력 커스텀 스타일 */
+  /* 실제 지급 사은품 & 마진 스타일 확대 */
   .gift-input{
-    width:110px;
+    width:125px;
     text-align:right;
-    padding:3px 6px;
-    font-size:12px;
+    padding:4px 8px;
+    font-size:14px;
     font-family:'IBM Plex Mono', monospace;
-    font-weight:600;
+    font-weight:700;
     border:1px solid var(--paper-line);
     border-radius:4px;
     background:#FFFFFF;
@@ -301,6 +309,11 @@
     outline:none;
     border-color:var(--gold);
     box-shadow:0 0 0 2px rgba(200,138,43,0.15);
+  }
+
+  .margin-text{
+    font-size:15px;
+    font-weight:700;
   }
 
   footer{
@@ -388,7 +401,7 @@ const ROUTER_LABEL = { N:'미포함', Y:'포함' };
 
 let DATA = null;
 let COMMISSION_DATA = {};
-let customGiftValues = {}; // 통신사별 사용자 입력 사은품 금액 저장
+let customGiftValues = {};
 let state = { speed:'1000', tv:'basic', router:'Y' };
 let logs = [];
 
@@ -484,7 +497,7 @@ async function loadCommissionData() {
   }
 
   COMMISSION_DATA = {};
-  customGiftValues = {}; // 조건 변경 시 수동 입력값 초기화
+  customGiftValues = {};
   
   CARRIERS.forEach(carrier => {
     const carrierRows = data ? data.filter(r => r.carrier === carrier) : [];
@@ -534,6 +547,7 @@ function setupSeg(id, key){
   });
 }
 
+// 결합 할인 적용 가격 계산
 function computePrice(carrier){
   const speedData = DATA[carrier].internet[state.speed];
   if (!speedData) return { available:false };
@@ -542,15 +556,26 @@ function computePrice(carrier){
   if (state.router === 'Y') total += speedData.routerFee;
 
   let tvInfo = null, settopInfo = null;
+  let bundleDiscount = 0;
+
   if (state.tv !== 'none') {
     tvInfo = DATA[carrier].tv[state.tv];
     if (!tvInfo) return { available:false, noTier:true };
     total += tvInfo.fee;
     settopInfo = DATA[carrier].settop;
     if (settopInfo) total += settopInfo.fee;
+
+    // 결합 할인 적용 조건 계산
+    if (carrier === 'sk' && String(state.speed) === '100') {
+      bundleDiscount = 2200;
+    } else {
+      bundleDiscount = 5500;
+    }
+
+    total -= bundleDiscount; // 총 금액에서 차감
   }
 
-  return { available:true, total, tvInfo, settopInfo };
+  return { available:true, total, tvInfo, settopInfo, bundleDiscount };
 }
 
 function handleGiftInputChange(carrier, rawVal) {
@@ -598,16 +623,14 @@ function render(){
       <div class="item-row"><span class="label">공유기</span><span class="dots"></span><span class="value">${ROUTER_LABEL[state.router]}</span></div>
       <div class="item-row"><span class="label">TV 요금제</span><span class="dots"></span><span class="value">${tvLabel}</span></div>
       ${r.settopInfo ? `<div class="item-row"><span class="label">셋톱박스</span><span class="dots"></span><span class="value">${r.settopInfo.name}</span></div>` : ''}
+      ${r.bundleDiscount > 0 ? `<div class="item-row discount"><span class="label">결합 할인</span><span class="dots"></span><span class="value">-${r.bundleDiscount.toLocaleString()}원</span></div>` : ''}
     ` : '';
 
     let commHtml = '';
     if (r.available && r.comm) {
       const isTvIncluded = state.tv !== 'none';
       
-      // 고객 사은품 (기본값 = 총 혜택 합계)
       const userGiftVal = customGiftValues[r.carrier] !== undefined ? customGiftValues[r.carrier] : r.comm.totalGift;
-      
-      // 계산 항목
       const calcCash = userGiftVal - r.comm.giftCard;
       const calcMargin = r.comm.totalCommission - userGiftVal;
 
@@ -630,10 +653,10 @@ function render(){
               <span>· 총 수수료 (Total Commission)</span><span>${r.comm.totalCommission.toLocaleString()}원</span></div>
           </div>
 
-          <!-- 신규 추가 하단 항목 -->
-          <div class="comm-group" style="margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--paper-line);">
-            <div class="comm-subhead">💵 실제 지급 사은품</div>
-            <div class="comm-row highlight">
+          <!-- 폰트 크기 증대 및 시각적 강조 영역 -->
+          <div class="comm-group" style="margin-top: 12px; padding-top: 10px; border-top: 2px solid var(--paper-line);">
+            <div class="comm-subhead large">💵 실제 지급 사은품</div>
+            <div class="comm-row highlight large" style="margin-bottom: 4px;">
               <span>· 고객 사은품</span>
               <div>
                 <input type="text" class="gift-input" value="${userGiftVal.toLocaleString()}" 
@@ -641,12 +664,12 @@ function render(){
                        onfocus="this.select()"> 원
               </div>
             </div>
-            <div class="comm-row"><span>└ 상품권</span><span>${r.comm.giftCard.toLocaleString()}원</span></div>
-            <div class="comm-row"><span>└ 현금</span><span>${calcCash.toLocaleString()}원</span></div>
+            <div class="comm-row large"><span>└ 상품권</span><span>${r.comm.giftCard.toLocaleString()}원</span></div>
+            <div class="comm-row large"><span>└ 현금</span><span>${calcCash.toLocaleString()}원</span></div>
           </div>
 
-          <div class="comm-group" style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--paper-line);">
-            <div class="comm-row highlight" style="color:${calcMargin >= 0 ? '#1E7E34' : '#D9534F'}; font-size:13px;">
+          <div class="comm-group" style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--paper-line);">
+            <div class="comm-row highlight margin-text" style="color:${calcMargin >= 0 ? '#1E7E34' : '#D9534F'};">
               <span>📊 대리점 총 마진</span><span>${calcMargin.toLocaleString()}원</span>
             </div>
           </div>
