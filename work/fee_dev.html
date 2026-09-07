@@ -274,13 +274,33 @@
   .comm-row{
     display:flex;
     justify-content:space-between;
-    padding:1px 0 1px 6px;
+    align-items:center;
+    padding:2px 0 2px 6px;
     color:#5C5E66;
     font-size:12px;
   }
   .comm-row.highlight{
     font-weight:600;
     color:var(--ink);
+  }
+
+  /* 사은품 입력 커스텀 스타일 */
+  .gift-input{
+    width:110px;
+    text-align:right;
+    padding:3px 6px;
+    font-size:12px;
+    font-family:'IBM Plex Mono', monospace;
+    font-weight:600;
+    border:1px solid var(--paper-line);
+    border-radius:4px;
+    background:#FFFFFF;
+    color:#1C1E24;
+  }
+  .gift-input:focus{
+    outline:none;
+    border-color:var(--gold);
+    box-shadow:0 0 0 2px rgba(200,138,43,0.15);
   }
 
   footer{
@@ -368,6 +388,7 @@ const ROUTER_LABEL = { N:'미포함', Y:'포함' };
 
 let DATA = null;
 let COMMISSION_DATA = {};
+let customGiftValues = {}; // 통신사별 사용자 입력 사은품 금액 저장
 let state = { speed:'1000', tv:'basic', router:'Y' };
 let logs = [];
 
@@ -463,6 +484,7 @@ async function loadCommissionData() {
   }
 
   COMMISSION_DATA = {};
+  customGiftValues = {}; // 조건 변경 시 수동 입력값 초기화
   
   CARRIERS.forEach(carrier => {
     const carrierRows = data ? data.filter(r => r.carrier === carrier) : [];
@@ -479,21 +501,18 @@ async function loadCommissionData() {
       const internetTotal = internetRow.total_commission || 0;
       const tvTotal = tvRow ? (tvRow.total_commission || 0) : 0;
 
-      // 경품고시 금액: TV 가입 시 TV 행의 단일 기준 금액 사용
       const targetGiftRow = (currentTv !== 'none' && tvRow) ? tvRow : internetRow;
       const giftCardFee = targetGiftRow.gift_card_fee || 0;
       const cashFee = targetGiftRow.cash_fee || 0;
 
       COMMISSION_DATA[carrier] = {
-        // 고객 지급 혜택 (경품고시)
         giftCard: giftCardFee,
         cash: cashFee,
-        totalGift: giftCardFee + cashFee, // 상품권 + 현금 합계
+        totalGift: giftCardFee + cashFee,
 
-        // 대리점 판매 수수료
         internetCommission: internetTotal,
         tvCommission: tvTotal,
-        totalCommission: internetTotal + tvTotal // 통신사 총 수수료
+        totalCommission: internetTotal + tvTotal
       };
     } else {
       COMMISSION_DATA[carrier] = null;
@@ -532,6 +551,16 @@ function computePrice(carrier){
   }
 
   return { available:true, total, tvInfo, settopInfo };
+}
+
+function handleGiftInputChange(carrier, rawVal) {
+  const numVal = parseInt(rawVal.replace(/[^0-9]/g, ''), 10);
+  if (!isNaN(numVal)) {
+    customGiftValues[carrier] = numVal;
+  } else {
+    customGiftValues[carrier] = 0;
+  }
+  render();
 }
 
 function render(){
@@ -574,6 +603,14 @@ function render(){
     let commHtml = '';
     if (r.available && r.comm) {
       const isTvIncluded = state.tv !== 'none';
+      
+      // 고객 사은품 (기본값 = 총 혜택 합계)
+      const userGiftVal = customGiftValues[r.carrier] !== undefined ? customGiftValues[r.carrier] : r.comm.totalGift;
+      
+      // 계산 항목
+      const calcCash = userGiftVal - r.comm.giftCard;
+      const calcMargin = r.comm.totalCommission - userGiftVal;
+
       commHtml = `
         <div class="commission-section">
           <div class="comm-title">정산 및 혜택 상세</div>
@@ -584,12 +621,34 @@ function render(){
             <div class="comm-row highlight" style="margin-top: 2px; padding-top: 2px; border-top: 1px dashed var(--paper-line);">
               <span>· 총 혜택 합계</span><span>${r.comm.totalGift.toLocaleString()}원</span></div>
           </div>
+          
           <div class="comm-group" style="margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--paper-line);">
             <div class="comm-subhead">💼 대리점 판매 수수료 (통신사 정산)</div>
             <div class="comm-row"><span>· 인터넷 수수료</span><span>${r.comm.internetCommission.toLocaleString()}원</span></div>
             ${isTvIncluded ? `<div class="comm-row"><span>· TV 수수료</span><span>${r.comm.tvCommission.toLocaleString()}원</span></div>` : ''}
             <div class="comm-row highlight" style="margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--paper-line);">
               <span>· 총 수수료 (Total Commission)</span><span>${r.comm.totalCommission.toLocaleString()}원</span></div>
+          </div>
+
+          <!-- 신규 추가 하단 항목 -->
+          <div class="comm-group" style="margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--paper-line);">
+            <div class="comm-subhead">💵 실제 지급 사은품</div>
+            <div class="comm-row highlight">
+              <span>· 고객 사은품</span>
+              <div>
+                <input type="text" class="gift-input" value="${userGiftVal.toLocaleString()}" 
+                       onchange="handleGiftInputChange('${r.carrier}', this.value)" 
+                       onfocus="this.select()"> 원
+              </div>
+            </div>
+            <div class="comm-row"><span>└ 상품권</span><span>${r.comm.giftCard.toLocaleString()}원</span></div>
+            <div class="comm-row"><span>└ 현금</span><span>${calcCash.toLocaleString()}원</span></div>
+          </div>
+
+          <div class="comm-group" style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--paper-line);">
+            <div class="comm-row highlight" style="color:${calcMargin >= 0 ? '#1E7E34' : '#D9534F'}; font-size:13px;">
+              <span>📊 대리점 총 마진</span><span>${calcMargin.toLocaleString()}원</span>
+            </div>
           </div>
         </div>
       `;
