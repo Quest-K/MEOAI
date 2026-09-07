@@ -238,6 +238,7 @@
   .item-row .label{ white-space:nowrap; color:#8C877A; }
   .item-row .dots{ flex:1; border-bottom:1px dotted #C9C4B2; transform:translateY(-4px); }
   .item-row .value{ white-space:nowrap; font-weight:500; color:#20211D; }
+  .item-row .value.discount{ color:#D9534F; font-weight:600; }
 
   .commission-section{
     border-top:1px solid var(--paper-line);
@@ -478,32 +479,36 @@ function computePrice(carrier){
   const speedData = DATA[carrier]?.internet[state.speed];
   if (!speedData) return { available:false };
 
-  let total = speedData.fee;
+  let internetFee = speedData.fee;
+  let total = internetFee;
   
-  // 와이파이(공유기) 요금 계산 로직 수정 (확인필요 사항 반영)
   let actualRouterFee = speedData.routerFee;
   if (state.router === 'Y') {
     if (carrier === 'lg') {
-      // 2) LG는 모든 상품에 와이파이 무상 제공
       actualRouterFee = 0;
     } else if (carrier === 'kt' && Number(state.speed) >= 1000) {
-      // 1) KT는 1기가 이상이면 와이파이 무상 제공
       actualRouterFee = 0;
     }
     total += actualRouterFee;
+  } else {
+    actualRouterFee = 0;
   }
 
   let tvInfo = null, settopInfo = null, bundleDiscount = 0;
+  let tvFee = 0, settopFee = 0;
 
   if (state.tv !== 'none') {
     tvInfo = DATA[carrier].tv[state.tv];
     if (!tvInfo) return { available:false, noTier:true };
-    total += tvInfo.fee;
+    tvFee = tvInfo.fee;
+    total += tvFee;
     
     settopInfo = getSettopByTier(carrier, state.settopTier);
-    if (settopInfo) total += settopInfo.fee;
+    if (settopInfo) {
+      settopFee = settopInfo.fee;
+      total += settopFee;
+    }
 
-    // 3) 인터넷과 TV 같이 가입 할 경우 결합 할인 반영
     const speedNum = Number(state.speed);
     if (carrier === 'kt' || carrier === 'lg') {
       if (speedNum === 100) bundleDiscount = 0;
@@ -517,7 +522,7 @@ function computePrice(carrier){
     total -= bundleDiscount;
   }
 
-  return { available:true, total, tvInfo, settopInfo, bundleDiscount };
+  return { available:true, total, internetFee, routerFee: actualRouterFee, tvFee, settopFee, bundleDiscount, tvInfo, settopInfo };
 }
 
 function handleGiftInputChange(carrier, rawVal) {
@@ -613,10 +618,13 @@ function render(){
         </div>
         <div class="items">
           ${r.available ? `
-            <div class="item-row"><span class="label">인터넷</span><span class="dots"></span><span class="value">${SPEED_LABEL[state.speed]}</span></div>
-            <div class="item-row"><span class="label">공유기</span><span class="dots"></span><span class="value">${ROUTER_LABEL[state.router]}</span></div>
-            <div class="item-row"><span class="label">TV 요금제</span><span class="dots"></span><span class="value">${tvLabel}</span></div>
-            ${r.settopInfo ? `<div class="item-row"><span class="label">셋톱박스</span><span class="dots"></span><span class="value">${r.settopInfo.name}</span></div>` : ''}
+            <div class="item-row"><span class="label">인터넷</span><span class="dots"></span><span class="value">${SPEED_LABEL[state.speed]} (${r.internetFee.toLocaleString()}원)</span></div>
+            <div class="item-row"><span class="label">공유기</span><span class="dots"></span><span class="value">${ROUTER_LABEL[state.router]} (${r.routerFee.toLocaleString()}원)</span></div>
+            ${state.tv !== 'none' ? `
+              <div class="item-row"><span class="label">TV 요금제</span><span class="dots"></span><span class="value">${tvLabel} (${r.tvFee.toLocaleString()}원)</span></div>
+              ${r.settopInfo ? `<div class="item-row"><span class="label">셋톱박스</span><span class="dots"></span><span class="value">${r.settopInfo.name} (${r.settopFee.toLocaleString()}원)</span></div>` : ''}
+              <div class="item-row"><span class="label">결합할인</span><span class="dots"></span><span class="value discount">-${r.bundleDiscount.toLocaleString()}원</span></div>
+            ` : ''}
           ` : ''}
         </div>
         ${commHtml}
