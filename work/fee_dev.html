@@ -340,7 +340,6 @@ const SUPABASE_URL = 'https://jhfhpumhifyhauuoinxc.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpoZmhwdW1oaWZ5aGF1dW9pbnhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0MDE2NTMsImV4cCI6MjEwMzk3NzY1M30.euXk3eXtUVvEQRDGgcLhvX3JhVlpv9D7fZUEDr0i8yA';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// 스카이라이프, 헬로비전 제외 (KT, LG, SKB, SKT 4개만 대상)
 const CARRIERS = ['kt', 'lg', 'skb', 'skt'];
 const BRAND_LABEL = { kt:'KT', lg:'LG', skb:'SKB', skt:'SKT' };
 
@@ -395,7 +394,6 @@ async function loadData(){
     if (DATA[row.carrier]) DATA[row.carrier].internet[row.speed] = { fee: row.monthly_fee, routerFee: row.router_fee };
   });
 
-  // channel_count 데이터 함께 매핑
   CARRIERS.forEach(carrier => {
     Object.entries(TV_TIER_MAP[carrier] || {}).forEach(([tierKey, planName]) => {
       const match = tvRes.data.find(r => r.carrier === carrier && r.plan_name === planName);
@@ -481,7 +479,19 @@ function computePrice(carrier){
   if (!speedData) return { available:false };
 
   let total = speedData.fee;
-  if (state.router === 'Y') total += speedData.routerFee;
+  
+  // 와이파이(공유기) 요금 계산 로직 수정 (확인필요 사항 반영)
+  let actualRouterFee = speedData.routerFee;
+  if (state.router === 'Y') {
+    if (carrier === 'lg') {
+      // 2) LG는 모든 상품에 와이파이 무상 제공
+      actualRouterFee = 0;
+    } else if (carrier === 'kt' && Number(state.speed) >= 1000) {
+      // 1) KT는 1기가 이상이면 와이파이 무상 제공
+      actualRouterFee = 0;
+    }
+    total += actualRouterFee;
+  }
 
   let tvInfo = null, settopInfo = null, bundleDiscount = 0;
 
@@ -493,7 +503,17 @@ function computePrice(carrier){
     settopInfo = getSettopByTier(carrier, state.settopTier);
     if (settopInfo) total += settopInfo.fee;
 
-    bundleDiscount = ((carrier === 'skb' || carrier === 'skt') && String(state.speed) === '100') ? 2200 : 5500;
+    // 3) 인터넷과 TV 같이 가입 할 경우 결합 할인 반영
+    const speedNum = Number(state.speed);
+    if (carrier === 'kt' || carrier === 'lg') {
+      if (speedNum === 100) bundleDiscount = 0;
+      else if (speedNum === 500 || speedNum === 1000) bundleDiscount = 5500;
+    } else if (carrier === 'skb' || carrier === 'skt') {
+      if (speedNum === 100) bundleDiscount = 1100;
+      else if (speedNum === 500) bundleDiscount = 4400;
+      else if (speedNum === 1000) bundleDiscount = 5500;
+    }
+
     total -= bundleDiscount;
   }
 
@@ -521,7 +541,6 @@ function render(){
   document.getElementById('results').innerHTML = results.map(r=>{
     const isBest = r.available && r.total === minTotal;
     
-    // 요금제 이름 + 채널 수 조합 표기 (예: 에센스(239채널))
     let tvLabel = '인터넷 단독';
     if (state.tv !== 'none') {
       if (r.tvInfo) {
@@ -556,7 +575,7 @@ function render(){
             <div class="comm-subhead">💼 대리점 판매 수수료 (정산금)</div>
             <div class="comm-row"><span>· 인터넷 수수료</span><span>${comm.internetComm.toLocaleString()}원</span></div>
             ${state.tv !== 'none' ? `<div class="comm-row"><span>· TV 수수료</span><span>${comm.tvComm.toLocaleString()}원</span></div>` : ''}
-            <div class="comm-row highlight" style="margin-top: 2px; padding-top: 2px; border-top: 1px solid var(--paper-line);">
+            <div class="comm-row highlight" style="margin-top: 2px; padding-top: 2px; border-top: 1px dashed var(--paper-line);">
               <span>· 총 수수료</span><span>${comm.totalComm.toLocaleString()}원</span></div>
           </div>
 
