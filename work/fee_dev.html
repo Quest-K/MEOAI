@@ -269,7 +269,7 @@
   .comm-subhead{
     font-weight:600;
     color:#3A3C42;
-    margin-bottom:2px;
+    margin-bottom:4px;
   }
   .comm-row{
     display:flex;
@@ -479,15 +479,21 @@ async function loadCommissionData() {
       const internetTotal = internetRow.total_commission || 0;
       const tvTotal = tvRow ? (tvRow.total_commission || 0) : 0;
 
-      // 경품고시 금액: TV 가입 시 TV 행에 적힌 최종 금액 사용 (합산 X)
+      // 경품고시 금액: TV 가입 시 TV 행의 단일 기준 금액 사용
       const targetGiftRow = (currentTv !== 'none' && tvRow) ? tvRow : internetRow;
+      const giftCardFee = targetGiftRow.gift_card_fee || 0;
+      const cashFee = targetGiftRow.cash_fee || 0;
 
       COMMISSION_DATA[carrier] = {
+        // 고객 지급 혜택 (경품고시)
+        giftCard: giftCardFee,
+        cash: cashFee,
+        totalGift: giftCardFee + cashFee, // 상품권 + 현금 합계
+
+        // 대리점 판매 수수료
         internetCommission: internetTotal,
         tvCommission: tvTotal,
-        giftCard: targetGiftRow.gift_card_fee || 0,
-        cash: targetGiftRow.cash_fee || 0,
-        totalCommission: internetTotal + tvTotal
+        totalCommission: internetTotal + tvTotal // 통신사 총 수수료
       };
     } else {
       COMMISSION_DATA[carrier] = null;
@@ -570,18 +576,20 @@ function render(){
       const isTvIncluded = state.tv !== 'none';
       commHtml = `
         <div class="commission-section">
-          <div class="comm-title">수수료 및 경품 정책</div>
+          <div class="comm-title">정산 및 혜택 상세</div>
           <div class="comm-group">
-            <div class="comm-subhead">경품고시제 (고객 지급)</div>
+            <div class="comm-subhead">🎁 고객 지급 혜택 (경품고시)</div>
             <div class="comm-row"><span>· 상품권</span><span>${r.comm.giftCard.toLocaleString()}원</span></div>
             <div class="comm-row"><span>· 현금</span><span>${r.comm.cash.toLocaleString()}원</span></div>
+            <div class="comm-row highlight" style="margin-top: 2px; padding-top: 2px; border-top: 1px dashed var(--paper-line);">
+              <span>· 총 혜택 합계</span><span>${r.comm.totalGift.toLocaleString()}원</span></div>
           </div>
-          <div class="comm-group" style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--paper-line);">
-            <div class="comm-subhead">통신사 수수료 항목</div>
+          <div class="comm-group" style="margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--paper-line);">
+            <div class="comm-subhead">💼 대리점 판매 수수료 (통신사 정산)</div>
             <div class="comm-row"><span>· 인터넷 수수료</span><span>${r.comm.internetCommission.toLocaleString()}원</span></div>
             ${isTvIncluded ? `<div class="comm-row"><span>· TV 수수료</span><span>${r.comm.tvCommission.toLocaleString()}원</span></div>` : ''}
             <div class="comm-row highlight" style="margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--paper-line);">
-              <span>· 총 수수료 합계</span><span>${r.comm.totalCommission.toLocaleString()}원</span></div>
+              <span>· 총 수수료 (Total Commission)</span><span>${r.comm.totalCommission.toLocaleString()}원</span></div>
           </div>
         </div>
       `;
