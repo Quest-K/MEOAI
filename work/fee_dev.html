@@ -39,8 +39,8 @@
   }
 
   header{
-    margin-bottom:48px;
-    padding-bottom:32px;
+    margin-bottom:32px;
+    padding-bottom:24px;
     border-bottom:1px solid var(--line-on-dark);
     position:relative;
   }
@@ -66,25 +66,28 @@
   }
 
   #status-banner{
-    display:none;
+    display:block;
     margin-bottom:32px;
-    padding:14px 18px;
+    padding:16px 20px;
     border-radius:var(--radius);
     font-size:13.5px;
     line-height:1.6;
-  }
-  #status-banner.error{
-    display:block;
-    background:#FBEAEA;
-    border:1px solid #E8B9B9;
-    color:#8A2E2E;
-  }
-  #status-banner.loading{
-    display:block;
     background:#EFEDE4;
     border:1px solid var(--paper-line);
-    color:var(--ink-dim);
+    color:var(--ink);
   }
+  #status-banner .title{
+    font-weight:700;
+    margin-bottom:6px;
+    font-size:14px;
+  }
+  #status-banner .log-item{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12.5px;
+    margin:2px 0;
+  }
+  #status-banner .success{ color:#1E7E34; }
+  #status-banner .error{ color:#D9534F; font-weight:600; }
 
   .controls{
     display:flex;
@@ -130,10 +133,6 @@
     border-color:var(--gold);
     color:#FFFFFF;
     font-weight:600;
-  }
-  .seg button:disabled{
-    opacity:.4;
-    cursor:not-allowed;
   }
 
   .results{
@@ -293,7 +292,10 @@
     <p>속도와 TV 요금제, 공유기 여부를 고르면 KT · LG · SK 결합 상품 가격과 실시간 수수료/혜택을 비교해드려요.</p>
   </header>
 
-  <div id="status-banner"></div>
+  <div id="status-banner">
+    <div class="title">🔍 Supabase 테이블 연동 진단 현황</div>
+    <div id="banner-logs">데이터 연동을 확인 중입니다...</div>
+  </div>
 
   <div class="controls">
     <div class="control-group">
@@ -334,7 +336,6 @@
 </div>
 
 <script>
-// ---------- Supabase 연결 ----------
 const SUPABASE_URL = 'https://jhfhpumhifyhauuoinxc.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpoZmhwdW1oaWZ5aGF1dW9pbnhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0MDE2NTMsImV4cCI6MjEwMzk3NzY1M30.euXk3eXtUVvEQRDGgcLhvX3JhVlpv9D7fZUEDr0i8yA';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -352,36 +353,37 @@ const SETTOP_MAP = { kt:'셋톱박스3', lg:'UHD4셋탑', sk:'스마트3' };
 const SPEED_LABEL = { 100:'100M', 500:'500M', 1000:'1기가' };
 const ROUTER_LABEL = { N:'미포함', Y:'포함' };
 
-let DATA = null; // 요금 기본 데이터
-let COMMISSION_DATA = {}; // 수수료/사은품 데이터 (Supabase 동적 로드)
-let state = { speed:'100', tv:'low', router:'N' };
+let DATA = null;
+let COMMISSION_DATA = {};
+let state = { speed:'1000', tv:'low', router:'Y' };
+let logs = [];
 
-function showBanner(type, message){
-  const el = document.getElementById('status-banner');
-  el.className = type;
-  el.textContent = message;
-}
-function hideBanner(){
-  const el = document.getElementById('status-banner');
-  el.className = '';
-  el.textContent = '';
+function addLog(tableName, isSuccess, message) {
+  const statusClass = isSuccess ? 'success' : 'error';
+  const icon = isSuccess ? '✅' : '❌';
+  logs.push(`<div class="log-item ${statusClass}">${icon} [${tableName}] : ${message}</div>`);
+  document.getElementById('banner-logs').innerHTML = logs.join('');
 }
 
-// 1. 기본 월요금 테이블 데이터 로드
 async function loadData(){
-  showBanner('loading', '요금 데이터를 불러오는 중이에요...');
+  logs = [];
+  
+  // 1. internet_plans
+  const internetRes = await sb.from('internet_plans').select('*').in('carrier', CARRIERS);
+  if(internetRes.error) addLog('internet_plans', false, `오류 - ${internetRes.error.message}`);
+  else addLog('internet_plans', true, `정상 연동 (${internetRes.data.length}건)`);
 
-  const [internetRes, tvRes, settopRes] = await Promise.all([
-    sb.from('internet_plans').select('*').in('carrier', CARRIERS),
-    sb.from('tv_plans').select('*').in('carrier', CARRIERS),
-    sb.from('settop_boxes').select('*').in('carrier', CARRIERS)
-  ]);
+  // 2. tv_plans
+  const tvRes = await sb.from('tv_plans').select('*').in('carrier', CARRIERS);
+  if(tvRes.error) addLog('tv_plans', false, `오류 - ${tvRes.error.message}`);
+  else addLog('tv_plans', true, `정상 연동 (${tvRes.data.length}건)`);
 
-  if (internetRes.error || tvRes.error || settopRes.error) {
-    const err = internetRes.error || tvRes.error || settopRes.error;
-    showBanner('error', `요금 데이터를 불러오지 못했어요 (${err.message}). Supabase 테이블 RLS 정책을 확인해주세요.`);
-    return false;
-  }
+  // 3. settop_boxes
+  const settopRes = await sb.from('settop_boxes').select('*').in('carrier', CARRIERS);
+  if(settopRes.error) addLog('settop_boxes', false, `오류 - ${settopRes.error.message}`);
+  else addLog('settop_boxes', true, `정상 연동 (${settopRes.data.length}건)`);
+
+  if (internetRes.error || tvRes.error || settopRes.error) return false;
 
   DATA = {};
   CARRIERS.forEach(c => { DATA[c] = { internet:{}, tv:{}, settop:null }; });
@@ -410,31 +412,41 @@ async function loadData(){
     }
   });
 
-  hideBanner();
   return true;
 }
 
-// 2. 선택된 속도(speed) 및 TV 요금제(tv_tier)에 해당하는 실시간 수수료 데이터 로드
 async function loadCommissionData() {
+  const currentSpeed = String(state.speed);
+  const currentTv = String(state.tv);
+
   const { data, error } = await sb
     .from('carrier_commissions')
     .select('*')
-    .eq('speed', state.speed)
-    .eq('tv_tier', state.tv);
+    .or(`speed.eq.${currentSpeed},speed.eq.${parseInt(currentSpeed)}`)
+    .eq('tv_tier', currentTv);
 
   if (error) {
-    console.error('수수료 데이터 로드 오류:', error.message);
+    addLog('carrier_commissions', false, `조회 오류 - ${error.message}`);
+    console.error('carrier_commissions 조회 오류:', error);
     return;
   }
 
+  if (!data || data.length === 0) {
+    addLog('carrier_commissions', false, `조건 일치 데이터 없음 (속도:${currentSpeed}, TV:${currentTv})`);
+  } else {
+    addLog('carrier_commissions', true, `조회 성공 (${data.length}건 - 속도:${currentSpeed}, TV:${currentTv})`);
+  }
+
   COMMISSION_DATA = {};
-  data.forEach(row => {
-    COMMISSION_DATA[row.carrier] = {
-      giftCard: row.gift_card_fee || 0,
-      cash: row.cash_fee || 0,
-      totalCommission: row.total_commission || 0
-    };
-  });
+  if (data) {
+    data.forEach(row => {
+      COMMISSION_DATA[row.carrier] = {
+        giftCard: row.gift_card_fee || 0,
+        cash: row.cash_fee || 0,
+        totalCommission: row.total_commission || 0
+      };
+    });
+  }
 }
 
 function setupSeg(id, key){
@@ -443,6 +455,7 @@ function setupSeg(id, key){
     btn.addEventListener('click', async ()=>{
       state[key] = btn.dataset.value;
       if (key === 'speed' || key === 'tv') {
+        logs = logs.slice(0, 3);
         await loadCommissionData();
       }
       render();
