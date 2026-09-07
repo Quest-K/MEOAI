@@ -371,7 +371,6 @@ let COMMISSION_DATA = {};
 let state = { speed:'1000', tv:'basic', router:'Y' };
 let logs = [];
 
-// 파일 최종 수정 시간 표기 함수
 function displayLastModified() {
   const modDate = new Date(document.lastModified);
   if (!isNaN(modDate.getTime())) {
@@ -443,7 +442,6 @@ async function loadCommissionData() {
   const currentTv = String(state.tv);
   const speedNum = parseInt(currentSpeed, 10);
 
-  // TV가 none이 아니면 'none'과 선택한 TV tier 두 개 행을 모두 조회
   const tvTiersToFetch = currentTv === 'none' ? ['none'] : ['none', currentTv];
 
   const { data, error } = await sb
@@ -469,9 +467,7 @@ async function loadCommissionData() {
   CARRIERS.forEach(carrier => {
     const carrierRows = data ? data.filter(r => r.carrier === carrier) : [];
     
-    // 인터넷 단독(none) 데이터
     const internetRow = carrierRows.find(r => String(r.tv_tier) === 'none');
-    // 선택한 TV 요금제 데이터
     const tvRow = currentTv !== 'none' ? carrierRows.find(r => String(r.tv_tier) === currentTv) : null;
 
     if (currentTv !== 'none' && !tvRow) {
@@ -480,19 +476,17 @@ async function loadCommissionData() {
     }
 
     if (internetRow) {
-      const internetGift = internetRow.gift_card_fee || 0;
-      const internetCash = internetRow.cash_fee || 0;
       const internetTotal = internetRow.total_commission || 0;
-
-      const tvGift = tvRow ? (tvRow.gift_card_fee || 0) : 0;
-      const tvCash = tvRow ? (tvRow.cash_fee || 0) : 0;
       const tvTotal = tvRow ? (tvRow.total_commission || 0) : 0;
+
+      // 경품고시 금액: TV 가입 시 TV 행에 적힌 최종 금액 사용 (합산 X)
+      const targetGiftRow = (currentTv !== 'none' && tvRow) ? tvRow : internetRow;
 
       COMMISSION_DATA[carrier] = {
         internetCommission: internetTotal,
         tvCommission: tvTotal,
-        giftCard: internetGift + tvGift,
-        cash: internetCash + tvCash,
+        giftCard: targetGiftRow.gift_card_fee || 0,
+        cash: targetGiftRow.cash_fee || 0,
         totalCommission: internetTotal + tvTotal
       };
     } else {
