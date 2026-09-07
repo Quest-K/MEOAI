@@ -355,7 +355,7 @@ const ROUTER_LABEL = { N:'미포함', Y:'포함' };
 
 let DATA = null;
 let COMMISSION_DATA = {};
-let state = { speed:'1000', tv:'low', router:'Y' };
+let state = { speed:'1000', tv:'basic', router:'Y' };
 let logs = [];
 
 function addLog(tableName, isSuccess, message) {
@@ -368,17 +368,14 @@ function addLog(tableName, isSuccess, message) {
 async function loadData(){
   logs = [];
   
-  // 1. internet_plans
   const internetRes = await sb.from('internet_plans').select('*').in('carrier', CARRIERS);
   if(internetRes.error) addLog('internet_plans', false, `오류 - ${internetRes.error.message}`);
   else addLog('internet_plans', true, `정상 연동 (${internetRes.data.length}건)`);
 
-  // 2. tv_plans
   const tvRes = await sb.from('tv_plans').select('*').in('carrier', CARRIERS);
   if(tvRes.error) addLog('tv_plans', false, `오류 - ${tvRes.error.message}`);
   else addLog('tv_plans', true, `정상 연동 (${tvRes.data.length}건)`);
 
-  // 3. settop_boxes
   const settopRes = await sb.from('settop_boxes').select('*').in('carrier', CARRIERS);
   if(settopRes.error) addLog('settop_boxes', false, `오류 - ${settopRes.error.message}`);
   else addLog('settop_boxes', true, `정상 연동 (${settopRes.data.length}건)`);
@@ -418,21 +415,22 @@ async function loadData(){
 async function loadCommissionData() {
   const currentSpeed = String(state.speed);
   const currentTv = String(state.tv);
+  const speedNum = parseInt(currentSpeed, 10);
 
   const { data, error } = await sb
     .from('carrier_commissions')
     .select('*')
-    .or(`speed.eq.${currentSpeed},speed.eq.${parseInt(currentSpeed)}`)
+    .or(`speed.eq.${currentSpeed},speed.eq.${speedNum}`)
     .eq('tv_tier', currentTv);
 
   if (error) {
-    addLog('carrier_commissions', false, `조회 오류 - ${error.message}`);
+    addLog('carrier_commissions', false, `쿼리 오류 - ${error.message}`);
     console.error('carrier_commissions 조회 오류:', error);
     return;
   }
 
   if (!data || data.length === 0) {
-    addLog('carrier_commissions', false, `조건 일치 데이터 없음 (속도:${currentSpeed}, TV:${currentTv})`);
+    addLog('carrier_commissions', false, `일부 통신사에 데이터 없음 (속도:${currentSpeed}, TV:${currentTv})`);
   } else {
     addLog('carrier_commissions', true, `조회 성공 (${data.length}건 - 속도:${currentSpeed}, TV:${currentTv})`);
   }
