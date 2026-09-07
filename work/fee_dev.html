@@ -443,11 +443,14 @@ async function loadCommissionData() {
   const currentTv = String(state.tv);
   const speedNum = parseInt(currentSpeed, 10);
 
+  // TV가 none이 아니면 'none'과 선택한 TV tier 두 개 행을 모두 조회
+  const tvTiersToFetch = currentTv === 'none' ? ['none'] : ['none', currentTv];
+
   const { data, error } = await sb
     .from('carrier_commissions')
     .select('*')
     .or(`speed.eq.${currentSpeed},speed.eq.${speedNum}`)
-    .eq('tv_tier', currentTv);
+    .in('tv_tier', tvTiersToFetch);
 
   if (error) {
     addLog('carrier_commissions', false, `쿼리 오류 - ${error.message}`);
@@ -462,15 +465,40 @@ async function loadCommissionData() {
   }
 
   COMMISSION_DATA = {};
-  if (data) {
-    data.forEach(row => {
-      COMMISSION_DATA[row.carrier] = {
-        giftCard: row.gift_card_fee || 0,
-        cash: row.cash_fee || 0,
-        totalCommission: row.total_commission || 0
+  
+  CARRIERS.forEach(carrier => {
+    const carrierRows = data ? data.filter(r => r.carrier === carrier) : [];
+    
+    // 인터넷 단독(none) 데이터
+    const internetRow = carrierRows.find(r => String(r.tv_tier) === 'none');
+    // 선택한 TV 요금제 데이터
+    const tvRow = currentTv !== 'none' ? carrierRows.find(r => String(r.tv_tier) === currentTv) : null;
+
+    if (currentTv !== 'none' && !tvRow) {
+      COMMISSION_DATA[carrier] = null;
+      return;
+    }
+
+    if (internetRow) {
+      const internetGift = internetRow.gift_card_fee || 0;
+      const internetCash = internetRow.cash_fee || 0;
+      const internetTotal = internetRow.total_commission || 0;
+
+      const tvGift = tvRow ? (tvRow.gift_card_fee || 0) : 0;
+      const tvCash = tvRow ? (tvRow.cash_fee || 0) : 0;
+      const tvTotal = tvRow ? (tvRow.total_commission || 0) : 0;
+
+      COMMISSION_DATA[carrier] = {
+        internetCommission: internetTotal,
+        tvCommission: tvTotal,
+        giftCard: internetGift + tvGift,
+        cash: internetCash + tvCash,
+        totalCommission: internetTotal + tvTotal
       };
-    });
-  }
+    } else {
+      COMMISSION_DATA[carrier] = null;
+    }
+  });
 }
 
 function setupSeg(id, key){
@@ -515,7 +543,7 @@ function render(){
 
   const results = CARRIERS.map(carrier=>{
     const r = computePrice(carrier);
-    const comm = COMMISSION_DATA[carrier] || { giftCard:0, cash:0, totalCommission:0 };
+    const comm = COMMISSION_DATA[carrier];
     return { carrier, ...r, comm };
   });
 
@@ -543,20 +571,29 @@ function render(){
       ${r.settopInfo ? `<div class="item-row"><span class="label">셋톱박스</span><span class="dots"></span><span class="value">${r.settopInfo.name}</span></div>` : ''}
     ` : '';
 
-    const commHtml = r.available ? `
-      <div class="commission-section">
-        <div class="comm-title">수수료 및 경품 정책</div>
-        <div class="comm-group">
-          <div class="comm-subhead">경품고시제 (고객 지급)</div>
-          <div class="comm-row"><span>· 상품권</span><span>${r.comm.giftCard.toLocaleString()}원</span></div>
-          <div class="comm-row"><span>· 현금</span><span>${r.comm.cash.toLocaleString()}원</span></div>
+    let commHtml = '';
+    if (r.available && r.comm) {
+      const isTvIncluded = state.tv !== 'none';
+      commHtml = `
+        <div class="commission-section">
+          <div class="comm-title">수수료 및 경품 정책</div>
+          <div class="comm-group">
+            <div class="comm-subhead">경품고시제 (고객 지급)</div>
+            <div class="comm-row"><span>· 상품권</span><span>${r.comm.giftCard.toLocaleString()}원</span></div>
+            <div class="comm-row"><span>· 현금</span><span>${r.comm.cash.toLocaleString()}원</span></div>
+          </div>
+          <div class="comm-group" style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--paper-line);">
+            <div class="comm-subhead">통신사 수수료 항목</div>
+            <div class="comm-row"><span>· 인터넷 수수료</span><span>${r.comm.internetCommission.toLocaleString()}원</span></div>
+            ${isTvIncluded ? `<div class="comm-row"><span>· TV 수수료</span><span>${r.comm.tvCommission.toLocaleString()}원</span></div>` : ''}
+            <div class="comm-row highlight" style="margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--paper-line);">
+              <span>· 총 수수료 합계</span><span>${r.comm.totalCommission.toLocaleString()}원</span></div>
+          </div>
         </div>
-        <div class="comm-group" style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--paper-line);">
-          <div class="comm-subhead">통신사 수수료</div>
-          <div class="comm-row highlight"><span>· 수수료 합계</span><span>${r.comm.totalCommission.toLocaleString()}원</span></div>
-        </div>
-      </div>
-    ` : '';
+      `;
+    } else if (r.available && !r.comm) {
+      commHtml = `<div class="commission-section"><div class="comm-title" style="color:#D9534F;">수수료 정보 없음</div></div>`;
+    }
 
     return `
       <div class="card ${isBest ? 'best' : ''}" data-brand="${r.carrier}">
