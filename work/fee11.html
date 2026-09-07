@@ -238,6 +238,7 @@
   .item-row .label{ white-space:nowrap; color:#8C877A; }
   .item-row .dots{ flex:1; border-bottom:1px dotted #C9C4B2; transform:translateY(-4px); }
   .item-row .value{ white-space:nowrap; font-weight:500; color:#20211D; }
+  .item-row .value.discount{ color:#D9534F; font-weight:600; }
 
   .commission-section{
     border-top:1px solid var(--paper-line);
@@ -340,7 +341,6 @@ const SUPABASE_URL = 'https://jhfhpumhifyhauuoinxc.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpoZmhwdW1oaWZ5aGF1dW9pbnhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0MDE2NTMsImV4cCI6MjEwMzk3NzY1M30.euXk3eXtUVvEQRDGgcLhvX3JhVlpv9D7fZUEDr0i8yA';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// 스카이라이프, 헬로비전 제외 (KT, LG, SKB, SKT 4개만 대상)
 const CARRIERS = ['kt', 'lg', 'skb', 'skt'];
 const BRAND_LABEL = { kt:'KT', lg:'LG', skb:'SKB', skt:'SKT' };
 
@@ -358,7 +358,7 @@ let DATA = null;
 let COMMISSION_DATA = {};
 let PROMOTION_DATA = {};
 let customGiftValues = {};
-let state = { speed:'1000', tv:'basic', settopTier:'basic', router:'Y' };
+let state = { speed:'500', tv:'basic', settopTier:'basic', router:'Y' };
 let logs = [];
 
 function displayLastModified() {
@@ -395,7 +395,6 @@ async function loadData(){
     if (DATA[row.carrier]) DATA[row.carrier].internet[row.speed] = { fee: row.monthly_fee, routerFee: row.router_fee };
   });
 
-  // channel_count 데이터 함께 매핑
   CARRIERS.forEach(carrier => {
     Object.entries(TV_TIER_MAP[carrier] || {}).forEach(([tierKey, planName]) => {
       const match = tvRes.data.find(r => r.carrier === carrier && r.plan_name === planName);
@@ -480,24 +479,50 @@ function computePrice(carrier){
   const speedData = DATA[carrier]?.internet[state.speed];
   if (!speedData) return { available:false };
 
-  let total = speedData.fee;
-  if (state.router === 'Y') total += speedData.routerFee;
+  let internetFee = speedData.fee;
+  let total = internetFee;
+  
+  let actualRouterFee = speedData.routerFee;
+  if (state.router === 'Y') {
+    if (carrier === 'lg') {
+      actualRouterFee = 0;
+    } else if (carrier === 'kt' && Number(state.speed) >= 1000) {
+      actualRouterFee = 0;
+    }
+    total += actualRouterFee;
+  } else {
+    actualRouterFee = 0;
+  }
 
   let tvInfo = null, settopInfo = null, bundleDiscount = 0;
+  let tvFee = 0, settopFee = 0;
 
   if (state.tv !== 'none') {
     tvInfo = DATA[carrier].tv[state.tv];
     if (!tvInfo) return { available:false, noTier:true };
-    total += tvInfo.fee;
+    tvFee = tvInfo.fee;
+    total += tvFee;
     
     settopInfo = getSettopByTier(carrier, state.settopTier);
-    if (settopInfo) total += settopInfo.fee;
+    if (settopInfo) {
+      settopFee = settopInfo.fee;
+      total += settopFee;
+    }
 
-    bundleDiscount = ((carrier === 'skb' || carrier === 'skt') && String(state.speed) === '100') ? 2200 : 5500;
+    const speedNum = Number(state.speed);
+    if (carrier === 'kt' || carrier === 'lg') {
+      if (speedNum === 100) bundleDiscount = 0;
+      else if (speedNum === 500 || speedNum === 1000) bundleDiscount = 5500;
+    } else if (carrier === 'skb' || carrier === 'skt') {
+      if (speedNum === 100) bundleDiscount = 1100;
+      else if (speedNum === 500) bundleDiscount = 4400;
+      else if (speedNum === 1000) bundleDiscount = 5500;
+    }
+
     total -= bundleDiscount;
   }
 
-  return { available:true, total, tvInfo, settopInfo, bundleDiscount };
+  return { available:true, total, internetFee, routerFee: actualRouterFee, tvFee, settopFee, bundleDiscount, tvInfo, settopInfo };
 }
 
 function handleGiftInputChange(carrier, rawVal) {
@@ -521,7 +546,6 @@ function render(){
   document.getElementById('results').innerHTML = results.map(r=>{
     const isBest = r.available && r.total === minTotal;
     
-    // 요금제 이름 + 채널 수 조합 표기 (예: 에센스(239채널))
     let tvLabel = '인터넷 단독';
     if (state.tv !== 'none') {
       if (r.tvInfo) {
@@ -556,7 +580,7 @@ function render(){
             <div class="comm-subhead">💼 대리점 판매 수수료 (정산금)</div>
             <div class="comm-row"><span>· 인터넷 수수료</span><span>${comm.internetComm.toLocaleString()}원</span></div>
             ${state.tv !== 'none' ? `<div class="comm-row"><span>· TV 수수료</span><span>${comm.tvComm.toLocaleString()}원</span></div>` : ''}
-            <div class="comm-row highlight" style="margin-top: 2px; padding-top: 2px; border-top: 1px solid var(--paper-line);">
+            <div class="comm-row highlight" style="margin-top: 2px; padding-top: 2px; border-top: 1px dashed var(--paper-line);">
               <span>· 총 수수료</span><span>${comm.totalComm.toLocaleString()}원</span></div>
           </div>
 
@@ -594,10 +618,13 @@ function render(){
         </div>
         <div class="items">
           ${r.available ? `
-            <div class="item-row"><span class="label">인터넷</span><span class="dots"></span><span class="value">${SPEED_LABEL[state.speed]}</span></div>
-            <div class="item-row"><span class="label">공유기</span><span class="dots"></span><span class="value">${ROUTER_LABEL[state.router]}</span></div>
-            <div class="item-row"><span class="label">TV 요금제</span><span class="dots"></span><span class="value">${tvLabel}</span></div>
-            ${r.settopInfo ? `<div class="item-row"><span class="label">셋톱박스</span><span class="dots"></span><span class="value">${r.settopInfo.name}</span></div>` : ''}
+            <div class="item-row"><span class="label">인터넷</span><span class="dots"></span><span class="value">${SPEED_LABEL[state.speed]} (${r.internetFee.toLocaleString()}원)</span></div>
+            <div class="item-row"><span class="label">공유기</span><span class="dots"></span><span class="value">${ROUTER_LABEL[state.router]} (${r.routerFee.toLocaleString()}원)</span></div>
+            ${state.tv !== 'none' ? `
+              <div class="item-row"><span class="label">TV 요금제</span><span class="dots"></span><span class="value">${tvLabel} (${r.tvFee.toLocaleString()}원)</span></div>
+              ${r.settopInfo ? `<div class="item-row"><span class="label">셋톱박스</span><span class="dots"></span><span class="value">${r.settopInfo.name} (${r.settopFee.toLocaleString()}원)</span></div>` : ''}
+              <div class="item-row"><span class="label">결합할인</span><span class="dots"></span><span class="value discount">-${r.bundleDiscount.toLocaleString()}원</span></div>
+            ` : ''}
           ` : ''}
         </div>
         ${commHtml}
