@@ -590,8 +590,8 @@ async function loadFinanceData() {
   const tvTierForPromo = state.tv === 'none' ? 'none' : 'all';
 
   const [commRes, promoRes] = await Promise.all([
-    sb.from('carrier_commissions').select('*').in('carrier', CARRIERS),
-    sb.from('carrier_promotions').select('*').in('carrier', CARRIERS).eq('tv_tier', tvTierForPromo)
+    sb.from('carrier_commissions').select('*'),
+    sb.from('carrier_promotions').select('*').eq('tv_tier', tvTierForPromo)
   ]);
 
   addLog('carrier_commissions', !commRes.error, commRes.error ? commRes.error.message : `${commRes.data?.length || 0}건 조회`);
@@ -602,7 +602,7 @@ async function loadFinanceData() {
 
   CARRIERS.forEach(carrier => {
     const commRows = commRes.data
-      ? commRes.data.filter(r => r.carrier === carrier && normalizeSpeedValue(r.speed) === targetSpeed)
+      ? commRes.data.filter(r => String(r.carrier).toLowerCase() === carrier && normalizeSpeedValue(r.speed) === targetSpeed)
       : [];
     const internetComm = commRows.find(r => String(r.tv_tier) === 'none')?.commission_amount || 0;
     const tvComm = tvTierForComm !== 'none' ? (commRows.find(r => String(r.tv_tier) === tvTierForComm)?.commission_amount || 0) : 0;
@@ -613,7 +613,7 @@ async function loadFinanceData() {
     COMMISSION_DATA[carrier] = { internetComm, tvComm, totalComm: internetComm + tvComm, startAt };
 
     const promoRow = promoRes.data
-      ? promoRes.data.find(r => r.carrier === carrier && normalizeSpeedValue(r.speed) === targetSpeed)
+      ? promoRes.data.find(r => String(r.carrier).toLowerCase() === carrier && normalizeSpeedValue(r.speed) === targetSpeed)
       : null;
     if (promoRow) {
       PROMOTION_DATA[carrier] = {
