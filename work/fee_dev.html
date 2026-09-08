@@ -574,16 +574,24 @@ async function loadData(){
   return true;
 }
 
-const SPEED_DB_MAP = { 100:'100M', 500:'500M', 1000:'1G' };
+function normalizeSpeedValue(v){
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  const num = parseFloat(s.replace(/,/g, ''));
+  if (isNaN(num)) return null;
+  // "1G", "1기가" 처럼 G/기가 단위이면서 M이 없는 경우만 ×1000 처리 (1G -> 1000)
+  if (/(g|기가)/i.test(s) && !/m/i.test(s)) return num * 1000;
+  return num; // "500M", "500", 500(number) 등은 그대로
+}
 
 async function loadFinanceData() {
-  const speedStr = SPEED_DB_MAP[Number(state.speed)] || String(state.speed);
+  const targetSpeed = Number(state.speed);
   const tvTierForComm = state.tv;
   const tvTierForPromo = state.tv === 'none' ? 'none' : 'all';
 
   const [commRes, promoRes] = await Promise.all([
-    sb.from('carrier_commissions').select('*').eq('speed', speedStr),
-    sb.from('carrier_promotions').select('*').eq('speed', speedStr).eq('tv_tier', tvTierForPromo)
+    sb.from('carrier_commissions').select('*').in('carrier', CARRIERS),
+    sb.from('carrier_promotions').select('*').in('carrier', CARRIERS).eq('tv_tier', tvTierForPromo)
   ]);
 
   addLog('carrier_commissions', !commRes.error, commRes.error ? commRes.error.message : `${commRes.data?.length || 0}건 조회`);
@@ -593,7 +601,9 @@ async function loadFinanceData() {
   PROMOTION_DATA = {};
 
   CARRIERS.forEach(carrier => {
-    const commRows = commRes.data ? commRes.data.filter(r => r.carrier === carrier) : [];
+    const commRows = commRes.data
+      ? commRes.data.filter(r => r.carrier === carrier && normalizeSpeedValue(r.speed) === targetSpeed)
+      : [];
     const internetComm = commRows.find(r => String(r.tv_tier) === 'none')?.commission_amount || 0;
     const tvComm = tvTierForComm !== 'none' ? (commRows.find(r => String(r.tv_tier) === tvTierForComm)?.commission_amount || 0) : 0;
 
@@ -602,7 +612,9 @@ async function loadFinanceData() {
 
     COMMISSION_DATA[carrier] = { internetComm, tvComm, totalComm: internetComm + tvComm, startAt };
 
-    const promoRow = promoRes.data ? promoRes.data.find(r => r.carrier === carrier) : null;
+    const promoRow = promoRes.data
+      ? promoRes.data.find(r => r.carrier === carrier && normalizeSpeedValue(r.speed) === targetSpeed)
+      : null;
     if (promoRow) {
       PROMOTION_DATA[carrier] = {
         giftCard: promoRow.gift_card,
