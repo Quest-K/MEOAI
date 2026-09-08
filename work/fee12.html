@@ -352,6 +352,47 @@
     padding:14px 14px 16px;
     font-size:12px;
   }
+
+  .item-row.sub{
+    padding-left:16px;
+    color:#9C9890;
+    font-size:12px;
+  }
+  .item-row.sub .label{ color:#A6A296; }
+
+  .controls-grid.three{
+    grid-template-columns:1fr 1fr 1.1fr;
+  }
+  @media (max-width: 1180px){
+    .controls-grid.three{ grid-template-columns:1fr; }
+  }
+  .fam-table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:12px;
+  }
+  .fam-table th, .fam-table td{
+    padding:7px 6px;
+    text-align:right;
+    border-bottom:1px solid var(--paper-line);
+    white-space:nowrap;
+  }
+  .fam-table th:first-child, .fam-table td:first-child{ text-align:left; }
+  .fam-table thead th{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    color:var(--ink-dim);
+    font-weight:600;
+    border-bottom:2px solid var(--paper-line);
+  }
+  .fam-table td.brand-cell{ font-weight:700; color:#1C1E24; }
+  .fam-table td.total-cell{ font-weight:700; color:var(--gold); }
+  .fam-table-note{
+    font-size:11.5px;
+    color:var(--ink-dim);
+    margin-top:8px;
+    line-height:1.5;
+  }
 </style>
 </head>
 <body>
@@ -372,7 +413,7 @@
   </div>
 
   <div class="controls">
-    <div class="controls-grid">
+    <div class="controls-grid three">
       <div class="controls-col">
         <div class="control-group">
           <label class="group-label">인터넷 속도</label>
@@ -416,6 +457,13 @@
           <label class="group-label">가족 휴대폰 결합 (회선별 통신사 · 요금제 입력)</label>
           <div id="family-phone-list"></div>
           <button type="button" class="add-phone-btn" onclick="addPhoneLine()">+ 회선 추가</button>
+        </div>
+      </div>
+
+      <div class="controls-col">
+        <div class="control-group">
+          <label class="group-label">통신사별 가족결합 할인 요약</label>
+          <div id="family-discount-table"></div>
         </div>
       </div>
     </div>
@@ -727,6 +775,45 @@ function computeFamilyDiscount(ispCarrier){
   return { matchCarrier, count:0, internetDiscount:0, mobileDiscount:0, total:0 };
 }
 
+function renderFamilyDiscountTable(){
+  const container = document.getElementById('family-discount-table');
+  if (!container) return;
+
+  const rows = CARRIERS.map(carrier => {
+    const fam = computeFamilyDiscount(carrier);
+    return { carrier, ...fam };
+  });
+
+  container.innerHTML = `
+    <table class="fam-table">
+      <thead>
+        <tr>
+          <th>통신사</th>
+          <th>매칭 회선</th>
+          <th>인터넷 할인</th>
+          <th>휴대폰 할인</th>
+          <th>합계</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr>
+            <td class="brand-cell">${BRAND_LABEL[r.carrier]}</td>
+            <td>${r.count}회선</td>
+            <td>${r.internetDiscount.toLocaleString()}원</td>
+            <td>${r.mobileDiscount.toLocaleString()}원</td>
+            <td class="total-cell">${r.total.toLocaleString()}원</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    <div class="fam-table-note">
+      · KT는 매칭 KT 회선 요금제 합산액, LG U+는 회선 수+요금제 구간, SKB/SKT는 매칭 SKT 회선 수 기준으로 계산됩니다.<br>
+      · 위 금액은 참고용이며 현재 카드의 "총 요금"에는 반영되지 않습니다.
+    </div>
+  `;
+}
+
 function handleGiftInputChange(carrier, rawVal) {
   const numVal = parseInt(rawVal.replace(/[^0-9]/g, ''), 10);
   customGiftValues[carrier] = !isNaN(numVal) ? numVal : 0;
@@ -808,20 +895,6 @@ function render(){
       `;
     }
 
-    const fam = r.available ? computeFamilyDiscount(r.carrier) : null;
-    let famHtml = '';
-    if (fam && fam.count > 0) {
-      famHtml = `
-        <div class="family-discount-section">
-          <div class="comm-title">👨‍👩‍👧 가족 휴대폰 결합할인 (${fam.matchCarrier} ${fam.count}회선)</div>
-          <div class="comm-row"><span>· 인터넷 추가 할인</span><span>${fam.internetDiscount.toLocaleString()}원</span></div>
-          <div class="comm-row"><span>· 휴대폰 자체 할인</span><span>${fam.mobileDiscount.toLocaleString()}원</span></div>
-          <div class="comm-row highlight" style="margin-top: 2px; padding-top: 2px; border-top: 1px dashed var(--paper-line);">
-            <span>· 가족결합 혜택 합계</span><span>${fam.total.toLocaleString()}원</span></div>
-        </div>
-      `;
-    }
-
     return `
       <div class="card ${isBest ? 'best' : ''}" data-brand="${r.carrier}">
         <div class="card-head">
@@ -835,19 +908,20 @@ function render(){
         <div class="items">
           ${r.available ? `
             <div class="item-row"><span class="label">인터넷</span><span class="dots"></span><span class="value">${SPEED_LABEL[state.speed]} (${r.internetFee.toLocaleString()}원)</span></div>
-            <div class="item-row"><span class="label">공유기</span><span class="dots"></span><span class="value">${ROUTER_LABEL[state.router]} (${r.routerFee.toLocaleString()}원)</span></div>
+            <div class="item-row sub"><span class="label">└ 공유기</span><span class="dots"></span><span class="value">${ROUTER_LABEL[state.router]} (${r.routerFee.toLocaleString()}원)</span></div>
             ${state.tv !== 'none' ? `
               <div class="item-row"><span class="label">TV 요금제</span><span class="dots"></span><span class="value">${tvLabel} (${r.tvFee.toLocaleString()}원)</span></div>
-              ${r.settopInfo ? `<div class="item-row"><span class="label">셋톱박스</span><span class="dots"></span><span class="value">${r.settopInfo.name} (${r.settopFee.toLocaleString()}원)</span></div>` : ''}
+              ${r.settopInfo ? `<div class="item-row sub"><span class="label">└ 셋톱박스</span><span class="dots"></span><span class="value">${r.settopInfo.name} (${r.settopFee.toLocaleString()}원)</span></div>` : ''}
               <div class="item-row"><span class="label">결합할인</span><span class="dots"></span><span class="value discount">-${r.bundleDiscount.toLocaleString()}원</span></div>
             ` : ''}
           ` : ''}
         </div>
         ${commHtml}
-        ${famHtml}
       </div>
     `;
   }).join('');
+
+  renderFamilyDiscountTable();
 }
 
 (async function init(){
