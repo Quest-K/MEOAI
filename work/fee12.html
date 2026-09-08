@@ -6,7 +6,7 @@
 <title>인터넷+TV 결합 요금 및 수수료 비교</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   :root{
@@ -45,7 +45,7 @@
     border-bottom:1px solid var(--line-on-dark);
   }
   .eyebrow{
-    font-family:'IBM Plex Mono', monospace;
+    font-family:'Inconsolata', monospace;
     font-size:12.5px;
     color:var(--ink-dim);
     letter-spacing:0.02em;
@@ -87,12 +87,12 @@
     font-size:14px;
   }
   .last-modified{
-    font-family:'IBM Plex Mono', monospace;
+    font-family:'Inconsolata', monospace;
     font-size:12px;
     color:var(--ink-dim);
   }
   #status-banner .log-item{
-    font-family:'IBM Plex Mono', monospace;
+    font-family:'Inconsolata', monospace;
     font-size:12.5px;
     margin:2px 0;
   }
@@ -112,7 +112,7 @@
   }
   .control-group label.group-label{
     display:block;
-    font-family:'IBM Plex Mono', monospace;
+    font-family:'Inconsolata', monospace;
     font-size:12px;
     color:var(--ink-dim);
     margin-bottom:10px;
@@ -181,11 +181,16 @@
     position:relative;
   }
   .card-head .brand{
-    font-family:'IBM Plex Mono', monospace;
+    font-family:'Inconsolata', monospace;
     font-size:12px;
     letter-spacing:0.05em;
     opacity:.9;
     margin:0 0 4px;
+  }
+  .card-head .brand .comm-date{
+    font-weight:600;
+    letter-spacing:0;
+    opacity:.85;
   }
   .card-head .plan-name{
     font-family:'Newsreader', serif;
@@ -204,7 +209,7 @@
     right:-2px;
     background:var(--gold);
     color:#FFFFFF;
-    font-family:'IBM Plex Mono', monospace;
+    font-family:'Inconsolata', monospace;
     font-size:11px;
     font-weight:600;
     padding:4px 10px 4px 12px;
@@ -216,7 +221,7 @@
     border-bottom:1px dashed var(--paper-line);
   }
   .price-block .amount{
-    font-family:'IBM Plex Mono', monospace;
+    font-family:'Inconsolata', monospace;
     font-size:22px;
     font-weight:600;
     color:#1C1E24;
@@ -247,7 +252,7 @@
     font-size:12px;
   }
   .comm-title{
-    font-family:'IBM Plex Mono', monospace;
+    font-family:'Inconsolata', monospace;
     font-size:11px;
     font-weight:600;
     color:var(--ink-dim);
@@ -274,7 +279,7 @@
     text-align:right;
     padding:2px 6px;
     font-size:13px;
-    font-family:'IBM Plex Mono', monospace;
+    font-family:'Inconsolata', monospace;
     font-weight:700;
     border:1px solid var(--paper-line);
     border-radius:4px;
@@ -317,7 +322,7 @@
     text-align:right;
     padding:8px 10px;
     font-size:13.5px;
-    font-family:'IBM Plex Mono', monospace;
+    font-family:'Inconsolata', monospace;
     border:1px solid var(--paper-line);
     border-radius:4px;
     background:#FFFFFF;
@@ -387,7 +392,7 @@
   }
   .fam-table th:first-child, .fam-table td:first-child{ text-align:left; }
   .fam-table thead th{
-    font-family:'IBM Plex Mono', monospace;
+    font-family:'Inconsolata', monospace;
     font-size:11px;
     color:var(--ink-dim);
     font-weight:600;
@@ -507,6 +512,14 @@ let state = { speed:'500', tv:'basic', settopTier:'basic', router:'Y' };
 let familyPhones = [];
 let logs = [];
 
+function formatStartAt(date){
+  if (!date) return null;
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  return `${mm}.${dd}.${hh}시`;
+}
+
 function displayLastModified() {
   const modDate = new Date(document.lastModified);
   if (!isNaN(modDate.getTime())) {
@@ -581,8 +594,11 @@ async function loadFinanceData() {
     const commRows = commRes.data ? commRes.data.filter(r => r.carrier === carrier) : [];
     const internetComm = commRows.find(r => String(r.tv_tier) === 'none')?.commission_amount || 0;
     const tvComm = tvTierForComm !== 'none' ? (commRows.find(r => String(r.tv_tier) === tvTierForComm)?.commission_amount || 0) : 0;
-    
-    COMMISSION_DATA[carrier] = { internetComm, tvComm, totalComm: internetComm + tvComm };
+
+    const startAtTimes = commRows.map(r => r.start_at).filter(Boolean).map(v => new Date(v)).filter(d => !isNaN(d.getTime()));
+    const startAt = startAtTimes.length ? new Date(Math.max(...startAtTimes.map(d => d.getTime()))) : null;
+
+    COMMISSION_DATA[carrier] = { internetComm, tvComm, totalComm: internetComm + tvComm, startAt };
 
     const promoRow = promoRes.data ? promoRes.data.find(r => r.carrier === carrier) : null;
     if (promoRow) {
@@ -918,7 +934,7 @@ function render(){
       <div class="card ${isBest ? 'best' : ''}" data-brand="${r.carrier}">
         <div class="card-head">
           ${isBest ? '<div class="best-tag">최저가</div>' : ''}
-          <p class="brand">${BRAND_LABEL[r.carrier]}</p>
+          <p class="brand">${BRAND_LABEL[r.carrier]}${comm && comm.startAt ? ` <span class="comm-date">· ${formatStartAt(comm.startAt)} 적용</span>` : ''}</p>
           <p class="plan-name">${tvLabel || '미제공'}</p>
         </div>
         <div class="price-block">
