@@ -735,12 +735,21 @@ function computeFamilyDiscount(ispCarrier){
 
   if (matchCarrier === 'KT') {
     const sum = lines.reduce((acc, p) => acc + (Number(p.fee) || 0), 0);
-    let internetDiscount, mobileDiscount;
-    if (sum <= 22000) { internetDiscount = 2200; mobileDiscount = 0; }
-    else if (sum <= 64900) { internetDiscount = 5500; mobileDiscount = 5500; }
-    else if (sum <= 108900) { internetDiscount = 5500; mobileDiscount = 16610; }
-    else if (sum <= 141900) { internetDiscount = 5500; mobileDiscount = 22110; }
-    else { internetDiscount = 5500; mobileDiscount = 27610; }
+    const isSlim = speedNum === 100; // 인터넷 슬림(100M) vs 베이직/에센스/프리미엄급(500M·1G)
+
+    const upperBounds = [22000, 64900, 108900, 141900, 174900, Infinity];
+    const internetVals = isSlim
+      ? [1650, 3300, 5500, 5500, 5500, 5500]
+      : [2200, 5500, 5500, 5500, 5500, 5500];
+    const mobileVals = isSlim
+      ? [0, 0, 3300, 14300, 18700, 23100]
+      : [0, 0, 5500, 16610, 22110, 27610];
+
+    let idx = upperBounds.findIndex(bound => sum < bound);
+    if (idx === -1) idx = upperBounds.length - 1;
+
+    const internetDiscount = internetVals[idx];
+    const mobileDiscount = mobileVals[idx];
     return { matchCarrier, count, sum, internetDiscount, mobileDiscount, total: internetDiscount + mobileDiscount };
   }
 
