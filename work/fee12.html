@@ -514,9 +514,10 @@ let logs = [];
 
 function formatStartAt(date){
   if (!date) return null;
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const dd = String(date.getDate()).padStart(2, '0');
-  const hh = String(date.getHours()).padStart(2, '0');
+  // DB에 저장된 값이 이미 한국시간(KST) 기준이므로, 타임존 변환 없이 저장된 숫자 그대로 표시
+  const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(date.getUTCDate()).padStart(2, '0');
+  const hh = String(date.getUTCHours()).padStart(2, '0');
   return `${mm}.${dd}.${hh}시`;
 }
 
@@ -574,14 +575,24 @@ async function loadData(){
   return true;
 }
 
+function normalizeSpeedValue(v){
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  const num = parseFloat(s.replace(/,/g, ''));
+  if (isNaN(num)) return null;
+  // "1G", "1기가" 처럼 G/기가 단위이면서 M이 없는 경우만 ×1000 처리 (1G -> 1000)
+  if (/(g|기가)/i.test(s) && !/m/i.test(s)) return num * 1000;
+  return num; // "500M", "500", 500(number) 등은 그대로
+}
+
 async function loadFinanceData() {
-  const speedStr = String(state.speed);
+  const targetSpeed = Number(state.speed);
   const tvTierForComm = state.tv;
   const tvTierForPromo = state.tv === 'none' ? 'none' : 'all';
 
   const [commRes, promoRes] = await Promise.all([
-    sb.from('carrier_commissions').select('*').eq('speed', speedStr),
-    sb.from('carrier_promotions').select('*').eq('speed', speedStr).eq('tv_tier', tvTierForPromo)
+    sb.from('carrier_commissions').select('*'),
+    sb.from('carrier_promotions').select('*').eq('tv_tier', tvTierForPromo)
   ]);
 
   addLog('carrier_commissions', !commRes.error, commRes.error ? commRes.error.message : `${commRes.data?.length || 0}건 조회`);
@@ -591,7 +602,9 @@ async function loadFinanceData() {
   PROMOTION_DATA = {};
 
   CARRIERS.forEach(carrier => {
-    const commRows = commRes.data ? commRes.data.filter(r => r.carrier === carrier) : [];
+    const commRows = commRes.data
+      ? commRes.data.filter(r => String(r.carrier).toLowerCase() === carrier && normalizeSpeedValue(r.speed) === targetSpeed)
+      : [];
     const internetComm = commRows.find(r => String(r.tv_tier) === 'none')?.commission_amount || 0;
     const tvComm = tvTierForComm !== 'none' ? (commRows.find(r => String(r.tv_tier) === tvTierForComm)?.commission_amount || 0) : 0;
 
@@ -600,7 +613,9 @@ async function loadFinanceData() {
 
     COMMISSION_DATA[carrier] = { internetComm, tvComm, totalComm: internetComm + tvComm, startAt };
 
-    const promoRow = promoRes.data ? promoRes.data.find(r => r.carrier === carrier) : null;
+    const promoRow = promoRes.data
+      ? promoRes.data.find(r => String(r.carrier).toLowerCase() === carrier && normalizeSpeedValue(r.speed) === targetSpeed)
+      : null;
     if (promoRow) {
       PROMOTION_DATA[carrier] = {
         giftCard: promoRow.gift_card,
@@ -934,8 +949,8 @@ function render(){
       <div class="card ${isBest ? 'best' : ''}" data-brand="${r.carrier}">
         <div class="card-head">
           ${isBest ? '<div class="best-tag">최저가</div>' : ''}
-          <p class="brand">${BRAND_LABEL[r.carrier]}${comm && comm.startAt ? ` <span class="comm-date">· ${formatStartAt(comm.startAt)} 적용</span>` : ''}</p>
-          <p class="plan-name">${tvLabel || '미제공'}</p>
+          <p class="brand">${comm && comm.startAt ? `${formatStartAt(comm.startAt)} 적용` : ''}</p>
+          <p class="plan-name">${BRAND_LABEL[r.carrier]} / ${tvLabel || '미제공'}</p>
         </div>
         <div class="price-block">
           ${r.available ? `<div class="amount">${r.total.toLocaleString()}<span>원 / 월</span></div>` : `<div class="unavailable">조합 정보 없음</div>`}
