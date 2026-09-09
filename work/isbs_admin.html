@@ -160,7 +160,6 @@
     cursor:not-allowed;
     background:#EAE8E1;
   }
-  /* TV 요금제 4개 버튼을 항상 한 줄로 배치 */
   #seg-tv{
     flex-wrap:nowrap;
   }
@@ -176,7 +175,6 @@
     #seg-tv button{ flex:1 1 45%; }
   }
 
-  /* 주요 4개 통신사 (KT, LG, SKB, SKT) 4열 배치 */
   .results{
     display:grid;
     grid-template-columns:repeat(4, 1fr);
@@ -503,20 +501,119 @@
     margin-top:10px;
     line-height:1.55;
   }
+
+  #login-gate{
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:var(--bg);
+  }
+  .login-box{
+    width:100%;
+    max-width:360px;
+    background:var(--bg-raised);
+    border:1px solid var(--paper-line);
+    border-radius:var(--radius);
+    padding:32px 28px;
+    box-shadow:0 4px 20px rgba(0,0,0,0.05);
+  }
+  .login-box h2{
+    font-family:'Newsreader', serif;
+    font-size:22px;
+    margin:0 0 6px;
+  }
+  .login-box .sub{
+    font-size:13px;
+    color:var(--ink-dim);
+    margin:0 0 22px;
+  }
+  .login-box label{
+    display:block;
+    font-family:'Inconsolata', monospace;
+    font-size:11.5px;
+    color:var(--ink-dim);
+    margin:14px 0 6px;
+    font-weight:600;
+  }
+  .login-box input{
+    width:100%;
+    padding:10px 12px;
+    border:1px solid var(--paper-line);
+    border-radius:4px;
+    font-size:14px;
+    background:#FAFAF7;
+    box-sizing:border-box;
+  }
+  .login-box input:focus{ outline:none; border-color:var(--gold); }
+  .login-box button{
+    width:100%;
+    margin-top:20px;
+    padding:11px;
+    border:none;
+    border-radius:var(--radius);
+    background:var(--ink);
+    color:#fff;
+    font-size:14.5px;
+    font-weight:600;
+    cursor:pointer;
+  }
+  .login-box button:hover{ background:#40424B; }
+  .login-error{
+    margin-top:12px;
+    font-size:12.5px;
+    color:#D9534F;
+    min-height:16px;
+  }
+  .logout-btn{
+    appearance:none;
+    border:1px solid var(--paper-line);
+    background:#FAFAF7;
+    color:var(--ink-dim);
+    padding:5px 12px;
+    font-size:12px;
+    border-radius:4px;
+    cursor:pointer;
+    margin-left:10px;
+  }
+  .logout-btn:hover{ border-color:#D9534F; color:#D9534F; }
+  .whoami{
+    font-family:'Inconsolata', monospace;
+    font-size:11.5px;
+    color:var(--ink-dim);
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
+
+<div id="login-gate">
+  <div class="login-box">
+    <h2>관리자 로그인</h2>
+    <p class="sub">수수료 · 마진 정보는 로그인한 관리자/상담원만 볼 수 있습니다.</p>
+    <label>Email</label>
+    <input type="email" id="login-email" autocomplete="username">
+    <label>Password</label>
+    <input type="password" id="login-password" autocomplete="current-password">
+    <button type="button" onclick="handleLogin()">로그인</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+
+<div class="wrap" id="main-content" style="display:none;">
 
   <div class="top-grid">
     <header>
-      <h1>통신사별 요금 및 경품고시 비교</h1>
+      <h1>통신사별 요금 및 경품고시 비교 (관리자)</h1>
       <p>속도와 TV 요금제 옵션에 따른 월 요금과 경품고시 가이드 기준 혜택을 실시간 확인하세요.</p>
     </header>
 
     <div id="status-banner">
       <div class="banner-header">
-        <div class="title">🔍 Supabase 테이블 연동 현황 (KT / LG / SKB / SKT 비교)</div>
+        <div class="title">
+          🔍 Supabase 테이블 연동 현황 (KT / LG / SKB / SKT 비교)
+          <span class="whoami" id="whoami"></span>
+          <button type="button" class="logout-btn" onclick="handleLogout()">로그아웃</button>
+        </div>
         <div class="last-modified" id="last-updated">최종 수정: -</div>
       </div>
       <div id="banner-logs">데이터 연동을 확인 중입니다...</div>
@@ -602,7 +699,6 @@ const TV_TIER_MAP = {
 const SPEED_LABEL = { 100:'100M', 500:'500M', 1000:'1기가' };
 const ROUTER_LABEL = { N:'미포함', Y:'포함' };
 
-// 가족 휴대폰 결합 - "통신사 변경" 선택 시 사용할 요금제 금액대 (3만원대 ~ 9만원대, 1만원 단위)
 const FEE_RANGES = [
   { value: 30000, label: '3만원대' },
   { value: 40000, label: '4만원대' },
@@ -623,7 +719,6 @@ let logs = [];
 
 function formatStartAt(date){
   if (!date) return null;
-  // DB에 저장된 값이 이미 한국시간(KST) 기준이므로, 타임존 변환 없이 저장된 숫자 그대로 표시
   const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
   const dd = String(date.getUTCDate()).padStart(2, '0');
   const hh = String(date.getUTCHours()).padStart(2, '0');
@@ -689,9 +784,8 @@ function normalizeSpeedValue(v){
   const s = String(v).trim();
   const num = parseFloat(s.replace(/,/g, ''));
   if (isNaN(num)) return null;
-  // "1G", "1기가" 처럼 G/기가 단위이면서 M이 없는 경우만 ×1000 처리 (1G -> 1000)
   if (/(g|기가)/i.test(s) && !/m/i.test(s)) return num * 1000;
-  return num; // "500M", "500", 500(number) 등은 그대로
+  return num;
 }
 
 async function loadFinanceData() {
@@ -700,11 +794,11 @@ async function loadFinanceData() {
   const tvTierForPromo = state.tv === 'none' ? 'none' : 'all';
 
   const [commRes, promoRes] = await Promise.all([
-    sb.from('carrier_commissions').select('*'),
+    sb.rpc('get_admin_commissions'),
     sb.from('carrier_promotions').select('*').eq('tv_tier', tvTierForPromo)
   ]);
 
-  addLog('carrier_commissions', !commRes.error, commRes.error ? commRes.error.message : `${commRes.data?.length || 0}건 조회`);
+  addLog('get_admin_commissions (RPC)', !commRes.error, commRes.error ? commRes.error.message : `${commRes.data?.length || 0}건 조회`);
   addLog('carrier_promotions', !promoRes.error, promoRes.error ? promoRes.error.message : `${promoRes.data?.length || 0}건 조회`);
 
   COMMISSION_DATA = {};
@@ -811,9 +905,6 @@ function computePrice(carrier){
   return { available:true, total, internetFee, routerFee: actualRouterFee, tvFee, settopFee, bundleDiscount, tvInfo, settopInfo };
 }
 
-// 모드에 따라 할인 계산에 실제로 사용할 "유효 통신사/요금"을 반환
-// - 기존 유지: 현재 등록된 통신사·요금 그대로
-// - 통신사 변경: 변경 예정 통신사·요금(금액대) 기준
 function getEffectivePhone(p){
   if (p.mode === 'change') {
     return { carrier: p.newCarrier, fee: Number(p.newFee) };
@@ -913,7 +1004,6 @@ function getMatchingMobileCarrier(ispCarrier){
 
 function computeFamilyDiscount(ispCarrier){
   const matchCarrier = getMatchingMobileCarrier(ispCarrier);
-  // "기존 유지" 회선은 기존 통신사·요금, "통신사 변경" 회선은 변경 예정 통신사·요금 기준으로 계산
   const effectivePhones = familyPhones.map(getEffectivePhone);
   const lines = effectivePhones.filter(p => p.carrier === matchCarrier);
   const count = lines.length;
@@ -925,7 +1015,7 @@ function computeFamilyDiscount(ispCarrier){
 
   if (matchCarrier === 'KT') {
     const sum = lines.reduce((acc, p) => acc + (Number(p.fee) || 0), 0);
-    const isSlim = speedNum === 100; // 인터넷 슬림(100M) vs 베이직/에센스/프리미엄급(500M·1G)
+    const isSlim = speedNum === 100;
 
     const upperBounds = [22000, 64900, 108900, 141900, 174900, Infinity];
     const internetVals = isSlim
@@ -950,7 +1040,7 @@ function computeFamilyDiscount(ispCarrier){
     if (count === 1) countBucket = 1;
     else if (count === 2) countBucket = 2;
     else if (count === 3) countBucket = 3;
-    else countBucket = 4; // 4~10회선
+    else countBucket = 4;
 
     const matrix = {
       1: { low:0, mid:0, high:0 },
@@ -975,7 +1065,7 @@ function computeFamilyDiscount(ispCarrier){
     let mobileDiscount;
     if (count === 1) mobileDiscount = 3500;
     else if (count === 2) mobileDiscount = 3500 * 2;
-    else mobileDiscount = 6000 * count; // 3회선 이상
+    else mobileDiscount = 6000 * count;
     return { matchCarrier, count, internetDiscount, mobileDiscount, total: internetDiscount + mobileDiscount };
   }
 
@@ -1139,7 +1229,11 @@ function render(){
   renderFamilyDiscountTable();
 }
 
-(async function init(){
+async function startApp(session){
+  document.getElementById('login-gate').style.display = 'none';
+  document.getElementById('main-content').style.display = '';
+  document.getElementById('whoami').textContent = session.user.email;
+
   displayLastModified();
   setupSeg('seg-speed','speed');
   setupSeg('seg-tv','tv');
@@ -1150,6 +1244,39 @@ function render(){
   if (await loadData()) {
     await loadFinanceData();
     render();
+  }
+}
+
+function showLoginGate(){
+  document.getElementById('login-gate').style.display = 'flex';
+  document.getElementById('main-content').style.display = 'none';
+}
+
+async function handleLogin(){
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-error');
+  errEl.textContent = '';
+
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) {
+    errEl.textContent = '로그인 실패: ' + error.message;
+    return;
+  }
+  await startApp(data.session);
+}
+
+async function handleLogout(){
+  await sb.auth.signOut();
+  location.reload();
+}
+
+(async function init(){
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) {
+    await startApp(session);
+  } else {
+    showLoginGate();
   }
 })();
 </script>
