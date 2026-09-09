@@ -3,11 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>인터넷+TV 결합 요금 및 수수료 비교</title>
+<title>[DEV] 인터넷+TV 요금 및 혜택 비교 (고객용 개발페이지)</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
+<!-- Supabase SDK -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<!-- html2canvas 라이브러리 (견적서 이미지 저장용) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
   :root{
     --ink:#2C2E35;
@@ -41,9 +44,9 @@
 
   .top-grid{
     display:grid;
-    grid-template-columns:1fr 1fr;
+    grid-template-columns:1fr auto;
     gap:32px;
-    align-items:stretch;
+    align-items:center;
     margin-bottom:32px;
     padding-bottom:24px;
     border-bottom:1px solid var(--line-on-dark);
@@ -60,9 +63,10 @@
   .eyebrow{
     font-family:'Inconsolata', monospace;
     font-size:12.5px;
-    color:var(--ink-dim);
+    color:var(--gold);
     letter-spacing:0.02em;
-    margin:0 0 14px;
+    margin:0 0 8px;
+    font-weight:700;
   }
   h1{
     font-family:'Newsreader', serif;
@@ -78,38 +82,22 @@
     margin:0;
   }
 
-  #status-banner{
-    display:block;
-    padding:16px 20px;
+  .download-btn{
+    appearance:none;
+    background:var(--ink);
+    color:#FFFFFF;
+    border:none;
+    padding:14px 24px;
+    font-size:14.5px;
+    font-weight:600;
     border-radius:var(--radius);
-    font-size:13.5px;
-    line-height:1.6;
-    background:#EFEDE4;
-    border:1px solid var(--paper-line);
-    color:var(--ink);
-  }
-  .banner-header{
-    display:flex;
-    justify-content:space-between;
+    cursor:pointer;
+    display:inline-flex;
     align-items:center;
-    margin-bottom:6px;
+    gap:8px;
+    transition:background .15s ease;
   }
-  #status-banner .title{
-    font-weight:700;
-    font-size:14px;
-  }
-  .last-modified{
-    font-family:'Inconsolata', monospace;
-    font-size:12px;
-    color:var(--ink-dim);
-  }
-  #status-banner .log-item{
-    font-family:'Inconsolata', monospace;
-    font-size:12.5px;
-    margin:2px 0;
-  }
-  #status-banner .success{ color:#1E7E34; }
-  #status-banner .error{ color:#D9534F; font-weight:600; }
+  .download-btn:hover{ background:#1C1E24; }
 
   .controls{
     display:flex;
@@ -160,34 +148,20 @@
     cursor:not-allowed;
     background:#EAE8E1;
   }
-  /* TV 요금제 4개 버튼을 항상 한 줄로 배치 */
-  #seg-tv{
-    flex-wrap:nowrap;
-  }
-  #seg-tv button{
-    flex:1;
-    padding:10px 8px;
-    font-size:13px;
-    white-space:nowrap;
-    text-align:center;
-  }
+  #seg-tv{ flex-wrap:nowrap; }
+  #seg-tv button{ flex:1; padding:10px 8px; font-size:13px; white-space:nowrap; text-align:center; }
   @media (max-width: 520px){
     #seg-tv{ flex-wrap:wrap; }
     #seg-tv button{ flex:1 1 45%; }
   }
 
-  /* 주요 4개 통신사 (KT, LG, SKB, SKT) 4열 배치 */
   .results{
     display:grid;
     grid-template-columns:repeat(4, 1fr);
     gap:16px;
   }
-  @media (max-width: 1280px){
-    .results{ grid-template-columns:repeat(2, 1fr); }
-  }
-  @media (max-width: 640px){
-    .results{ grid-template-columns:1fr; }
-  }
+  @media (max-width: 1280px){ .results{ grid-template-columns:repeat(2, 1fr); } }
+  @media (max-width: 640px){ .results{ grid-template-columns:1fr; } }
 
   .card{
     background:var(--paper);
@@ -202,324 +176,89 @@
   }
   .card.best{ transform:translateY(-6px); box-shadow:0 16px 36px -12px rgba(200,138,43,.25); border-color:var(--gold); }
 
-  .card-head{
-    padding:18px 18px 14px;
-    color:#fff;
-    position:relative;
-  }
-  .card-head .brand{
-    font-family:'Inconsolata', monospace;
-    font-size:12px;
-    letter-spacing:0.05em;
-    opacity:.9;
-    margin:0 0 4px;
-  }
-  .card-head .brand .comm-date{
-    font-weight:600;
-    letter-spacing:0;
-    opacity:.85;
-  }
-  .card-head .plan-name{
-    font-family:'Newsreader', serif;
-    font-weight:600;
-    font-size:20px;
-    margin:0;
-  }
+  .card-head{ padding:18px 18px 14px; color:#fff; position:relative; }
+  .card-head .plan-name{ font-family:'Newsreader', serif; font-weight:600; font-size:20px; margin:0; }
   .card[data-brand="kt"] .card-head{ background:var(--kt); }
   .card[data-brand="lg"] .card-head{ background:var(--lg); }
   .card[data-brand="skb"] .card-head{ background:var(--skb); }
   .card[data-brand="skt"] .card-head{ background:var(--skt); }
 
   .best-tag{
-    position:absolute;
-    top:12px;
-    right:-2px;
-    background:var(--gold);
-    color:#FFFFFF;
-    font-family:'Inconsolata', monospace;
-    font-size:11px;
-    font-weight:600;
-    padding:4px 10px 4px 12px;
-    letter-spacing:.03em;
+    position:absolute; top:12px; right:-2px; background:var(--gold); color:#FFFFFF;
+    font-family:'Inconsolata', monospace; font-size:11px; font-weight:600; padding:4px 10px 4px 12px;
   }
 
-  .price-block{
-    padding:18px 18px 14px;
-    border-bottom:1px dashed var(--paper-line);
-  }
-  .price-block .amount{
-    font-family:'Inconsolata', monospace;
-    font-size:22px;
-    font-weight:600;
-    color:#1C1E24;
-  }
+  .price-block{ padding:18px 18px 14px; border-bottom:1px dashed var(--paper-line); }
+  .price-block .amount{ font-family:'Inconsolata', monospace; font-size:22px; font-weight:600; color:#1C1E24; }
   .price-block .amount span{ font-size:13px; font-weight:500; color:#6B6C64; margin-left:4px;}
 
-  .items{
-    padding:14px 18px 16px;
-    flex:1;
-  }
-  .item-row{
-    display:flex;
-    align-items:baseline;
-    gap:6px;
-    font-size:13px;
-    padding:5px 0;
-    color:#4B4C45;
-  }
+  .items{ padding:14px 18px 16px; flex:1; }
+  .item-row{ display:flex; align-items:baseline; gap:6px; font-size:13px; padding:5px 0; color:#4B4C45; }
   .item-row .label{ white-space:nowrap; color:#8C877A; }
   .item-row .dots{ flex:1; border-bottom:1px dotted #C9C4B2; transform:translateY(-4px); }
   .item-row .value{ white-space:nowrap; font-weight:500; color:#20211D; }
   .item-row .value.discount{ color:#D9534F; font-weight:600; }
+  .item-row.sub{ padding-left:16px; color:#9C9890; font-size:12px; }
 
-  .commission-section{
+  /* 고객 노출용 경품고시 혜택 안내 영역 */
+  .promo-section{
     border-top:1px solid var(--paper-line);
     background:#FAFAF7;
     padding:16px 14px;
     font-size:12px;
   }
-  .comm-title{
-    font-family:'Inconsolata', monospace;
-    font-size:11px;
-    font-weight:600;
-    color:var(--ink-dim);
-    margin-bottom:8px;
-    text-transform:uppercase;
-  }
-  .comm-group{ margin-bottom:6px; }
-  .comm-subhead{ font-weight:600; color:#3A3C42; margin-bottom:4px; }
-  .comm-subhead.large{ font-size:12.5px; color:#1C1E24; }
-  .comm-subhead-row{
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    margin-bottom:4px;
-  }
-  .comm-subhead-row .comm-subhead{ margin-bottom:0; }
-  .comm-subhead-row .subtotal{ font-weight:700; color:var(--ink); font-size:12px; }
-  .comm-row{ display:flex; justify-content:space-between; align-items:center; padding:2px 0; color:#5C5E66; font-size:11.5px; }
-  .comm-row.large{ font-size:12.5px; }
-  .comm-row.highlight{ font-weight:600; color:var(--ink); }
+  .promo-title{ font-family:'Inconsolata', monospace; font-size:11px; font-weight:600; color:var(--ink-dim); margin-bottom:8px; }
+  .promo-row{ display:flex; justify-content:space-between; align-items:center; padding:3px 0; color:#5C5E66; font-size:12px; }
+  .promo-row.highlight{ font-weight:700; color:var(--ink); font-size:13px; margin-bottom:4px; }
 
-  .gift-input{
-    width:100px;
-    text-align:right;
-    padding:2px 6px;
-    font-size:13px;
-    font-family:'Inconsolata', monospace;
-    font-weight:700;
-    border:1px solid var(--paper-line);
-    border-radius:4px;
-    background:#FFFFFF;
-    color:#1C1E24;
-  }
-  .gift-input:focus{ outline:none; border-color:var(--gold); }
-  .margin-text{ font-size:14px; font-weight:700; }
+  .controls-grid{ display:grid; grid-template-columns:1fr 1fr; gap:32px; }
+  @media (max-width: 900px){ .controls-grid{ grid-template-columns:1fr; } }
+  .controls-col{ display:flex; flex-direction:column; gap:26px; }
 
-  .controls-grid{
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:32px;
-  }
-  @media (max-width: 900px){
-    .controls-grid{ grid-template-columns:1fr; }
-  }
-  .controls-col{
-    display:flex;
-    flex-direction:column;
-    gap:26px;
-  }
-  .phone-line{
-    border:1px solid var(--paper-line);
-    border-radius:var(--radius);
-    padding:10px 12px;
-    margin-bottom:8px;
-    background:#FAFAF7;
-  }
-  .mode-toggle{
-    display:flex;
-    gap:6px;
-    margin-bottom:8px;
-  }
+  .phone-line{ border:1px solid var(--paper-line); border-radius:var(--radius); padding:10px 12px; margin-bottom:8px; background:#FAFAF7; overflow-x:auto;}
+  .mode-toggle{ display:flex; gap:6px; margin-bottom:8px; }
   .mode-toggle button{
-    appearance:none;
-    border:1px solid var(--paper-line);
-    background:#FFFFFF;
-    color:var(--ink-dim);
-    padding:4px 11px;
-    font-size:11.5px;
-    font-weight:600;
-    border-radius:4px;
-    cursor:pointer;
-    transition:all .15s ease;
+    appearance:none; border:1px solid var(--paper-line); background:#FFFFFF; color:var(--ink-dim);
+    padding:4px 11px; font-size:11.5px; font-weight:600; border-radius:4px; cursor:pointer;
   }
-  .mode-toggle button.active{
-    background:var(--gold);
-    border-color:var(--gold);
-    color:#fff;
+  .mode-toggle button.active{ background:var(--gold); border-color:var(--gold); color:#fff; }
+  .phone-row{ display:flex; gap:6px; align-items:center; flex-wrap:nowrap; }
+  .new-block{ display:flex; align-items:center; gap:6px; padding-left:10px; border-left:2px dashed var(--gold); flex-shrink:0; }
+  .new-block .arrow, .new-block-label{ font-family:'Inconsolata', monospace; font-size:11px; color:var(--gold); font-weight:700; }
+  .phone-select, .fee-range-select{
+    padding:8px; font-family:'Pretendard', sans-serif; font-size:13px; border:1px solid var(--paper-line);
+    border-radius:4px; background:#FAFAF7; color:var(--ink);
   }
-  .mode-toggle button:hover:not(.active){ border-color:var(--gold); }
-  .phone-row{
-    display:flex;
-    gap:6px;
-    align-items:center;
-    flex-wrap:nowrap;
-  }
-  .new-block{
-    display:flex;
-    align-items:center;
-    gap:6px;
-    padding-left:10px;
-    border-left:2px dashed var(--gold);
-    flex-shrink:0;
-  }
-  .new-block .arrow{
-    font-size:12.5px;
-    color:var(--gold);
-    font-weight:700;
-    margin-right:1px;
-  }
-  .new-block-label{
-    font-family:'Inconsolata', monospace;
-    font-size:10.5px;
-    color:var(--gold);
-    font-weight:700;
-    margin-right:1px;
-    white-space:nowrap;
-  }
-  .phone-select{
-    padding:8px 8px;
-    font-family:'Pretendard', sans-serif;
-    font-size:13px;
-    border:1px solid var(--paper-line);
-    border-radius:4px;
-    background:#FAFAF7;
-    color:var(--ink);
-    width:82px;
-    flex-shrink:0;
-  }
-  .fee-range-select{
-    padding:8px 8px;
-    font-family:'Pretendard', sans-serif;
-    font-size:13px;
-    border:1px solid var(--paper-line);
-    border-radius:4px;
-    background:#FFFFFF;
-    color:var(--ink);
-    width:86px;
-    flex-shrink:0;
-  }
-  .phone-fee-input{
-    width:90px;
-    text-align:right;
-    padding:8px 8px;
-    font-size:13px;
-    font-family:'Inconsolata', monospace;
-    border:1px solid var(--paper-line);
-    border-radius:4px;
-    background:#FFFFFF;
-    color:#1C1E24;
-    flex-shrink:0;
-  }
-  .phone-line{
-    overflow-x:auto;
-  }
-  .phone-fee-input:focus, .phone-select:focus, .fee-range-select:focus{ outline:none; border-color:var(--gold); }
+  .phone-fee-input{ width:90px; text-align:right; padding:8px; font-size:13px; font-family:'Inconsolata', monospace; border:1px solid var(--paper-line); border-radius:4px; }
   .phone-unit{ font-size:12.5px; color:var(--ink-dim); }
-  .phone-remove-btn{
-    appearance:none;
-    border:1px solid var(--paper-line);
-    background:#FAFAF7;
-    color:#D9534F;
-    padding:7px 10px;
-    font-size:12.5px;
-    border-radius:4px;
-    cursor:pointer;
-    margin-left:auto;
-  }
-  .phone-remove-btn:hover{ background:#FDEDEC; }
-  .add-phone-btn{
-    appearance:none;
-    border:1px dashed var(--gold);
-    background:#FFFDF9;
-    color:var(--gold);
-    padding:9px 14px;
-    font-size:13.5px;
-    font-weight:600;
-    border-radius:var(--radius);
-    cursor:pointer;
-    margin-top:4px;
-  }
-  .add-phone-btn:hover{ background:#FFF6E8; }
-  .phone-empty{
-    color:var(--ink-dim);
-    font-size:13px;
-    padding:8px 0;
-  }
-  .family-discount-section{
-    border-top:2px solid var(--paper-line);
-    background:#F6F5EF;
-    padding:14px 14px 16px;
-    font-size:12px;
-  }
+  .phone-remove-btn{ appearance:none; border:1px solid var(--paper-line); background:#FAFAF7; color:#D9534F; padding:7px 10px; font-size:12.5px; border-radius:4px; cursor:pointer; margin-left:auto; }
+  .add-phone-btn{ appearance:none; border:1px dashed var(--gold); background:#FFFDF9; color:var(--gold); padding:9px 14px; font-size:13.5px; font-weight:600; border-radius:var(--radius); cursor:pointer; margin-top:4px; }
+  .phone-empty{ color:var(--ink-dim); font-size:13px; padding:8px 0; }
 
-  .item-row.sub{
-    padding-left:16px;
-    color:#9C9890;
-    font-size:12px;
-  }
-  .item-row.sub .label{ color:#A6A296; }
-
-  .controls-grid.three{
-    grid-template-columns:0.85fr 1.35fr 0.8fr;
-  }
-  @media (max-width: 1180px){
-    .controls-grid.three{ grid-template-columns:1fr; }
-  }
-  .fam-table{
-    width:100%;
-    border-collapse:collapse;
-    font-size:14px;
-  }
-  .fam-table th, .fam-table td{
-    padding:8px 5px;
-    text-align:right;
-    border-bottom:1px solid var(--paper-line);
-    white-space:nowrap;
-  }
+  .controls-grid.three{ grid-template-columns:0.85fr 1.35fr 0.8fr; }
+  @media (max-width: 1180px){ .controls-grid.three{ grid-template-columns:1fr; } }
+  .fam-table{ width:100%; border-collapse:collapse; font-size:14px; }
+  .fam-table th, .fam-table td{ padding:8px 5px; text-align:right; border-bottom:1px solid var(--paper-line); white-space:nowrap; }
   .fam-table th:first-child, .fam-table td:first-child{ text-align:left; }
-  .fam-table thead th{
-    font-family:'Inconsolata', monospace;
-    font-size:12px;
-    color:var(--ink-dim);
-    font-weight:600;
-    border-bottom:2px solid var(--paper-line);
-  }
+  .fam-table thead th{ font-family:'Inconsolata', monospace; font-size:12px; color:var(--ink-dim); font-weight:600; border-bottom:2px solid var(--paper-line); }
   .fam-table td.brand-cell{ font-weight:700; color:#1C1E24; }
   .fam-table td.total-cell{ font-weight:700; color:var(--gold); }
-  .fam-table-note{
-    font-size:12.5px;
-    color:var(--ink-dim);
-    margin-top:10px;
-    line-height:1.55;
-  }
+  .fam-table-note{ font-size:12.5px; color:var(--ink-dim); margin-top:10px; line-height:1.55; }
 </style>
 </head>
 <body>
-<div class="wrap">
+<div class="wrap" id="capture-area">
 
   <div class="top-grid">
     <header>
-      <h1>통신사별 요금 및 경품고시 비교</h1>
-      <p>속도와 TV 요금제 옵션에 따른 월 요금과 경품고시 가이드 기준 혜택을 실시간 확인하세요.</p>
+      <div class="eyebrow">[CUSTOMER DEV BUILD] CUSTOMER QUOTATION</div>
+      <h1>통신사별 요금 및 맞춤 혜택 비교</h1>
+      <p>속도와 TV 옵션별 실시간 예상 요금과 경품고시 가이드 기준 최상 혜택을 확인하세요.</p>
     </header>
-
-    <div id="status-banner">
-      <div class="banner-header">
-        <div class="title">🔍 Supabase 테이블 연동 현황 (KT / LG / SKB / SKT 비교)</div>
-        <div class="last-modified" id="last-updated">최종 수정: -</div>
-      </div>
-      <div id="banner-logs">데이터 연동을 확인 중입니다...</div>
+    <div>
+      <button type="button" class="download-btn" onclick="downloadQuotationImage()">
+        📷 맞춤 견적서 이미지 저장
+      </button>
     </div>
   </div>
 
@@ -585,6 +324,7 @@
 </div>
 
 <script>
+// Supabase 클라이언트 설정 (고객용은 일반 공개 데이터만 조회)
 const SUPABASE_URL = 'https://jhfhpumhifyhauuoinxc.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpoZmhwdW1oaWZ5aGF1dW9pbnhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0MDE2NTMsImV4cCI6MjEwMzk3NzY1M30.euXk3eXtUVvEQRDGgcLhvX3JhVlpv9D7fZUEDr0i8yA';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -602,7 +342,6 @@ const TV_TIER_MAP = {
 const SPEED_LABEL = { 100:'100M', 500:'500M', 1000:'1기가' };
 const ROUTER_LABEL = { N:'미포함', Y:'포함' };
 
-// 가족 휴대폰 결합 - "통신사 변경" 선택 시 사용할 요금제 금액대 (3만원대 ~ 9만원대, 1만원 단위)
 const FEE_RANGES = [
   { value: 30000, label: '3만원대' },
   { value: 40000, label: '4만원대' },
@@ -614,46 +353,17 @@ const FEE_RANGES = [
 ];
 
 let DATA = null;
-let COMMISSION_DATA = {};
 let PROMOTION_DATA = {};
-let customGiftValues = {};
 let state = { speed:'500', tv:'basic', settopTier:'basic', router:'Y' };
 let familyPhones = [];
-let logs = [];
-
-function formatStartAt(date){
-  if (!date) return null;
-  // DB에 저장된 값이 이미 한국시간(KST) 기준이므로, 타임존 변환 없이 저장된 숫자 그대로 표시
-  const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(date.getUTCDate()).padStart(2, '0');
-  const hh = String(date.getUTCHours()).padStart(2, '0');
-  return `${mm}월 ${dd}일 ${hh}시부터 적용`;
-}
-
-function displayLastModified() {
-  const modDate = new Date(document.lastModified);
-  if (!isNaN(modDate.getTime())) {
-    document.getElementById('last-updated').textContent = `최종 수정: ${modDate.toISOString().slice(0, 16).replace('T', ' ')}`;
-  }
-}
-
-function addLog(tableName, isSuccess, message) {
-  const statusClass = isSuccess ? 'success' : 'error';
-  logs.push(`<div class="log-item ${statusClass}">${isSuccess ? '✅' : '❌'} [${tableName}] : ${message}</div>`);
-  document.getElementById('banner-logs').innerHTML = logs.join('');
-}
 
 async function loadData(){
-  logs = [];
+  // 수수료(carrier_commissions) 조회를 완전히 제외하고 요금제 데이터만 로드
   const [internetRes, tvRes, settopRes] = await Promise.all([
     sb.from('internet_plans').select('*').in('carrier', CARRIERS),
     sb.from('tv_plans').select('*').in('carrier', CARRIERS),
     sb.from('settop_boxes').select('*').in('carrier', CARRIERS)
   ]);
-
-  addLog('internet_plans', !internetRes.error, internetRes.error ? internetRes.error.message : `${internetRes.data.length}건`);
-  addLog('tv_plans', !tvRes.error, tvRes.error ? tvRes.error.message : `${tvRes.data.length}건`);
-  addLog('settop_boxes', !settopRes.error, settopRes.error ? settopRes.error.message : `${settopRes.data.length}건`);
 
   if (internetRes.error || tvRes.error || settopRes.error) return false;
 
@@ -689,39 +399,19 @@ function normalizeSpeedValue(v){
   const s = String(v).trim();
   const num = parseFloat(s.replace(/,/g, ''));
   if (isNaN(num)) return null;
-  // "1G", "1기가" 처럼 G/기가 단위이면서 M이 없는 경우만 ×1000 처리 (1G -> 1000)
   if (/(g|기가)/i.test(s) && !/m/i.test(s)) return num * 1000;
-  return num; // "500M", "500", 500(number) 등은 그대로
+  return num;
 }
 
 async function loadFinanceData() {
   const targetSpeed = Number(state.speed);
-  const tvTierForComm = state.tv;
   const tvTierForPromo = state.tv === 'none' ? 'none' : 'all';
 
-  const [commRes, promoRes] = await Promise.all([
-    sb.from('carrier_commissions').select('*'),
-    sb.from('carrier_promotions').select('*').eq('tv_tier', tvTierForPromo)
-  ]);
-
-  addLog('carrier_commissions', !commRes.error, commRes.error ? commRes.error.message : `${commRes.data?.length || 0}건 조회`);
-  addLog('carrier_promotions', !promoRes.error, promoRes.error ? promoRes.error.message : `${promoRes.data?.length || 0}건 조회`);
-
-  COMMISSION_DATA = {};
+  // 고객용 페이지는 경품고시 프로모션 정보만 조회
+  const promoRes = await sb.from('carrier_promotions').select('*').eq('tv_tier', tvTierForPromo);
   PROMOTION_DATA = {};
 
   CARRIERS.forEach(carrier => {
-    const commRows = commRes.data
-      ? commRes.data.filter(r => String(r.carrier).toLowerCase() === carrier && normalizeSpeedValue(r.speed) === targetSpeed)
-      : [];
-    const internetComm = commRows.find(r => String(r.tv_tier) === 'none')?.commission_amount || 0;
-    const tvComm = tvTierForComm !== 'none' ? (commRows.find(r => String(r.tv_tier) === tvTierForComm)?.commission_amount || 0) : 0;
-
-    const startAtTimes = commRows.map(r => r.start_at).filter(Boolean).map(v => new Date(v)).filter(d => !isNaN(d.getTime()));
-    const startAt = startAtTimes.length ? new Date(Math.max(...startAtTimes.map(d => d.getTime()))) : null;
-
-    COMMISSION_DATA[carrier] = { internetComm, tvComm, totalComm: internetComm + tvComm, startAt };
-
     const promoRow = promoRes.data
       ? promoRes.data.find(r => String(r.carrier).toLowerCase() === carrier && normalizeSpeedValue(r.speed) === targetSpeed)
       : null;
@@ -745,7 +435,6 @@ function setupSeg(id, key){
         document.querySelectorAll('#seg-settop button').forEach(b => b.disabled = state.tv === 'none');
       }
       if (key === 'speed' || key === 'tv') {
-        logs = logs.slice(0, 3);
         await loadFinanceData();
       }
       render();
@@ -770,11 +459,8 @@ function computePrice(carrier){
   
   let actualRouterFee = speedData.routerFee;
   if (state.router === 'Y') {
-    if (carrier === 'lg') {
-      actualRouterFee = 0;
-    } else if (carrier === 'kt' && Number(state.speed) >= 1000) {
-      actualRouterFee = 0;
-    }
+    if (carrier === 'lg') actualRouterFee = 0;
+    else if (carrier === 'kt' && Number(state.speed) >= 1000) actualRouterFee = 0;
     total += actualRouterFee;
   } else {
     actualRouterFee = 0;
@@ -797,8 +483,7 @@ function computePrice(carrier){
 
     const speedNum = Number(state.speed);
     if (carrier === 'kt' || carrier === 'lg') {
-      if (speedNum === 100) bundleDiscount = 0;
-      else if (speedNum === 500 || speedNum === 1000) bundleDiscount = 5500;
+      if (speedNum === 500 || speedNum === 1000) bundleDiscount = 5500;
     } else if (carrier === 'skb' || carrier === 'skt') {
       if (speedNum === 100) bundleDiscount = 1100;
       else if (speedNum === 500) bundleDiscount = 4400;
@@ -811,13 +496,8 @@ function computePrice(carrier){
   return { available:true, total, internetFee, routerFee: actualRouterFee, tvFee, settopFee, bundleDiscount, tvInfo, settopInfo };
 }
 
-// 모드에 따라 할인 계산에 실제로 사용할 "유효 통신사/요금"을 반환
-// - 기존 유지: 현재 등록된 통신사·요금 그대로
-// - 통신사 변경: 변경 예정 통신사·요금(금액대) 기준
 function getEffectivePhone(p){
-  if (p.mode === 'change') {
-    return { carrier: p.newCarrier, fee: Number(p.newFee) };
-  }
+  if (p.mode === 'change') return { carrier: p.newCarrier, fee: Number(p.newFee) };
   return { carrier: p.carrier, fee: Number(p.fee) };
 }
 
@@ -873,23 +553,9 @@ function renderFamilyPhones(){
   `).join('');
 }
 
-function setPhoneMode(idx, mode){
-  familyPhones[idx].mode = mode;
-  renderFamilyPhones();
-  render();
-}
-
-function addPhoneLine(){
-  familyPhones.push({ carrier:'SKT', fee:69000, mode:'keep', newCarrier:'SKT', newFee:60000 });
-  renderFamilyPhones();
-  render();
-}
-
-function removePhoneLine(idx){
-  familyPhones.splice(idx, 1);
-  renderFamilyPhones();
-  render();
-}
+function setPhoneMode(idx, mode){ familyPhones[idx].mode = mode; renderFamilyPhones(); render(); }
+function addPhoneLine(){ familyPhones.push({ carrier:'SKT', fee:69000, mode:'keep', newCarrier:'SKT', newFee:60000 }); renderFamilyPhones(); render(); }
+function removePhoneLine(idx){ familyPhones.splice(idx, 1); renderFamilyPhones(); render(); }
 
 function updatePhoneLine(idx, field, value){
   if (field === 'fee') {
@@ -913,45 +579,27 @@ function getMatchingMobileCarrier(ispCarrier){
 
 function computeFamilyDiscount(ispCarrier){
   const matchCarrier = getMatchingMobileCarrier(ispCarrier);
-  // "기존 유지" 회선은 기존 통신사·요금, "통신사 변경" 회선은 변경 예정 통신사·요금 기준으로 계산
   const effectivePhones = familyPhones.map(getEffectivePhone);
   const lines = effectivePhones.filter(p => p.carrier === matchCarrier);
   const count = lines.length;
   const speedNum = Number(state.speed);
 
-  if (count === 0) {
-    return { matchCarrier, count:0, internetDiscount:0, mobileDiscount:0, total:0 };
-  }
+  if (count === 0) return { matchCarrier, count:0, internetDiscount:0, mobileDiscount:0, total:0 };
 
   if (matchCarrier === 'KT') {
     const sum = lines.reduce((acc, p) => acc + (Number(p.fee) || 0), 0);
-    const isSlim = speedNum === 100; // 인터넷 슬림(100M) vs 베이직/에센스/프리미엄급(500M·1G)
-
+    const isSlim = speedNum === 100;
     const upperBounds = [22000, 64900, 108900, 141900, 174900, Infinity];
-    const internetVals = isSlim
-      ? [1650, 3300, 5500, 5500, 5500, 5500]
-      : [2200, 5500, 5500, 5500, 5500, 5500];
-    const mobileVals = isSlim
-      ? [0, 0, 3300, 14300, 18700, 23100]
-      : [0, 0, 5500, 16610, 22110, 27610];
-
+    const internetVals = isSlim ? [1650, 3300, 5500, 5500, 5500, 5500] : [2200, 5500, 5500, 5500, 5500, 5500];
+    const mobileVals = isSlim ? [0, 0, 3300, 14300, 18700, 23100] : [0, 0, 5500, 16610, 22110, 27610];
     let idx = upperBounds.findIndex(bound => sum < bound);
     if (idx === -1) idx = upperBounds.length - 1;
-
-    const internetDiscount = internetVals[idx];
-    const mobileDiscount = mobileVals[idx];
-    return { matchCarrier, count, sum, internetDiscount, mobileDiscount, total: internetDiscount + mobileDiscount };
+    return { matchCarrier, count, sum, internetDiscount: internetVals[idx], mobileDiscount: mobileVals[idx], total: internetVals[idx] + mobileVals[idx] };
   }
 
   if (matchCarrier === 'LGU+') {
-    const internetMap = { 100:5500, 500:9900, 1000:13200 };
-    const internetDiscount = internetMap[speedNum] || 0;
-    let countBucket;
-    if (count === 1) countBucket = 1;
-    else if (count === 2) countBucket = 2;
-    else if (count === 3) countBucket = 3;
-    else countBucket = 4; // 4~10회선
-
+    const internetDiscount = { 100:5500, 500:9900, 1000:13200 }[speedNum] || 0;
+    let countBucket = count >= 4 ? 4 : count;
     const matrix = {
       1: { low:0, mid:0, high:0 },
       2: { low:2200, mid:3300, high:4400 },
@@ -961,21 +609,15 @@ function computeFamilyDiscount(ispCarrier){
     let mobileDiscount = 0;
     lines.forEach(p => {
       const fee = Number(p.fee) || 0;
-      let tier = 'low';
-      if (fee >= 88000) tier = 'high';
-      else if (fee >= 69000) tier = 'mid';
+      let tier = fee >= 88000 ? 'high' : (fee >= 69000 ? 'mid' : 'low');
       mobileDiscount += matrix[countBucket][tier];
     });
     return { matchCarrier, count, internetDiscount, mobileDiscount, total: internetDiscount + mobileDiscount };
   }
 
   if (matchCarrier === 'SKT') {
-    const internetMap = { 100:4400, 500:11000, 1000:13200 };
-    const internetDiscount = internetMap[speedNum] || 0;
-    let mobileDiscount;
-    if (count === 1) mobileDiscount = 3500;
-    else if (count === 2) mobileDiscount = 3500 * 2;
-    else mobileDiscount = 6000 * count; // 3회선 이상
+    const internetDiscount = { 100:4400, 500:11000, 1000:13200 }[speedNum] || 0;
+    let mobileDiscount = count === 1 ? 3500 : (count === 2 ? 7000 : 6000 * count);
     return { matchCarrier, count, internetDiscount, mobileDiscount, total: internetDiscount + mobileDiscount };
   }
 
@@ -985,24 +627,13 @@ function computeFamilyDiscount(ispCarrier){
 function renderFamilyDiscountTable(){
   const container = document.getElementById('family-discount-table');
   if (!container) return;
-
-  const rows = CARRIERS.map(carrier => {
-    const fam = computeFamilyDiscount(carrier);
-    return { carrier, ...fam };
-  });
-
+  const rows = CARRIERS.map(carrier => ({ carrier, ...computeFamilyDiscount(carrier) }));
   const changedCount = familyPhones.filter(p => p.mode === 'change').length;
 
   container.innerHTML = `
     <table class="fam-table">
       <thead>
-        <tr>
-          <th>통신사</th>
-          <th>매칭 회선</th>
-          <th>인터넷 할인</th>
-          <th>휴대폰 할인</th>
-          <th>합계</th>
-        </tr>
+        <tr><th>통신사</th><th>매칭 회선</th><th>인터넷 할인</th><th>휴대폰 할인</th><th>합계</th></tr>
       </thead>
       <tbody>
         ${rows.map(r => `
@@ -1017,20 +648,30 @@ function renderFamilyDiscountTable(){
       </tbody>
     </table>
     <div class="fam-table-note">
-      · KT: 총액결합할인 (KT회선 요금제 합산액)<br>
-      · LG: 참쉬운가족결합할인 (LG 회선수 + 요금제 구간)<br>
-      · SKB/SKT: 요즘가족결합할인 (SKT 회선 수 기준으로 계산)<br>
-      · "통신사 변경" 회선은 변경 예정 통신사·요금제 기준으로, "기존 유지" 회선은 기존 통신사·요금제 기준으로 계산됩니다.
-      ${changedCount > 0 ? `<br>· 현재 ${changedCount}개 회선이 "통신사 변경" 상태로, 변경 예정 값 기준 계산 중입니다.` : ''}
-      <br>· 위 금액은 참고용이며 현재 카드의 "총 요금"에는 반영되지 않습니다.
+      · 결합 할인액은 가입 형태 및 결합 회선 조건에 따라 적용됩니다.<br>
+      ${changedCount > 0 ? `· 현재 ${changedCount}개 회선이 "통신사 변경" 예정 기준으로 계산 중입니다.` : ''}
     </div>
   `;
 }
 
-function handleGiftInputChange(carrier, rawVal) {
-  const numVal = parseInt(rawVal.replace(/[^0-9]/g, ''), 10);
-  customGiftValues[carrier] = !isNaN(numVal) ? numVal : 0;
-  render();
+// 📷 [신규 기능] 맞춤 견적서 이미지 저장 함수
+function downloadQuotationImage() {
+  const captureArea = document.getElementById('capture-area');
+  
+  html2canvas(captureArea, {
+    scale: 2, // 고해상도 이미지 저장
+    useCORS: true,
+    backgroundColor: '#F4F2EB'
+  }).then(canvas => {
+    const link = document.createElement('a');
+    const today = new Date().toISOString().slice(0, 10);
+    link.download = `인터넷_TV_맞춤견적서_${today}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  }).catch(err => {
+    alert('견적서 이미지 저장 중 오류가 발생했습니다.');
+    console.error(err);
+  });
 }
 
 function render(){
@@ -1047,7 +688,6 @@ function render(){
 
   document.getElementById('results').innerHTML = results.map(r=>{
     const isBest = r.available && r.total === minTotal;
-    
     let tvLabel = '인터넷 단독';
     if (state.tv !== 'none') {
       if (r.tvInfo) {
@@ -1058,54 +698,20 @@ function render(){
       }
     }
 
-    const comm = COMMISSION_DATA[r.carrier];
     const promo = PROMOTION_DATA[r.carrier];
 
-    let commHtml = '';
-    if (r.available && comm && promo) {
-      const userGiftVal = customGiftValues[r.carrier] !== undefined ? customGiftValues[r.carrier] : promo.maxLimit;
-      const calcCash = Math.max(0, userGiftVal - promo.giftCard);
-      const calcMargin = comm.totalComm - userGiftVal;
-
-      commHtml = `
-        <div class="commission-section">
-          <div class="comm-title">정산 및 혜택 상세</div>
-          <div class="comm-group">
-            <div class="comm-subhead large">💵 실제 지급 사은품 조정</div>
-            <div class="comm-row highlight large" style="margin-bottom: 4px;">
-              <span>· 고객 지급 사은품</span>
-              <div>
-                <input type="text" class="gift-input" value="${userGiftVal.toLocaleString()}" 
-                       onchange="handleGiftInputChange('${r.carrier}', this.value)" onfocus="this.select()"> 원
-              </div>
-            </div>
-            <div class="comm-row large"><span>└ 상품권</span><span>${promo.giftCard.toLocaleString()}원</span></div>
-            <div class="comm-row large"><span>└ 현금</span><span>${calcCash.toLocaleString()}원</span></div>
+    // 고객용 경품고시 최대 혜택 가이드 영역
+    let promoHtml = '';
+    if (r.available && promo) {
+      promoHtml = `
+        <div class="promo-section">
+          <div class="promo-title">🎁 신규가입 고객 최대 혜택 (경품고시 기준)</div>
+          <div class="promo-row highlight">
+            <span>· 총 혜택 지원금</span>
+            <span>${promo.maxLimit.toLocaleString()}원</span>
           </div>
-
-          <div class="comm-group" style="margin-top: 10px; padding-top: 8px; border-top: 2px solid var(--paper-line);">
-            <div class="comm-subhead-row">
-              <div class="comm-subhead">🎁 고객 지급 혜택 (경품고시 가이드)</div>
-              <div class="subtotal">${promo.maxLimit.toLocaleString()}원</div>
-            </div>
-            <div class="comm-row"><span>· 상품권</span><span>${promo.giftCard.toLocaleString()}원</span></div>
-            <div class="comm-row"><span>· 현금 가이드</span><span>${promo.cash.toLocaleString()}원</span></div>
-          </div>
-
-          <div class="comm-group" style="margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--paper-line);">
-            <div class="comm-subhead-row">
-              <div class="comm-subhead">💼 대리점 판매 수수료 (정산금)</div>
-              <div class="subtotal">${comm.totalComm.toLocaleString()}원</div>
-            </div>
-            <div class="comm-row"><span>· 인터넷 수수료</span><span>${comm.internetComm.toLocaleString()}원</span></div>
-            ${state.tv !== 'none' ? `<div class="comm-row"><span>· TV 수수료</span><span>${comm.tvComm.toLocaleString()}원</span></div>` : ''}
-          </div>
-
-          <div class="comm-group" style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--paper-line);">
-            <div class="comm-row highlight margin-text" style="color:${calcMargin >= 0 ? '#1E7E34' : '#D9534F'};">
-              <span>📊 대리점 최종 마진</span><span>${calcMargin.toLocaleString()}원</span>
-            </div>
-          </div>
+          <div class="promo-row"><span>└ 백화점 상품권</span><span>${promo.giftCard.toLocaleString()}원</span></div>
+          <div class="promo-row"><span>└ 현금 지원금</span><span>${promo.cash.toLocaleString()}원</span></div>
         </div>
       `;
     }
@@ -1114,7 +720,6 @@ function render(){
       <div class="card ${isBest ? 'best' : ''}" data-brand="${r.carrier}">
         <div class="card-head">
           ${isBest ? '<div class="best-tag">최저가</div>' : ''}
-          <p class="brand">${comm && comm.startAt ? formatStartAt(comm.startAt) : ''}</p>
           <p class="plan-name">${BRAND_LABEL[r.carrier]} / ${tvLabel || '미제공'}</p>
         </div>
         <div class="price-block">
@@ -1131,7 +736,7 @@ function render(){
             ` : ''}
           ` : ''}
         </div>
-        ${commHtml}
+        ${promoHtml}
       </div>
     `;
   }).join('');
@@ -1140,7 +745,6 @@ function render(){
 }
 
 (async function init(){
-  displayLastModified();
   setupSeg('seg-speed','speed');
   setupSeg('seg-tv','tv');
   setupSeg('seg-settop','settopTier');
