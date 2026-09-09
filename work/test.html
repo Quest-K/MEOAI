@@ -1,98 +1,320 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8">
-<title>RPC 권한 체크 테스트</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<style>
-  body{ font-family: -apple-system, sans-serif; max-width:560px; margin:40px auto; padding:0 16px; color:#222; }
-  h1{ font-size:20px; }
-  section{ border:1px solid #ddd; border-radius:8px; padding:16px; margin-bottom:16px; }
-  label{ display:block; font-size:13px; color:#666; margin-bottom:4px; margin-top:10px; }
-  input{ width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px; font-size:14px; }
-  button{ margin-top:12px; padding:9px 16px; border:none; border-radius:4px; background:#2C2E35; color:#fff; font-size:14px; cursor:pointer; }
-  button:hover{ background:#444; }
-  button.secondary{ background:#eee; color:#222; }
-  #status{ font-family:monospace; font-size:13px; padding:10px; background:#f6f6f6; border-radius:4px; white-space:pre-wrap; word-break:break-all; }
-  #result{ font-family:monospace; font-size:12.5px; padding:10px; background:#f6f6f6; border-radius:4px; white-space:pre-wrap; word-break:break-all; max-height:300px; overflow:auto; }
-  .ok{ color:#1E7E34; } .err{ color:#D9534F; }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>인터넷 가입 및 사은품 환수 동의서</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .signature-canvas {
+            touch-action: none;
+        }
+    </style>
 </head>
-<body>
+<body class="bg-slate-50 text-slate-800 min-h-screen py-8 px-4 sm:px-6 lg:px-8">
 
-<h1>RPC 권한 체크 테스트 (get_admin_commissions)</h1>
+    <div class="max-w-2xl mx-auto bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-100">
+        
+        <!-- Header -->
+        <div class="bg-gradient-to-r from-blue-600 to-indigo-700 px-6 py-6 text-white text-center">
+            <h1 class="text-2xl font-bold tracking-tight">인터넷 가입 및 사은품 환수 동의서</h1>
+            <p class="text-blue-100 text-sm mt-1">안전하고 투명한 가입 처리를 위한 필수 확인 및 동의 페이지입니다.</p>
+        </div>
 
-<section>
-  <label>Email</label>
-  <input id="email" type="email" placeholder="meo0623@naver.com">
-  <label>Password</label>
-  <input id="password" type="password">
-  <button onclick="login()">로그인</button>
-  <button class="secondary" onclick="logout()">로그아웃</button>
-</section>
+        <form id="agreementForm" class="p-6 sm:p-8 space-y-6">
 
-<section>
-  <strong>현재 세션 상태</strong>
-  <div id="status" style="margin-top:8px;">확인 전</div>
-  <button class="secondary" onclick="checkSession()">세션 확인</button>
-</section>
+            <!-- Customer Information Section -->
+            <div class="space-y-4">
+                <h2 class="text-lg font-semibold text-slate-900 border-b pb-2 flex items-center justify-between">
+                    <span>1. 고객 및 사은품 수령 정보 입력</span>
+                    <span class="text-xs font-normal text-red-500">* 필수 입력</span>
+                </h2>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">고객 성명</label>
+                        <input type="text" id="custName" required placeholder="홍길동" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">연락처</label>
+                        <input type="tel" id="custPhone" required placeholder="010-0000-0000" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-sm">
+                    </div>
+                </div>
 
-<section>
-  <strong>RPC 호출 테스트</strong>
-  <div style="margin:8px 0; font-size:13px; color:#666;">
-    로그인 전 / 후 두 상태 모두에서 눌러보고 결과를 비교하세요.
-  </div>
-  <button onclick="callRpc()">get_admin_commissions() 호출</button>
-  <div id="result" style="margin-top:10px;">결과 없음</div>
-</section>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">설치 주소</label>
+                    <input type="text" id="custAddress" required placeholder="서울특별시 강남구 테헤란로 123" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-sm">
+                </div>
 
-<script>
-// 기존 프로젝트와 동일한 URL / anon key 사용 (anon key는 원래 클라이언트 노출용 값입니다)
-const SUPABASE_URL = 'https://jhfhpumhifyhauuoinxc.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpoZmhwdW1oaWZ5aGF1dW9pbnhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0MDE2NTMsImV4cCI6MjEwMzk3NzY1M30.euXk3eXtUVvEQRDGgcLhvX3JhVlpv9D7fZUEDr0i8yA';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">사은품 수령 은행</label>
+                        <input type="text" id="bankName" required placeholder="국민은행" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">예금주</label>
+                        <input type="text" id="accountHolder" required placeholder="홍길동" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">계좌번호</label>
+                        <input type="text" id="accountNumber" required placeholder="'-' 없이 숫자만 입력" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-sm">
+                    </div>
+                </div>
+            </div>
 
-async function login(){
-  const email = document.getElementById('email').value.trim();
-  const password = document.getElementById('password').value;
-  const { data, error } = await sb.auth.signInWithPassword({ email, password });
-  if (error) {
-    document.getElementById('status').innerHTML = `<span class="err">로그인 실패: ${error.message}</span>`;
-    return;
-  }
-  await checkSession();
-}
+            <!-- Required Notices Section -->
+            <div class="space-y-4 pt-2">
+                <div class="flex items-center justify-between border-b pb-2">
+                    <h2 class="text-lg font-semibold text-slate-900">2. 필수 안내 사항 확인</h2>
+                    <button type="button" id="toggleAllNotices" class="text-xs text-blue-600 hover:underline font-medium">전체 펼치기/접기</button>
+                </div>
 
-async function logout(){
-  await sb.auth.signOut();
-  await checkSession();
-}
+                <div class="space-y-3 text-sm">
+                    <!-- Notice Item 1 -->
+                    <div class="border border-slate-200 rounded-lg overflow-hidden">
+                        <button type="button" class="notice-accordion w-full px-4 py-3 bg-slate-50 flex justify-between items-center text-left font-medium text-slate-700 hover:bg-slate-100 transition">
+                            <span>[요금 / 사은품 안내] 보기</span>
+                            <svg class="w-4 h-4 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </button>
+                        <div class="notice-content hidden p-4 bg-white text-slate-600 text-xs leading-relaxed space-y-1 border-t border-slate-100">
+                            <p>• 총 요금 및 사은품(현금/상품권) 지급 금액은 상담 내용을 기준으로 합니다.</p>
+                            <p>• 현금 지급은 설치 이후 연락 주시면 당일 혹은 다음 영업일로 지급됩니다.</p>
+                            <p>• 상품권은 설치 후 통신사에서 직접 지급으로 2~3일 소요될 수 있습니다.</p>
+                        </div>
+                    </div>
 
-async function checkSession(){
-  const { data: { session } } = await sb.auth.getSession();
-  const el = document.getElementById('status');
-  if (session) {
-    el.innerHTML =
-      `<span class="ok">로그인됨</span>\nemail: ${session.user.email}\nuid: ${session.user.id}`;
-  } else {
-    el.innerHTML = `<span class="err">비로그인 상태 (anon)</span>`;
-  }
-}
+                    <!-- Notice Item 2 -->
+                    <div class="border border-slate-200 rounded-lg overflow-hidden">
+                        <button type="button" class="notice-accordion w-full px-4 py-3 bg-slate-50 flex justify-between items-center text-left font-medium text-slate-700 hover:bg-slate-100 transition">
+                            <span>[회선 수 안내] 보기</span>
+                            <svg class="w-4 h-4 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </button>
+                        <div class="notice-content hidden p-4 bg-white text-slate-600 text-xs leading-relaxed space-y-1 border-t border-slate-100">
+                            <p>• 가정용 인터넷은 기본적으로 2대까지만 무료로 접속이 가능합니다.</p>
+                            <p>• 3대 이상 동시에 연결해서 쓰시게 될 경우 통신사를 통해 추가 5,500원의 부가서비스를 가입하셔야 정상 이용이 가능합니다.</p>
+                        </div>
+                    </div>
 
-async function callRpc(){
-  const el = document.getElementById('result');
-  el.textContent = '호출 중...';
-  const { data, error } = await sb.rpc('get_admin_commissions');
-  if (error) {
-    el.innerHTML = `<span class="err">에러 (차단됨 또는 미배포 상태)\n\ncode: ${error.code || '-'}\nmessage: ${error.message}</span>`;
-    return;
-  }
-  el.innerHTML = `<span class="ok">성공 (${data ? data.length : 0}건)</span>\n\n` + JSON.stringify(data, null, 2);
-}
+                    <!-- Notice Item 3 -->
+                    <div class="border border-slate-200 rounded-lg overflow-hidden">
+                        <button type="button" class="notice-accordion w-full px-4 py-3 bg-slate-50 flex justify-between items-center text-left font-medium text-slate-700 hover:bg-slate-100 transition">
+                            <span>[기존 회선 해지 안내] 보기</span>
+                            <svg class="w-4 h-4 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </button>
+                        <div class="notice-content hidden p-4 bg-white text-slate-600 text-xs leading-relaxed space-y-1 border-t border-slate-100">
+                            <p>• 기존에 쓰시던 통신사 인터넷과 TV는 당사에서 대신 해지해 드리지 못합니다.</p>
+                            <p>• 신규 설치가 끝난 후에 고객님께서 직접 기존 통신사 고객센터로 연락하셔서 해지 신청을 하셔야 합니다.</p>
+                            <p>• 이중 부과되는 요금은 당사가 대행할 수 없으므로 반드시 설치 후 직접 해지 전화를 넣어주셔야 합니다.</p>
+                        </div>
+                    </div>
 
-// 페이지 진입 시 현재 세션 자동 표시
-checkSession();
-</script>
+                    <!-- Notice Item 4 -->
+                    <div class="border border-slate-200 rounded-lg overflow-hidden">
+                        <button type="button" class="notice-accordion w-full px-4 py-3 bg-slate-50 flex justify-between items-center text-left font-medium text-slate-700 hover:bg-slate-100 transition">
+                            <span>[결합할인 안내] 보기</span>
+                            <svg class="w-4 h-4 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </button>
+                        <div class="notice-content hidden p-4 bg-white text-slate-600 text-xs leading-relaxed space-y-1 border-t border-slate-100">
+                            <p>• 휴대폰 결합 할인은 설치가 완전히 끝난 안전한 상태에서 진행하셔야 합니다.</p>
+                            <p>• 설치 받으신 후에 사용하시는 통신사 고객센터로 전화하셔서 현재 요금제와 명의, 가족 회선을 확인하시고 결합 혜택을 챙기시기 바랍니다.</p>
+                        </div>
+                    </div>
 
+                    <!-- Notice Item 5 -->
+                    <div class="border border-slate-200 rounded-lg overflow-hidden">
+                        <button type="button" class="notice-accordion w-full px-4 py-3 bg-slate-50 flex justify-between items-center text-left font-medium text-slate-700 hover:bg-slate-100 transition">
+                            <span>[약정 안내] 보기</span>
+                            <svg class="w-4 h-4 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </button>
+                        <div class="notice-content hidden p-4 bg-white text-slate-600 text-xs leading-relaxed space-y-1 border-t border-slate-100">
+                            <p>• 약정은 모든 통신사 공통으로 3년(36개월) 기준입니다.</p>
+                            <p>• 3년 약정 기간이 끝나기 전에 개인 사정으로 해지하게 되면 받았던 혜택에 대한 위약금이 청구되니 이 기간은 꼭 채워주셔야 합니다.</p>
+                        </div>
+                    </div>
+
+                    <!-- Notice Item 6 - CRITICAL: Return Policy -->
+                    <div class="border-2 border-red-200 bg-red-50/50 rounded-lg overflow-hidden">
+                        <button type="button" class="notice-accordion w-full px-4 py-3 bg-red-50 flex justify-between items-center text-left font-semibold text-red-700 hover:bg-red-100 transition">
+                            <span>[필수 핵심] 사은품 환수 조건 안내 (클릭하여 확인)</span>
+                            <svg class="w-4 h-4 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </button>
+                        <div class="notice-content hidden p-4 bg-white text-red-900 text-xs leading-relaxed space-y-2 border-t border-red-200 font-medium">
+                            <p>• 당사가 챙겨드리는 사은품은 약속된 조건을 유지하는 조건으로 지급되는 것입니다.</p>
+                            <p class="font-bold underline">• 가입 후 1년 이내에 임의로 정지, 명의 변경, 혹은 해지하시는 등 유지를 못 할 사유가 발생하면 사은품이 전액 환수됩니다.</p>
+                            <p>• 특히 현재 본인이나 가족 명의로 이미 해당 통신사 상품을 쓰고 계신 경우 기존 사용하시던 상품도 무조건 1년 이상은 꼭 유지해 주셔야 사은품 토해내는 일(환수)이 없습니다.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Total Agreement & Signature Section -->
+            <div class="space-y-4 pt-4 border-t border-slate-200">
+                <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start space-x-3">
+                    <input type="checkbox" id="agreeAll" required class="mt-1 h-5 w-5 text-blue-600 focus:ring-blue-500 border-slate-300 rounded cursor-pointer">
+                    <label for="agreeAll" class="text-sm font-semibold text-slate-900 cursor-pointer">
+                        [필수] 상기 요금, 회선수, 기존회선 해지, 결합할인, 약정 및 <span class="text-red-600">1년 이내 해지·정지·명의변경 시 사은품 전액 환수 조건</span>을 모두 확인하였으며 이에 전적으로 동의합니다.
+                    </label>
+                </div>
+
+                <!-- Signature Canvas Area -->
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label class="block text-sm font-medium text-slate-700">전자 서명 <span class="text-red-500">*</span></label>
+                        <button type="button" id="clearBtn" class="text-xs text-slate-500 hover:text-red-600 underline">서명 지우기</button>
+                    </div>
+                    <div class="border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 relative overflow-hidden">
+                        <canvas id="sigCanvas" class="signature-canvas w-full h-40 cursor-crosshair"></canvas>
+                        <div id="canvasPlaceholder" class="absolute inset-0 flex items-center justify-center text-slate-400 pointer-events-none text-sm font-medium">
+                            여기에 서명해 주세요
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Submit Button -->
+            <div>
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3.5 px-6 rounded-xl shadow-md transition duration-200 flex items-center justify-center space-x-2 text-base">
+                    <span>동의 및 가입 신청 완료</span>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                </button>
+            </div>
+
+        </form>
+    </div>
+
+    <!-- Success Modal -->
+    <div id="successModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl animate-fade-in">
+            <div class="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-2xl font-bold">✓</div>
+            <h3 class="text-xl font-bold text-slate-900">제출이 완료되었습니다!</h3>
+            <p class="text-sm text-slate-600">고객님의 동의 내역과 전자서명이 안전하게 저장되었습니다. 담당자 확인 후 신속하게 처리해 드리겠습니다.</p>
+            <button type="button" id="closeModalBtn" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-2.5 rounded-xl transition text-sm">확인</button>
+        </div>
+    </div>
+
+    <script>
+        // Accordion functionality
+        document.querySelectorAll('.notice-accordion').forEach(button => {
+            button.addEventListener('click', () => {
+                const content = button.nextElementSibling;
+                const icon = button.querySelector('svg');
+                content.classList.toggle('hidden');
+                icon.classList.toggle('rotate-180');
+            });
+        });
+
+        // Toggle all notices expand/collapse
+        let allExpanded = false;
+        document.getElementById('toggleAllNotices').addEventListener('click', () => {
+            allExpanded = !allExpanded;
+            document.querySelectorAll('.notice-content').forEach(content => {
+                if (allExpanded) content.classList.remove('hidden');
+                else content.classList.add('hidden');
+            });
+            document.querySelectorAll('.notice-accordion svg').forEach(icon => {
+                if (allExpanded) icon.classList.add('rotate-180');
+                else icon.classList.remove('rotate-180');
+            });
+            document.getElementById('toggleAllNotices').textContent = allExpanded ? '전체 접기' : '전체 펼치기/접기';
+        });
+
+        // Signature Canvas setup
+        const canvas = document.getElementById('sigCanvas');
+        const ctx = canvas.getContext('2d');
+        const placeholder = document.getElementById('canvasPlaceholder');
+        let isDrawing = false;
+        let hasSigned = false;
+
+        function resizeCanvas() {
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function getPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return {
+                x: clientX - rect.left,
+                y: clientY - rect.top
+            };
+        }
+
+        function startDraw(e) {
+            isDrawing = true;
+            hasSigned = true;
+            placeholder.style.display = 'none';
+            const pos = getPos(e);
+            ctx.beginPath();
+            ctx.moveTo(pos.x, pos.y);
+            e.preventDefault();
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            const pos = getPos(e);
+            ctx.lineWidth = 2.5;
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineTo(pos.x, pos.y);
+            ctx.stroke();
+            e.preventDefault();
+        }
+
+        function stopDraw() {
+            isDrawing = false;
+        }
+
+        canvas.addEventListener('mousedown', startDraw);
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('mouseup', stopDraw);
+        canvas.addEventListener('mouseleave', stopDraw);
+
+        canvas.addEventListener('touchstart', startDraw);
+        canvas.addEventListener('touchmove', draw);
+        canvas.addEventListener('touchend', stopDraw);
+
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            hasSigned = false;
+            placeholder.style.display = 'flex';
+        });
+
+        // Form Submission
+        const form = document.getElementById('agreementForm');
+        const modal = document.getElementById('successModal');
+
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            if (!hasSigned) {
+                alert('전자 서명을 진행해 주세요.');
+                return;
+            }
+            if (!document.getElementById('agreeAll').checked) {
+                alert('필수 안내 사항 및 환수 조건에 동의해 주세요.');
+                return;
+            }
+
+            // Here you can collect form data + canvas.toDataURL() for backend transmission
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        });
+
+        document.getElementById('closeModalBtn').addEventListener('click', () => {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            form.reset();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            hasSigned = false;
+            placeholder.style.display = 'flex';
+        });
+    </script>
 </body>
 </html>
