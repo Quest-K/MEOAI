@@ -160,7 +160,6 @@
     cursor:not-allowed;
     background:#EAE8E1;
   }
-  /* TV 요금제 4개 버튼을 항상 한 줄로 배치 */
   #seg-tv{
     flex-wrap:nowrap;
   }
@@ -176,7 +175,6 @@
     #seg-tv button{ flex:1 1 45%; }
   }
 
-  /* 주요 4개 통신사 (KT, LG, SKB, SKT) 4열 배치 */
   .results{
     display:grid;
     grid-template-columns:repeat(4, 1fr);
@@ -510,13 +508,13 @@
 
   <div class="top-grid">
     <header>
-      <h1>통신사별 요금 및 경품고시 비교</h1>
+      <h1>통신사별 요금 및 가입 혜택 비교</h1>
       <p>속도와 TV 요금제 옵션에 따른 월 요금과 경품고시 가이드 기준 혜택을 실시간 확인하세요.</p>
     </header>
 
     <div id="status-banner">
       <div class="banner-header">
-        <div class="title">🔍 Supabase 테이블 연동 현황 (KT / LG / SKB / SKT 비교)</div>
+        <div class="title">🔍 요금제 데이터 연동 현황</div>
         <div class="last-modified" id="last-updated">최종 수정: -</div>
       </div>
       <div id="banner-logs">데이터 연동을 확인 중입니다...</div>
@@ -602,7 +600,6 @@ const TV_TIER_MAP = {
 const SPEED_LABEL = { 100:'100M', 500:'500M', 1000:'1기가' };
 const ROUTER_LABEL = { N:'미포함', Y:'포함' };
 
-// 가족 휴대폰 결합 - "통신사 변경" 선택 시 사용할 요금제 금액대 (3만원대 ~ 9만원대, 1만원 단위)
 const FEE_RANGES = [
   { value: 30000, label: '3만원대' },
   { value: 40000, label: '4만원대' },
@@ -614,16 +611,13 @@ const FEE_RANGES = [
 ];
 
 let DATA = null;
-let COMMISSION_DATA = {};
 let PROMOTION_DATA = {};
-let customGiftValues = {};
 let state = { speed:'500', tv:'basic', settopTier:'basic', router:'Y' };
 let familyPhones = [];
 let logs = [];
 
 function formatStartAt(date){
   if (!date) return null;
-  // DB에 저장된 값이 이미 한국시간(KST) 기준이므로, 타임존 변환 없이 저장된 숫자 그대로 표시
   const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
   const dd = String(date.getUTCDate()).padStart(2, '0');
   const hh = String(date.getUTCHours()).padStart(2, '0');
@@ -689,39 +683,23 @@ function normalizeSpeedValue(v){
   const s = String(v).trim();
   const num = parseFloat(s.replace(/,/g, ''));
   if (isNaN(num)) return null;
-  // "1G", "1기가" 처럼 G/기가 단위이면서 M이 없는 경우만 ×1000 처리 (1G -> 1000)
   if (/(g|기가)/i.test(s) && !/m/i.test(s)) return num * 1000;
-  return num; // "500M", "500", 500(number) 등은 그대로
+  return num;
 }
 
 async function loadFinanceData() {
   const targetSpeed = Number(state.speed);
-  const tvTierForComm = state.tv;
   const tvTierForPromo = state.tv === 'none' ? 'none' : 'all';
 
-  const [commRes, promoRes] = await Promise.all([
-    sb.from('carrier_commissions').select('*'),
+  const [promoRes] = await Promise.all([
     sb.from('carrier_promotions').select('*').eq('tv_tier', tvTierForPromo)
   ]);
 
-  addLog('carrier_commissions', !commRes.error, commRes.error ? commRes.error.message : `${commRes.data?.length || 0}건 조회`);
   addLog('carrier_promotions', !promoRes.error, promoRes.error ? promoRes.error.message : `${promoRes.data?.length || 0}건 조회`);
 
-  COMMISSION_DATA = {};
   PROMOTION_DATA = {};
 
   CARRIERS.forEach(carrier => {
-    const commRows = commRes.data
-      ? commRes.data.filter(r => String(r.carrier).toLowerCase() === carrier && normalizeSpeedValue(r.speed) === targetSpeed)
-      : [];
-    const internetComm = commRows.find(r => String(r.tv_tier) === 'none')?.commission_amount || 0;
-    const tvComm = tvTierForComm !== 'none' ? (commRows.find(r => String(r.tv_tier) === tvTierForComm)?.commission_amount || 0) : 0;
-
-    const startAtTimes = commRows.map(r => r.start_at).filter(Boolean).map(v => new Date(v)).filter(d => !isNaN(d.getTime()));
-    const startAt = startAtTimes.length ? new Date(Math.max(...startAtTimes.map(d => d.getTime()))) : null;
-
-    COMMISSION_DATA[carrier] = { internetComm, tvComm, totalComm: internetComm + tvComm, startAt };
-
     const promoRow = promoRes.data
       ? promoRes.data.find(r => String(r.carrier).toLowerCase() === carrier && normalizeSpeedValue(r.speed) === targetSpeed)
       : null;
@@ -811,9 +789,6 @@ function computePrice(carrier){
   return { available:true, total, internetFee, routerFee: actualRouterFee, tvFee, settopFee, bundleDiscount, tvInfo, settopInfo };
 }
 
-// 모드에 따라 할인 계산에 실제로 사용할 "유효 통신사/요금"을 반환
-// - 기존 유지: 현재 등록된 통신사·요금 그대로
-// - 통신사 변경: 변경 예정 통신사·요금(금액대) 기준
 function getEffectivePhone(p){
   if (p.mode === 'change') {
     return { carrier: p.newCarrier, fee: Number(p.newFee) };
@@ -913,7 +888,6 @@ function getMatchingMobileCarrier(ispCarrier){
 
 function computeFamilyDiscount(ispCarrier){
   const matchCarrier = getMatchingMobileCarrier(ispCarrier);
-  // "기존 유지" 회선은 기존 통신사·요금, "통신사 변경" 회선은 변경 예정 통신사·요금 기준으로 계산
   const effectivePhones = familyPhones.map(getEffectivePhone);
   const lines = effectivePhones.filter(p => p.carrier === matchCarrier);
   const count = lines.length;
@@ -925,7 +899,7 @@ function computeFamilyDiscount(ispCarrier){
 
   if (matchCarrier === 'KT') {
     const sum = lines.reduce((acc, p) => acc + (Number(p.fee) || 0), 0);
-    const isSlim = speedNum === 100; // 인터넷 슬림(100M) vs 베이직/에센스/프리미엄급(500M·1G)
+    const isSlim = speedNum === 100;
 
     const upperBounds = [22000, 64900, 108900, 141900, 174900, Infinity];
     const internetVals = isSlim
@@ -950,7 +924,7 @@ function computeFamilyDiscount(ispCarrier){
     if (count === 1) countBucket = 1;
     else if (count === 2) countBucket = 2;
     else if (count === 3) countBucket = 3;
-    else countBucket = 4; // 4~10회선
+    else countBucket = 4;
 
     const matrix = {
       1: { low:0, mid:0, high:0 },
@@ -975,7 +949,7 @@ function computeFamilyDiscount(ispCarrier){
     let mobileDiscount;
     if (count === 1) mobileDiscount = 3500;
     else if (count === 2) mobileDiscount = 3500 * 2;
-    else mobileDiscount = 6000 * count; // 3회선 이상
+    else mobileDiscount = 6000 * count;
     return { matchCarrier, count, internetDiscount, mobileDiscount, total: internetDiscount + mobileDiscount };
   }
 
@@ -1027,12 +1001,6 @@ function renderFamilyDiscountTable(){
   `;
 }
 
-function handleGiftInputChange(carrier, rawVal) {
-  const numVal = parseInt(rawVal.replace(/[^0-9]/g, ''), 10);
-  customGiftValues[carrier] = !isNaN(numVal) ? numVal : 0;
-  render();
-}
-
 function render(){
   if (!DATA) return;
 
@@ -1058,53 +1026,20 @@ function render(){
       }
     }
 
-    const comm = COMMISSION_DATA[r.carrier];
     const promo = PROMOTION_DATA[r.carrier];
 
-    let commHtml = '';
-    if (r.available && comm && promo) {
-      const userGiftVal = customGiftValues[r.carrier] !== undefined ? customGiftValues[r.carrier] : promo.maxLimit;
-      const calcCash = Math.max(0, userGiftVal - promo.giftCard);
-      const calcMargin = comm.totalComm - userGiftVal;
-
-      commHtml = `
+    let benefitHtml = '';
+    if (r.available && promo) {
+      benefitHtml = `
         <div class="commission-section">
-          <div class="comm-title">정산 및 혜택 상세</div>
+          <div class="comm-title">가입 혜택 안내</div>
           <div class="comm-group">
-            <div class="comm-subhead large">💵 실제 지급 사은품 조정</div>
-            <div class="comm-row highlight large" style="margin-bottom: 4px;">
-              <span>· 고객 지급 사은품</span>
-              <div>
-                <input type="text" class="gift-input" value="${userGiftVal.toLocaleString()}" 
-                       onchange="handleGiftInputChange('${r.carrier}', this.value)" onfocus="this.select()"> 원
-              </div>
-            </div>
-            <div class="comm-row large"><span>└ 상품권</span><span>${promo.giftCard.toLocaleString()}원</span></div>
-            <div class="comm-row large"><span>└ 현금</span><span>${calcCash.toLocaleString()}원</span></div>
-          </div>
-
-          <div class="comm-group" style="margin-top: 10px; padding-top: 8px; border-top: 2px solid var(--paper-line);">
             <div class="comm-subhead-row">
-              <div class="comm-subhead">🎁 고객 지급 혜택 (경품고시 가이드)</div>
+              <div class="comm-subhead large">🎁 총 혜택</div>
               <div class="subtotal">${promo.maxLimit.toLocaleString()}원</div>
             </div>
-            <div class="comm-row"><span>· 상품권</span><span>${promo.giftCard.toLocaleString()}원</span></div>
-            <div class="comm-row"><span>· 현금 가이드</span><span>${promo.cash.toLocaleString()}원</span></div>
-          </div>
-
-          <div class="comm-group" style="margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--paper-line);">
-            <div class="comm-subhead-row">
-              <div class="comm-subhead">💼 대리점 판매 수수료 (정산금)</div>
-              <div class="subtotal">${comm.totalComm.toLocaleString()}원</div>
-            </div>
-            <div class="comm-row"><span>· 인터넷 수수료</span><span>${comm.internetComm.toLocaleString()}원</span></div>
-            ${state.tv !== 'none' ? `<div class="comm-row"><span>· TV 수수료</span><span>${comm.tvComm.toLocaleString()}원</span></div>` : ''}
-          </div>
-
-          <div class="comm-group" style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--paper-line);">
-            <div class="comm-row highlight margin-text" style="color:${calcMargin >= 0 ? '#1E7E34' : '#D9534F'};">
-              <span>📊 대리점 최종 마진</span><span>${calcMargin.toLocaleString()}원</span>
-            </div>
+            <div class="comm-row large"><span>· 상품권</span><span>${promo.giftCard.toLocaleString()}원</span></div>
+            <div class="comm-row large"><span>· 현금</span><span>${promo.cash.toLocaleString()}원</span></div>
           </div>
         </div>
       `;
@@ -1114,7 +1049,6 @@ function render(){
       <div class="card ${isBest ? 'best' : ''}" data-brand="${r.carrier}">
         <div class="card-head">
           ${isBest ? '<div class="best-tag">최저가</div>' : ''}
-          <p class="brand">${comm && comm.startAt ? formatStartAt(comm.startAt) : ''}</p>
           <p class="plan-name">${BRAND_LABEL[r.carrier]} / ${tvLabel || '미제공'}</p>
         </div>
         <div class="price-block">
@@ -1131,7 +1065,7 @@ function render(){
             ` : ''}
           ` : ''}
         </div>
-        ${commHtml}
+        ${benefitHtml}
       </div>
     `;
   }).join('');
