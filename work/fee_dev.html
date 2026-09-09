@@ -314,11 +314,62 @@
     flex-direction:column;
     gap:26px;
   }
+  .phone-line{
+    border:1px solid var(--paper-line);
+    border-radius:var(--radius);
+    padding:10px 12px;
+    margin-bottom:8px;
+    background:#FAFAF7;
+  }
+  .mode-toggle{
+    display:flex;
+    gap:6px;
+    margin-bottom:8px;
+  }
+  .mode-toggle button{
+    appearance:none;
+    border:1px solid var(--paper-line);
+    background:#FFFFFF;
+    color:var(--ink-dim);
+    padding:4px 11px;
+    font-size:11.5px;
+    font-weight:600;
+    border-radius:4px;
+    cursor:pointer;
+    transition:all .15s ease;
+  }
+  .mode-toggle button.active{
+    background:var(--gold);
+    border-color:var(--gold);
+    color:#fff;
+  }
+  .mode-toggle button:hover:not(.active){ border-color:var(--gold); }
   .phone-row{
     display:flex;
     gap:8px;
     align-items:center;
-    margin-bottom:8px;
+    flex-wrap:wrap;
+  }
+  .new-block{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding-left:12px;
+    border-left:2px dashed var(--gold);
+  }
+  .new-block .arrow{
+    font-size:12.5px;
+    color:var(--gold);
+    font-weight:700;
+    margin-right:1px;
+  }
+  .new-block-label{
+    font-family:'Inconsolata', monospace;
+    font-size:10.5px;
+    color:var(--gold);
+    font-weight:700;
+    margin-right:1px;
+    white-space:nowrap;
   }
   .phone-select{
     padding:8px 10px;
@@ -327,6 +378,15 @@
     border:1px solid var(--paper-line);
     border-radius:4px;
     background:#FAFAF7;
+    color:var(--ink);
+  }
+  .fee-range-select{
+    padding:8px 10px;
+    font-family:'Pretendard', sans-serif;
+    font-size:13.5px;
+    border:1px solid var(--paper-line);
+    border-radius:4px;
+    background:#FFFFFF;
     color:var(--ink);
   }
   .phone-fee-input{
@@ -340,7 +400,7 @@
     background:#FFFFFF;
     color:#1C1E24;
   }
-  .phone-fee-input:focus, .phone-select:focus{ outline:none; border-color:var(--gold); }
+  .phone-fee-input:focus, .phone-select:focus, .fee-range-select:focus{ outline:none; border-color:var(--gold); }
   .phone-unit{ font-size:12.5px; color:var(--ink-dim); }
   .phone-remove-btn{
     appearance:none;
@@ -351,6 +411,7 @@
     font-size:12.5px;
     border-radius:4px;
     cursor:pointer;
+    margin-left:auto;
   }
   .phone-remove-btn:hover{ background:#FDEDEC; }
   .add-phone-btn{
@@ -516,6 +577,17 @@ const TV_TIER_MAP = {
 
 const SPEED_LABEL = { 100:'100M', 500:'500M', 1000:'1기가' };
 const ROUTER_LABEL = { N:'미포함', Y:'포함' };
+
+// 가족 휴대폰 결합 - "통신사 변경" 선택 시 사용할 요금제 금액대 (3만원대 ~ 9만원대, 1만원 단위)
+const FEE_RANGES = [
+  { value: 30000, label: '3만원대' },
+  { value: 40000, label: '4만원대' },
+  { value: 50000, label: '5만원대' },
+  { value: 60000, label: '6만원대' },
+  { value: 70000, label: '7만원대' },
+  { value: 80000, label: '8만원대' },
+  { value: 90000, label: '9만원대' }
+];
 
 let DATA = null;
 let COMMISSION_DATA = {};
@@ -715,6 +787,28 @@ function computePrice(carrier){
   return { available:true, total, internetFee, routerFee: actualRouterFee, tvFee, settopFee, bundleDiscount, tvInfo, settopInfo };
 }
 
+// 모드에 따라 할인 계산에 실제로 사용할 "유효 통신사/요금"을 반환
+// - 기존 유지: 현재 등록된 통신사·요금 그대로
+// - 통신사 변경: 변경 예정 통신사·요금(금액대) 기준
+function getEffectivePhone(p){
+  if (p.mode === 'change') {
+    return { carrier: p.newCarrier, fee: Number(p.newFee) };
+  }
+  return { carrier: p.carrier, fee: Number(p.fee) };
+}
+
+function carrierOptions(selected){
+  return ['SKT','KT','LGU+'].map(c =>
+    `<option value="${c}" ${selected===c?'selected':''}>${c === 'LGU+' ? 'LG U+' : c}</option>`
+  ).join('');
+}
+
+function feeRangeOptions(selected){
+  return FEE_RANGES.map(r =>
+    `<option value="${r.value}" ${Number(selected)===Number(r.value)?'selected':''}>${r.label}</option>`
+  ).join('');
+}
+
 function renderFamilyPhones(){
   const container = document.getElementById('family-phone-list');
   if (!container) return;
@@ -723,22 +817,46 @@ function renderFamilyPhones(){
     return;
   }
   container.innerHTML = familyPhones.map((p, idx) => `
-    <div class="phone-row">
-      <select class="phone-select" onchange="updatePhoneLine(${idx}, 'carrier', this.value)">
-        <option value="SKT" ${p.carrier==='SKT'?'selected':''}>SKT</option>
-        <option value="KT" ${p.carrier==='KT'?'selected':''}>KT</option>
-        <option value="LGU+" ${p.carrier==='LGU+'?'selected':''}>LG U+</option>
-      </select>
-      <input type="text" class="phone-fee-input" value="${(p.fee||0).toLocaleString()}"
-             onchange="updatePhoneLine(${idx}, 'fee', this.value)" onfocus="this.select()">
-      <span class="phone-unit">원</span>
-      <button type="button" class="phone-remove-btn" onclick="removePhoneLine(${idx})">삭제</button>
+    <div class="phone-line">
+      <div class="mode-toggle">
+        <button type="button" class="${p.mode==='keep'?'active':''}" onclick="setPhoneMode(${idx}, 'keep')">기존 유지</button>
+        <button type="button" class="${p.mode==='change'?'active':''}" onclick="setPhoneMode(${idx}, 'change')">통신사 변경</button>
+      </div>
+      <div class="phone-row">
+        <select class="phone-select" onchange="updatePhoneLine(${idx}, 'carrier', this.value)">
+          ${carrierOptions(p.carrier)}
+        </select>
+        <input type="text" class="phone-fee-input" value="${(p.fee||0).toLocaleString()}"
+               onchange="updatePhoneLine(${idx}, 'fee', this.value)" onfocus="this.select()">
+        <span class="phone-unit">원</span>
+
+        ${p.mode === 'change' ? `
+          <div class="new-block">
+            <span class="arrow">→</span>
+            <span class="new-block-label">변경 예정</span>
+            <select class="phone-select" onchange="updatePhoneLine(${idx}, 'newCarrier', this.value)">
+              ${carrierOptions(p.newCarrier)}
+            </select>
+            <select class="fee-range-select" onchange="updatePhoneLine(${idx}, 'newFee', this.value)">
+              ${feeRangeOptions(p.newFee)}
+            </select>
+          </div>
+        ` : ''}
+
+        <button type="button" class="phone-remove-btn" onclick="removePhoneLine(${idx})">삭제</button>
+      </div>
     </div>
   `).join('');
 }
 
+function setPhoneMode(idx, mode){
+  familyPhones[idx].mode = mode;
+  renderFamilyPhones();
+  render();
+}
+
 function addPhoneLine(){
-  familyPhones.push({ carrier:'SKT', fee:69000 });
+  familyPhones.push({ carrier:'SKT', fee:69000, mode:'keep', newCarrier:'SKT', newFee:60000 });
   renderFamilyPhones();
   render();
 }
@@ -753,8 +871,10 @@ function updatePhoneLine(idx, field, value){
   if (field === 'fee') {
     const num = parseInt(String(value).replace(/[^0-9]/g, ''), 10);
     familyPhones[idx].fee = isNaN(num) ? 0 : num;
+  } else if (field === 'newFee') {
+    familyPhones[idx].newFee = Number(value);
   } else {
-    familyPhones[idx].carrier = value;
+    familyPhones[idx][field] = value;
   }
   renderFamilyPhones();
   render();
@@ -769,7 +889,9 @@ function getMatchingMobileCarrier(ispCarrier){
 
 function computeFamilyDiscount(ispCarrier){
   const matchCarrier = getMatchingMobileCarrier(ispCarrier);
-  const lines = familyPhones.filter(p => p.carrier === matchCarrier);
+  // "기존 유지" 회선은 기존 통신사·요금, "통신사 변경" 회선은 변경 예정 통신사·요금 기준으로 계산
+  const effectivePhones = familyPhones.map(getEffectivePhone);
+  const lines = effectivePhones.filter(p => p.carrier === matchCarrier);
   const count = lines.length;
   const speedNum = Number(state.speed);
 
@@ -845,6 +967,8 @@ function renderFamilyDiscountTable(){
     return { carrier, ...fam };
   });
 
+  const changedCount = familyPhones.filter(p => p.mode === 'change').length;
+
   container.innerHTML = `
     <table class="fam-table">
       <thead>
@@ -872,7 +996,9 @@ function renderFamilyDiscountTable(){
       · KT: 총액결합할인 (KT회선 요금제 합산액)<br>
       · LG: 참쉬운가족결합할인 (LG 회선수 + 요금제 구간)<br>
       · SKB/SKT: 요즘가족결합할인 (SKT 회선 수 기준으로 계산)<br>
-      · 위 금액은 참고용이며 현재 카드의 "총 요금"에는 반영되지 않습니다.
+      · "통신사 변경" 회선은 변경 예정 통신사·요금제 기준으로, "기존 유지" 회선은 기존 통신사·요금제 기준으로 계산됩니다.
+      ${changedCount > 0 ? `<br>· 현재 ${changedCount}개 회선이 "통신사 변경" 상태로, 변경 예정 값 기준 계산 중입니다.` : ''}
+      <br>· 위 금액은 참고용이며 현재 카드의 "총 요금"에는 반영되지 않습니다.
     </div>
   `;
 }
