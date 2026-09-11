@@ -511,6 +511,7 @@
     white-space:nowrap;
     flex-shrink:0;
     cursor:pointer;
+    margin-left:auto;
   }
   .phone-teen-toggle input{ cursor:pointer; }
 
@@ -537,14 +538,27 @@
   .fam-accordion-item.disabled{ opacity:.55; }
   .fam-accordion-header{
     display:flex;
-    align-items:center;
-    gap:10px;
+    flex-direction:column;
+    gap:4px;
     padding:10px 12px;
     cursor:pointer;
     user-select:none;
   }
   .fam-accordion-item.disabled .fam-accordion-header{ cursor:default; }
   .fam-accordion-header:hover:not(.disabled *){ background:#FAFAF7; }
+  .fam-accordion-row1{
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .fam-accordion-row2{
+    font-size:11.5px;
+    color:var(--ink-dim);
+    line-height:1.5;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
   .fam-accordion-name{
     font-size:13.5px;
     font-weight:600;
@@ -831,13 +845,15 @@ const SPEED_LABEL = { 100:'100M', 500:'500M', 1000:'1기가' };
 const ROUTER_LABEL = { N:'미포함', Y:'포함' };
 
 const FEE_RANGES = [
+  { value: 25000, label: '3만원 이하' },
   { value: 30000, label: '3만원대' },
   { value: 40000, label: '4만원대' },
   { value: 50000, label: '5만원대' },
   { value: 60000, label: '6만원대' },
   { value: 70000, label: '7만원대' },
   { value: 80000, label: '8만원대' },
-  { value: 90000, label: '9만원대' }
+  { value: 90000, label: '9만원대' },
+  { value: 100000, label: '10만원 이상' }
 ];
 
 let DATA = null;
@@ -1071,19 +1087,18 @@ function renderFamilyPhones(){
       <div class="mode-toggle">
         <button type="button" class="${p.mode==='keep'?'active':''}" onclick="setPhoneMode(${idx}, 'keep')">기존 유지</button>
         <button type="button" class="${p.mode==='change'?'active':''}" onclick="setPhoneMode(${idx}, 'change')">통신사 변경</button>
+        <label class="phone-teen-toggle">
+          <input type="checkbox" ${p.teen ? 'checked' : ''} onchange="updatePhoneLine(${idx}, 'teen', this.checked)">
+          청소년
+        </label>
       </div>
       <div class="phone-row">
         <select class="phone-select" onchange="updatePhoneLine(${idx}, 'carrier', this.value)">
           ${carrierOptions(p.carrier)}
         </select>
-        <input type="text" class="phone-fee-input" value="${(p.fee||0).toLocaleString()}"
-               onchange="updatePhoneLine(${idx}, 'fee', this.value)" onfocus="this.select()">
-        <span class="phone-unit">원</span>
-
-        <label class="phone-teen-toggle">
-          <input type="checkbox" ${p.teen ? 'checked' : ''} onchange="updatePhoneLine(${idx}, 'teen', this.checked)">
-          청소년
-        </label>
+        <select class="fee-range-select" onchange="updatePhoneLine(${idx}, 'fee', this.value)">
+          ${feeRangeOptions(p.fee)}
+        </select>
 
         ${p.mode === 'change' ? `
           <div class="new-block">
@@ -1092,9 +1107,9 @@ function renderFamilyPhones(){
             <select class="phone-select" onchange="updatePhoneLine(${idx}, 'newCarrier', this.value)">
               ${carrierOptions(p.newCarrier)}
             </select>
-            <select class="fee-range-select" onchange="updatePhoneLine(${idx}, 'newFee', this.value)">
-              ${feeRangeOptions(p.newFee)}
-            </select>
+            <input type="text" class="phone-fee-input" value="${(p.newFee||0).toLocaleString()}"
+                   onchange="updatePhoneLine(${idx}, 'newFee', this.value)" onfocus="this.select()">
+            <span class="phone-unit">원</span>
           </div>
         ` : ''}
 
@@ -1111,7 +1126,7 @@ function setPhoneMode(idx, mode){
 }
 
 function addPhoneLine(){
-  familyPhones.push({ carrier:'SKT', fee:69000, mode:'keep', newCarrier:'SKT', newFee:60000, teen:false });
+  familyPhones.push({ carrier:'SKT', fee:60000, mode:'keep', newCarrier:'SKT', newFee:69000, teen:false });
   renderFamilyPhones();
   render();
 }
@@ -1124,10 +1139,10 @@ function removePhoneLine(idx){
 
 function updatePhoneLine(idx, field, value){
   if (field === 'fee') {
-    const num = parseInt(String(value).replace(/[^0-9]/g, ''), 10);
-    familyPhones[idx].fee = isNaN(num) ? 0 : num;
+    familyPhones[idx].fee = Number(value) || 0;
   } else if (field === 'newFee') {
-    familyPhones[idx].newFee = Number(value);
+    const num = parseInt(String(value).replace(/[^0-9]/g, ''), 10);
+    familyPhones[idx].newFee = isNaN(num) ? 0 : num;
   } else if (field === 'teen') {
     familyPhones[idx].teen = !!value;
   } else {
@@ -1280,14 +1295,16 @@ function computeKTOptions(lines, speedNum, tcDistMode){
     },
     {
       key:'kt-premium-family', name:'프리미엄 가족결합', avail: pf.avail,
-      availText: pf.avail ? '가입 가능' : '조건 미달 (500M↑, 77,000원↑ 요금제 2회선 필요)',
+      availText: pf.avail ? '가입 가능' : '조건 미달',
+      reason: pf.avail ? null : '500M↑, 77,000원↑ 요금제 2회선 필요',
       internetDiscount: pf.internetDiscount, lineShares: pf.lineShares,
       total: pf.internetDiscount + pf.lineShares.reduce((a,b)=>a+b,0),
       desc: '인터넷 500M 이상 + 77,000원 이상 요금제 2회선 이상일 때 가능. 2~7번째 회선 중 77,000원 이상 회선은 25% 할인(청소년 조건 충족 시 5,500원 추가), 나머지 회선은 총액결합 모바일 할인 풀을 요금 비율로 배분받습니다.'
     },
     {
       key:'kt-premium-single', name:'프리미엄 싱글결합', avail: ps.avail,
-      availText: ps.avail ? '가입 가능' : '조건 미달 (500M↑, 77,000원↑ 요금제 1회선 전용)',
+      availText: ps.avail ? '가입 가능' : '조건 미달',
+      reason: ps.avail ? null : '500M↑, 77,000원↑ 요금제 1회선 전용',
       internetDiscount: ps.internetDiscount, lineShares: ps.lineShares,
       total: ps.internetDiscount + ps.lineShares.reduce((a,b)=>a+b,0),
       desc: '인터넷 500M 이상 + 77,000원 이상 요금제 1회선만 있을 때 가능. 인터넷 5,500원 할인 + 해당 회선 25% 할인이 적용됩니다.'
@@ -1379,6 +1396,7 @@ function renderAccordionItem(opt, lines){
   const isOpen = openDiscountItems.has(opt.key);
   const badgeClass = opt.avail ? 'badge-avail' : 'badge-unavail';
   const totalDisplay = opt.avail ? `${opt.total.toLocaleString()}원` : '-';
+  const subText = opt.reason || opt.desc;
 
   let detailHtml = '';
   if (isOpen) {
@@ -1402,7 +1420,6 @@ function renderAccordionItem(opt, lines){
 
     detailHtml = `
       <div class="fam-detail-panel">
-        <div class="fam-detail-desc">${opt.desc}</div>
         ${distModeSelect}
         <div class="fam-detail-line-row fam-detail-header">
           <span>인터넷 할인</span><span>${opt.internetDiscount.toLocaleString()}원</span>
@@ -1415,10 +1432,13 @@ function renderAccordionItem(opt, lines){
   return `
     <div class="fam-accordion-item${opt.disabled ? ' disabled' : ''}">
       <div class="fam-accordion-header" ${opt.disabled ? '' : `onclick="toggleDiscountItem('${opt.key}')"`}>
-        <span class="fam-accordion-name">${opt.name}</span>
-        <span class="fam-badge ${badgeClass}">${opt.availText}</span>
-        <span class="fam-accordion-total">${totalDisplay}</span>
-        ${opt.disabled ? '' : `<span class="fam-accordion-chevron">${isOpen ? '▾' : '▸'}</span>`}
+        <div class="fam-accordion-row1">
+          <span class="fam-accordion-name">${opt.name}</span>
+          <span class="fam-badge ${badgeClass}">${opt.availText}</span>
+          <span class="fam-accordion-total">${totalDisplay}</span>
+          ${opt.disabled ? '' : `<span class="fam-accordion-chevron">${isOpen ? '▾' : '▸'}</span>`}
+        </div>
+        <div class="fam-accordion-row2">${subText}</div>
       </div>
       ${detailHtml}
     </div>
