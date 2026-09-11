@@ -502,6 +502,130 @@
     line-height:1.55;
   }
 
+  .phone-teen-toggle{
+    display:flex;
+    align-items:center;
+    gap:4px;
+    font-size:12px;
+    color:var(--ink-dim);
+    white-space:nowrap;
+    flex-shrink:0;
+    cursor:pointer;
+  }
+  .phone-teen-toggle input{ cursor:pointer; }
+
+  .fam-accordion-group{
+    margin-bottom:14px;
+  }
+  .fam-accordion-group:last-child{ margin-bottom:0; }
+  .fam-accordion-carrier{
+    font-family:'Inconsolata', monospace;
+    font-size:12px;
+    font-weight:700;
+    color:var(--ink-dim);
+    letter-spacing:.03em;
+    margin-bottom:6px;
+    text-transform:uppercase;
+  }
+  .fam-accordion-item{
+    border:1px solid var(--paper-line);
+    border-radius:6px;
+    background:#FFFFFF;
+    margin-bottom:6px;
+    overflow:hidden;
+  }
+  .fam-accordion-item.disabled{ opacity:.55; }
+  .fam-accordion-header{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:10px 12px;
+    cursor:pointer;
+    user-select:none;
+  }
+  .fam-accordion-item.disabled .fam-accordion-header{ cursor:default; }
+  .fam-accordion-header:hover:not(.disabled *){ background:#FAFAF7; }
+  .fam-accordion-name{
+    font-size:13.5px;
+    font-weight:600;
+    color:#1C1E24;
+    flex:1;
+  }
+  .fam-badge{
+    font-family:'Inconsolata', monospace;
+    font-size:11px;
+    font-weight:600;
+    padding:3px 8px;
+    border-radius:10px;
+    white-space:nowrap;
+  }
+  .fam-badge.badge-avail{ background:#E7F5EF; color:#1E7E34; }
+  .fam-badge.badge-unavail{ background:#F2F1EB; color:#8C877A; }
+  .fam-accordion-total{
+    font-family:'Inconsolata', monospace;
+    font-size:14px;
+    font-weight:700;
+    color:var(--gold);
+    white-space:nowrap;
+    min-width:70px;
+    text-align:right;
+  }
+  .fam-accordion-chevron{
+    color:var(--ink-dim);
+    font-size:12px;
+    width:12px;
+    text-align:center;
+  }
+  .fam-detail-panel{
+    border-top:1px dashed var(--paper-line);
+    background:#FAFAF7;
+    padding:12px 14px 14px;
+  }
+  .fam-detail-desc{
+    font-size:12px;
+    color:#5C5E66;
+    line-height:1.6;
+    margin-bottom:10px;
+  }
+  .fam-detail-distmode{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin-bottom:10px;
+  }
+  .fam-detail-distmode label{
+    font-family:'Inconsolata', monospace;
+    font-size:11px;
+    color:var(--ink-dim);
+    font-weight:600;
+    white-space:nowrap;
+  }
+  .fam-detail-distmode select{
+    flex:1;
+    padding:6px 8px;
+    font-size:12.5px;
+    border:1px solid var(--paper-line);
+    border-radius:4px;
+    background:#FFFFFF;
+    color:var(--ink);
+  }
+  .fam-detail-line-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:4px 0;
+    font-size:12.5px;
+    color:#4B4C45;
+    border-bottom:1px dotted #E0DCCF;
+  }
+  .fam-detail-line-row:last-child{ border-bottom:none; }
+  .fam-detail-line-row.fam-detail-header{
+    font-weight:700;
+    color:#1C1E24;
+    border-bottom:1px solid var(--paper-line);
+    margin-bottom:2px;
+  }
+
   #login-gate{
     min-height:100vh;
     display:flex;
@@ -720,8 +844,9 @@ let DATA = null;
 let COMMISSION_DATA = {};
 let PROMOTION_DATA = {};
 let customGiftValues = {};
-let state = { speed:'500', tv:'basic', settopTier:'basic', router:'Y' };
+let state = { speed:'500', tv:'basic', settopTier:'basic', router:'Y', tcDistMode:'equal' };
 let familyPhones = [];
+let openDiscountItems = new Set();
 let logs = [];
 
 function formatStartAt(date){
@@ -917,9 +1042,9 @@ function computePrice(carrier){
 
 function getEffectivePhone(p){
   if (p.mode === 'change') {
-    return { carrier: p.newCarrier, fee: Number(p.newFee) };
+    return { carrier: p.newCarrier, fee: Number(p.newFee), teen: !!p.teen };
   }
-  return { carrier: p.carrier, fee: Number(p.fee) };
+  return { carrier: p.carrier, fee: Number(p.fee), teen: !!p.teen };
 }
 
 function carrierOptions(selected){
@@ -955,6 +1080,11 @@ function renderFamilyPhones(){
                onchange="updatePhoneLine(${idx}, 'fee', this.value)" onfocus="this.select()">
         <span class="phone-unit">원</span>
 
+        <label class="phone-teen-toggle">
+          <input type="checkbox" ${p.teen ? 'checked' : ''} onchange="updatePhoneLine(${idx}, 'teen', this.checked)">
+          청소년
+        </label>
+
         ${p.mode === 'change' ? `
           <div class="new-block">
             <span class="arrow">→</span>
@@ -981,7 +1111,7 @@ function setPhoneMode(idx, mode){
 }
 
 function addPhoneLine(){
-  familyPhones.push({ carrier:'SKT', fee:69000, mode:'keep', newCarrier:'SKT', newFee:60000 });
+  familyPhones.push({ carrier:'SKT', fee:69000, mode:'keep', newCarrier:'SKT', newFee:60000, teen:false });
   renderFamilyPhones();
   render();
 }
@@ -998,6 +1128,8 @@ function updatePhoneLine(idx, field, value){
     familyPhones[idx].fee = isNaN(num) ? 0 : num;
   } else if (field === 'newFee') {
     familyPhones[idx].newFee = Number(value);
+  } else if (field === 'teen') {
+    familyPhones[idx].teen = !!value;
   } else {
     familyPhones[idx][field] = value;
   }
@@ -1005,121 +1137,325 @@ function updatePhoneLine(idx, field, value){
   render();
 }
 
-function getMatchingMobileCarrier(ispCarrier){
-  if (ispCarrier === 'kt') return 'KT';
-  if (ispCarrier === 'lg') return 'LGU+';
-  if (ispCarrier === 'skb' || ispCarrier === 'skt') return 'SKT';
-  return null;
-}
+// ---- 공통 유틸 ----
 
-function computeFamilyDiscount(ispCarrier){
-  const matchCarrier = getMatchingMobileCarrier(ispCarrier);
-  const effectivePhones = familyPhones.map(getEffectivePhone);
-  const lines = effectivePhones.filter(p => p.carrier === matchCarrier);
-  const count = lines.length;
-  const speedNum = Number(state.speed);
-
-  if (count === 0) {
-    return { matchCarrier, count:0, internetDiscount:0, mobileDiscount:0, total:0 };
-  }
-
-  if (matchCarrier === 'KT') {
-    const sum = lines.reduce((acc, p) => acc + (Number(p.fee) || 0), 0);
-    const isSlim = speedNum === 100;
-
-    const upperBounds = [22000, 64900, 108900, 141900, 174900, Infinity];
-    const internetVals = isSlim
-      ? [1650, 3300, 5500, 5500, 5500, 5500]
-      : [2200, 5500, 5500, 5500, 5500, 5500];
-    const mobileVals = isSlim
-      ? [0, 0, 3300, 14300, 18700, 23100]
-      : [0, 0, 5500, 16610, 22110, 27610];
-
-    let idx = upperBounds.findIndex(bound => sum < bound);
-    if (idx === -1) idx = upperBounds.length - 1;
-
-    const internetDiscount = internetVals[idx];
-    const mobileDiscount = mobileVals[idx];
-    return { matchCarrier, count, sum, internetDiscount, mobileDiscount, total: internetDiscount + mobileDiscount };
-  }
-
-  if (matchCarrier === 'LGU+') {
-    const internetMap = { 100:5500, 500:9900, 1000:13200 };
-    const internetDiscount = internetMap[speedNum] || 0;
-    let countBucket;
-    if (count === 1) countBucket = 1;
-    else if (count === 2) countBucket = 2;
-    else if (count === 3) countBucket = 3;
-    else countBucket = 4;
-
-    const matrix = {
-      1: { low:0, mid:0, high:0 },
-      2: { low:2200, mid:3300, high:4400 },
-      3: { low:3300, mid:5500, high:6600 },
-      4: { low:4400, mid:6600, high:8800 }
-    };
-    let mobileDiscount = 0;
-    lines.forEach(p => {
-      const fee = Number(p.fee) || 0;
-      let tier = 'low';
-      if (fee >= 88000) tier = 'high';
-      else if (fee >= 69000) tier = 'mid';
-      mobileDiscount += matrix[countBucket][tier];
+function distributeAmount(lines, totalAmount, mode){
+  const n = lines.length;
+  let shares = new Array(n).fill(0);
+  if (totalAmount <= 0 || n === 0) return shares;
+  const feeSum = lines.reduce((a,p)=>a+(Number(p.fee)||0),0);
+  if (mode === 'concentrate') {
+    shares[0] = totalAmount;
+  } else if (mode === 'contribution' && feeSum > 0) {
+    let remaining = totalAmount;
+    lines.forEach((p, i) => {
+      if (i === n - 1) { shares[i] = remaining; }
+      else {
+        const share = Math.round((totalAmount * (Number(p.fee)||0) / feeSum) / 10) * 10;
+        shares[i] = share;
+        remaining -= share;
+      }
     });
-    return { matchCarrier, count, internetDiscount, mobileDiscount, total: internetDiscount + mobileDiscount };
+  } else { // equal
+    let remaining = totalAmount;
+    lines.forEach((p, i) => {
+      if (i === n - 1) { shares[i] = remaining; }
+      else {
+        const share = Math.round((totalAmount / n) / 10) * 10;
+        shares[i] = share;
+        remaining -= share;
+      }
+    });
   }
-
-  if (matchCarrier === 'SKT') {
-    const internetMap = { 100:4400, 500:11000, 1000:13200 };
-    const internetDiscount = internetMap[speedNum] || 0;
-    let mobileDiscount;
-    if (count === 1) mobileDiscount = 3500;
-    else if (count === 2) mobileDiscount = 3500 * 2;
-    else mobileDiscount = 6000 * count;
-    return { matchCarrier, count, internetDiscount, mobileDiscount, total: internetDiscount + mobileDiscount };
-  }
-
-  return { matchCarrier, count:0, internetDiscount:0, mobileDiscount:0, total:0 };
+  return shares;
 }
 
-function renderFamilyDiscountTable(){
+// ---- KT ----
+
+function tcInternetDiscountByTotal(total, is100){
+  if (total < 22000) return is100 ? 1650 : 2200;
+  if (total < 64900) return is100 ? 3300 : 5500;
+  return 5500;
+}
+
+function tcMobileDiscountByTotal(total, is100){
+  if (total < 64900) return 0;
+  if (total < 108900) return is100 ? 3300 : 5500;
+  if (total < 141900) return is100 ? 14300 : 16610;
+  if (total < 174900) return is100 ? 18700 : 22110;
+  return is100 ? 23100 : 27610;
+}
+
+function dcMobileDiscountByFee(fee){
+  if (fee >= 77000) return 7000;
+  if (fee >= 61000) return 5000;
+  if (fee >= 37000) return 3000;
+  return 0;
+}
+
+function ktPremiumFamily(lines, speedNum){
+  const count77kPlus = lines.filter(p => (Number(p.fee)||0) >= 77000).length;
+  const avail = (speedNum >= 500 && count77kPlus >= 2 && lines.length >= 2);
+  if (!avail) return { avail:false, internetDiscount:0, lineShares: lines.map(()=>0) };
+
+  const is100 = speedNum === 100;
+  let shares = new Array(lines.length).fill(0);
+  let poolIdx = [], poolFeeSum = 0;
+
+  lines.forEach((line, idx) => {
+    const fee = Number(line.fee) || 0;
+    const is25Eligible = (idx >= 1 && idx <= 6 && fee >= 77000);
+    if (is25Eligible) {
+      let d = Math.round(fee * 0.25 / 10) * 10;
+      if (line.teen && fee >= 80000) {
+        const hasGuardian80k = lines.some((l2, idx2) => idx2 !== idx && (Number(l2.fee)||0) >= 80000);
+        if (hasGuardian80k) d += 5500;
+      }
+      shares[idx] = d;
+    } else {
+      poolIdx.push(idx);
+      poolFeeSum += fee;
+    }
+  });
+
+  const poolMobileTotal = poolFeeSum > 0 ? tcMobileDiscountByTotal(poolFeeSum, is100) : 0;
+  if (poolMobileTotal > 0 && poolIdx.length > 0) {
+    let remaining = poolMobileTotal;
+    poolIdx.forEach((idx, i) => {
+      if (i === poolIdx.length - 1) {
+        shares[idx] = remaining;
+      } else {
+        const share = Math.round((poolMobileTotal * (lines[idx].fee / poolFeeSum)) / 10) * 10;
+        shares[idx] = share;
+        remaining -= share;
+      }
+    });
+  }
+
+  return { avail:true, internetDiscount:5500, lineShares:shares };
+}
+
+function ktPremiumSingle(lines, speedNum){
+  const count77kPlus = lines.filter(p => (Number(p.fee)||0) >= 77000).length;
+  const avail = (speedNum >= 500 && count77kPlus >= 1 && lines.length === 1);
+  if (!avail) return { avail:false, internetDiscount:0, lineShares: lines.map(()=>0) };
+
+  const lineShares = lines.map(line => {
+    const fee = Number(line.fee) || 0;
+    return fee >= 77000 ? Math.round(fee * 0.25 / 10) * 10 : 0;
+  });
+  return { avail:true, internetDiscount:5500, lineShares };
+}
+
+function computeKTOptions(lines, speedNum, tcDistMode){
+  const is100 = speedNum === 100;
+  const count = lines.length;
+  const sum = lines.reduce((a,p)=>a+(Number(p.fee)||0),0);
+
+  const tcInternet = count > 0 ? tcInternetDiscountByTotal(sum, is100) : 0;
+  const tcMobileTotal = count > 0 ? tcMobileDiscountByTotal(sum, is100) : 0;
+  const tcShares = distributeAmount(lines, tcMobileTotal, tcDistMode);
+
+  const dcInternet = count > 0 ? 5500 : 0;
+  const dcShares = lines.map(p => dcMobileDiscountByFee(Number(p.fee)||0));
+  const dcMobileTotal = dcShares.reduce((a,b)=>a+b,0);
+
+  const pf = ktPremiumFamily(lines, speedNum);
+  const ps = ktPremiumSingle(lines, speedNum);
+
+  return [
+    {
+      key:'kt-total', name:'총액 결합할인', avail: count > 0,
+      availText: count > 0 ? '가입 가능' : '매칭 회선 없음',
+      internetDiscount: tcInternet, lineShares: tcShares,
+      total: tcInternet + tcMobileTotal, hasDistMode: true,
+      desc: 'KT 매칭 회선의 요금제 합산액 구간에 따라 인터넷 할인과 모바일 할인 총액이 정해지고, 모바일 할인 총액은 아래 배분 방식대로 회선별로 나눠집니다.'
+    },
+    {
+      key:'kt-flat', name:'정액 결합할인', avail: count > 0,
+      availText: count > 0 ? '가입 가능' : '매칭 회선 없음',
+      internetDiscount: dcInternet, lineShares: dcShares,
+      total: dcInternet + dcMobileTotal,
+      desc: '인터넷 할인 5,500원 고정, 회선별 요금제 구간(37,000/61,000/77,000원 이상)에 따라 회선마다 개별 할인이 적용됩니다.'
+    },
+    {
+      key:'kt-premium-family', name:'프리미엄 가족결합', avail: pf.avail,
+      availText: pf.avail ? '가입 가능' : '조건 미달 (500M↑, 77,000원↑ 요금제 2회선 필요)',
+      internetDiscount: pf.internetDiscount, lineShares: pf.lineShares,
+      total: pf.internetDiscount + pf.lineShares.reduce((a,b)=>a+b,0),
+      desc: '인터넷 500M 이상 + 77,000원 이상 요금제 2회선 이상일 때 가능. 2~7번째 회선 중 77,000원 이상 회선은 25% 할인(청소년 조건 충족 시 5,500원 추가), 나머지 회선은 총액결합 모바일 할인 풀을 요금 비율로 배분받습니다.'
+    },
+    {
+      key:'kt-premium-single', name:'프리미엄 싱글결합', avail: ps.avail,
+      availText: ps.avail ? '가입 가능' : '조건 미달 (500M↑, 77,000원↑ 요금제 1회선 전용)',
+      internetDiscount: ps.internetDiscount, lineShares: ps.lineShares,
+      total: ps.internetDiscount + ps.lineShares.reduce((a,b)=>a+b,0),
+      desc: '인터넷 500M 이상 + 77,000원 이상 요금제 1회선만 있을 때 가능. 인터넷 5,500원 할인 + 해당 회선 25% 할인이 적용됩니다.'
+    }
+  ];
+}
+
+// ---- LG ----
+
+function computeLGOptions(lines, speedNum){
+  const count = lines.length;
+  const internetMap = { 100:5500, 500:9900, 1000:13200 };
+  const internetDiscount = count > 0 ? (internetMap[speedNum] || 0) : 0;
+
+  let countBucket;
+  if (count === 1) countBucket = 1;
+  else if (count === 2) countBucket = 2;
+  else if (count === 3) countBucket = 3;
+  else countBucket = 4;
+
+  const matrix = {
+    1: { low:0, mid:0, high:0 },
+    2: { low:2200, mid:3300, high:4400 },
+    3: { low:3300, mid:5500, high:6600 },
+    4: { low:4400, mid:6600, high:8800 }
+  };
+  const lineShares = lines.map(p => {
+    const fee = Number(p.fee) || 0;
+    let tier = 'low';
+    if (fee >= 88000) tier = 'high';
+    else if (fee >= 69000) tier = 'mid';
+    return count > 0 ? matrix[countBucket][tier] : 0;
+  });
+  const mobileTotal = lineShares.reduce((a,b)=>a+b,0);
+
+  return [
+    {
+      key:'lg-easy-family', name:'참쉬운가족결합할인', avail: count > 0,
+      availText: count > 0 ? '가입 가능' : '매칭 회선 없음',
+      internetDiscount, lineShares, total: internetDiscount + mobileTotal,
+      desc: 'LG 매칭 회선 수와 인터넷 속도 구간에 따라 인터넷 할인이 정해지고, 회선별 요금제 구간(저가/중가/고가)에 따라 개별 모바일 할인이 적용됩니다.'
+    },
+    {
+      key:'lg-together', name:'투게더결합할인', avail:false, availText:'준비중',
+      internetDiscount:0, lineShares: lines.map(()=>0), total:0,
+      desc:'계산 방식이 추가되는 대로 반영될 예정입니다.', disabled:true
+    }
+  ];
+}
+
+// ---- SKB / SKT ----
+
+function computeSKOptions(lines, speedNum, groupKey){
+  const count = lines.length;
+  const internetMap = { 100:4400, 500:11000, 1000:13200 };
+  const internetDiscount = count > 0 ? (internetMap[speedNum] || 0) : 0;
+
+  let mobileTotal = 0;
+  if (count === 1) mobileTotal = 3500;
+  else if (count === 2) mobileTotal = 3500 * 2;
+  else if (count > 2) mobileTotal = 6000 * count;
+
+  const lineShares = distributeAmount(lines, mobileTotal, 'equal');
+
+  return [
+    {
+      key:`sk-${groupKey}`, name:'요즘가족결합할인', avail: count > 0,
+      availText: count > 0 ? '가입 가능' : '매칭 회선 없음',
+      internetDiscount, lineShares, total: internetDiscount + mobileTotal,
+      desc: 'SKT 매칭 회선 수와 인터넷 속도 구간에 따라 인터넷 할인이 정해지고, 모바일 할인 총액은 회선 수 기준으로 산정됩니다(회선별 금액은 이해를 돕기 위한 균등 배분 표시입니다).'
+    }
+  ];
+}
+
+// ---- 아코디언 렌더링 ----
+
+function toggleDiscountItem(key){
+  if (openDiscountItems.has(key)) openDiscountItems.delete(key);
+  else openDiscountItems.add(key);
+  renderFamilyDiscountAccordion();
+}
+
+function updateTcDistMode(mode){
+  state.tcDistMode = mode;
+  renderFamilyDiscountAccordion();
+}
+
+function renderAccordionItem(opt, lines){
+  const isOpen = openDiscountItems.has(opt.key);
+  const badgeClass = opt.avail ? 'badge-avail' : 'badge-unavail';
+  const totalDisplay = opt.avail ? `${opt.total.toLocaleString()}원` : '-';
+
+  let detailHtml = '';
+  if (isOpen) {
+    const lineRows = lines.length ? lines.map((p, i) => `
+        <div class="fam-detail-line-row">
+          <span>회선 ${p.idx + 1}${p.teen ? ' (청소년)' : ''} · ${p.fee.toLocaleString()}원</span>
+          <span>${(opt.lineShares[i] || 0).toLocaleString()}원</span>
+        </div>
+      `).join('') : `<div class="fam-detail-line-row"><span>매칭되는 회선이 없습니다</span><span>-</span></div>`;
+
+    const distModeSelect = opt.hasDistMode ? `
+      <div class="fam-detail-distmode">
+        <label>모바일 할인 배분 방식</label>
+        <select onchange="updateTcDistMode(this.value)">
+          <option value="equal" ${state.tcDistMode==='equal'?'selected':''}>1/N 균등 배분</option>
+          <option value="contribution" ${state.tcDistMode==='contribution'?'selected':''}>기여도별 배분 (요금 비율)</option>
+          <option value="concentrate" ${state.tcDistMode==='concentrate'?'selected':''}>대표 회선에 몰아주기</option>
+        </select>
+      </div>
+    ` : '';
+
+    detailHtml = `
+      <div class="fam-detail-panel">
+        <div class="fam-detail-desc">${opt.desc}</div>
+        ${distModeSelect}
+        <div class="fam-detail-line-row fam-detail-header">
+          <span>인터넷 할인</span><span>${opt.internetDiscount.toLocaleString()}원</span>
+        </div>
+        ${lineRows}
+      </div>
+    `;
+  }
+
+  return `
+    <div class="fam-accordion-item${opt.disabled ? ' disabled' : ''}">
+      <div class="fam-accordion-header" ${opt.disabled ? '' : `onclick="toggleDiscountItem('${opt.key}')"`}>
+        <span class="fam-accordion-name">${opt.name}</span>
+        <span class="fam-badge ${badgeClass}">${opt.availText}</span>
+        <span class="fam-accordion-total">${totalDisplay}</span>
+        ${opt.disabled ? '' : `<span class="fam-accordion-chevron">${isOpen ? '▾' : '▸'}</span>`}
+      </div>
+      ${detailHtml}
+    </div>
+  `;
+}
+
+function renderFamilyDiscountAccordion(){
   const container = document.getElementById('family-discount-table');
   if (!container) return;
 
-  const rows = CARRIERS.map(carrier => {
-    const fam = computeFamilyDiscount(carrier);
-    return { carrier, ...fam };
-  });
+  const effectivePhones = familyPhones.map((p, idx) => ({ ...getEffectivePhone(p), idx }));
+  const speedNum = Number(state.speed);
+
+  const groups = [
+    { key:'kt', label:'KT', matchLabel:'KT' },
+    { key:'lg', label:'LG', matchLabel:'LGU+' },
+    { key:'skb', label:'SKB', matchLabel:'SKT' },
+    { key:'skt', label:'SKT', matchLabel:'SKT' }
+  ];
 
   const changedCount = familyPhones.filter(p => p.mode === 'change').length;
 
-  container.innerHTML = `
-    <table class="fam-table">
-      <thead>
-        <tr>
-          <th>통신사</th>
-          <th>매칭 회선</th>
-          <th>인터넷 할인</th>
-          <th>휴대폰 할인</th>
-          <th>합계</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows.map(r => `
-          <tr>
-            <td class="brand-cell">${BRAND_LABEL[r.carrier]}</td>
-            <td>${r.count}회선</td>
-            <td>${r.internetDiscount.toLocaleString()}원</td>
-            <td>${r.mobileDiscount.toLocaleString()}원</td>
-            <td class="total-cell">${r.total.toLocaleString()}원</td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
+  container.innerHTML = groups.map(g => {
+    const lines = effectivePhones.filter(p => p.carrier === g.matchLabel);
+    let options;
+    if (g.key === 'kt') options = computeKTOptions(lines, speedNum, state.tcDistMode);
+    else if (g.key === 'lg') options = computeLGOptions(lines, speedNum);
+    else options = computeSKOptions(lines, speedNum, g.key);
+
+    return `
+      <div class="fam-accordion-group">
+        <div class="fam-accordion-carrier">${g.label}</div>
+        ${options.map(opt => renderAccordionItem(opt, lines)).join('')}
+      </div>
+    `;
+  }).join('') + `
     <div class="fam-table-note">
-      · KT: 총액결합할인 (KT회선 요금제 합산액)<br>
-      · LG: 참쉬운가족결합할인 (LG 회선수 + 요금제 구간)<br>
-      · SKB/SKT: 요즘가족결합할인 (SKT 회선 수 기준으로 계산)<br>
       · "통신사 변경" 회선은 변경 예정 통신사·요금제 기준으로, "기존 유지" 회선은 기존 통신사·요금제 기준으로 계산됩니다.
       ${changedCount > 0 ? `<br>· 현재 ${changedCount}개 회선이 "통신사 변경" 상태로, 변경 예정 값 기준 계산 중입니다.` : ''}
       <br>· 위 금액은 참고용이며 현재 카드의 "총 요금"에는 반영되지 않습니다.
@@ -1236,7 +1572,7 @@ function render(){
     `;
   }).join('');
 
-  renderFamilyDiscountTable();
+  renderFamilyDiscountAccordion();
 }
 
 async function startApp(session){
