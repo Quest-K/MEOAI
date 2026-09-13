@@ -1761,6 +1761,24 @@ function showLoginGate(){
   document.getElementById('main-content').style.display = 'none';
 }
 
+async function logLoginHistory(session){
+  let ip = null;
+  try {
+    const res = await fetch('https://api.ipify.org?format=json');
+    ip = (await res.json()).ip;
+  } catch(e) {
+    console.warn('IP 조회 실패:', e);
+  }
+
+  const { error } = await sb.from('login_logs').insert({
+    user_id: session.user.id,
+    email: session.user.email,
+    ip_address: ip,
+    user_agent: navigator.userAgent
+  });
+  if (error) console.warn('로그인 이력 기록 실패:', error.message);
+}
+
 async function handleLogin(){
   const email = document.getElementById('login-email').value.trim();
   const password = document.getElementById('login-password').value;
@@ -1772,6 +1790,7 @@ async function handleLogin(){
     errEl.textContent = '로그인 실패: ' + error.message;
     return;
   }
+  await logLoginHistory(data.session);
   await startApp(data.session);
 }
 
