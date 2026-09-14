@@ -896,8 +896,8 @@
 
   <!-- 탭 네비게이션 -->
   <div class="tab-nav">
-    <button class="tab-btn active" onclick="switchTab('cs')">1) CS 고객 상담 관리</button>
-    <button class="tab-btn" onclick="switchTab('design')">2) 상품 설계 및 비교</button>
+    <button class="tab-btn active" onclick="switchTab('cs')">1) CS고객상담</button>
+    <button class="tab-btn" onclick="switchTab('design')">2) 상품 설계</button>
     <div id="auth-box" class="auth-box">
       <button class="login-trigger-btn" onclick="openLoginModal()">🔐 관리자 로그인</button>
     </div>
@@ -995,8 +995,7 @@
     <div class="action-bar">
       <h3>제안된 상품 연동 내역 (다중 선택 가능)</h3>
       <div style="display:flex; gap:8px;">
-        <button class="primary-btn" onclick="openSummaryPreview()" style="background:#3A3C42;">📋 상담 내용 요약 미리보기</button>
-        <button class="primary-btn" onclick="switchTab('design')">➕ [상품설계] 화면으로 이동</button>
+        <button class="primary-btn" onclick="openSummaryPreview()" style="background:#3A3C42;">📋 상담요약 미리보기</button>
       </div>
     </div>
 
@@ -1017,8 +1016,7 @@
       </header>
 
       <div style="display:flex; flex-direction:column; justify-content:flex-end; align-items:flex-end; gap:12px;">
-        <button class="primary-btn" onclick="reflectSelectedProductsToCS()" style="background:#1E7E34;">✨ 선택한 상품 CS 화면으로 반영하기</button>
-        <button class="tab-btn" onclick="switchTab('cs')" style="background:#fff; color:var(--ink);">← CS 상담 화면으로 돌아가기</button>
+        <button class="primary-btn" onclick="reflectSelectedProductsToCS()" style="background:#1E7E34;">✨ 상품 반영</button>
       </div>
     </div>
 
@@ -1144,6 +1142,7 @@ const FEE_RANGES = [
 
 let DATA = null;
 let COMMISSION_DATA = {};
+let RAW_COMMISSION_DATA = [];
 let PROMOTION_DATA = {};
 let customGiftValues = {};
 let openDiscountItems = new Set();
@@ -1249,6 +1248,13 @@ function formatStartAt(date){
   return `${mm}월 ${dd}일 ${hh}시부터 적용`;
 }
 
+function lookupCommission(carrierKey, speedNum, tvTier){
+  const rows = RAW_COMMISSION_DATA.filter(r => String(r.carrier).toLowerCase() === carrierKey && normalizeSpeedValue(r.speed) === speedNum);
+  const internetComm = rows.find(r => String(r.tv_tier) === 'none')?.commission_amount || 0;
+  const tvComm = tvTier !== 'none' ? (rows.find(r => String(r.tv_tier) === tvTier)?.commission_amount || 0) : 0;
+  return { internetComm, tvComm, totalComm: internetComm + tvComm };
+}
+
 function normalizeSpeedValue(v){
   if (v === null || v === undefined) return null;
   const s = String(v).trim();
@@ -1273,6 +1279,7 @@ async function loadFinanceData() {
   addLog('carrier_promotions', !promoRes.error, promoRes.error ? promoRes.error.message : `${promoRes.data?.length || 0}건 프로모션 조회`);
 
   COMMISSION_DATA = {};
+  RAW_COMMISSION_DATA = commRes.data || [];
   CARRIERS.forEach(carrier => {
     const commRows = commRes.data
       ? commRes.data.filter(r => String(r.carrier).toLowerCase() === carrier && normalizeSpeedValue(r.speed) === targetSpeed)
@@ -1887,9 +1894,18 @@ function buildConsultSummary(){
     lines.push('- 반영된 제안 상품 없음');
   } else {
     reflectedProducts.forEach((p, idx) => {
-      lines.push(`${idx + 1}. ${p.carrierName} / ${p.composition}`);
-      lines.push(`   월 요금: ${p.totalFee.toLocaleString()}원`);
-      lines.push(`   사은품 총 ${p.benefitTotal.toLocaleString()}원 (상품권 ${p.giftCard.toLocaleString()}원 + 현금 ${p.cash.toLocaleString()}원)`);
+      lines.push(`${idx + 1}. ${p.carrierName}`);
+      lines.push(`인터넷(${p.internetLabel})`);
+      lines.push(`공유기(${p.routerLabel})`);
+      if (p.tvTier !== 'none') {
+        lines.push(`TV(${p.tvLabel})`);
+        lines.push(`셋탑(${p.settopLabel})`);
+      }
+      lines.push(`월요금 ${p.totalFee.toLocaleString()}원`);
+      lines.push(`사은품 총 ${p.benefitTotal.toLocaleString()}원`);
+      lines.push(`  └ 상품권 ${p.giftCard.toLocaleString()}원`);
+      lines.push(`  └ 현금 ${p.cash.toLocaleString()}원`);
+      lines.push('');
     });
   }
 
@@ -2078,6 +2094,9 @@ function reflectSelectedProductsToCS() {
     reflectedProducts.push({
       id: Date.now() + Math.random(),
       carrierName: BRAND_LABEL[carrier],
+      carrierKey: carrier,
+      speedNum: Number(state.speed),
+      tvTier: state.tv,
       internetLabel: SPEED_LABEL[state.speed],
       routerLabel: ROUTER_LABEL[state.router],
       tvLabel: state.tv === 'none' ? '미포함' : tvLabel,
@@ -2121,11 +2140,15 @@ function renderReflectedProducts() {
             <th>사은품</th>
             <th>상품권</th>
             <th>현금</th>
+            ${isLoggedIn ? '<th>수수료</th><th>마진</th>' : ''}
             <th></th>
           </tr>
         </thead>
         <tbody>
-          ${reflectedProducts.map((p, idx) => `
+          ${reflectedProducts.map((p, idx) => {
+            const comm = isLoggedIn ? lookupCommission(p.carrierKey, p.speedNum, p.tvTier) : null;
+            const margin = comm ? comm.totalComm - p.benefitTotal : 0;
+            return `
             <tr>
               <td class="brand-cell">${p.carrierName}</td>
               <td>${p.internetLabel}</td>
@@ -2136,9 +2159,11 @@ function renderReflectedProducts() {
               <td class="total-cell">${p.benefitTotal.toLocaleString()}원</td>
               <td>${p.giftCard.toLocaleString()}원</td>
               <td>${p.cash.toLocaleString()}원</td>
+              ${isLoggedIn ? `<td>${comm.totalComm.toLocaleString()}원</td><td style="color:${margin >= 0 ? '#1E7E34' : '#D9534F'}; font-weight:700;">${margin.toLocaleString()}원</td>` : ''}
               <td><button class="remove-ref" onclick="removeReflectedProduct(${idx})">삭제</button></td>
             </tr>
-          `).join('')}
+          `;
+          }).join('')}
         </tbody>
       </table>
     </div>
@@ -2183,14 +2208,17 @@ async function handleLogin(){
   updateAuthUI(data.session.user.email);
   closeLoginModal();
   if (DATA) { await loadFinanceData(); render(); }
+  renderReflectedProducts();
 }
 
 async function handleLogout(){
   await sb.auth.signOut();
   isLoggedIn = false;
   COMMISSION_DATA = {};
+  RAW_COMMISSION_DATA = [];
   updateAuthUI();
   if (DATA) render();
+  renderReflectedProducts();
 }
 
 (async function init(){
