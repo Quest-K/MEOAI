@@ -101,7 +101,7 @@
     color: var(--gold);
   }
 
-  /* 필수 안내 및 동의 박스 스타일 */
+  /* 필수 안내 및 사은품 환수 동의 박스 */
   .notice-box {
     background: #FDFBF7;
     border: 1px solid var(--paper-line);
@@ -153,7 +153,7 @@
     margin-bottom: 6px;
     font-weight: 600;
   }
-  .form-group input {
+  .form-group input, .form-group select {
     width: 100%;
     padding: 11px 14px;
     border: 1px solid var(--paper-line);
@@ -162,10 +162,57 @@
     background: #FAFAF7;
     font-family: 'Pretendard', sans-serif;
   }
-  .form-group input:focus {
+  .form-group input:focus, .form-group select:focus {
     outline: none;
     border-color: var(--gold);
     background: #FFFFFF;
+  }
+
+  /* 서명 패드 스타일 */
+  .signature-container {
+    margin-top: 24px;
+  }
+  .signature-container label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink-dim);
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .signature-pad-wrap {
+    position: relative;
+    border: 1px solid var(--paper-line);
+    border-radius: 4px;
+    background: #FAFAF7;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 140px;
+    touch-action: none;
+    cursor: crosshair;
+  }
+  .signature-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding: 6px 10px;
+    background: #F4F2EB;
+    border-top: 1px solid var(--paper-line);
+  }
+  .btn-clear {
+    background: transparent;
+    border: 1px solid var(--paper-line);
+    border-radius: 3px;
+    padding: 4px 10px;
+    font-size: 12px;
+    color: var(--ink-dim);
+    cursor: pointer;
+  }
+  .btn-clear:hover {
+    background: #EAE8E1;
+    color: var(--ink);
   }
 
   .btn-group {
@@ -173,7 +220,7 @@
     display: flex;
     gap: 12px;
   }
-  button {
+  button.action-btn {
     appearance: none;
     border: none;
     border-radius: var(--radius);
@@ -203,7 +250,7 @@
   <div class="card">
     <p class="eyebrow">APPLICATION FORM</p>
     <h1>인터넷 가입 신청서 확인</h1>
-    <p class="sub-text">이전 페이지에서 선택하신 상품 내역을 확인하고 가입 정보를 입력해 주세요.</p>
+    <p class="sub-text">이전 페이지에서 선택하신 상품 내역을 확인하고 가입 및 납부 정보를 입력해 주세요.</p>
     
     <!-- 선택 상품 요약 영역 -->
     <div class="product-summary" id="product-summary">
@@ -220,7 +267,7 @@
       </div>
     </div>
 
-    <!-- 필수 안내 및 사은품 환수 동의 영역 (추가됨) -->
+    <!-- 필수 안내 및 사은품 환수 동의 영역 -->
     <div class="notice-box">
       <p>⚠️ 필수 안내 및 사은품 환수 규정</p>
       <ul>
@@ -233,7 +280,7 @@
       </label>
     </div>
 
-    <!-- 고객 정보 입력 영역 -->
+    <!-- 고객 정보 및 납부 정보 입력 영역 -->
     <div class="form-section">
       <div class="form-group">
         <label>가입자 성명</label>
@@ -247,19 +294,42 @@
         <label>설치 주소</label>
         <input type="text" id="customer-address" placeholder="서울특별시 OO구 OO로 123">
       </div>
+      <div class="form-group">
+        <label>요금 납부 방법</label>
+        <select id="payment-method">
+          <option value="">납부 방법을 선택하세요</option>
+          <option value="bank">자동이체 (계좌)</option>
+          <option value="card">자동납부 (신용카드)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>납부 계좌/카드 번호</label>
+        <input type="text" id="payment-account" placeholder="계좌번호 또는 카드번호 입력 ('-' 제외)">
+      </div>
+
+      <!-- 전자 서명 영역 -->
+      <div class="signature-container">
+        <label>가입자 전자 서명</label>
+        <div class="signature-pad-wrap">
+          <canvas id="signature-pad"></canvas>
+          <div class="signature-actions">
+            <button type="button" class="btn-clear" id="clear-sig">서명 지우기</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 버튼 영역 -->
     <div class="btn-group">
-      <button type="button" class="btn-back" onclick="history.back()">이전으로</button>
-      <button type="button" class="btn-submit" onclick="handleSubmit()">가입 신청 완료하기</button>
+      <button type="button" class="action-btn btn-back" onclick="history.back()">이전으로</button>
+      <button type="button" class="action-btn btn-submit" onclick="handleSubmit()">가입 신청 완료하기</button>
     </div>
   </div>
 </div>
 
 <script>
+  // 1. 상품 정보 로드
   window.addEventListener('DOMContentLoaded', () => {
-    // 1. localStorage에서 데이터 불러오기 (우선순위 높음)
     const savedData = localStorage.getItem('selected_product');
     
     if (savedData) {
@@ -272,28 +342,91 @@
         document.getElementById('val-settop').textContent = data.tvIncluded === 'Y' ? data.settop : '미포함';
         document.getElementById('val-gift').textContent = data.gift ? Number(data.gift).toLocaleString() + '원' : '0원';
         document.getElementById('val-total').textContent = data.totalMonthlyFee ? Number(data.totalMonthlyFee).toLocaleString() + '원 / 월' : '-';
-        return; // 데이터 로딩 성공 시 종료
       } catch (e) {
         console.error('데이터 파싱 오류:', e);
       }
-    }
-
-    // 2. Fallback: localStorage 데이터가 없을 경우 URL 쿼리 파라미터 백업 연동
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('carrier')) {
-      document.getElementById('val-carrier').textContent = params.get('carrier');
-    }
-    if (params.get('fee')) {
-      document.getElementById('val-total').textContent = Number(params.get('fee')).toLocaleString() + '원 / 월';
+    } else {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('carrier')) {
+        document.getElementById('val-carrier').textContent = params.get('carrier');
+      }
+      if (params.get('fee')) {
+        document.getElementById('val-total').textContent = Number(params.get('fee')).toLocaleString() + '원 / 월';
+      }
     }
   });
 
-  // 3. 신청 완료 버튼 핸들러 (유효성 검사, 동의 여부 체크 및 제출 처리)
+  // 2. 캔버스 전자 서명 기능 구현
+  const canvas = document.getElementById('signature-pad');
+  const ctx = canvas.getContext('2d');
+  let isDrawing = false;
+  let hasSigned = false;
+
+  function resizeCanvas() {
+    const ratio = Math.max(window.devicePixelRatio || 1, 1);
+    canvas.width = canvas.offsetWidth * ratio;
+    canvas.height = canvas.offsetHeight * ratio;
+    ctx.scale(ratio, ratio);
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#2C2E35';
+  }
+
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  function getPosition(e) {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top
+    };
+  }
+
+  function startDraw(e) {
+    isDrawing = true;
+    hasSigned = true;
+    const pos = getPosition(e);
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+    e.preventDefault();
+  }
+
+  function draw(e) {
+    if (!isDrawing) return;
+    const pos = getPosition(e);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+    e.preventDefault();
+  }
+
+  function stopDraw() {
+    isDrawing = false;
+  }
+
+  canvas.addEventListener('mousedown', startDraw);
+  canvas.addEventListener('mousemove', draw);
+  window.addEventListener('mouseup', stopDraw);
+
+  canvas.addEventListener('touchstart', startDraw, { passive: false });
+  canvas.addEventListener('touchmove', draw, { passive: false });
+  canvas.addEventListener('touchend', stopDraw);
+
+  document.getElementById('clear-sig').addEventListener('click', () => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    hasSigned = false;
+  });
+
+  // 3. 신청 완료 버튼 핸들러 (유효성 검사 및 제출)
   function handleSubmit() {
     const isAgreed = document.getElementById('agree-check').checked;
     const name = document.getElementById('customer-name').value.trim();
     const phone = document.getElementById('customer-phone').value.trim();
     const address = document.getElementById('customer-address').value.trim();
+    const payMethod = document.getElementById('payment-method').value;
+    const payAccount = document.getElementById('payment-account').value.trim();
 
     if (!isAgreed) {
       alert('필수 안내 및 사은품 환수 규정에 동의해 주세요.');
@@ -301,14 +434,19 @@
       return;
     }
 
-    if (!name || !phone || !address) {
-      alert('성명, 연락처, 설치 주소를 모두 입력해 주세요.');
+    if (!name || !phone || !address || !payMethod || !payAccount) {
+      alert('성명, 연락처, 설치 주소, 납부 정보를 모두 입력해 주세요.');
       return;
     }
 
-    alert(`[가입 신청 완료]\n\n성명: ${name}\n연락처: ${phone}\n주소: ${address}\n\n가입 신청이 정상적으로 접수되었습니다. 담당자가 빠르게 연락드리겠습니다.`);
+    if (!hasSigned) {
+      alert('가입자 전자 서명을 진행해 주세요.');
+      return;
+    }
+
+    alert(`[가입 신청 완료]\n\n성명: ${name}\n연락처: ${phone}\n주소: ${address}\n납부방법: ${payMethod === 'bank' ? '자동이체(계좌)' : '자동납부(카드)'}\n\n가입 신청 및 전자 서명이 정상적으로 접수되었습니다.`);
     
-    // 필요 시 여기에 서버로 데이터를 전송하는 Fetch API 로직을 추가할 수 있습니다.
+    // 서버 전송 로직 작성 위치
   }
 </script>
 
