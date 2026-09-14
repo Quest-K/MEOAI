@@ -137,7 +137,7 @@
     border:1px solid var(--paper-line);
   }
   .col-title{
-    font-family:'Newsreader', serif;
+    font-family:'Pretendard', sans-serif;
     font-weight:600;
     font-size:20px;
     color:#1C1E24;
@@ -591,6 +591,9 @@
     border-radius:4px;
     background:#F0EEE5;
   }
+  .fam-accordion-carrier.carrier-kt{ background:#1C1C1C; color:#FFFFFF; }
+  .fam-accordion-carrier.carrier-lg{ background:#1E50A2; color:#FFFFFF; }
+  .fam-accordion-carrier.carrier-sk{ background:#D6293E; color:#FFFFFF; }
   .fam-accordion-items{
     flex:1;
     min-width:0;
@@ -605,6 +608,7 @@
     overflow:hidden;
   }
   .fam-accordion-item.disabled{ opacity:.55; }
+  .fam-accordion-item.max-discount{ border:2px solid #D6293E; }
   .fam-accordion-header{
     display:flex;
     flex-direction:column;
@@ -1504,7 +1508,8 @@ function computeSKOptions(lines, speedNum, groupKey){
   let mobileTotal = 0;
   if (count === 1) mobileTotal = 3500;
   else if (count === 2) mobileTotal = 3500 * 2;
-  else if (count > 2) mobileTotal = 6000 * count;
+  else if (count === 3) mobileTotal = 6000 * 3;
+  else if (count >= 4) mobileTotal = 18000;
 
   const lineShares = distributeAmount(lines, mobileTotal, 'equal');
 
@@ -1531,7 +1536,7 @@ function updateTcDistMode(mode){
   renderFamilyDiscountAccordion();
 }
 
-function renderAccordionItem(opt, lines){
+function renderAccordionItem(opt, lines, isMax){
   const isOpen = openDiscountItems.has(opt.key);
   const badgeClass = opt.avail ? 'badge-avail' : 'badge-unavail';
   const totalDisplay = opt.avail ? `${opt.total.toLocaleString()}원` : '-';
@@ -1569,7 +1574,7 @@ function renderAccordionItem(opt, lines){
   }
 
   return `
-    <div class="fam-accordion-item${opt.disabled ? ' disabled' : ''}">
+    <div class="fam-accordion-item${opt.disabled ? ' disabled' : ''}${isMax ? ' max-discount' : ''}">
       <div class="fam-accordion-header" ${opt.disabled ? '' : `onclick="toggleDiscountItem('${opt.key}')"`}>
         <div class="fam-accordion-row1">
           <span class="fam-accordion-name">${opt.name}</span>
@@ -1606,11 +1611,15 @@ function renderFamilyDiscountAccordion(){
     else if (g.key === 'lg') options = computeLGOptions(lines, speedNum);
     else options = computeSKOptions(lines, speedNum, g.key);
 
+    const availOptions = options.filter(o => o.avail);
+    const maxTotal = availOptions.length ? Math.max(...availOptions.map(o => o.total)) : null;
+    const maxKey = maxTotal !== null ? (availOptions.find(o => o.total === maxTotal) || {}).key : null;
+
     return `
       <div class="fam-accordion-group">
-        <div class="fam-accordion-carrier">${g.label}</div>
+        <div class="fam-accordion-carrier carrier-${g.key}">${g.label}</div>
         <div class="fam-accordion-items">
-          ${options.map(opt => renderAccordionItem(opt, lines)).join('')}
+          ${options.map(opt => renderAccordionItem(opt, lines, opt.key === maxKey)).join('')}
         </div>
       </div>
     `;
