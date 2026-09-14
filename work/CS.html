@@ -67,6 +67,7 @@
 
   .view-container { display: none; }
   .view-container.active { display: block; }
+  #view-cs{ max-width:920px; margin:0 auto; }
 
   .top-grid{
     display:grid;
@@ -205,6 +206,65 @@
     transition: background 0.15s ease;
   }
   .primary-btn:hover { background: #B37722; }
+  .secondary-btn {
+    background: #EAE8E1;
+    color: var(--ink);
+    border: 1px solid var(--paper-line);
+    padding: 12px 24px;
+    font-size: 15px;
+    font-weight: 600;
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  .secondary-btn:hover { background: #DEDBD0; }
+
+  .modal-overlay{
+    display:none;
+    position:fixed;
+    inset:0;
+    background:rgba(28,30,36,0.55);
+    z-index:1000;
+    align-items:center;
+    justify-content:center;
+    padding:20px;
+  }
+  .modal-box{
+    background:#FFFFFF;
+    border-radius:var(--radius);
+    padding:24px;
+    width:100%;
+    max-width:560px;
+    max-height:85vh;
+    display:flex;
+    flex-direction:column;
+  }
+  .modal-box h3{ margin:0 0 6px; font-size:18px; color:#1C1E24; }
+  .modal-desc{ margin:0 0 14px; font-size:13px; color:var(--ink-dim); }
+  #summary-preview-textarea{
+    flex:1;
+    min-height:320px;
+    width:100%;
+    font-family:var(--font-mono);
+    font-size:13px;
+    line-height:1.6;
+    padding:14px;
+    border:1px solid var(--paper-line);
+    border-radius:var(--radius);
+    background:#FAFAF7;
+    color:#20211D;
+    resize:vertical;
+    box-sizing:border-box;
+  }
+  .modal-actions{
+    display:flex;
+    justify-content:flex-end;
+    gap:8px;
+    margin-top:16px;
+  }
+  @media (max-width: 640px){
+    .modal-box{ padding:16px; max-height:90vh; }
+    #summary-preview-textarea{ min-height:240px; }
+  }
 
   /* 반영된 상품 리스트 스타일 */
   .reflected-list {
@@ -849,8 +909,22 @@
           </select>
         </div>
         <div class="form-group">
-          <label>기존 홈상품 구성</label>
-          <input type="text" id="old-composition" value="인터넷(100M) + TV 베이직" placeholder="예: 인터넷+TV">
+          <label>기존 인터넷 속도</label>
+          <select id="old-internet-speed" onchange="syncOldComposition()">
+            <option value="100M">100M</option>
+            <option value="500M" selected>500M</option>
+            <option value="1기가">1기가</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>기존 TV 대수</label>
+          <select id="old-tv-count" onchange="syncOldComposition()">
+            <option value="0">TV 없음</option>
+            <option value="1" selected>1대</option>
+            <option value="2">2대</option>
+            <option value="3">3대 이상</option>
+          </select>
+          <input type="hidden" id="old-composition" value="인터넷(500M) + TV 1대">
         </div>
         <div class="form-group">
           <label>기존 월 요금</label>
@@ -869,7 +943,7 @@
     <div class="action-bar">
       <h3>제안된 상품 연동 내역 (다중 선택 가능)</h3>
       <div style="display:flex; gap:8px;">
-        <button class="primary-btn" onclick="copyConsultSummary()" style="background:#3A3C42;">📋 상담 내용 요약 복사</button>
+        <button class="primary-btn" onclick="openSummaryPreview()" style="background:#3A3C42;">📋 상담 내용 요약 미리보기</button>
         <button class="primary-btn" onclick="switchTab('design')">➕ [상품설계] 화면으로 이동</button>
       </div>
     </div>
@@ -956,6 +1030,18 @@
     <div class="results" id="results"></div>
   </div>
 
+</div>
+
+<div id="summary-preview-modal" class="modal-overlay">
+  <div class="modal-box">
+    <h3>상담 내용 요약 미리보기</h3>
+    <p class="modal-desc">아래 내용을 확인 후 복사해주세요. 필요하면 직접 수정할 수 있습니다.</p>
+    <textarea id="summary-preview-textarea" spellcheck="false"></textarea>
+    <div class="modal-actions">
+      <button class="secondary-btn" onclick="closeSummaryPreview()">닫기</button>
+      <button class="primary-btn" onclick="copySummaryFromPreview()">📋 복사하기</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -1216,6 +1302,14 @@ function computePrice(carrier){
   }
 
   return { available:true, total, internetFee, routerFee: actualRouterFee, tvFee, settopFee, bundleDiscount, tvBundleDiscount, tvInfo, settopInfo };
+}
+
+function syncOldComposition(){
+  const speed = document.getElementById('old-internet-speed')?.value || '';
+  const tvCount = document.getElementById('old-tv-count')?.value || '0';
+  const tvText = tvCount === '0' ? 'TV 없음' : `TV ${tvCount}대`;
+  const hidden = document.getElementById('old-composition');
+  if (hidden) hidden.value = `인터넷(${speed}) + ${tvText}`;
 }
 
 function nearestFeeRangeValue(fee){
@@ -1698,7 +1792,7 @@ function handleGiftInputChange(carrier, rawVal) {
   render();
 }
 
-function copyConsultSummary(){
+function buildConsultSummary(){
   const name = document.getElementById('cust-name')?.value || '';
   const phone = document.getElementById('cust-phone')?.value || '';
   const mobileCarrier = document.getElementById('cust-mobile-carrier')?.value || '';
@@ -1728,20 +1822,31 @@ function copyConsultSummary(){
     });
   }
 
-  const summary = lines.join('\n');
+  return lines.join('\n');
+}
+
+function openSummaryPreview(){
+  const summary = buildConsultSummary();
+  document.getElementById('summary-preview-textarea').value = summary;
+  document.getElementById('summary-preview-modal').style.display = 'flex';
+}
+
+function closeSummaryPreview(){
+  document.getElementById('summary-preview-modal').style.display = 'none';
+}
+
+function copySummaryFromPreview(){
+  const summary = document.getElementById('summary-preview-textarea').value;
 
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(summary)
       .then(() => alert('상담 내용 요약이 클립보드에 복사되었습니다.'))
       .catch(() => alert('복사에 실패했습니다. 브라우저 권한을 확인해주세요.'));
   } else {
-    const ta = document.createElement('textarea');
-    ta.value = summary;
-    document.body.appendChild(ta);
+    const ta = document.getElementById('summary-preview-textarea');
     ta.select();
     try { document.execCommand('copy'); alert('상담 내용 요약이 클립보드에 복사되었습니다.'); }
     catch (e) { alert('복사에 실패했습니다.'); }
-    document.body.removeChild(ta);
   }
 }
 
@@ -1949,6 +2054,7 @@ function removeReflectedProduct(idx) {
   setupSeg('seg-settop','settopTier');
   setupSeg('seg-router','router');
   syncToDesignPhones();
+  syncOldComposition();
 
   if (await loadData()) {
     await loadFinanceData();
