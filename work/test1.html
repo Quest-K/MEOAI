@@ -357,11 +357,15 @@
       </div>
     </div>
 
-    <!-- [STEP 2] 가입자 정보 입력 (이름, 연락처, 통신사, 설치주소) -->
+    <!-- [STEP 2] 가입자 정보 입력 (이름, 주민등록번호, 연락처, 통신사, 설치주소) -->
     <div class="step-content" id="step-2">
       <div class="form-group">
         <label>가입자 성명</label>
         <input type="text" id="customer-name" placeholder="홍길동" oninput="syncCustomerName()">
+      </div>
+      <div class="form-group">
+        <label>주민등록번호</label>
+        <input type="password" id="customer-rrn" placeholder="주민등록번호 13자리 ('-' 제외)" maxlength="13">
       </div>
       <div class="form-group">
         <label>연락처 (휴대폰 번호)</label>
@@ -372,11 +376,11 @@
         <select id="current-carrier">
           <option value="">선택하세요</option>
           <option value="KT">KT</option>
-          <option value="SKB">SK브로드밴드</option>
-          <option value="LGU">LG유플러스</option>
-          <option value="KT_SKY">KT스카이라이프</option>
-          <option value="LG_HELLO">LG헬로비전</option>
-          <option value="OTHER">기타 / 신규설치</option>
+          <option value="SK">SK</option>
+          <option value="LG">LG</option>
+          <option value="KT알뜰">KT알뜰</option>
+          <option value="SK알뜰">SK알뜰</option>
+          <option value="LG알뜰">LG알뜰</option>
         </select>
       </div>
       <div class="form-group">
@@ -412,7 +416,7 @@
         <input type="text" id="gift-bank-other" class="sub-input" style="display:none;" placeholder="기타 은행명을 입력해 주세요">
       </div>
       <div class="form-group">
-        <label>예금주 (가입자 성명 자동 입력)</label>
+        <label>예금주 (가입자 성명 자동 입력 & 명의자 일치 필수)</label>
         <input type="text" id="gift-holder" placeholder="가입자 성명" readonly style="background: #EAE8E1; cursor: not-allowed;">
       </div>
       <div class="form-group">
@@ -442,7 +446,7 @@
       </div>
 
       <div class="form-group">
-        <label id="label-pay-inst">출금 은행</label>
+        <label id="label-pay-inst">출금 기관 / 카드사</label>
         <select id="pay-inst-select" onchange="handlePayInstChange()">
           <!-- 동적 로드 -->
         </select>
@@ -450,7 +454,12 @@
       </div>
 
       <div class="form-group">
-        <label id="label-pay-number">계좌번호</label>
+        <label id="label-pay-holder">예금주 / 카드 소유주명</label>
+        <input type="text" id="pay-holder" placeholder="명의자 성명 입력">
+      </div>
+
+      <div class="form-group">
+        <label id="label-pay-number">계좌번호 / 카드번호</label>
         <input type="text" id="pay-number" placeholder="번호 입력 ('-' 제외)">
       </div>
 
@@ -557,7 +566,7 @@
           <p>🔒 7. 개인정보 수집 및 이용 동의</p>
           <ul>
             <li>수집 목적: 인터넷/TV 가입 신청 접수, 본인 확인, 개통 처리 및 요금 청구</li>
-            <li>수집 항목: 성명, 연락처, 설치 주소, 사은품 및 납부 정보</li>
+            <li>수집 항목: 성명, 주민등록번호, 연락처, 설치 주소, 사은품 및 납부 정보</li>
           </ul>
           <label class="item-agree">
             <input type="checkbox" class="sub-agree" onchange="checkAllStatus()">
@@ -630,10 +639,16 @@
     }
   }
 
-  // 가입자 이름 동기화 (사은품 예금주 자동 반영)
+  // 가입자 이름 동기화 (사은품 예금주 및 요금 납부자 자동 반영)
   function syncCustomerName() {
     const name = document.getElementById('customer-name').value;
     document.getElementById('gift-holder').value = name;
+    
+    // 만약 납부정보 화면이 이미 활성화되어 있거나 체크되어 있다면 납부자명도 동기화 고려
+    const sameCheckbox = document.getElementById('same-as-gift');
+    if (!sameCheckbox.checked && !document.getElementById('pay-holder').value) {
+      document.getElementById('pay-holder').value = name;
+    }
   }
 
   // 사은품 은행 '기타' 처리
@@ -656,6 +671,7 @@
     const type = document.getElementById('payment-type').value;
     const labelInst = document.getElementById('label-pay-inst');
     const selectInst = document.getElementById('pay-inst-select');
+    const labelHolder = document.getElementById('label-pay-holder');
     const labelNum = document.getElementById('label-pay-number');
     const expiryGroup = document.getElementById('card-expiry-group');
 
@@ -663,6 +679,7 @@
 
     if (type === 'account') {
       labelInst.textContent = '출금 은행';
+      labelHolder.textContent = '계좌 예금주명';
       labelNum.textContent = '계좌번호';
       expiryGroup.style.display = 'none';
       
@@ -674,6 +691,7 @@
       });
     } else {
       labelInst.textContent = '카드사';
+      labelHolder.textContent = '카드 소유주명';
       labelNum.textContent = '카드번호';
       expiryGroup.style.display = 'block';
       
@@ -705,6 +723,7 @@
       const giftBank = document.getElementById('gift-bank').value;
       const giftBankOther = document.getElementById('gift-bank-other').value;
       const giftAccount = document.getElementById('gift-account').value;
+      const customerName = document.getElementById('customer-name').value;
 
       if (!giftBank || !giftAccount) {
         alert('먼저 Step 3에서 사은품 계좌 정보를 올바르게 입력해 주세요.');
@@ -716,23 +735,25 @@
       document.getElementById('payment-type').value = 'account';
       handlePaymentTypeChange();
 
-      // 은행 및 계좌번호 동기화
+      // 은행, 명의자 및 계좌번호 동기화
       document.getElementById('pay-inst-select').value = giftBank;
       handlePayInstChange();
       if (giftBank === '기타') {
         document.getElementById('pay-inst-other').value = giftBankOther;
       }
+      document.getElementById('pay-holder').value = customerName;
       document.getElementById('pay-number').value = giftAccount;
     } else {
       document.getElementById('pay-number').value = '';
+      document.getElementById('pay-holder').value = '';
     }
   }
 
   // 스텝 제어 로직 (총 5단계)
   const stepTitles = [
     { eyebrow: "STEP 01 / 05", title: "상품 내역 확인", desc: "선택하신 인터넷 및 TV 가입 상품 정보를 최종 확인해 주세요." },
-    { eyebrow: "STEP 02 / 05", title: "가입자 정보 입력", desc: "성명, 연락처, 이용 중인 통신사 및 설치 주소를 입력해 주세요." },
-    { eyebrow: "STEP 03 / 05", title: "사은품 정보 입력", desc: "사은품 지급받으실 계좌 정보를 정확히 입력해 주세요." },
+    { eyebrow: "STEP 02 / 05", title: "가입자 정보 입력", desc: "성명, 주민등록번호, 연락처, 통신사 및 설치 주소를 입력해 주세요." },
+    { eyebrow: "STEP 03 / 05", title: "사은품 정보 입력", desc: "사은품 지급받으실 계좌 정보 및 명의자 일치 여부를 확인해 주세요." },
     { eyebrow: "STEP 04 / 05", title: "요금 납부 정보 입력", desc: "매월 요금이 청구될 계좌 또는 카드 정보를 입력해 주세요." },
     { eyebrow: "STEP 05 / 05", title: "필수 안내 확인 및 전자 서명", desc: "필수 안내 항목을 모두 확인 및 동의 후 서명해 주세요." }
   ];
@@ -769,23 +790,34 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  // 각 스텝별 유효성 검사
+  // 각 스텝별 유효성 검사 (주민번호 및 예금주 일치 검증 포함)
   function validateStep2() {
     const name = document.getElementById('customer-name').value.trim();
+    const rrn = document.getElementById('customer-rrn').value.trim();
     const phone = document.getElementById('customer-phone').value.trim();
     const carrier = document.getElementById('current-carrier').value;
     const address = document.getElementById('customer-address').value.trim();
 
-    if (!name || !phone || !carrier || !address) {
-      alert('가입자 성명, 연락처, 통신사, 설치 주소를 모두 입력해 주세요.');
+    if (!name || !rrn || !phone || !carrier || !address) {
+      alert('가입자 성명, 주민등록번호, 연락처, 통신사, 설치 주소를 모두 입력해 주세요.');
       return;
     }
+    if (rrn.length !== 13 || isNaN(rrn)) {
+      alert('올바른 주민등록번호 13자리를 입력해 주세요. (\'-\' 제외)');
+      document.getElementById('customer-rrn').focus();
+      return;
+    }
+    
+    // Step 2 완료 시점에 사은품 예금주 이름 기본 주입
+    document.getElementById('gift-holder').value = name;
     nextStep(3);
   }
 
   function validateStep3() {
+    const customerName = document.getElementById('customer-name').value.trim();
     const bank = document.getElementById('gift-bank').value;
     const bankOther = document.getElementById('gift-bank-other').value.trim();
+    const holder = document.getElementById('gift-holder').value.trim();
     const account = document.getElementById('gift-account').value.trim();
 
     if (!bank || !account) {
@@ -797,13 +829,22 @@
       document.getElementById('gift-bank-other').focus();
       return;
     }
+
+    // 3. 계좌 예금주 일치 여부 유효성 검증
+    if (holder !== customerName) {
+      alert(`[예금주 불일치 오류]\n사은품 계좌 예금주명(${holder})이 가입자 성명(${customerName})과 일치하지 않습니다.\n사은품은 가입자 본인 명의 계좌로만 지급 가능합니다.`);
+      return;
+    }
+
     nextStep(4);
   }
 
   function validateStep4() {
+    const customerName = document.getElementById('customer-name').value.trim();
     const type = document.getElementById('payment-type').value;
     const inst = document.getElementById('pay-inst-select').value;
     const instOther = document.getElementById('pay-inst-other').value.trim();
+    const payHolder = document.getElementById('pay-holder').value.trim();
     const number = document.getElementById('pay-number').value.trim();
     const expiry = document.getElementById('pay-expiry').value.trim();
 
@@ -812,11 +853,17 @@
       document.getElementById('pay-inst-other').focus();
       return;
     }
-    if (!number) {
-      alert('납부 번호를 입력해 주세요.');
-      document.getElementById('pay-number').focus();
+    if (!payHolder || !number) {
+      alert('납부자 명의 및 번호를 모두 입력해 주세요.');
       return;
     }
+
+    // 납부자 명의 일치 검증 (일반적으로 본인 또는 직계가족 명의 허용이나, 원칙 검증)
+    if (payHolder !== customerName) {
+      const confirmDiff = confirm(`입력하신 납부자 명의(${payHolder})가 가입자 성명(${customerName})과 다릅니다. 타인 명의 납부로 진행하시겠습니까? (가족관계증명서가 필요할 수 있습니다)`);
+      if (!confirmDiff) return;
+    }
+
     if (type === 'card' && !expiry) {
       alert('카드 유효기간을 입력해 주세요.');
       document.getElementById('pay-expiry').focus();
@@ -930,7 +977,7 @@
     const phone = document.getElementById('customer-phone').value.trim();
     const address = document.getElementById('customer-address').value.trim();
 
-    alert(`[가입 신청 최종 완료]\n\n성명: ${name}\n연락처: ${phone}\n주소: ${address}\n\n사은품 계좌, 납부 정보, 필수 안내 동의 및 전자 서명이 모두 정상 접수되었습니다.`);
+    alert(`[가입 신청 최종 완료]\n\n성명: ${name}\n연락처: ${phone}\n주소: ${address}\n\n주민등록번호 본인확인, 사은품 계좌 예금주 일치 검증, 납부 정보, 동의 및 서명이 모두 정상 접수되었습니다.`);
   }
 </script>
 
