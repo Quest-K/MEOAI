@@ -229,10 +229,8 @@
           <button data-value="KT">KT</button>
           <button data-value="LG">LG</button>
           <button data-value="SK">SK</button>
-          <button data-value="KT알뜰">KT알뜰</button>
-          <button data-value="LG알뜰">LG알뜰</button>
-          <button data-value="SK알뜰">SK알뜰</button>
         </div>
+        <p style="font-size:12px; color:var(--ink-dim); margin:8px 0 0;">※ 알뜰폰(KT알뜰/LG알뜰/SK알뜰) 요금제는 아직 데이터가 등록되지 않아 목록에서 제외했습니다.</p>
       </div>
     </div>
     <div class="results" id="mobile-plan-results">
@@ -2001,6 +1999,8 @@ function attachJoinLiveListeners() {
 // ===================================================================
 let selectedUsimCarrier = null;
 let usimPlansCarrierListenerAttached = false;
+let currentUsimPlans = [];
+let selectedUsimPlanIds = new Set();
 
 function loadMobilePlanCarriers() {
   if (usimPlansCarrierListenerAttached) return;
@@ -2010,6 +2010,7 @@ function loadMobilePlanCarriers() {
       document.querySelectorAll('#seg-usim-carrier button').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       selectedUsimCarrier = btn.dataset.value;
+      selectedUsimPlanIds.clear();
       fetchUsimPlans(selectedUsimCarrier);
     });
   });
@@ -2019,20 +2020,72 @@ async function fetchUsimPlans(carrier) {
   const container = document.getElementById('mobile-plan-results');
   container.innerHTML = `<div style="padding:20px; text-align:center; color:var(--ink-dim);">요금제 목록을 불러오는 중...</div>`;
 
-  // TODO: usim_plans 테이블의 실제 컬럼명 확인 후 select/렌더링 로직 확정 필요
-  const { data, error } = await sb.from('usim_plans').select('*').eq('carrier', carrier);
+  const { data, error } = await sb.from('usim_plans').select('*').eq('carrier', carrier).eq('is_active', true).order('monthly_fee', { ascending: true });
 
   if (error) {
     container.innerHTML = `<div style="padding:20px; text-align:center; color:#D9534F;">요금제 조회 실패: ${error.message}</div>`;
     return;
   }
   if (!data || data.length === 0) {
-    container.innerHTML = `<div style="padding:20px; text-align:center; color:var(--ink-dim);">${carrier} 요금제 데이터가 없습니다.</div>`;
+    container.innerHTML = `
+      <div style="padding:20px; text-align:center; color:var(--ink-dim); background:#FFF; border:1px dashed var(--paper-line); border-radius:var(--radius);">
+        ${carrier} 요금제 데이터가 없습니다.<br>
+        <span style="font-size:12px;">(DB에는 데이터가 있는데 계속 비어 보인다면, Supabase의 usim_plans 테이블에 anon 조회를 허용하는 RLS 정책이 있는지 확인해 주세요.)</span>
+      </div>`;
     return;
   }
 
-  console.log('usim_plans sample row:', data[0]); // 컬럼명 확인용 임시 로그
-  container.innerHTML = `<div style="padding:20px; color:var(--ink-dim);">${carrier} 요금제 ${data.length}건 조회됨 (표시 형식은 컬럼명 확인 후 반영 예정)</div>`;
+  currentUsimPlans = data;
+  renderUsimPlanTable();
+}
+
+function renderUsimPlanTable() {
+  const container = document.getElementById('mobile-plan-results');
+
+  container.innerHTML = `
+    <div class="compare-table-wrap">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>요금제명</th>
+            <th>월요금(약정 전)</th>
+            <th>월요금(약정 후)</th>
+            <th>데이터</th>
+            <th>통화</th>
+            <th>문자</th>
+            <th>테더링/공유</th>
+            <th>멤버십</th>
+            <th>가입대상</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${currentUsimPlans.map(p => `
+            <tr>
+              <td><input type="checkbox" class="usim-plan-check" data-id="${p.id}" onchange="toggleUsimPlanSelect('${p.id}', this.checked)" ${selectedUsimPlanIds.has(p.id) ? 'checked' : ''}></td>
+              <td class="brand-cell">${p.plan_name || '-'}</td>
+              <td class="fee-cell">${p.monthly_fee != null ? Number(p.monthly_fee).toLocaleString() + '원' : '-'}</td>
+              <td class="fee-cell">${p.contract_discount_fee != null ? Number(p.contract_discount_fee).toLocaleString() + '원' : '미입력'}</td>
+              <td>${p.data_allowance || '-'}</td>
+              <td>${p.voice_allowance || '-'}</td>
+              <td>${p.sms_allowance || '-'}</td>
+              <td>${p.tethering_allowance || '-'}</td>
+              <td>${p.membership_benefit || '-'}</td>
+              <td>${p.target_age || '제한 없음'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size:12px; color:var(--ink-dim); margin-top:8px;">
+      ※ "월요금(약정 후)" 값이 아직 등록되지 않은 요금제는 "미입력"으로 표시됩니다. 사은품 항목은 usim_plans 테이블에 아직 컬럼이 없어 표시하지 못하고 있어요.
+    </p>
+  `;
+}
+
+function toggleUsimPlanSelect(id, checked) {
+  if (checked) selectedUsimPlanIds.add(id);
+  else selectedUsimPlanIds.delete(id);
 }
 
 (async function init(){
