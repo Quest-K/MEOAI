@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="Styles.css">
 </head>
 <body>
-<div class="wrap">
+<div class="wrap has-bar">
 
   <!-- 탭 네비게이션 -->
   <div class="tab-nav">
@@ -621,6 +621,44 @@
 
 </div>
 
+<!-- 하단 고정바: 현재 설계 중인 상품(홈/모바일/결합할인/사은품)을 모든 탭에서 상시 확인 -->
+<div id="bottom-bar" class="bottom-bar">
+  <div class="bottom-bar-inner">
+
+    <div class="bar-cell bar-cell-home">
+      <div class="bar-cell-head">
+        <span class="bar-cell-title">홈상품</span>
+        <select id="bar-carrier-select" class="bar-carrier-select" onchange="handleBarCarrierChange(this.value)"></select>
+      </div>
+      <div class="bar-cell-body" id="bar-home-body">-</div>
+    </div>
+
+    <div class="bar-cell bar-cell-mobile">
+      <div class="bar-cell-head bar-cell-head-clickable" onclick="toggleBarMobileDetail()">
+        <span class="bar-cell-title">모바일</span>
+        <span class="bar-cell-chevron" id="bar-mobile-chevron">▸</span>
+      </div>
+      <div class="bar-cell-body bar-cell-head-clickable" id="bar-mobile-body" onclick="toggleBarMobileDetail()">-</div>
+      <div class="bar-mobile-detail" id="bar-mobile-detail"></div>
+    </div>
+
+    <div class="bar-cell bar-cell-combo">
+      <div class="bar-cell-head">
+        <span class="bar-cell-title">결합할인</span>
+      </div>
+      <div class="bar-cell-body" id="bar-combo-body">-</div>
+    </div>
+
+    <div class="bar-cell bar-cell-gift">
+      <div class="bar-cell-head">
+        <span class="bar-cell-title">사은품</span>
+      </div>
+      <div class="bar-cell-body" id="bar-gift-body">-</div>
+    </div>
+
+  </div>
+</div>
+
 <div id="login-modal" class="modal-overlay">
   <div class="modal-box" style="max-width:360px;">
     <h3>관리자 로그인</h3>
@@ -679,9 +717,21 @@ let logs = [];
 let reflectedProducts = []; // 다중 선택 누적 저장 배열
 let isLoggedIn = false;
 
+// 하단 고정바 전용 상태 (상품설계(홈) 결과카드의 다중 비교/체크 선택과는 별개로,
+// "지금 결합할인·요약 기준으로 삼을 통신사 1개"만 별도로 들고 있음. 통신사 변경은 사용자가 드롭다운으로 직접 선택할 때만 반영됨)
+let barCarrier = 'kt';
+let barMobileExpanded = false;
+
 function switchTab(tabId) {
   document.querySelectorAll('.view-container').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+
+  // 하단 고정바: 가입진행(join) 화면에서는 입력/서명 공간 확보를 위해 숨김, 그 외 탭은 항상 노출
+  const bar = document.getElementById('bottom-bar');
+  const wrap = document.querySelector('.wrap');
+  const showBar = tabId !== 'join';
+  if (bar) bar.style.display = showBar ? 'flex' : 'none';
+  if (wrap) wrap.classList.toggle('has-bar', showBar);
 
   if (tabId === 'cs') {
     document.getElementById('view-cs').classList.add('active');
@@ -702,6 +752,8 @@ function switchTab(tabId) {
     document.querySelectorAll('.tab-btn')[3].classList.add('active');
     updateJoinSummary();
   }
+
+  if (showBar) renderBottomBar();
 }
 
 function displayLastModified() {
@@ -958,6 +1010,136 @@ function renderFamilyDiscountAccordion(){
       <br>· 위 금액은 참고용이며 현재 카드의 "총 요금"에는 반영되지 않습니다.
     </div>
   `;
+
+  renderBottomBar();
+}
+
+// ===================================================================
+// 하단 고정바 (홈상품 / 모바일 / 결합할인 / 사은품 4분할 요약)
+// - 고객상담 / 상품설계(홈) / 상품설계(모바일) 3개 탭에서 상시 노출 (가입진행 화면 제외)
+// - "홈상품" 칸의 통신사는 드롭다운으로 사용자가 직접 고를 때만 바뀜(자동 전환 없음)
+// - state / addedUsimLines 는 이미 전역이라 별도 동기화 로직 없이 그대로 참조
+// ===================================================================
+
+function initBottomBar() {
+  const sel = document.getElementById('bar-carrier-select');
+  if (!sel || sel.options.length) return; // 이미 채워져 있으면 스킵
+  sel.innerHTML = CARRIERS.map(c => `<option value="${c}">${BRAND_LABEL[c]}</option>`).join('');
+  sel.value = barCarrier;
+  renderBottomBar();
+}
+
+function handleBarCarrierChange(value) {
+  barCarrier = value;
+  renderBottomBar();
+}
+
+function toggleBarMobileDetail() {
+  barMobileExpanded = !barMobileExpanded;
+  renderBottomBar();
+}
+
+// 하단바의 barCarrier(kt/lg/skb/skt) → 결합할인 그룹(kt/lg/sk) 및 usim_plans 표기 통신사(KT/LG/SK) 매핑
+// (SKB/SKT 인터넷은 결합할인 계산상 하나의 'SK' 그룹으로 취급됨 — Calculator.js의 그룹 구성과 동일)
+function getBarComboGroup() {
+  if (barCarrier === 'kt') return { key: 'kt', matchLabel: 'KT' };
+  if (barCarrier === 'lg') return { key: 'lg', matchLabel: 'LG' };
+  return { key: 'sk', matchLabel: 'SK' };
+}
+
+function renderBottomBar() {
+  const sel = document.getElementById('bar-carrier-select');
+  if (sel && sel.value !== barCarrier && sel.options.length) sel.value = barCarrier;
+
+  const homeBody = document.getElementById('bar-home-body');
+  const mobileBody = document.getElementById('bar-mobile-body');
+  const mobileDetail = document.getElementById('bar-mobile-detail');
+  const comboBody = document.getElementById('bar-combo-body');
+  const giftBody = document.getElementById('bar-gift-body');
+  if (!homeBody || !mobileBody || !comboBody || !giftBody) return;
+
+  // ---- 1. 홈상품 ----
+  if (!DATA) {
+    homeBody.innerHTML = `<div class="bar-empty">상품 데이터 로딩 중...</div>`;
+  } else {
+    const res = computePrice(barCarrier);
+    if (!res.available) {
+      homeBody.innerHTML = `<div class="bar-empty">선택한 조건의 상품이 없습니다</div>`;
+    } else {
+      const tvLabel = state.tv === 'none' ? '인터넷 단독' : (res.tvInfo ? res.tvInfo.name : 'TV기본');
+      homeBody.innerHTML = `
+        <div class="bar-line"><span>인터넷</span><span>${SPEED_LABEL[state.speed]} · ${res.internetFee.toLocaleString()}원</span></div>
+        <div class="bar-subline">└ 공유기 ${ROUTER_LABEL[state.router]} · ${res.routerFee.toLocaleString()}원</div>
+        ${state.tv !== 'none' ? `
+          <div class="bar-line"><span>TV</span><span>${tvLabel} · ${res.tvFee.toLocaleString()}원</span></div>
+          <div class="bar-subline">└ 셋톱박스 ${res.settopInfo ? res.settopInfo.name : '기본형'} · ${res.settopFee.toLocaleString()}원</div>
+        ` : `<div class="bar-subline">TV 미포함</div>`}
+        <div class="bar-total">월 ${res.total.toLocaleString()}원</div>
+      `;
+    }
+  }
+
+  // ---- 2. 모바일 ----
+  const lineCount = addedUsimLines.length;
+  const feeSum = addedUsimLines.reduce((a, p) => a + (Number(p.fee) || 0), 0);
+  mobileBody.innerHTML = lineCount
+    ? `<div class="bar-line"><span>${lineCount}개 회선</span><span>${feeSum.toLocaleString()}원</span></div>`
+    : `<div class="bar-empty">추가된 요금제가 없습니다</div>`;
+
+  const chevron = document.getElementById('bar-mobile-chevron');
+  if (chevron) chevron.textContent = barMobileExpanded ? '▾' : '▸';
+  if (mobileDetail) {
+    mobileDetail.classList.toggle('open', barMobileExpanded);
+    mobileDetail.innerHTML = barMobileExpanded
+      ? (lineCount
+          ? addedUsimLines.map(p => `
+              <div class="bar-mobile-detail-row">
+                <span>${p.carrier} · ${p.planName || '요금제'}${p.teen ? ' (청소년)' : ''}</span>
+                <span>${(Number(p.fee) || 0).toLocaleString()}원</span>
+              </div>
+            `).join('')
+          : `<div class="bar-mobile-detail-row bar-empty">추가된 요금제가 없습니다</div>`)
+      : '';
+  }
+
+  // ---- 3. 결합할인 (하단바에서 고른 통신사 1개 기준으로만 계산) ----
+  const group = getBarComboGroup();
+  const comboLines = addedUsimLines
+    .map((p, idx) => ({ carrier: p.carrier, fee: Number(p.fee) || 0, teen: !!p.teen, idx }))
+    .filter(p => p.carrier === group.matchLabel);
+
+  if (comboLines.length === 0) {
+    comboBody.innerHTML = `<div class="bar-empty">해당없음 · ${BRAND_LABEL[barCarrier]}과(와) 매칭되는 모바일 회선 없음</div>`;
+  } else {
+    const speedNum = Number(state.speed);
+    let options;
+    if (group.key === 'kt') options = computeKTOptions(comboLines, speedNum, state.tcDistMode);
+    else if (group.key === 'lg') options = computeLGOptions(comboLines, speedNum);
+    else options = computeSKOptions(comboLines, speedNum, group.key);
+
+    const availOptions = options.filter(o => o.avail);
+    if (!availOptions.length) {
+      comboBody.innerHTML = `<div class="bar-empty">가입 가능한 결합할인이 없습니다</div>`;
+    } else {
+      const best = availOptions.reduce((a, b) => (b.total > a.total ? b : a));
+      comboBody.innerHTML = `
+        <div class="bar-line"><span>${best.name}</span><span>-${best.total.toLocaleString()}원</span></div>
+        <div class="bar-subline">└ 매칭 회선 ${comboLines.length}개 기준 최대 할인</div>
+      `;
+    }
+  }
+
+  // ---- 4. 사은품 ----
+  if (!DATA) {
+    giftBody.innerHTML = `<div class="bar-empty">로딩 중...</div>`;
+  } else {
+    const promo = PROMOTION_DATA[barCarrier] || { maxLimit: 450000, giftCard: 60000, cash: 390000 };
+    const userGiftVal = customGiftValues[barCarrier] !== undefined ? customGiftValues[barCarrier] : promo.maxLimit;
+    giftBody.innerHTML = `
+      <div class="bar-line"><span>인터넷·TV</span><span>${userGiftVal.toLocaleString()}원</span></div>
+      <div class="bar-subline">휴대폰 사은품 · 데이터 준비중</div>
+    `;
+  }
 }
 
 function handleGiftInputChange(carrier, rawVal) {
@@ -2089,6 +2271,7 @@ function toggleUsimPlanSelect(id, checked) {
 
 (async function init(){
   displayLastModified();
+  initBottomBar();
   setupSeg('seg-speed','speed');
   setupSeg('seg-tv','tv');
   setupSeg('seg-settop','settopTier');
