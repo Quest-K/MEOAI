@@ -16,7 +16,8 @@
   <!-- 탭 네비게이션 -->
   <div class="tab-nav">
     <button class="tab-btn active" onclick="switchTab('cs')">고객상담</button>
-    <button class="tab-btn" onclick="switchTab('design')">상품설계</button>
+    <button class="tab-btn" onclick="switchTab('design-home')">상품설계(홈)</button>
+    <button class="tab-btn" onclick="switchTab('design-mobile')">상품설계(모바일)</button>
     <button class="tab-btn" onclick="switchTab('join')">가입진행</button>
     <div id="auth-box" class="auth-box">
       <button class="login-trigger-btn" onclick="openLoginModal()">🔐 관리자 로그인</button>
@@ -152,11 +153,11 @@
   </div>
 
   <!-- VIEW 2: main.html (상품 설계 및 비교) -->
-  <div id="view-design" class="view-container">
+  <div id="view-design-home" class="view-container">
     <div class="top-grid">
       <header>
         <div class="eyebrow">PRODUCT DESIGN & COMPARISON</div>
-        <h1>통신사별 요금 및 가입 혜택 비교 설계</h1>
+        <h1>통신사별 요금 및 가입 혜택 비교 설계 (홈)</h1>
         <p>속도와 TV 요금제 옵션을 선택하고, 각 통신사 카드를 다중 선택하여 CS 상담 화면으로 반영하세요.</p>
       </header>
 
@@ -205,7 +206,43 @@
             </div>
           </div>
         </div>
+      </div>
+    </div>
 
+    <div class="results" id="results"></div>
+  </div>
+
+  <!-- VIEW: 상품설계(모바일) - 유심 요금제 비교 -->
+  <div id="view-design-mobile" class="view-container">
+    <div class="top-grid">
+      <header>
+        <div class="eyebrow">MOBILE PLAN DESIGN</div>
+        <h1>모바일(유심) 요금제 설계</h1>
+        <p>통신사를 선택하면 해당 통신사의 전체 요금제 목록이 표시됩니다. 고객에게 안내할 요금제를 선택하세요.</p>
+      </header>
+    </div>
+
+    <div class="controls">
+      <div class="control-group">
+        <label class="group-label">유심 요금제 - 통신사 선택</label>
+        <div class="seg" id="seg-usim-carrier">
+          <button data-value="KT">KT</button>
+          <button data-value="LG">LG</button>
+          <button data-value="SK">SK</button>
+          <button data-value="KT알뜰">KT알뜰</button>
+          <button data-value="LG알뜰">LG알뜰</button>
+          <button data-value="SK알뜰">SK알뜰</button>
+        </div>
+      </div>
+    </div>
+    <div class="results" id="mobile-plan-results">
+      <div style="color:var(--ink-dim); font-size:14px; padding:20px; text-align:center; background:#FFF; border:1px dashed var(--paper-line); border-radius:var(--radius);">
+        통신사를 선택하면 요금제 목록이 표시됩니다.
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="controls-grid three">
         <div class="controls-col">
           <div class="control-group">
             <label class="group-label">고객 휴대폰</label>
@@ -222,8 +259,6 @@
         </div>
       </div>
     </div>
-
-    <div class="results" id="results"></div>
   </div>
 
   <!-- VIEW 3: join.html (가입 진행) -->
@@ -638,13 +673,19 @@ function switchTab(tabId) {
     document.getElementById('view-cs').classList.add('active');
     document.querySelectorAll('.tab-btn')[0].classList.add('active');
     renderReflectedProducts();
-  } else if (tabId === 'design') {
-    document.getElementById('view-design').classList.add('active');
+  } else if (tabId === 'design-home') {
+    document.getElementById('view-design-home').classList.add('active');
     document.querySelectorAll('.tab-btn')[1].classList.add('active');
     render();
+  } else if (tabId === 'design-mobile') {
+    document.getElementById('view-design-mobile').classList.add('active');
+    document.querySelectorAll('.tab-btn')[2].classList.add('active');
+    renderFamilyPhones();
+    renderFamilyDiscountAccordion();
+    loadMobilePlanCarriers();
   } else if (tabId === 'join') {
     document.getElementById('view-join').classList.add('active');
-    document.querySelectorAll('.tab-btn')[2].classList.add('active');
+    document.querySelectorAll('.tab-btn')[3].classList.add('active');
     updateJoinSummary();
   }
 }
@@ -1954,6 +1995,45 @@ function attachJoinLiveListeners() {
     updateJoinSummary();
     alert(`[가입 신청 최종 완료]\n\n성명: ${name}\n연락처: ${phone}\n주소: ${address}\n\n모든 정보와 개인정보 동의 및 서명이 정상 접수되었습니다.\n\n(현재는 데모 단계로, 실제 DB 저장 및 타 부서 전달 연동은 추후 개발 예정입니다.)`);
   }
+
+// ===================================================================
+// [상품설계(모바일)] 유심 요금제 조회 (usim_plans 테이블 연동)
+// ===================================================================
+let selectedUsimCarrier = null;
+let usimPlansCarrierListenerAttached = false;
+
+function loadMobilePlanCarriers() {
+  if (usimPlansCarrierListenerAttached) return;
+  usimPlansCarrierListenerAttached = true;
+  document.getElementById('seg-usim-carrier').querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#seg-usim-carrier button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedUsimCarrier = btn.dataset.value;
+      fetchUsimPlans(selectedUsimCarrier);
+    });
+  });
+}
+
+async function fetchUsimPlans(carrier) {
+  const container = document.getElementById('mobile-plan-results');
+  container.innerHTML = `<div style="padding:20px; text-align:center; color:var(--ink-dim);">요금제 목록을 불러오는 중...</div>`;
+
+  // TODO: usim_plans 테이블의 실제 컬럼명 확인 후 select/렌더링 로직 확정 필요
+  const { data, error } = await sb.from('usim_plans').select('*').eq('carrier', carrier);
+
+  if (error) {
+    container.innerHTML = `<div style="padding:20px; text-align:center; color:#D9534F;">요금제 조회 실패: ${error.message}</div>`;
+    return;
+  }
+  if (!data || data.length === 0) {
+    container.innerHTML = `<div style="padding:20px; text-align:center; color:var(--ink-dim);">${carrier} 요금제 데이터가 없습니다.</div>`;
+    return;
+  }
+
+  console.log('usim_plans sample row:', data[0]); // 컬럼명 확인용 임시 로그
+  container.innerHTML = `<div style="padding:20px; color:var(--ink-dim);">${carrier} 요금제 ${data.length}건 조회됨 (표시 형식은 컬럼명 확인 후 반영 예정)</div>`;
+}
 
 (async function init(){
   displayLastModified();
