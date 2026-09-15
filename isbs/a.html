@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>고객상담 - 통합 고객 상담 및 상품 설계 관리 시스템</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<link rel="stylesheet" href="Styles.css">
+</head>
+<body>
+<div class="wrap">
+
+  <!-- 네비게이션 -->
+  <div class="tab-nav">
+    <button class="tab-btn active">고객상담</button>
+    <a href="CSb.html" class="tab-btn" style="text-decoration:none; text-align:center;">상품설계(홈)</a>
+    <a href="CSc.html" class="tab-btn" style="text-decoration:none; text-align:center;">상품설계(모바일)</a>
+    <a href="CSd.html" class="tab-btn" style="text-decoration:none; text-align:center;">가입진행</a>
+    <div id="auth-box" class="auth-box">
+      <button class="login-trigger-btn" onclick="openLoginModal()">🔐 관리자 로그인</button>
+    </div>
+  </div>
+
+  <!-- VIEW: 고객 상담 및 정보 탐색 -->
+  <div id="view-cs" class="view-container active">
+    <header style="margin-bottom: 24px;">
+      <div class="eyebrow">CONSULTATION RECORD MANAGEMENT</div>
+      <h1>고객 상담 및 정보 탐색</h1>
+      <p>고객의 휴대폰 정보 및 기존 사용 중인 홈상품을 등록하고, 상품설계 화면에서 반영된 최적의 제안 내역을 다중으로 확인합니다.</p>
+    </header>
+
+    <div class="cs-layout">
+      <!-- 1열: 고객정보 -->
+      <div class="cs-col cs-col-customer">
+        <div class="cs-card">
+          <h3>고객정보</h3>
+          <div class="form-group" style="margin-top:12px;">
+            <label>고객명</label>
+            <input type="text" id="cust-name" value="홍길동" placeholder="고객 성명 입력">
+          </div>
+          <div class="form-group">
+            <label>연락처</label>
+            <input type="text" id="cust-phone" value="010-1234-5678" placeholder="연락처 입력">
+          </div>
+          <div class="form-group">
+            <label>휴대폰 통신사</label>
+            <select id="cust-mobile-carrier">
+              <option value="KT">KT</option>
+              <option value="LG">LG</option>
+              <option value="SK">SK</option>
+              <option value="KT알뜰">KT알뜰</option>
+              <option value="LG알뜰">LG알뜰</option>
+              <option value="SK알뜰">SK알뜰</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>휴대폰 요금 (원)</label>
+            <input type="text" id="cust-mobile-fee" value="69,000">
+          </div>
+          <div class="form-group">
+            <label>기존 홈상품 통신사</label>
+            <select id="old-isp">
+              <option value="KT">KT</option>
+              <option value="LG">LG</option>
+              <option value="SK">SK</option>
+              <option value="기타">기타 / 타사</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>기존 인터넷 속도</label>
+            <select id="old-internet-speed" onchange="syncOldComposition()">
+              <option value="100M">100M</option>
+              <option value="500M" selected>500M</option>
+              <option value="1기가">1기가</option>
+            </select>
+          </div>
+          <div class="form-group" style="display:none;">
+            <label>기존 TV 대수</label>
+            <select id="old-tv-count" onchange="syncOldComposition()"><option value="1" selected>1대</option></select>
+            <input type="hidden" id="old-composition" value="인터넷(500M) + TV 1대">
+          </div>
+          <div class="form-group">
+            <label>홈상품 월요금</label>
+            <input type="text" id="old-fee" value="38,500" placeholder="월 납부 금액">
+          </div>
+          <div class="form-group">
+            <label>가족결합</label>
+            <select id="cust-family-bundle">
+              <option value="N">미결합</option>
+              <option value="Y">결합 중</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2열: 제안상품 -->
+      <div class="cs-col cs-col-product">
+        <div class="cs-card" style="height:100%;">
+          <h3>제안상품</h3>
+          <div id="reflected-products-container" style="margin-top:12px;">
+            <div style="color:var(--ink-dim); font-size:13px; padding:30px 20px; text-align:center; background:#FFF; border:1px dashed var(--paper-line); border-radius:var(--radius);">
+              아직 반영된 상품이 없습니다. [상품설계] 화면에서 마음에 드는 상품을 체크하고 [반영하기]를 눌러주세요.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3열: 상담요약 패널 -->
+      <div class="cs-summary-panel">
+        <div class="js-header-row">
+          <h3>상담요약</h3>
+          <button type="button" class="js-copy-btn" onclick="copyCsSummary()">복사</button>
+        </div>
+        <p class="js-desc" style="font-size:11px; margin-bottom:12px;">고객 정보와 제안 상품 내역이 변경될 때마다 자동으로 반영됩니다.</p>
+        <div class="js-section">
+          <div class="js-section-title">고객 상담 정보</div>
+          <div id="cs-live-customer-info"></div>
+        </div>
+        <div class="js-section" style="margin-top:16px;">
+          <div class="js-section-title">제안 상품</div>
+          <div id="cs-live-products-info"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="login-modal" class="modal-overlay">
+  <div class="modal-box" style="max-width:360px;">
+    <h3>관리자 로그인</h3>
+    <label class="login-label">Email</label>
+    <input type="email" id="login-email" class="login-input">
+    <label class="login-label">Password</label>
+    <input type="password" id="login-password" class="login-input">
+    <div class="login-error" id="login-error"></div>
+    <div class="modal-actions">
+      <button class="secondary-btn" onclick="closeLoginModal()">취소</button>
+      <button class="primary-btn" onclick="handleLogin()">로그인</button>
+    </div>
+  </div>
+</div>
+
+<script src="Calculator.js"></script>
+<script src="Supabaseservice.js"></script>
+<script>
+let isLoggedIn = false;
+function syncOldComposition(){
+  const speed = document.getElementById('old-internet-speed')?.value || '500M';
+  const hidden = document.getElementById('old-composition');
+  if (hidden) hidden.value = `인터넷(${speed}) + TV 1대`;
+  updateCsSummaryPanel();
+}
+function updateCsSummaryPanel(){
+  const customerEl = document.getElementById('cs-live-customer-info');
+  const productsEl = document.getElementById('cs-live-products-info');
+  if (!customerEl || !productsEl) return;
+
+  const name = document.getElementById('cust-name')?.value || '';
+  const phone = document.getElementById('cust-phone')?.value || '';
+  const mobileCarrier = document.getElementById('cust-mobile-carrier')?.value || '';
+  const mobileFee = document.getElementById('cust-mobile-fee')?.value || '';
+  const oldComposition = document.getElementById('old-composition')?.value || '';
+  const oldFee = document.getElementById('old-fee')?.value || '';
+  const familyBundle = document.getElementById('cust-family-bundle')?.value === 'Y' ? '결합 중' : '미결합';
+
+  let custHtml = '';
+  custHtml += jsRow('고객명', name);
+  custHtml += jsRow('연락처', phone);
+  custHtml += jsRow('휴대폰', mobileCarrier ? `${mobileCarrier} / ${mobileFee}원` : '');
+  custHtml += jsRow('기존 홈상품', oldComposition ? `KT / ${oldComposition}` : '');
+  custHtml += jsRow('홈상품 월요금', oldFee ? `월 ${oldFee}원` : '');
+  custHtml += jsRow('가족결합', familyBundle);
+  customerEl.innerHTML = custHtml || '<div class="js-empty">아직 입력된 정보가 없습니다.</div>';
+
+  productsEl.innerHTML = '<div style="color:var(--ink-dim); font-size:12px; text-align:center; padding:10px 0;">아직 반영된 제안 상품이 없습니다.</div>';
+}
+function jsRow(label, value) {
+  if (!value) return '';
+  return `<div class="js-row" style="display:flex; justify-content:space-between; padding:4px 0; font-size:12px;"><span style="color:var(--ink-dim);">${label}</span><span style="font-weight:500;">${value}</span></div>`;
+}
+function copyCsSummary(){
+  navigator.clipboard.writeText("상담 내용 요약 복사됨").then(() => alert('복사되었습니다.'));
+}
+function openLoginModal(){ document.getElementById('login-modal').style.display = 'flex'; }
+function closeLoginModal(){ document.getElementById('login-modal').style.display = 'none'; }
+
+document.addEventListener('DOMContentLoaded', () => {
+  updateCsSummaryPanel();
+  ['cust-name','cust-phone','cust-mobile-carrier','cust-mobile-fee','old-isp','old-internet-speed','old-tv-count','old-fee','cust-family-bundle'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) { el.addEventListener('input', updateCsSummaryPanel); el.addEventListener('change', updateCsSummaryPanel); }
+  });
+});
+</script>
+</body>
+</html>
