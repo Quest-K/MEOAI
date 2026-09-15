@@ -1215,10 +1215,30 @@
     overflow-y:auto;
   }
   .join-summary-panel h3{
-    margin:0 0 4px;
+    margin:0;
     font-size:16px;
     font-family:'Newsreader', serif;
   }
+  .js-header-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:8px;
+    margin-bottom:4px;
+  }
+  .js-copy-btn{
+    appearance:none;
+    flex-shrink:0;
+    border:1px solid var(--paper-line);
+    background:#FAFAF7;
+    color:var(--ink);
+    padding:5px 10px;
+    font-size:11.5px;
+    font-weight:600;
+    border-radius:4px;
+    cursor:pointer;
+  }
+  .js-copy-btn:hover{ border-color:var(--gold); color:var(--gold); }
   .join-summary-panel .js-desc{
     font-size:12px;
     color:var(--ink-dim);
@@ -1227,26 +1247,27 @@
     border-bottom:1px solid var(--paper-line);
   }
   .js-section{
-    margin-bottom:14px;
-    padding-bottom:12px;
+    margin-bottom:10px;
+    padding-bottom:8px;
     border-bottom:1px dashed var(--paper-line);
   }
   .js-section:last-child{ border-bottom:none; margin-bottom:0; }
   .js-section-title{
     font-family:var(--font-mono);
-    font-size:11px;
+    font-size:10.5px;
     font-weight:700;
     color:var(--gold);
     text-transform:uppercase;
     letter-spacing:.03em;
-    margin-bottom:8px;
+    margin-bottom:5px;
   }
   .js-row{
     display:flex;
     justify-content:space-between;
     gap:8px;
-    font-size:12.5px;
-    padding:3px 0;
+    font-size:12px;
+    line-height:1.4;
+    padding:1.5px 0;
     color:var(--ink);
   }
   .js-row span:first-child{ color:var(--ink-dim); white-space:nowrap; }
@@ -1756,7 +1777,10 @@
       </div>
 
     <div class="join-summary-panel">
-      <h3>📋 가입 접수 요약 (실시간)</h3>
+      <div class="js-header-row">
+        <h3>📋 가입 접수 요약 (실시간)</h3>
+        <button type="button" class="js-copy-btn" onclick="copyJoinSummary()">📋 복사</button>
+      </div>
       <p class="js-desc">입력 중인 모든 정보가 단계 진행에 따라 자동으로 반영됩니다. 접수 완료 시 이 내용 그대로 관련 부서/업체에 전달됩니다.</p>
 
       <div class="js-section">
@@ -2998,6 +3022,14 @@ function resetJoinForm() {
   document.getElementById('payment-type').value = 'account';
   handlePaymentTypeChange();
 
+  // [CS고객상담] 탭 정보를 연락처 / 통신사 기본값으로 자동 반영 (수정 가능)
+  const csPhone = document.getElementById('cust-phone')?.value.trim() || '';
+  const csCarrier = document.getElementById('cust-mobile-carrier')?.value || '';
+  if (csPhone) document.getElementById('customer-phone').value = csPhone;
+  const carrierSelect = document.getElementById('current-carrier');
+  const hasMatchingOption = Array.from(carrierSelect.options).some(opt => opt.value === csCarrier);
+  if (csCarrier && hasMatchingOption) carrierSelect.value = csCarrier;
+
   // Step5 동의/서명 초기화
   document.querySelectorAll('.sub-agree').forEach(chk => chk.checked = false);
   document.getElementById('agree-all').checked = false;
@@ -3053,16 +3085,21 @@ function updateJoinSummary() {
   if (currentJoinProduct) {
     const p = currentJoinProduct;
     productHtml += jsRow('상품', p.cardTitle);
-    productHtml += jsRow('인터넷', p.internet);
-    productHtml += jsRow('공유기', p.router);
-    if (p.internetDiscount) productHtml += jsRow('└ 인터넷 결합할인', p.internetDiscount);
-    if (p.tvPlan) productHtml += jsRow('TV', p.tvPlan);
-    if (p.settop) productHtml += jsRow('└ 셋톱박스', p.settop);
-    if (p.tvDiscount) productHtml += jsRow('└ TV 결합할인', p.tvDiscount);
+
+    let internetLine = p.internet || '';
+    if (p.router) internetLine += ` / 공유기 ${p.router}`;
+    if (p.internetDiscount) internetLine += ` (결합할인 ${p.internetDiscount})`;
+    productHtml += jsRow('인터넷', internetLine);
+
+    if (p.tvPlan) {
+      let tvLine = p.tvPlan;
+      if (p.settop) tvLine += ` / 셋톱 ${p.settop}`;
+      if (p.tvDiscount) tvLine += ` (결합할인 ${p.tvDiscount})`;
+      productHtml += jsRow('TV', tvLine);
+    }
+
     productHtml += jsRow('월 청구요금', jsFmtMoney(p.totalMonthlyFee));
-    productHtml += jsRow('사은품 총액', jsFmtMoney(p.giftTotal));
-    productHtml += jsRow('└ 상품권', jsFmtMoney(p.giftVoucher));
-    productHtml += jsRow('└ 현금', jsFmtMoney(p.giftCash));
+    productHtml += jsRow('사은품 총액', `${jsFmtMoney(p.giftTotal)} (상품권 ${jsFmtMoney(p.giftVoucher)} / 현금 ${jsFmtMoney(p.giftCash)})`);
   }
   productInfoEl.innerHTML = productHtml || '<div class="js-empty">[상품설계]에서 "가입 진행" 버튼을 눌러 상품을 선택해 주세요.</div>';
 
@@ -3124,6 +3161,89 @@ function updateJoinSummary() {
   agreeInfoEl.innerHTML =
     `<div class="js-row"><span>필수 동의</span><span>${agreeStatus}</span></div>` +
     `<div class="js-row"><span>전자 서명</span><span>${signedStatus}</span></div>`;
+}
+
+// 가입 접수 요약(실시간) 패널 전체 내용을 텍스트로 조립
+function buildJoinSummaryText() {
+  const lines = [];
+  lines.push('[가입 접수 요약]');
+  lines.push('');
+
+  lines.push('■ 고객 상담 정보 (CS고객상담 탭)');
+  lines.push(`고객명: ${document.getElementById('cust-name')?.value || ''}`);
+  lines.push(`연락처: ${document.getElementById('cust-phone')?.value || ''}`);
+  lines.push(`휴대폰: ${document.getElementById('cust-mobile-carrier')?.value || ''} / ${document.getElementById('cust-mobile-fee')?.value || ''}원`);
+  lines.push(`기존 홈상품: ${document.getElementById('old-isp')?.value || ''} / ${document.getElementById('old-composition')?.value || ''} / 월 ${document.getElementById('old-fee')?.value || ''}원`);
+  lines.push(`가족결합: ${document.getElementById('cust-family-bundle')?.value === 'Y' ? '결합 중' : '미결합'}`);
+  lines.push('');
+
+  lines.push('■ 선택 상품 정보');
+  if (currentJoinProduct) {
+    const p = currentJoinProduct;
+    lines.push(`상품: ${p.cardTitle || ''}`);
+    lines.push(`인터넷: ${p.internet || ''}${p.router ? ' / 공유기 ' + p.router : ''}${p.internetDiscount ? ' (결합할인 ' + p.internetDiscount + ')' : ''}`);
+    if (p.tvPlan) lines.push(`TV: ${p.tvPlan}${p.settop ? ' / 셋톱 ' + p.settop : ''}${p.tvDiscount ? ' (결합할인 ' + p.tvDiscount + ')' : ''}`);
+    lines.push(`월 청구요금: ${jsFmtMoney(p.totalMonthlyFee)}`);
+    lines.push(`사은품 총액: ${jsFmtMoney(p.giftTotal)} (상품권 ${jsFmtMoney(p.giftVoucher)} / 현금 ${jsFmtMoney(p.giftCash)})`);
+  } else {
+    lines.push('선택된 상품 없음');
+  }
+  lines.push('');
+
+  lines.push('■ 가입자 정보 (Step 2)');
+  lines.push(`성명: ${document.getElementById('customer-name')?.value.trim() || ''}`);
+  lines.push(`주민등록번호: ${document.getElementById('customer-rrn')?.value.trim() || ''}`);
+  lines.push(`연락처: ${document.getElementById('customer-phone')?.value.trim() || ''}`);
+  lines.push(`현재 통신사: ${document.getElementById('current-carrier')?.value || ''}`);
+  lines.push(`설치 주소: ${document.getElementById('customer-address')?.value.trim() || ''}`);
+  lines.push('');
+
+  lines.push('■ 사은품 계좌 정보 (Step 3)');
+  const giftBank = document.getElementById('gift-bank')?.value || '';
+  const giftBankOther = document.getElementById('gift-bank-other')?.value.trim() || '';
+  lines.push(`은행: ${giftBank === '기타' ? giftBankOther : giftBank}`);
+  lines.push(`예금주: ${document.getElementById('gift-holder')?.value.trim() || ''}`);
+  lines.push(`계좌번호: ${document.getElementById('gift-account')?.value.trim() || ''}`);
+  lines.push('');
+
+  lines.push('■ 요금 납부 정보 (Step 4)');
+  const payType = document.getElementById('payment-type')?.value || 'account';
+  const payInst = document.getElementById('pay-inst-select')?.value || '';
+  const payInstOther = document.getElementById('pay-inst-other')?.value.trim() || '';
+  lines.push(`납부 방법: ${payType === 'account' ? '계좌이체' : '신용/체크카드'}`);
+  lines.push(`${payType === 'account' ? '출금 은행' : '카드사'}: ${payInst === '기타' ? payInstOther : payInst}`);
+  lines.push(`${payType === 'account' ? '예금주' : '카드 소유주'}: ${document.getElementById('pay-holder')?.value.trim() || ''}`);
+  lines.push(`${payType === 'account' ? '계좌번호' : '카드번호'}: ${document.getElementById('pay-number')?.value.trim() || ''}`);
+  if (payType === 'card') lines.push(`유효기간: ${document.getElementById('pay-expiry')?.value.trim() || ''}`);
+  lines.push('');
+
+  lines.push('■ 필수 동의 · 서명 상태 (Step 5)');
+  const subAgrees = document.querySelectorAll('.sub-agree');
+  let checkedCount = 0;
+  subAgrees.forEach(chk => { if (chk.checked) checkedCount++; });
+  lines.push(`필수 동의: ${checkedCount}/${subAgrees.length}`);
+  lines.push(`전자 서명: ${hasSigned ? '완료' : '미완료'}`);
+
+  return lines.join('\n');
+}
+
+function copyJoinSummary() {
+  const text = buildJoinSummaryText();
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text)
+      .then(() => alert('가입 접수 요약이 클립보드에 복사되었습니다.'))
+      .catch(() => alert('복사에 실패했습니다. 브라우저 권한을 확인해주세요.'));
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); alert('가입 접수 요약이 클립보드에 복사되었습니다.'); }
+    catch (e) { alert('복사에 실패했습니다.'); }
+    document.body.removeChild(ta);
+  }
 }
 
 // on/onchange 핸들러가 따로 없는 입력 필드에 실시간 반영용 리스너 연결
