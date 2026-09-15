@@ -15,8 +15,8 @@
 
   <!-- 탭 네비게이션 -->
   <div class="tab-nav">
-    <button class="tab-btn active" onclick="switchTab('cs')">CS고객상담</button>
-    <button class="tab-btn" onclick="switchTab('design')">상품 설계</button>
+    <button class="tab-btn active" onclick="switchTab('cs')">고객상담</button>
+    <button class="tab-btn" onclick="switchTab('design')">상품설계</button>
     <button class="tab-btn" onclick="switchTab('join')">가입진행</button>
     <div id="auth-box" class="auth-box">
       <button class="login-trigger-btn" onclick="openLoginModal()">🔐 관리자 로그인</button>
@@ -42,7 +42,7 @@
     </div>
 
     <div class="cs-layout">
-      <div class="cs-main-col">
+      <div class="cs-col cs-col-customer">
 
         <div class="cs-card">
           <h3>고객 정보 및 기존 홈상품 탐색</h3>
@@ -115,11 +115,12 @@
           </div>
         </div>
 
+      </div>
+
+      <div class="cs-col cs-col-product">
+
         <div class="action-bar">
           <h3>제안 상품</h3>
-          <div style="display:flex; gap:8px;">
-            <button class="primary-btn" onclick="openSummaryPreview()" style="background:#3A3C42;">📋 상담요약 미리보기</button>
-          </div>
         </div>
 
         <div id="reflected-products-container">
@@ -537,7 +538,7 @@
       <p class="js-desc">입력 중인 모든 정보가 단계 진행에 따라 자동으로 반영됩니다. 접수 완료 시 이 내용 그대로 관련 부서/업체에 전달됩니다.</p>
 
       <div class="js-section">
-        <div class="js-section-title">고객 상담 정보 (CS고객상담 탭)</div>
+        <div class="js-section-title">고객 상담 정보 (고객상담 탭)</div>
         <div id="js-cs-info"></div>
       </div>
 
@@ -570,18 +571,6 @@
     </div>
   </div>
 
-</div>
-
-<div id="summary-preview-modal" class="modal-overlay">
-  <div class="modal-box">
-    <h3>상담 내용 요약 미리보기</h3>
-    <p class="modal-desc">아래 내용을 확인 후 복사해주세요. 필요하면 직접 수정할 수 있습니다.</p>
-    <textarea id="summary-preview-textarea" spellcheck="false"></textarea>
-    <div class="modal-actions">
-      <button class="secondary-btn" onclick="closeSummaryPreview()">닫기</button>
-      <button class="primary-btn" onclick="copySummaryFromPreview()">📋 복사하기</button>
-    </div>
-  </div>
 </div>
 
 <div id="login-modal" class="modal-overlay">
@@ -943,6 +932,18 @@ function handleGiftInputChange(carrier, rawVal) {
   render();
 }
 
+// 제안 상품 1건을 간결한 요약 텍스트 라인 배열로 변환 (상담요약 실시간 패널 + 복사 텍스트 공용)
+function buildProductSummaryLines(p){
+  const lines = [];
+  lines.push(`인터넷(${p.internetLabel})+공유기(${p.routerLabel})`);
+  if (p.tvTier !== 'none') {
+    lines.push(`TV(${p.tvName}/${p.tvChannels}채널)+셋탑(${p.settopLabel})`);
+  }
+  lines.push(`월요금 ${p.totalFee.toLocaleString()}원`);
+  lines.push(`사은품 총 ${p.benefitTotal.toLocaleString()}원 (상 ${p.giftCard.toLocaleString()}원,현 ${p.cash.toLocaleString()}원)`);
+  return lines;
+}
+
 function buildConsultSummary(){
   const name = document.getElementById('cust-name')?.value || '';
   const phone = document.getElementById('cust-phone')?.value || '';
@@ -968,16 +969,7 @@ function buildConsultSummary(){
   } else {
     reflectedProducts.forEach((p, idx) => {
       lines.push(`${idx + 1}. ${p.carrierName}`);
-      lines.push(`인터넷(${p.internetLabel})`);
-      lines.push(` └ 공유기(${p.routerLabel})`);
-      if (p.tvTier !== 'none') {
-        lines.push(`TV(${p.tvLabel})`);
-        lines.push(` └ 셋탑(${p.settopLabel})`);
-      }
-      lines.push(`월요금 ${p.totalFee.toLocaleString()}원`);
-      lines.push(`사은품 총 ${p.benefitTotal.toLocaleString()}원`);
-      lines.push(`  └ 상품권 ${p.giftCard.toLocaleString()}원`);
-      lines.push(`  └ 현금 ${p.cash.toLocaleString()}원`);
+      lines.push(...buildProductSummaryLines(p));
       lines.push('');
     });
   }
@@ -985,11 +977,11 @@ function buildConsultSummary(){
   return lines.join('\n');
 }
 
-// [CS고객상담] 화면 우측의 실시간 상담요약 미리보기 패널을 고객 정보 + 제안 상품 내역으로 매번 다시 그려주는 함수
+// [고객상담] 화면 우측의 실시간 상담요약 미리보기 패널을 고객 정보 + 제안 상품 내역으로 매번 다시 그려주는 함수
 function updateCsSummaryPanel(){
   const customerEl = document.getElementById('cs-live-customer-info');
   const productsEl = document.getElementById('cs-live-products-info');
-  if (!customerEl || !productsEl) return; // [CS고객상담] 탭이 아직 렌더링되지 않은 경우 방지
+  if (!customerEl || !productsEl) return; // [고객상담] 탭이 아직 렌더링되지 않은 경우 방지
 
   const name = document.getElementById('cust-name')?.value || '';
   const phone = document.getElementById('cust-phone')?.value || '';
@@ -1015,14 +1007,9 @@ function updateCsSummaryPanel(){
     reflectedProducts.forEach((p, idx) => {
       prodHtml += `<div class="js-product-block">`;
       prodHtml += `<div class="js-product-title">${idx + 1}. ${p.carrierName}</div>`;
-      prodHtml += jsRow('인터넷', p.internetLabel);
-      prodHtml += jsRow('└ 공유기', p.routerLabel);
-      if (p.tvTier !== 'none') {
-        prodHtml += jsRow('TV', p.tvLabel);
-        prodHtml += jsRow('└ 셋탑', p.settopLabel);
-      }
-      prodHtml += jsRow('월요금', jsFmtMoney(p.totalFee));
-      prodHtml += jsRow('사은품', `${jsFmtMoney(p.benefitTotal)} (상품권 ${jsFmtMoney(p.giftCard)} / 현금 ${jsFmtMoney(p.cash)})`);
+      buildProductSummaryLines(p).forEach(line => {
+        prodHtml += `<div class="js-compact-line">${line}</div>`;
+      });
       prodHtml += `</div>`;
     });
   }
@@ -1045,31 +1032,6 @@ function copyCsSummary(){
     try { document.execCommand('copy'); alert('상담 내용 요약이 클립보드에 복사되었습니다.'); }
     catch (e) { alert('복사에 실패했습니다.'); }
     document.body.removeChild(ta);
-  }
-}
-
-function openSummaryPreview(){
-  const summary = buildConsultSummary();
-  document.getElementById('summary-preview-textarea').value = summary;
-  document.getElementById('summary-preview-modal').style.display = 'flex';
-}
-
-function closeSummaryPreview(){
-  document.getElementById('summary-preview-modal').style.display = 'none';
-}
-
-function copySummaryFromPreview(){
-  const summary = document.getElementById('summary-preview-textarea').value;
-
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(summary)
-      .then(() => alert('상담 내용 요약이 클립보드에 복사되었습니다.'))
-      .catch(() => alert('복사에 실패했습니다. 브라우저 권한을 확인해주세요.'));
-  } else {
-    const ta = document.getElementById('summary-preview-textarea');
-    ta.select();
-    try { document.execCommand('copy'); alert('상담 내용 요약이 클립보드에 복사되었습니다.'); }
-    catch (e) { alert('복사에 실패했습니다.'); }
   }
 }
 
@@ -1236,6 +1198,8 @@ function reflectSelectedProductsToCS() {
       internetLabel: SPEED_LABEL[state.speed],
       routerLabel: ROUTER_LABEL[state.router],
       tvLabel: state.tv === 'none' ? '미포함' : tvLabel,
+      tvName: state.tv === 'none' ? '' : (res.tvInfo ? res.tvInfo.name : '기본형'),
+      tvChannels: state.tv === 'none' ? '' : (res.tvInfo ? (res.tvInfo.channels || 200) : 200),
       settopLabel: state.tv === 'none' ? '-' : settopName,
       composition: `인터넷(${SPEED_LABEL[state.speed]}) + 공유기(${ROUTER_LABEL[state.router]}) + TV(${tvLabel}) + 셋탑(${settopName})`,
       totalFee: res.total,
@@ -1393,7 +1357,7 @@ function resetJoinForm() {
   document.getElementById('payment-type').value = 'account';
   handlePaymentTypeChange();
 
-  // [CS고객상담] 탭 정보를 연락처 / 통신사 기본값으로 자동 반영 (수정 가능)
+  // [고객상담] 탭 정보를 연락처 / 통신사 기본값으로 자동 반영 (수정 가능)
   const csPhone = document.getElementById('cust-phone')?.value.trim() || '';
   const csCarrier = document.getElementById('cust-mobile-carrier')?.value || '';
   if (csPhone) document.getElementById('customer-phone').value = csPhone;
@@ -1422,7 +1386,7 @@ function jsFmtMoney(v) {
   return (isNaN(v) ? v : Number(v).toLocaleString()) + '원';
 }
 
-// [가입진행] 화면 및 우측 실시간 요약 패널을 CS고객상담 탭 정보 + 선택 상품 정보 +
+// [가입진행] 화면 및 우측 실시간 요약 패널을 고객상담 탭 정보 + 선택 상품 정보 +
 // 현재까지 입력된 가입 신청 정보로 매번 다시 그려주는 함수
 function updateJoinSummary() {
   const csInfoEl = document.getElementById('js-cs-info');
@@ -1433,7 +1397,7 @@ function updateJoinSummary() {
   const agreeInfoEl = document.getElementById('js-agree-info');
   if (!csInfoEl) return; // [가입진행] 탭이 아직 렌더링되지 않은 경우 방지
 
-  // 1) CS고객상담 탭 정보
+  // 1) 고객상담 탭 정보
   const csName = document.getElementById('cust-name')?.value || '';
   const csPhone = document.getElementById('cust-phone')?.value || '';
   const csMobileCarrier = document.getElementById('cust-mobile-carrier')?.value || '';
@@ -1449,7 +1413,7 @@ function updateJoinSummary() {
   csHtml += jsRow('휴대폰', csMobileCarrier ? `${csMobileCarrier} / ${csMobileFee}원` : '');
   csHtml += jsRow('기존 홈상품', csOldIsp ? `${csOldIsp} / ${csOldComposition} / 월 ${csOldFee}원` : '');
   csHtml += jsRow('가족결합', csFamilyBundle);
-  csInfoEl.innerHTML = csHtml || '<div class="js-empty">[CS고객상담] 탭에 입력된 정보가 없습니다.</div>';
+  csInfoEl.innerHTML = csHtml || '<div class="js-empty">[고객상담] 탭에 입력된 정보가 없습니다.</div>';
 
   // 2) 선택 상품 정보 (상품설계 → 가입 진행)
   let productHtml = '';
@@ -1540,7 +1504,7 @@ function buildJoinSummaryText() {
   lines.push('[가입 접수 요약]');
   lines.push('');
 
-  lines.push('■ 고객 상담 정보 (CS고객상담 탭)');
+  lines.push('■ 고객 상담 정보 (고객상담 탭)');
   lines.push(`고객명: ${document.getElementById('cust-name')?.value || ''}`);
   lines.push(`연락처: ${document.getElementById('cust-phone')?.value || ''}`);
   lines.push(`휴대폰: ${document.getElementById('cust-mobile-carrier')?.value || ''} / ${document.getElementById('cust-mobile-fee')?.value || ''}원`);
@@ -1628,7 +1592,7 @@ function attachJoinLiveListeners() {
     const el = document.getElementById(id);
     if (el) el.addEventListener('input', updateJoinSummary);
   });
-  // CS고객상담 탭 필드 변경 시에도 반영 ([가입진행] 요약 + [CS고객상담] 실시간 요약 패널 모두 갱신)
+  // 고객상담 탭 필드 변경 시에도 반영 ([가입진행] 요약 + [고객상담] 실시간 요약 패널 모두 갱신)
   ['cust-name','cust-phone','cust-mobile-carrier','cust-mobile-fee',
    'old-isp','old-internet-speed','old-tv-count','old-fee','cust-family-bundle'
   ].forEach(id => {
