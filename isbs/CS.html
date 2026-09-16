@@ -140,13 +140,6 @@
       </div>
 
       <div class="cs-col cs-col-summary">
-        <div class="cs-card cs-card-flex">
-          <h3>최종상품</h3>
-          <div id="final-products-list" class="cs-card-scroll">
-            <div class="reflected-empty">제안상품에서 [최종반영]을 눌러 확정할 상품을 추가하세요.</div>
-          </div>
-        </div>
-
         <div class="cs-summary-panel">
           <div class="js-header-row">
             <h3>상담요약</h3>
@@ -166,6 +159,20 @@
             </div>
           </div>
         </div>
+
+        <div class="cs-card cs-card-flex">
+          <h3>최종상품 · 인터넷/TV</h3>
+          <div id="final-products-home" class="cs-card-scroll">
+            <div class="reflected-empty">제안상품에서 [최종반영]을 눌러 확정할 인터넷/TV 상품을 추가하세요.</div>
+          </div>
+        </div>
+
+        <div class="cs-card cs-card-flex">
+          <h3>최종상품 · 유심</h3>
+          <div id="final-products-usim" class="cs-card-scroll">
+            <div class="reflected-empty">제안상품에서 [최종반영]을 눌러 확정할 유심 상품을 추가하세요.</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -182,7 +189,7 @@
 
     <!-- 상단: 인터넷 / TV 설계 (하단 유심 섹션과 동일한 좌/우 폭 비율 사용) -->
     <div class="design-section-title">인터넷 · TV</div>
-    <div class="design-split-grid">
+    <div class="design-split-grid design-split-grid-hometv">
       <div class="controls-col">
         <div class="cs-card design-card">
           <h3>인터넷</h3>
@@ -1122,15 +1129,23 @@ function removeProposal(id){
   updateCsSummaryPanel();
 }
 
-// 제안상품 중 [최종반영]을 누른 1건을 최종상품 목록에 추가 (항목별로 개별 유지, 합산하지 않음)
+// 제안상품 중 [최종반영]을 누른 1건을 최종상품 목록에 추가
+// - 인터넷/TV(home): 최종상품에는 항상 1건만 유지 → 새로 반영하면 기존 것을 교체
+// - 유심(usim): 여러 건 누적 허용 (동일 요금제도 중복 반영 가능)
 function moveProposalToFinal(id){
   const item = reflectedProducts.find(p => p.id === id);
   if (!item) return;
-  if (finalProducts.some(p => p.id === id)) {
-    alert('이미 최종상품에 반영된 항목입니다.');
-    return;
+
+  if (item.type === 'home') {
+    finalProducts = finalProducts.filter(p => p.type !== 'home');
+    finalProducts.push(item);
+  } else {
+    if (finalProducts.some(p => p.id === id)) {
+      alert('이미 최종상품에 반영된 항목입니다.');
+      return;
+    }
+    finalProducts.push(item);
   }
-  finalProducts.push(item);
   renderFinalProducts();
 }
 
@@ -1192,17 +1207,22 @@ function buildFinalUsimCard(item){
   `;
 }
 
-// [최종상품] 우측: 확정된 항목을 각각 개별 카드로 렌더링 (합산 없이 항목별로 표시)
+// [최종상품] 우측: 확정된 항목을 인터넷/TV(상단, 1건) · 유심(하단, 여러 건) 두 영역으로 나눠 렌더링
 function renderFinalProducts(){
-  const container = document.getElementById('final-products-list');
-  if (!container) return;
+  const homeContainer = document.getElementById('final-products-home');
+  const usimContainer = document.getElementById('final-products-usim');
+  if (!homeContainer || !usimContainer) return;
 
-  if (finalProducts.length === 0) {
-    container.innerHTML = `<div class="reflected-empty">좌측 제안상품에서 [최종반영]을 눌러 확정할 상품을 추가하세요.</div>`;
-    return;
-  }
+  const homeItem = finalProducts.find(p => p.type === 'home');
+  const usimItems = finalProducts.filter(p => p.type === 'usim');
 
-  container.innerHTML = finalProducts.map(item => item.type === 'usim' ? buildFinalUsimCard(item) : buildFinalHomeCard(item)).join('');
+  homeContainer.innerHTML = homeItem
+    ? buildFinalHomeCard(homeItem)
+    : `<div class="reflected-empty">제안상품에서 [최종반영]을 눌러 확정할 인터넷/TV 상품을 추가하세요.</div>`;
+
+  usimContainer.innerHTML = usimItems.length
+    ? usimItems.map(buildFinalUsimCard).join('')
+    : `<div class="reflected-empty">제안상품에서 [최종반영]을 눌러 확정할 유심 상품을 추가하세요.</div>`;
 }
 
 function openLoginModal(){
