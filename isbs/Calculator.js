@@ -292,6 +292,52 @@ function computeLGOptions(lines, speedNum){
   ];
 }
 
+// ---- 유심(모바일) 결합개통 수수료 구간표 ----
+// carrier_commissions 테이블(product_type=USIM_MOBILE)의 요금제군별 dongpan_fee(결합개통)를
+// usim_plans의 monthly_fee 구간으로 환산한 표입니다. 요금제군 자체가 DB에 숫자 구간으로
+// 저장되어 있지 않아 실제 요금제 목록을 기준으로 구간을 정리했습니다.
+// (요금제군이 신설/변경되면 이 표도 함께 업데이트가 필요합니다.)
+const USIM_COMMISSION_BANDS = {
+  SK: [
+    { max: 38999, fee: 320000 },
+    { max: 48999, fee: 370000 },
+    { max: 68999, fee: 410000 },
+    { max: 88999, fee: 460000 },
+    { max: Infinity, fee: 530000 }
+  ],
+  KT: [
+    { max: 43999, fee: 40000 },
+    { max: 58999, fee: 300000 },
+    { max: 69999, fee: 340000 },
+    { max: 74999, fee: 370000 },
+    { max: 84999, fee: 410000 },
+    { max: 94999, fee: 440000 },
+    { max: 104999, fee: 460000 },
+    { max: 114999, fee: 480000 },
+    { max: Infinity, fee: 490000 }
+  ],
+  LG: [
+    { max: 32999, fee: 40000 },
+    { max: 54999, fee: 200000 },
+    { max: 60999, fee: 300000 },
+    { max: 69999, fee: 340000 },
+    { max: 74999, fee: 370000 },
+    { max: 84999, fee: 410000 },
+    { max: 94999, fee: 440000 },
+    { max: 104999, fee: 460000 },
+    { max: 114999, fee: 480000 },
+    { max: Infinity, fee: 490000 }
+  ]
+};
+
+function getUsimCommission(carrier, monthlyFee){
+  const bands = USIM_COMMISSION_BANDS[carrier];
+  const fee = Number(monthlyFee) || 0;
+  if (!bands) return 0;
+  const band = bands.find(b => fee <= b.max);
+  return band ? band.fee : 0;
+}
+
 // ---- SKB / SKT ----
 
 function computeSKOptions(lines, speedNum, groupKey){
