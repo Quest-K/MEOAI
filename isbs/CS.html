@@ -277,9 +277,6 @@
             <label style="font-size:12.5px; font-weight:600; cursor:pointer;" title="25% 선택약정 할인 적용">
               <input type="checkbox" id="contract-discount-toggle" onchange="toggleContractDiscount(this.checked)"> 선택약정(25%)
             </label>
-            <label style="font-size:12.5px; font-weight:600; cursor:pointer;" title="동판(대리점 자체 유치) 수수료 적용">
-              <input type="checkbox" id="dongpan-toggle" onchange="toggleDongpan(this.checked)"> 동판 적용
-            </label>
           </div>
         </div>
         <div class="results" id="mobile-plan-results">
@@ -409,7 +406,6 @@ let reflectedProducts = [];
 let finalProducts = []; 
 let isLoggedIn = false;
 let isContractDiscountActive = false; // 선택약정 25% 적용 여부
-let isDongpanActive = false;           // 동판 수수료 적용 여부
 
 let barExpanded = { home:false, mobile:false, combo:false, gift:false };
 
@@ -1282,10 +1278,6 @@ function toggleContractDiscount(active) {
   renderUsimPlanTable();
 }
 
-function toggleDongpan(active) {
-  isDongpanActive = active;
-}
-
 function renderUsimPlanTable() {
   const container = document.getElementById('mobile-plan-results');
 
@@ -1334,16 +1326,20 @@ function reflectUsimPlan(idx) {
   const plan = currentUsimPlans[idx];
   if (!plan) return;
 
-  let fee = Number(plan.monthly_fee) || 0;
-  if (isContractDiscountActive) {
-    fee = Math.round(fee * 0.75 / 10) * 10;
-  }
+  // 정가(약정 전) 금액 - 결합할인 등급 판정 및 "약정 전" 표시는 항상 이 값을 기준으로 함
+  const baseFee = Number(plan.monthly_fee) || 0;
+
+  // 선택약정(25%) 토글이 켜져 있던 상태로 반영했다면 그 할인가를 "약정 후" 값으로 사용,
+  // 아니라면 DB에 저장된 약정 할인가(contract_discount_fee)를 "약정 후" 값으로 사용
+  const contractFee = isContractDiscountActive
+    ? Math.round(baseFee * 0.75 / 10) * 10
+    : (plan.contract_discount_fee != null ? Number(plan.contract_discount_fee) : null);
 
   addedUsimLines.push({
     id: `usim-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     carrier: selectedUsimCarrier,
     planName: plan.plan_name || '-',
-    fee: fee,
+    fee: baseFee, // 결합할인 등급(예: KT 77,000원 이상)은 항상 정가 기준으로 판정
     teen: false
   });
   renderAddedUsimLines();
@@ -1354,8 +1350,8 @@ function reflectUsimPlan(idx) {
     type: 'usim',
     carrier: selectedUsimCarrier,
     planName: plan.plan_name || '-',
-    fee: fee,
-    contractFee: plan.contract_discount_fee != null ? Number(plan.contract_discount_fee) : null,
+    fee: baseFee, // 월요금(약정 전) = 항상 정가
+    contractFee: contractFee,
     dataAllowance: plan.data_allowance || '-',
     voiceAllowance: plan.voice_allowance || '-',
     smsAllowance: plan.sms_allowance || '-',
