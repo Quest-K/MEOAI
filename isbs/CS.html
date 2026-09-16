@@ -43,7 +43,7 @@
     <div class="cs-layout">
       <div class="cs-col cs-col-customer">
 
-        <div class="cs-card">
+        <div class="cs-card" id="cs-customer-info-card">
           <h3>고객정보</h3>
           <div class="form-row">
             <div class="form-group">
@@ -132,7 +132,7 @@
           </div>
         </div>
 
-        <div class="cs-card">
+        <div class="cs-card cs-card-flex">
           <h3>결합할인</h3>
           <div id="final-combo-discount" class="cs-card-scroll" style="overflow-x:auto;"></div>
         </div>
@@ -344,6 +344,8 @@
   </div>
 </div>
 
+<div id="toast-container" class="toast-container" aria-live="polite"></div>
+
 <script src="Calculator.js"></script>
 <script src="Supabaseservice.js"></script>
 <script>
@@ -378,6 +380,22 @@ let COMMISSION_DATA = {};
 let RAW_COMMISSION_DATA = [];
 let PROMOTION_DATA = {};
 let customGiftValues = {};
+
+// 상품반영/최종반영 등 버튼 액션 직후 화면 우측 상단에 잠깐 떴다 사라지는 알림
+// (상담원이 통화 중에도 "반영됐다"는 걸 즉시 확인할 수 있도록)
+function showToast(message){
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = message;
+  container.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('toast-visible'));
+  setTimeout(() => {
+    toast.classList.remove('toast-visible');
+    setTimeout(() => toast.remove(), 250);
+  }, 2200);
+}
 let openDiscountItems = new Set();
 let state = { speed:'500', tv:'basic', settopTier:'basic', router:'Y', tcDistMode:'equal' };
 let lastTvTier = 'basic';
@@ -986,6 +1004,7 @@ function reflectCardToProposal(carrier){
 
   renderProposalLists();
   updateCsSummaryPanel();
+  showToast(`✓ ${BRAND_LABEL[carrier]} 상품이 반영되었습니다 · [고객상담] 제안상품에서 확인하세요`);
 }
 
 function render(){
@@ -1408,6 +1427,7 @@ function reflectUsimPlan(idx) {
   });
   renderProposalLists();
   updateCsSummaryPanel();
+  showToast(`✓ ${selectedUsimCarrier} · ${plan.plan_name || '요금제'} 반영되었습니다 · [고객상담] 제안상품에서 확인하세요`);
 }
 
 (async function init(){
@@ -1422,6 +1442,14 @@ function reflectUsimPlan(idx) {
   updateCsSummaryPanel();
   renderProposalLists();
   renderFinalProducts();
+
+  // [고객정보] 카드 안의 모든 입력/선택 값이 바뀔 때마다 상담요약이 실시간으로 갱신되도록
+  // 카드 전체에 이벤트를 위임(delegation)해 둠 — 새 입력 필드가 추가돼도 별도 연결 없이 자동 반영됨
+  const customerInfoCard = document.getElementById('cs-customer-info-card');
+  if (customerInfoCard) {
+    customerInfoCard.addEventListener('input', updateCsSummaryPanel);
+    customerInfoCard.addEventListener('change', updateCsSummaryPanel);
+  }
 
   const { data: { session } } = await sb.auth.getSession();
   if (session) {
