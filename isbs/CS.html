@@ -117,19 +117,6 @@
 
       </div>
 
-      <div class="cs-col cs-col-product">
-
-        <div class="cs-card cs-card-flex">
-          <h3>제안상품</h3>
-          <div id="reflected-products-container" class="cs-card-scroll">
-            <div class="reflected-empty">
-              아직 반영된 상품이 없습니다. [상품설계] 화면에서 마음에 드는 상품을 체크하고 [반영하기]를 눌러주세요.
-            </div>
-          </div>
-        </div>
-
-      </div>
-
       <div class="cs-col cs-col-summary">
         <div class="cs-summary-panel">
           <div class="js-header-row">
@@ -260,43 +247,45 @@
     </div>
   </div>
 
-  <!-- VIEW 3: join.html (가입 진행) -->
+  <!-- VIEW 3: 최종상품 (제안상품 → 최종반영 선택 구조) -->
   <div id="view-join" class="view-container">
     <div class="top-grid">
       <header>
         <div class="eyebrow">FINAL PRODUCT</div>
         <h1>최종 상품</h1>
-        <p>상품설계 화면에서 "가입 진행"을 누른 상품의 최종 확정 내역입니다.</p>
+        <p>좌측 제안상품 목록에서 확정할 항목을 [최종반영]하면, 우측에 최종상품 전체 정보가 항목별로 표시됩니다.</p>
       </header>
     </div>
 
-    <div class="join-layout join-layout-single">
-      <div class="join-card">
-      <div class="product-summary">
-        <div class="summary-header" id="val-card-title">KT / 에센스(269채널)</div>
-
-        <div class="info-row main-label"><span>인터넷</span><span id="val-internet">-</span></div>
-        <div class="info-row sub-item-row"><span>└ 공유기</span><span id="val-router">-</span></div>
-        <div class="info-row sub-item-row" id="row-internet-discount" style="display:none;"><span>└ 인터넷 결합할인</span><span id="val-internet-discount">-</span></div>
-
-        <div class="info-row main-label section-start"><span>TV 요금제</span><span id="val-tv">-</span></div>
-        <div class="info-row sub-item-row"><span>└ 셋톱박스</span><span id="val-settop">-</span></div>
-        <div class="info-row sub-item-row" id="row-tv-discount" style="display:none;"><span>└ TV 결합할인</span><span id="val-tv-discount">-</span></div>
-
-        <div class="total-row">
-          <span>월 청구 요금 (할인 포함)</span>
-          <span class="amount" id="val-total">-</span>
+    <div class="join-split-grid">
+      <div class="join-col">
+        <div class="cs-card cs-card-flex">
+          <h3>제안상품 · 인터넷/TV</h3>
+          <div id="proposal-home-list" class="cs-card-scroll">
+            <div class="reflected-empty">아직 반영된 인터넷/TV 제안상품이 없습니다. [상품설계] 화면에서 [상품반영]을 눌러주세요.</div>
+          </div>
         </div>
 
-        <div class="gift-section-title">정산 및 혜택 상세</div>
-        <div class="info-row"><span>실제 지급 사은품 총액</span><span id="val-gift-total" style="color:var(--gold); font-weight:700;">-</span></div>
-        <div class="info-row sub-item-row"><span>└ 상품권</span><span id="val-gift-voucher">-</span></div>
-        <div class="info-row sub-item-row"><span>└ 현금</span><span id="val-gift-cash">-</span></div>
+        <div class="cs-card cs-card-flex">
+          <h3>제안상품 · 유심</h3>
+          <div id="proposal-usim-list" class="cs-card-scroll">
+            <div class="reflected-empty">아직 반영된 유심 제안상품이 없습니다. [상품설계] 화면에서 [상품반영]을 눌러주세요.</div>
+          </div>
+        </div>
       </div>
 
-      <div class="btn-group">
-        <button type="button" class="action-btn btn-back" onclick="switchTab('cs')">고객상담으로 돌아가기</button>
-      </div>
+      <div class="join-col">
+        <div class="cs-card cs-card-flex">
+          <h3>최종상품</h3>
+          <div id="final-products-list" class="cs-card-scroll">
+            <div class="reflected-empty">좌측 제안상품에서 [최종반영]을 눌러 확정할 상품을 추가하세요.</div>
+          </div>
+        </div>
+
+        <div class="cs-card">
+          <h3>결합할인 내역</h3>
+          <div id="final-combo-discount" class="cs-card-scroll" style="overflow-x:auto;"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -398,7 +387,8 @@ let state = { speed:'500', tv:'basic', settopTier:'basic', router:'Y', tcDistMod
 let lastTvTier = 'basic';
 let addedUsimLines = []; // 상품설계(모바일)에서 체크+추가한 요금제 목록. 가족결합 할인 계산의 입력값으로 사용됨
 let logs = [];
-let reflectedProducts = []; // 다중 선택 누적 저장 배열
+let reflectedProducts = []; // 제안상품: [상품설계]에서 "상품반영"한 항목 누적(홈/유심 혼재, type 필드로 구분)
+let finalProducts = []; // 최종상품: 제안상품 중 [최종반영]으로 확정한 항목만 개별 유지
 let isLoggedIn = false;
 
 // 하단 고정바 전용 상태 (상품설계(홈) 결과카드의 다중 비교/체크 선택과는 별개로,
@@ -425,7 +415,7 @@ function switchTab(tabId) {
     if (tabId === 'cs') {
       document.getElementById('view-cs').classList.add('active');
       document.querySelectorAll('.tab-btn')[0].classList.add('active');
-      renderReflectedProducts();
+      updateCsSummaryPanel();
     } else if (tabId === 'design') {
       document.getElementById('view-design').classList.add('active');
       document.querySelectorAll('.tab-btn')[1].classList.add('active');
@@ -436,6 +426,9 @@ function switchTab(tabId) {
     } else if (tabId === 'join') {
       document.getElementById('view-join').classList.add('active');
       document.querySelectorAll('.tab-btn')[2].classList.add('active');
+      renderProposalLists();
+      renderFinalProducts();
+      renderFamilyDiscountAccordion();
     }
   } catch (err) {
     console.error('switchTab render error:', tabId, err);
@@ -642,8 +635,9 @@ function renderAccordionItem(opt, lines, isMax){
 }
 
 function renderFamilyDiscountAccordion(){
-  const container = document.getElementById('family-discount-table');
-  if (!container) return;
+  const primaryContainer = document.getElementById('family-discount-table');
+  const secondaryContainer = document.getElementById('final-combo-discount'); // [최종상품] 탭에도 동일 내용 노출
+  if (!primaryContainer && !secondaryContainer) return;
 
   const effectivePhones = addedUsimLines.map((p, idx) => ({ carrier: p.carrier, fee: Number(p.fee) || 0, teen: !!p.teen, idx }));
   const speedNum = Number(state.speed);
@@ -654,7 +648,7 @@ function renderFamilyDiscountAccordion(){
     { key:'sk', label:'SK', matchLabel:'SK' }
   ];
 
-  container.innerHTML = groups.map(g => {
+  const html = groups.map(g => {
     const lines = effectivePhones.filter(p => p.carrier === g.matchLabel);
     let options;
     if (g.key === 'kt') options = computeKTOptions(lines, speedNum, state.tcDistMode);
@@ -679,6 +673,9 @@ function renderFamilyDiscountAccordion(){
       <br>· 위 금액은 참고용이며 현재 카드의 "총 요금"에는 반영되지 않습니다.
     </div>
   `;
+
+  if (primaryContainer) primaryContainer.innerHTML = html;
+  if (secondaryContainer) secondaryContainer.innerHTML = html;
 
   renderBottomBar();
 }
@@ -825,7 +822,13 @@ function handleGiftInputChange(carrier, rawVal) {
 }
 
 // 제안 상품 1건을 간결한 요약 텍스트 라인 배열로 변환 (상담요약 실시간 패널 + 복사 텍스트 공용)
+// type이 'usim'이면 유심 요금제, 그 외(홈)는 인터넷/TV 상품으로 간주
 function buildProductSummaryLines(p){
+  if (p.type === 'usim') {
+    const lines = [`${p.planName} · 월 ${p.fee.toLocaleString()}원${p.contractFee != null ? ` (약정후 ${p.contractFee.toLocaleString()}원)` : ''}`];
+    lines.push(`데이터 ${p.dataAllowance} · 통화 ${p.voiceAllowance} · 문자 ${p.smsAllowance}`);
+    return lines;
+  }
   const lines = [];
   lines.push(`인터넷(${p.internetLabel})+공유기(${p.routerLabel})`);
   if (p.tvTier !== 'none') {
@@ -834,6 +837,11 @@ function buildProductSummaryLines(p){
   lines.push(`월요금 ${p.totalFee.toLocaleString()}원`);
   lines.push(`사은품 총 ${p.benefitTotal.toLocaleString()}원 (상 ${p.giftCard.toLocaleString()}원,현 ${p.cash.toLocaleString()}원)`);
   return lines;
+}
+
+// 목록/요약에 쓸 제안상품 1건의 제목(통신사/유형)
+function productTitle(p){
+  return p.type === 'usim' ? `${p.carrier} 유심` : p.carrierName;
 }
 
 function buildConsultSummary(){
@@ -860,7 +868,7 @@ function buildConsultSummary(){
     lines.push('- 반영된 제안 상품 없음');
   } else {
     reflectedProducts.forEach((p, idx) => {
-      lines.push(`${idx + 1}. ${p.carrierName}`);
+      lines.push(`${idx + 1}. ${productTitle(p)}`);
       lines.push(...buildProductSummaryLines(p));
       lines.push('');
     });
@@ -898,7 +906,7 @@ function updateCsSummaryPanel(){
   } else {
     reflectedProducts.forEach((p, idx) => {
       prodHtml += `<div class="js-product-block">`;
-      prodHtml += `<div class="js-product-title">${idx + 1}. ${p.carrierName}</div>`;
+      prodHtml += `<div class="js-product-title">${idx + 1}. ${productTitle(p)}</div>`;
       buildProductSummaryLines(p).forEach(line => {
         prodHtml += `<div class="js-compact-line">${line}</div>`;
       });
@@ -927,34 +935,44 @@ function copyCsSummary(){
   }
 }
 
-function goToJoin(carrier){
+// [상품설계] 인터넷/TV 카드의 "상품반영" 버튼 → 제안상품(reflectedProducts, type:'home')에 1건 추가
+function reflectCardToProposal(carrier){
   const res = computePrice(carrier);
   if (!res.available) { alert('선택하신 조합으로는 가입 가능한 상품 정보가 없습니다.'); return; }
 
   const promo = PROMOTION_DATA[carrier] || { maxLimit: 450000, giftCard: 60000, cash: 390000 };
-  const comm = COMMISSION_DATA[carrier] || { internetComm:0, tvComm:0, totalComm:0 };
   const userGiftVal = customGiftValues[carrier] !== undefined ? customGiftValues[carrier] : promo.maxLimit;
   const calcCash = Math.max(0, userGiftVal - promo.giftCard);
   const tvLabel = state.tv === 'none' ? '인터넷 단독' : (res.tvInfo ? `${res.tvInfo.name} (${res.tvInfo.channels || 200}채널)` : 'TV기본');
   const settopName = res.settopInfo ? res.settopInfo.name : '기본셋톱';
 
-  const payload = {
-    carrier: BRAND_LABEL[carrier],
-    cardTitle: `${BRAND_LABEL[carrier]} / ${tvLabel}`,
-    internet: `${SPEED_LABEL[state.speed]} (${res.internetFee.toLocaleString()}원)`,
-    router: `${ROUTER_LABEL[state.router]} (${res.routerFee.toLocaleString()}원)`,
-    internetDiscount: state.tv !== 'none' ? `-${res.bundleDiscount.toLocaleString()}원` : '',
-    tvPlan: state.tv !== 'none' ? `${tvLabel} (${res.tvFee.toLocaleString()}원)` : '',
-    settop: state.tv !== 'none' ? `${settopName} (${res.settopFee.toLocaleString()}원)` : '',
-    tvDiscount: state.tv !== 'none' ? `-${res.tvBundleDiscount.toLocaleString()}원` : '',
-    totalMonthlyFee: res.total,
-    giftTotal: userGiftVal,
-    giftVoucher: promo.giftCard,
-    giftCash: calcCash
-  };
+  reflectedProducts.push({
+    id: `home-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    type: 'home',
+    carrierName: BRAND_LABEL[carrier],
+    carrierKey: carrier,
+    speedNum: Number(state.speed),
+    tvTier: state.tv,
+    internetLabel: SPEED_LABEL[state.speed],
+    internetFee: res.internetFee,
+    routerLabel: ROUTER_LABEL[state.router],
+    routerFee: res.routerFee,
+    bundleDiscount: state.tv !== 'none' ? res.bundleDiscount : 0,
+    tvLabel: state.tv === 'none' ? '미포함' : tvLabel,
+    tvName: state.tv === 'none' ? '' : (res.tvInfo ? res.tvInfo.name : '기본형'),
+    tvChannels: state.tv === 'none' ? '' : (res.tvInfo ? (res.tvInfo.channels || 200) : 200),
+    tvFee: state.tv === 'none' ? 0 : res.tvFee,
+    settopLabel: state.tv === 'none' ? '-' : settopName,
+    settopFee: state.tv === 'none' ? 0 : res.settopFee,
+    tvBundleDiscount: state.tv !== 'none' ? res.tvBundleDiscount : 0,
+    totalFee: res.total,
+    benefitTotal: userGiftVal,
+    giftCard: promo.giftCard,
+    cash: calcCash
+  });
 
-  loadJoinProduct(payload);
-  switchTab('join');
+  renderProposalLists();
+  updateCsSummaryPanel();
 }
 
 function render(){
@@ -1048,7 +1066,7 @@ function render(){
           ` : ''}
         </div>
         ${commHtml}
-        ${r.available ? `<button type="button" class="join-btn" onclick="goToJoin('${r.carrier}')">✨ 상품반영</button>` : ''}
+        ${r.available ? `<button type="button" class="join-btn" onclick="reflectCardToProposal('${r.carrier}')">✨ 상품반영</button>` : ''}
       </div>
     `;
   }).join('');
@@ -1056,68 +1074,153 @@ function render(){
   renderFamilyDiscountAccordion();
 }
 
-function renderReflectedProducts() {
-  const container = document.getElementById('reflected-products-container');
-  if (!container) return;
+// ===================================================================
+// [최종상품] 화면 로직
+// - 제안상품(reflectedProducts): [상품설계]에서 "상품반영"을 누른 항목이 누적되는 목록
+//   (인터넷/TV, 유심 두 유형이 함께 담기며 type 필드로 구분)
+// - 최종상품(finalProducts): 제안상품 중 [최종반영]을 눌러 확정한 항목만 담는 목록
+//   (항목별로 별도 카드로 표시, 서로 합산하지 않음)
+// ===================================================================
 
-  if (reflectedProducts.length === 0) {
-    container.innerHTML = `
-      <div class="reflected-empty">
-        아직 반영된 상품이 없습니다. [상품설계] 화면에서 마음에 드는 상품을 체크하고 [반영하기]를 눌러주세요.
+// 제안상품 1건(홈) 요약 행
+function buildProposalHomeRow(item){
+  return `
+    <div class="proposal-row">
+      <div class="proposal-row-main">
+        <span class="proposal-carrier carrier-${item.carrierKey}">${item.carrierName}</span>
+        <span class="proposal-desc">${item.internetLabel} · ${item.tvLabel}</span>
+        <span class="proposal-fee">${item.totalFee.toLocaleString()}원</span>
       </div>
-    `;
-    updateCsSummaryPanel();
-    return;
-  }
-
-  container.innerHTML = `
-    <div class="compare-table-wrap">
-      <table class="compare-table${isLoggedIn ? ' compact' : ''}">
-        <thead>
-          <tr>
-            <th>통신사</th>
-            <th>인터넷</th>
-            <th>공유기</th>
-            <th>TV</th>
-            <th>셋탑</th>
-            <th>월요금</th>
-            <th>사은품</th>
-            <th>상품권</th>
-            <th>현금</th>
-            ${isLoggedIn ? '<th>수수료</th><th>마진</th>' : ''}
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          ${reflectedProducts.map((p, idx) => {
-            const comm = isLoggedIn ? lookupCommission(p.carrierKey, p.speedNum, p.tvTier) : null;
-            const margin = comm ? comm.totalComm - p.benefitTotal : 0;
-            return `
-            <tr>
-              <td class="brand-cell">${p.carrierName}</td>
-              <td>${p.internetLabel}</td>
-              <td>${p.routerLabel}</td>
-              <td>${p.tvLabel}</td>
-              <td>${p.settopLabel}</td>
-              <td class="fee-cell">${p.totalFee.toLocaleString()}원</td>
-              <td class="total-cell">${p.benefitTotal.toLocaleString()}원</td>
-              <td>${p.giftCard.toLocaleString()}원</td>
-              <td>${p.cash.toLocaleString()}원</td>
-              ${isLoggedIn ? `<td>${comm.totalComm.toLocaleString()}원</td><td style="color:${margin >= 0 ? '#1E7E34' : '#D9534F'}; font-weight:700;">${margin.toLocaleString()}원</td>` : ''}
-              <td><button class="remove-ref" onclick="removeReflectedProduct(${idx})">삭제</button></td>
-            </tr>
-          `;
-          }).join('')}
-        </tbody>
-      </table>
+      <div class="proposal-row-actions">
+        <button type="button" class="mini-btn mini-btn-primary" onclick="moveProposalToFinal('${item.id}')">➕ 최종반영</button>
+        <button type="button" class="mini-btn" onclick="removeProposal('${item.id}')">삭제</button>
+      </div>
     </div>
   `;
+}
+
+// 제안상품 1건(유심) 요약 행
+function buildProposalUsimRow(item){
+  return `
+    <div class="proposal-row">
+      <div class="proposal-row-main">
+        <span class="proposal-carrier carrier-${item.carrier.toLowerCase()}">${item.carrier}</span>
+        <span class="proposal-desc">${item.planName}</span>
+        <span class="proposal-fee">${item.fee.toLocaleString()}원</span>
+      </div>
+      <div class="proposal-row-actions">
+        <button type="button" class="mini-btn mini-btn-primary" onclick="moveProposalToFinal('${item.id}')">➕ 최종반영</button>
+        <button type="button" class="mini-btn" onclick="removeProposal('${item.id}')">삭제</button>
+      </div>
+    </div>
+  `;
+}
+
+// [최종상품] 좌측: 제안상품을 인터넷/TV · 유심 두 목록으로 나눠 렌더링
+function renderProposalLists(){
+  const homeContainer = document.getElementById('proposal-home-list');
+  const usimContainer = document.getElementById('proposal-usim-list');
+  if (!homeContainer || !usimContainer) return; // [최종상품] 탭이 아직 렌더링되지 않은 경우
+
+  const homeItems = reflectedProducts.filter(p => p.type === 'home');
+  const usimItems = reflectedProducts.filter(p => p.type === 'usim');
+
+  homeContainer.innerHTML = homeItems.length
+    ? homeItems.map(buildProposalHomeRow).join('')
+    : `<div class="reflected-empty">아직 반영된 인터넷/TV 제안상품이 없습니다. [상품설계] 화면에서 [상품반영]을 눌러주세요.</div>`;
+
+  usimContainer.innerHTML = usimItems.length
+    ? usimItems.map(buildProposalUsimRow).join('')
+    : `<div class="reflected-empty">아직 반영된 유심 제안상품이 없습니다. [상품설계] 화면에서 [상품반영]을 눌러주세요.</div>`;
+}
+
+function removeProposal(id){
+  reflectedProducts = reflectedProducts.filter(p => p.id !== id);
+  renderProposalLists();
   updateCsSummaryPanel();
 }
 
-function removeReflectedProduct(idx) {
-  reflectedProducts.splice(idx, 1);
-  renderReflectedProducts();
+// 제안상품 중 [최종반영]을 누른 1건을 최종상품 목록에 추가 (항목별로 개별 유지, 합산하지 않음)
+function moveProposalToFinal(id){
+  const item = reflectedProducts.find(p => p.id === id);
+  if (!item) return;
+  if (finalProducts.some(p => p.id === id)) {
+    alert('이미 최종상품에 반영된 항목입니다.');
+    return;
+  }
+  finalProducts.push(item);
+  renderFinalProducts();
+}
+
+function removeFinalProduct(id){
+  finalProducts = finalProducts.filter(p => p.id !== id);
+  renderFinalProducts();
+}
+
+// 최종상품 1건(홈) 상세 카드 - 모든 정보 표시
+function buildFinalHomeCard(item){
+  const comm = isLoggedIn ? lookupCommission(item.carrierKey, item.speedNum, item.tvTier) : null;
+  const margin = comm ? comm.totalComm - item.benefitTotal : 0;
+  return `
+    <div class="final-card">
+      <div class="final-card-head">
+        <span class="final-type-badge badge-home">인터넷/TV</span>
+        <span class="final-card-title">${item.carrierName} / ${item.tvLabel}</span>
+        <button type="button" class="remove-ref" onclick="removeFinalProduct('${item.id}')">삭제</button>
+      </div>
+      <div class="info-row main-label"><span>인터넷</span><span>${item.internetLabel} (${item.internetFee.toLocaleString()}원)</span></div>
+      <div class="info-row sub-item-row"><span>└ 공유기</span><span>${item.routerLabel} (${item.routerFee.toLocaleString()}원)</span></div>
+      ${item.bundleDiscount ? `<div class="info-row sub-item-row"><span>└ 인터넷 결합할인</span><span>-${item.bundleDiscount.toLocaleString()}원</span></div>` : ''}
+      ${item.tvTier !== 'none' ? `
+        <div class="info-row main-label section-start"><span>TV 요금제</span><span>${item.tvName} (${item.tvChannels}채널, ${item.tvFee.toLocaleString()}원)</span></div>
+        <div class="info-row sub-item-row"><span>└ 셋톱박스</span><span>${item.settopLabel} (${item.settopFee.toLocaleString()}원)</span></div>
+        ${item.tvBundleDiscount ? `<div class="info-row sub-item-row"><span>└ TV 결합할인</span><span>-${item.tvBundleDiscount.toLocaleString()}원</span></div>` : ''}
+      ` : ''}
+      <div class="total-row"><span>월 청구 요금 (할인 포함)</span><span class="amount">${item.totalFee.toLocaleString()}원</span></div>
+      <div class="gift-section-title">정산 및 혜택 상세</div>
+      <div class="info-row"><span>실제 지급 사은품 총액</span><span style="color:var(--gold); font-weight:700;">${item.benefitTotal.toLocaleString()}원</span></div>
+      <div class="info-row sub-item-row"><span>└ 상품권</span><span>${item.giftCard.toLocaleString()}원</span></div>
+      <div class="info-row sub-item-row"><span>└ 현금</span><span>${item.cash.toLocaleString()}원</span></div>
+      ${isLoggedIn && comm ? `
+        <div class="info-row sub-item-row"><span>└ 수수료</span><span>${comm.totalComm.toLocaleString()}원</span></div>
+        <div class="info-row sub-item-row"><span>└ 마진</span><span style="color:${margin >= 0 ? '#1E7E34' : '#D9534F'}; font-weight:700;">${margin.toLocaleString()}원</span></div>
+      ` : ''}
+    </div>
+  `;
+}
+
+// 최종상품 1건(유심) 상세 카드
+function buildFinalUsimCard(item){
+  return `
+    <div class="final-card">
+      <div class="final-card-head">
+        <span class="final-type-badge badge-usim">유심</span>
+        <span class="final-card-title">${item.carrier} / ${item.planName}</span>
+        <button type="button" class="remove-ref" onclick="removeFinalProduct('${item.id}')">삭제</button>
+      </div>
+      <div class="info-row main-label"><span>월요금(약정 전)</span><span>${item.fee.toLocaleString()}원</span></div>
+      <div class="info-row sub-item-row"><span>└ 약정 후</span><span>${item.contractFee != null ? item.contractFee.toLocaleString() + '원' : '미입력'}</span></div>
+      <div class="info-row"><span>데이터</span><span>${item.dataAllowance}</span></div>
+      <div class="info-row"><span>통화</span><span>${item.voiceAllowance}</span></div>
+      <div class="info-row"><span>문자</span><span>${item.smsAllowance}</span></div>
+      <div class="info-row"><span>테더링/공유</span><span>${item.tethering}</span></div>
+      <div class="info-row"><span>멤버십</span><span>${item.membership}</span></div>
+      <div class="info-row"><span>가입대상</span><span>${item.targetAge}</span></div>
+    </div>
+  `;
+}
+
+// [최종상품] 우측: 확정된 항목을 각각 개별 카드로 렌더링 (합산 없이 항목별로 표시)
+function renderFinalProducts(){
+  const container = document.getElementById('final-products-list');
+  if (!container) return;
+
+  if (finalProducts.length === 0) {
+    container.innerHTML = `<div class="reflected-empty">좌측 제안상품에서 [최종반영]을 눌러 확정할 상품을 추가하세요.</div>`;
+    return;
+  }
+
+  container.innerHTML = finalProducts.map(item => item.type === 'usim' ? buildFinalUsimCard(item) : buildFinalHomeCard(item)).join('');
 }
 
 function openLoginModal(){
@@ -1142,41 +1245,9 @@ function updateAuthUI(email){
 
 
 // ===================================================================
-// [가입진행] 화면 로직 (join.html 이식 + 실시간 요약 패널)
+// [최종상품] 화면 로직은 아래 renderProposalLists / renderFinalProducts 등에서 처리
+// (예전 join.html 단일 상품 뷰의 val-* 필드 기반 로직은 제안상품→최종반영 구조로 대체되어 제거함)
 // ===================================================================
-let currentJoinProduct = null;
-
-function loadJoinProduct(payload) {
-  currentJoinProduct = payload;
-
-  document.getElementById('val-card-title').textContent = payload.cardTitle || `${payload.carrier} 인터넷/TV 상품`;
-  document.getElementById('val-internet').textContent = payload.internet || '-';
-  document.getElementById('val-router').textContent = payload.router || '-';
-
-  const rowInternetDiscount = document.getElementById('row-internet-discount');
-  if (payload.internetDiscount) {
-    document.getElementById('val-internet-discount').textContent = payload.internetDiscount;
-    rowInternetDiscount.style.display = 'flex';
-  } else {
-    rowInternetDiscount.style.display = 'none';
-  }
-
-  document.getElementById('val-tv').textContent = payload.tvPlan || '미포함';
-  document.getElementById('val-settop').textContent = payload.settop || '미포함';
-
-  const rowTvDiscount = document.getElementById('row-tv-discount');
-  if (payload.tvDiscount) {
-    document.getElementById('val-tv-discount').textContent = payload.tvDiscount;
-    rowTvDiscount.style.display = 'flex';
-  } else {
-    rowTvDiscount.style.display = 'none';
-  }
-
-  document.getElementById('val-total').textContent = (isNaN(payload.totalMonthlyFee) ? payload.totalMonthlyFee : Number(payload.totalMonthlyFee).toLocaleString()) + '원 / 월';
-  document.getElementById('val-gift-total').textContent = (isNaN(payload.giftTotal) ? payload.giftTotal : Number(payload.giftTotal).toLocaleString()) + '원';
-  document.getElementById('val-gift-voucher').textContent = (isNaN(payload.giftVoucher) ? payload.giftVoucher : Number(payload.giftVoucher).toLocaleString()) + '원';
-  document.getElementById('val-gift-cash').textContent = (isNaN(payload.giftCash) ? payload.giftCash : Number(payload.giftCash).toLocaleString()) + '원';
-}
 
 function jsRow(label, value) {
   if (!value) return '';
@@ -1276,9 +1347,13 @@ function renderUsimPlanTable() {
 
 // [상품반영] 버튼 1건 클릭 시 해당 요금제를 "추가된 요금제" 목록에 반영
 // (기존 체크박스 다중 선택 + [+ 선택 요금제 추가] 버튼 흐름을 1건 단위 반영으로 대체)
+// [상품반영] 버튼 1건 클릭 시:
+// 1) "추가된 요금제"(addedUsimLines)에 반영 → 가족결합 할인 계산의 입력값으로 사용
+// 2) 제안상품(reflectedProducts, type:'usim')에도 반영 → [최종상품] 탭 좌측 목록에 노출
 function reflectUsimPlan(id) {
   const plan = currentUsimPlans.find(p => p.id === id);
   if (!plan) return;
+
   addedUsimLines.push({
     id: `usim-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     carrier: selectedUsimCarrier,
@@ -1288,6 +1363,23 @@ function reflectUsimPlan(id) {
   });
   renderAddedUsimLines();
   renderFamilyDiscountAccordion();
+
+  reflectedProducts.push({
+    id: `usim-prop-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    type: 'usim',
+    carrier: selectedUsimCarrier,
+    planName: plan.plan_name || '-',
+    fee: Number(plan.monthly_fee) || 0,
+    contractFee: plan.contract_discount_fee != null ? Number(plan.contract_discount_fee) : null,
+    dataAllowance: plan.data_allowance || '-',
+    voiceAllowance: plan.voice_allowance || '-',
+    smsAllowance: plan.sms_allowance || '-',
+    tethering: plan.tethering_allowance || '-',
+    membership: plan.membership_benefit || '-',
+    targetAge: plan.target_age || '제한 없음'
+  });
+  renderProposalLists();
+  updateCsSummaryPanel();
 }
 
 (async function init(){
