@@ -1281,46 +1281,56 @@ async function fetchUsimPlans(carrier) {
   renderUsimPlanTable();
 }
 
+let usimTableExpanded = false; // "전체 요금제 목록" 표의 정기/고정 정보(테더링, 멤버십, 가입대상) 접기·펼치기 상태
+
+function toggleUsimTableDetail(){
+  usimTableExpanded = !usimTableExpanded;
+  renderUsimPlanTable();
+}
+
 function renderUsimPlanTable() {
   const container = document.getElementById('mobile-plan-results');
 
   container.innerHTML = `
+    <div class="usim-table-toolbar">
+      <button type="button" class="mini-btn" onclick="toggleUsimTableDetail()">
+        ${usimTableExpanded ? '정기/고정 정보 접기 ▴' : '정기/고정 정보 펼치기 ▾'}
+      </button>
+    </div>
     <div class="compare-table-wrap">
-      <table class="compare-table">
+      <table class="compare-table usim-plan-table${usimTableExpanded ? ' expanded' : ''}">
         <thead>
           <tr>
             <th>요금제명</th>
+            <th class="action-col"></th>
             <th>월요금(약정 전)</th>
-            <th>월요금(약정 후)</th>
             <th>데이터</th>
             <th>통화</th>
             <th>문자</th>
-            <th>테더링/공유</th>
-            <th>멤버십</th>
-            <th>가입대상</th>
-            <th></th>
+            <th class="usim-extra-col">테더링/공유</th>
+            <th class="usim-extra-col">멤버십</th>
+            <th class="usim-extra-col">가입대상</th>
           </tr>
         </thead>
         <tbody>
           ${currentUsimPlans.map(p => `
             <tr>
               <td class="brand-cell">${p.plan_name || '-'}</td>
+              <td class="action-col"><button type="button" class="join-btn usim-reflect-btn" onclick="reflectUsimPlan('${p.id}')">✨ 상품반영</button></td>
               <td class="fee-cell">${p.monthly_fee != null ? Number(p.monthly_fee).toLocaleString() + '원' : '-'}</td>
-              <td class="fee-cell">${p.contract_discount_fee != null ? Number(p.contract_discount_fee).toLocaleString() + '원' : '미입력'}</td>
               <td>${p.data_allowance || '-'}</td>
               <td>${p.voice_allowance || '-'}</td>
               <td>${p.sms_allowance || '-'}</td>
-              <td>${p.tethering_allowance || '-'}</td>
-              <td>${p.membership_benefit || '-'}</td>
-              <td>${p.target_age || '제한 없음'}</td>
-              <td><button type="button" class="join-btn usim-reflect-btn" onclick="reflectUsimPlan('${p.id}')">✨ 상품반영</button></td>
+              <td class="usim-extra-col">${p.tethering_allowance || '-'}</td>
+              <td class="usim-extra-col">${p.membership_benefit || '-'}</td>
+              <td class="usim-extra-col">${p.target_age || '제한 없음'}</td>
             </tr>
           `).join('')}
         </tbody>
       </table>
     </div>
     <p style="font-size:12px; color:var(--ink-dim); margin-top:8px;">
-      ※ "월요금(약정 후)" 값이 아직 등록되지 않은 요금제는 "미입력"으로 표시됩니다. 사은품 항목은 usim_plans 테이블에 아직 컬럼이 없어 표시하지 못하고 있어요.
+      ※ "정기/고정 정보"(테더링·멤버십·가입대상)는 접혀 있습니다. 필요할 때 위 버튼으로 펼쳐서 확인하세요. 사은품 항목은 usim_plans 테이블에 아직 컬럼이 없어 표시하지 못하고 있어요.
     </p>
   `;
 }
