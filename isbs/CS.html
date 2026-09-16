@@ -292,7 +292,7 @@
     <div class="bar-cell bar-cell-home">
       <div class="bar-cell-head bar-cell-head-clickable" onclick="toggleBarDetail('home')">
         <span class="bar-cell-title">홈상품</span>
-        <select id="bar-carrier-select" class="bar-carrier-select" onclick="event.stopPropagation()" onchange="handleBarCarrierChange(this.value)"></select>
+        <span class="bar-cell-summary" id="bar-home-summary">-</span>
         <span class="bar-cell-chevron" id="bar-home-chevron">▸</span>
       </div>
       <div class="bar-detail" id="bar-home-detail"></div>
@@ -301,6 +301,7 @@
     <div class="bar-cell bar-cell-mobile">
       <div class="bar-cell-head bar-cell-head-clickable" onclick="toggleBarDetail('mobile')">
         <span class="bar-cell-title">모바일</span>
+        <span class="bar-cell-summary" id="bar-mobile-summary">-</span>
         <span class="bar-cell-chevron" id="bar-mobile-chevron">▸</span>
       </div>
       <div class="bar-detail" id="bar-mobile-detail"></div>
@@ -309,6 +310,7 @@
     <div class="bar-cell bar-cell-combo">
       <div class="bar-cell-head bar-cell-head-clickable" onclick="toggleBarDetail('combo')">
         <span class="bar-cell-title">결합할인</span>
+        <span class="bar-cell-summary" id="bar-combo-summary">-</span>
         <span class="bar-cell-chevron" id="bar-combo-chevron">▸</span>
       </div>
       <div class="bar-detail" id="bar-combo-detail"></div>
@@ -317,6 +319,7 @@
     <div class="bar-cell bar-cell-gift">
       <div class="bar-cell-head bar-cell-head-clickable" onclick="toggleBarDetail('gift')">
         <span class="bar-cell-title">사은품</span>
+        <span class="bar-cell-summary" id="bar-gift-summary">-</span>
         <span class="bar-cell-chevron" id="bar-gift-chevron">▸</span>
       </div>
       <div class="bar-detail" id="bar-gift-detail"></div>
@@ -384,9 +387,9 @@ let reflectedProducts = []; // 제안상품: [상품조회]에서 "상품반영"
 let finalProducts = []; // 최종상품: 제안상품 중 [최종반영]으로 확정한 항목만 개별 유지
 let isLoggedIn = false;
 
-// 하단 고정바 전용 상태 (상품설계(홈) 결과카드의 다중 비교/체크 선택과는 별개로,
-// "지금 결합할인·요약 기준으로 삼을 통신사 1개"만 별도로 들고 있음. 통신사 변경은 사용자가 드롭다운으로 직접 선택할 때만 반영됨)
-let barCarrier = 'kt';
+// 하단 고정바 전용 상태
+// (예전에는 [상품조회] 화면에서 임시로 고른 통신사/설계값 기준으로 계산했으나,
+//  이제는 [최종상품](finalProducts)에 확정된 인터넷/TV 1건 + 유심 여러 건 기준으로 계산함)
 let barExpanded = { home:false, mobile:false, combo:false, gift:false };
 
 function switchTab(tabId) {
@@ -677,15 +680,6 @@ function renderFamilyDiscountAccordion(){
 // ===================================================================
 
 function initBottomBar() {
-  const sel = document.getElementById('bar-carrier-select');
-  if (!sel || sel.options.length) return; // 이미 채워져 있으면 스킵
-  sel.innerHTML = CARRIERS.map(c => `<option value="${c}">${BRAND_LABEL[c]}</option>`).join('');
-  sel.value = barCarrier;
-  renderBottomBar();
-}
-
-function handleBarCarrierChange(value) {
-  barCarrier = value;
   renderBottomBar();
 }
 
@@ -696,11 +690,11 @@ function toggleBarDetail(key) {
   renderBottomBar();
 }
 
-// 하단바의 barCarrier(kt/lg/skb/skt) → 결합할인 그룹(kt/lg/sk) 및 usim_plans 표기 통신사(KT/LG/SK) 매핑
-// (SKB/SKT 인터넷은 결합할인 계산상 하나의 'SK' 그룹으로 취급됨 — Calculator.js의 그룹 구성과 동일)
-function getBarComboGroup() {
-  if (barCarrier === 'kt') return { key: 'kt', matchLabel: 'KT' };
-  if (barCarrier === 'lg') return { key: 'lg', matchLabel: 'LG' };
+// 최종상품(finalProducts)의 인터넷/TV carrierKey(kt/lg/skb/skt) → 결합할인 그룹(kt/lg/sk) 및
+// usim_plans 표기 통신사(KT/LG/SK) 매핑 (SKB/SKT 인터넷은 하나의 'SK' 그룹으로 취급 — Calculator.js와 동일)
+function getComboGroupByCarrierKey(carrierKey) {
+  if (carrierKey === 'kt') return { key: 'kt', matchLabel: 'KT' };
+  if (carrierKey === 'lg') return { key: 'lg', matchLabel: 'LG' };
   return { key: 'sk', matchLabel: 'SK' };
 }
 
@@ -717,91 +711,121 @@ function renderBarDetail(key, detailHtml) {
   }
 }
 
+// 접힌 상태에서도 토글 화살표 바로 왼쪽에 보이는 핵심 금액 1줄을 세팅
+function setBarSummary(key, text) {
+  const el = document.getElementById(`bar-${key}-summary`);
+  if (el) el.textContent = text;
+}
+
+// 하단바는 [최종상품](finalProducts)에 확정된 값만 기준으로 계산한다.
+// - 홈상품: finalProducts 중 type==='home' 1건 (최종상품 화면에서 항상 1건만 유지됨)
+// - 모바일: finalProducts 중 type==='usim' 전체 (여러 건, 동일 요금제 중복 가능)
+// - 결합할인: 홈상품의 통신사(carrierKey) 그룹과 매칭되는 최종 유심 회선들로 계산
+// - 사은품: 홈상품 반영 시점에 확정된 사은품 총액
 function renderBottomBar() {
-  const sel = document.getElementById('bar-carrier-select');
-  if (sel && sel.value !== barCarrier && sel.options.length) sel.value = barCarrier;
+  const finalHome = finalProducts.find(p => p.type === 'home');
+  const finalUsimItems = finalProducts.filter(p => p.type === 'usim');
 
   // ---- 1. 홈상품 ----
-  let homeHtml;
-  if (!DATA) {
-    homeHtml = `<div class="bar-empty">상품 데이터 로딩 중...</div>`;
+  let homeHtml, homeSummary;
+  if (!finalHome) {
+    homeHtml = `<div class="bar-empty">최종반영된 인터넷/TV 상품이 없습니다. [최종상품] 화면에서 [최종반영]을 눌러주세요.</div>`;
+    homeSummary = '미확정';
   } else {
-    const res = computePrice(barCarrier);
-    if (!res.available) {
-      homeHtml = `<div class="bar-empty">선택한 조건의 상품이 없습니다</div>`;
-    } else {
-      const tvLabel = state.tv === 'none' ? '인터넷 단독' : (res.tvInfo ? res.tvInfo.name : 'TV기본');
-      homeHtml = `
-        <div class="bar-line"><span>인터넷</span><span>${SPEED_LABEL[state.speed]} · ${res.internetFee.toLocaleString()}원</span></div>
-        <div class="bar-subline">└ 공유기 ${ROUTER_LABEL[state.router]} · ${res.routerFee.toLocaleString()}원</div>
-        ${state.tv !== 'none' ? `
-          <div class="bar-line"><span>TV</span><span>${tvLabel} · ${res.tvFee.toLocaleString()}원</span></div>
-          <div class="bar-subline">└ 셋톱박스 ${res.settopInfo ? res.settopInfo.name : '기본형'} · ${res.settopFee.toLocaleString()}원</div>
-        ` : `<div class="bar-subline">TV 미포함</div>`}
-        <div class="bar-total">월 ${res.total.toLocaleString()}원</div>
-      `;
-    }
+    homeHtml = `
+      <div class="bar-line"><span>${finalHome.carrierName} · 인터넷</span><span>${finalHome.internetLabel} · ${finalHome.internetFee.toLocaleString()}원</span></div>
+      <div class="bar-subline">└ 공유기 ${finalHome.routerLabel} · ${finalHome.routerFee.toLocaleString()}원</div>
+      ${finalHome.tvTier !== 'none' ? `
+        <div class="bar-line"><span>TV</span><span>${finalHome.tvName} · ${finalHome.tvFee.toLocaleString()}원</span></div>
+        <div class="bar-subline">└ 셋톱박스 ${finalHome.settopLabel} · ${finalHome.settopFee.toLocaleString()}원</div>
+      ` : `<div class="bar-subline">TV 미포함</div>`}
+      <div class="bar-total">월 ${finalHome.totalFee.toLocaleString()}원</div>
+    `;
+    homeSummary = `${finalHome.totalFee.toLocaleString()}원`;
   }
   renderBarDetail('home', homeHtml);
+  setBarSummary('home', homeSummary);
 
   // ---- 2. 모바일 ----
-  const lineCount = addedUsimLines.length;
-  const feeSum = addedUsimLines.reduce((a, p) => a + (Number(p.fee) || 0), 0);
-  const mobileHtml = lineCount
-    ? `
+  const lineCount = finalUsimItems.length;
+  const feeSum = finalUsimItems.reduce((a, p) => a + (Number(p.fee) || 0), 0);
+  let mobileHtml, mobileSummary;
+  if (!lineCount) {
+    mobileHtml = `<div class="bar-empty">최종반영된 유심 상품이 없습니다. [최종상품] 화면에서 [최종반영]을 눌러주세요.</div>`;
+    mobileSummary = '미확정';
+  } else {
+    mobileHtml = `
       <div class="bar-line"><span>${lineCount}개 회선</span><span>${feeSum.toLocaleString()}원</span></div>
-      ${addedUsimLines.map(p => `
+      ${finalUsimItems.map(p => `
         <div class="bar-mobile-detail-row">
-          <span>${p.carrier} · ${p.planName || '요금제'}${p.teen ? ' (청소년)' : ''}</span>
+          <span>${p.carrier} · ${p.planName || '요금제'}</span>
           <span>${(Number(p.fee) || 0).toLocaleString()}원</span>
         </div>
       `).join('')}
-    `
-    : `<div class="bar-empty">추가된 요금제가 없습니다</div>`;
+    `;
+    mobileSummary = `${feeSum.toLocaleString()}원`;
+  }
   renderBarDetail('mobile', mobileHtml);
+  setBarSummary('mobile', mobileSummary);
 
-  // ---- 3. 결합할인 (하단바에서 고른 통신사 1개 기준으로만 계산) ----
-  const group = getBarComboGroup();
-  const comboLines = addedUsimLines
-    .map((p, idx) => ({ carrier: p.carrier, fee: Number(p.fee) || 0, teen: !!p.teen, idx }))
-    .filter(p => p.carrier === group.matchLabel);
-
-  let comboHtml;
-  if (comboLines.length === 0) {
-    comboHtml = `<div class="bar-empty">해당없음 · ${BRAND_LABEL[barCarrier]}과(와) 매칭되는 모바일 회선 없음</div>`;
+  // ---- 3. 결합할인 (최종상품 홈상품의 통신사 기준으로만 계산) ----
+  let comboHtml, comboSummary;
+  if (!finalHome) {
+    comboHtml = `<div class="bar-empty">최종반영된 인터넷/TV 상품이 없어 결합할인을 계산할 수 없습니다</div>`;
+    comboSummary = '미확정';
   } else {
-    const speedNum = Number(state.speed);
-    let options;
-    if (group.key === 'kt') options = computeKTOptions(comboLines, speedNum, state.tcDistMode);
-    else if (group.key === 'lg') options = computeLGOptions(comboLines, speedNum);
-    else options = computeSKOptions(comboLines, speedNum, group.key);
+    const group = getComboGroupByCarrierKey(finalHome.carrierKey);
+    const comboLines = finalUsimItems
+      .filter(p => p.carrier === group.matchLabel)
+      .map((p, idx) => ({ carrier: p.carrier, fee: Number(p.fee) || 0, teen: false, idx }));
 
-    const availOptions = options.filter(o => o.avail);
-    if (!availOptions.length) {
-      comboHtml = `<div class="bar-empty">가입 가능한 결합할인이 없습니다</div>`;
+    if (!comboLines.length) {
+      comboHtml = `<div class="bar-empty">해당없음 · ${finalHome.carrierName}과(와) 매칭되는 최종 유심 회선 없음</div>`;
+      comboSummary = '0원';
     } else {
-      const best = availOptions.reduce((a, b) => (b.total > a.total ? b : a));
-      comboHtml = `
-        <div class="bar-line"><span>${best.name}</span><span>-${best.total.toLocaleString()}원</span></div>
-        <div class="bar-subline">└ 매칭 회선 ${comboLines.length}개 기준 최대 할인</div>
-      `;
+      let options;
+      if (group.key === 'kt') options = computeKTOptions(comboLines, finalHome.speedNum, state.tcDistMode);
+      else if (group.key === 'lg') options = computeLGOptions(comboLines, finalHome.speedNum);
+      else options = computeSKOptions(comboLines, finalHome.speedNum, group.key);
+
+      const availOptions = options.filter(o => o.avail);
+      if (!availOptions.length) {
+        comboHtml = `<div class="bar-empty">가입 가능한 결합할인이 없습니다</div>`;
+        comboSummary = '0원';
+      } else {
+        const best = availOptions.reduce((a, b) => (b.total > a.total ? b : a));
+        const lineRows = comboLines
+          .map((line, i) => ({ line, share: best.lineShares[i] || 0 }))
+          .filter(r => r.share > 0)
+          .map(r => `<div class="bar-subline">└ ${r.line.carrier} 휴대폰(${r.line.fee.toLocaleString()}원) 할인 -${r.share.toLocaleString()}원</div>`)
+          .join('');
+        comboHtml = `
+          <div class="bar-line"><span>${best.name}</span><span>-${best.total.toLocaleString()}원</span></div>
+          ${best.internetDiscount ? `<div class="bar-subline">└ 인터넷 할인 -${best.internetDiscount.toLocaleString()}원</div>` : ''}
+          ${lineRows}
+        `;
+        comboSummary = `-${best.total.toLocaleString()}원`;
+      }
     }
   }
   renderBarDetail('combo', comboHtml);
+  setBarSummary('combo', comboSummary);
 
   // ---- 4. 사은품 ----
-  let giftHtml;
-  if (!DATA) {
-    giftHtml = `<div class="bar-empty">로딩 중...</div>`;
+  let giftHtml, giftSummary;
+  if (!finalHome) {
+    giftHtml = `<div class="bar-empty">최종반영된 인터넷/TV 상품이 없습니다</div>`;
+    giftSummary = '미확정';
   } else {
-    const promo = PROMOTION_DATA[barCarrier] || { maxLimit: 450000, giftCard: 60000, cash: 390000 };
-    const userGiftVal = customGiftValues[barCarrier] !== undefined ? customGiftValues[barCarrier] : promo.maxLimit;
     giftHtml = `
-      <div class="bar-line"><span>인터넷·TV</span><span>${userGiftVal.toLocaleString()}원</span></div>
+      <div class="bar-line"><span>인터넷·TV</span><span>${finalHome.benefitTotal.toLocaleString()}원</span></div>
+      <div class="bar-subline">└ 상품권 ${finalHome.giftCard.toLocaleString()}원 · 현금 ${finalHome.cash.toLocaleString()}원</div>
       <div class="bar-subline">휴대폰 사은품 · 데이터 준비중</div>
     `;
+    giftSummary = `${finalHome.benefitTotal.toLocaleString()}원`;
   }
   renderBarDetail('gift', giftHtml);
+  setBarSummary('gift', giftSummary);
 }
 
 function handleGiftInputChange(carrier, rawVal) {
@@ -1223,6 +1247,8 @@ function renderFinalProducts(){
   usimContainer.innerHTML = usimItems.length
     ? usimItems.map(buildFinalUsimCard).join('')
     : `<div class="reflected-empty">제안상품에서 [최종반영]을 눌러 확정할 유심 상품을 추가하세요.</div>`;
+
+  renderBottomBar();
 }
 
 function openLoginModal(){
