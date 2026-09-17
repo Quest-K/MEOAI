@@ -135,7 +135,9 @@
                   </select>
                 </div>
               </div>
-              <div class="reflected-empty">※ 가족 회선 다수 등록 UI는 다음 단계에서 적용 예정입니다.</div>
+              <div class="reflected-empty">※ 가족결합 여부는 상담 참고용이며, 결합할인 계산에는 반영되지 않습니다.</div>
+              <div id="family-lines-list" class="family-lines-list"></div>
+              <button type="button" class="secondary-btn family-line-add-btn" onclick="addFamilyLine()">+ 가족회선 추가</button>
             </div>
           </div>
         </div>
@@ -419,6 +421,14 @@ const FEE_RANGES = [
   { value: 100000, label: '10만원 이상' }
 ];
 
+// 가족 회선 - 기존 인터넷 요금 구간 (참고용, 결합할인 계산 미사용)
+const OLD_INTERNET_FEE_RANGES = [
+  '2만원대 미만', '2만원대', '3만원대', '4만원대', '5만원대 이상'
+];
+
+const HOME_CARRIER_OPTIONS = ['KT', 'LG', 'SK', '기타'];
+const MOBILE_CARRIER_OPTIONS = ['KT', 'LG', 'SK', 'KT알뜰', 'LG알뜰', 'SK알뜰'];
+
 let DATA = null;
 let COMMISSION_DATA = {};
 let RAW_COMMISSION_DATA = [];
@@ -443,6 +453,7 @@ let openDiscountItems = new Set();
 let state = { speed:'500', tv:'basic', settopTier:'basic', router:'Y', tcDistMode:'equal' };
 let lastTvTier = 'basic';
 let addedUsimLines = []; 
+let familyLines = [];
 let logs = [];
 let reflectedProducts = []; 
 let finalProducts = []; 
@@ -537,6 +548,62 @@ function toggleFamilyLineSection(isOn){
   const body = document.getElementById('family-line-body');
   if (body) body.style.display = isOn ? '' : 'none';
   updateCsSummaryPanel();
+}
+
+function addFamilyLine(){
+  familyLines.push({
+    id: 'fam-' + Date.now() + '-' + Math.floor(Math.random()*1000),
+    mobileCarrier: 'KT',
+    mobileFeeValue: FEE_RANGES[0].value,
+    internetCarrier: 'KT',
+    internetFeeLabel: OLD_INTERNET_FEE_RANGES[0]
+  });
+  renderFamilyLines();
+  updateCsSummaryPanel();
+}
+
+function updateFamilyLine(idx, field, value){
+  if (!familyLines[idx]) return;
+  familyLines[idx][field] = (field === 'mobileFeeValue') ? Number(value) : value;
+  updateCsSummaryPanel();
+}
+
+function removeFamilyLine(idx){
+  familyLines.splice(idx, 1);
+  renderFamilyLines();
+  updateCsSummaryPanel();
+}
+
+function renderFamilyLines(){
+  const container = document.getElementById('family-lines-list');
+  if (!container) return;
+  if (!familyLines.length) {
+    container.innerHTML = `<div class="phone-empty">등록된 가족 회선이 없습니다. [+ 가족회선 추가]를 눌러주세요.</div>`;
+    return;
+  }
+  container.innerHTML = familyLines.map((f, idx) => `
+    <div class="phone-line family-line-row">
+      <div class="family-line-group">
+        <span class="family-line-label">휴대폰</span>
+        <select onchange="updateFamilyLine(${idx}, 'mobileCarrier', this.value)">
+          ${MOBILE_CARRIER_OPTIONS.map(c => `<option value="${c}" ${f.mobileCarrier===c?'selected':''}>${c}</option>`).join('')}
+        </select>
+        <select onchange="updateFamilyLine(${idx}, 'mobileFeeValue', this.value)">
+          ${FEE_RANGES.map(r => `<option value="${r.value}" ${f.mobileFeeValue===r.value?'selected':''}>${r.label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="family-line-group">
+        <span class="family-line-label">인터넷</span>
+        <select onchange="updateFamilyLine(${idx}, 'internetCarrier', this.value)">
+          ${HOME_CARRIER_OPTIONS.map(c => `<option value="${c}" ${f.internetCarrier===c?'selected':''}>${c}</option>`).join('')}
+        </select>
+        <select onchange="updateFamilyLine(${idx}, 'internetFeeLabel', this.value)">
+          ${OLD_INTERNET_FEE_RANGES.map(l => `<option value="${l}" ${f.internetFeeLabel===l?'selected':''}>${l}</option>`).join('')}
+        </select>
+      </div>
+      <button type="button" class="phone-remove-btn" onclick="removeFamilyLine(${idx})">삭제</button>
+    </div>
+  `).join('');
 }
 
 function syncOldComposition(){
@@ -1468,6 +1535,7 @@ function reflectUsimPlan(idx) {
   setupSeg('seg-router','router');
   syncToDesignPhones();
   syncOldComposition();
+  renderFamilyLines();
   updateCsSummaryPanel();
   renderProposalLists();
   renderFinalProducts();
