@@ -142,7 +142,20 @@
               </div>
             </div>
             <div class="control-group">
-              <label class="group-label">TV등급</label>
+              <label class="group-label">공유기 (Wi-Fi)</label>
+              <div class="seg" id="reco-seg-router">
+                <button data-value="N">미포함</button>
+                <button data-value="Y" class="active">포함</button>
+              </div>
+            </div>
+            <div class="control-group">
+              <div class="group-label-row">
+                <label class="group-label">TV등급</label>
+                <label class="switch" title="TV 상품 포함 여부">
+                  <input type="checkbox" id="reco-tv-onoff-toggle" checked onchange="toggleRecoTvOnOff(this.checked)">
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
               <div class="seg" id="reco-seg-tv">
                 <button data-value="low">저가형</button>
                 <button data-value="basic" class="active">기본형</button>
@@ -154,6 +167,7 @@
               <div class="seg" id="reco-seg-settop">
                 <button data-value="basic" class="active">기본형</button>
                 <button data-value="advanced">고급형/AI</button>
+                <button data-value="soundbar">사운드바</button>
               </div>
             </div>
           </div>
@@ -170,7 +184,7 @@
               <button type="button" class="usim-tier-btn" data-tier="high">고가형</button>
               <button type="button" class="usim-tier-btn" data-tier="premium">프리미엄</button>
             </div>
-            <div id="reco-usim-list" class="reco-usim-list">
+            <div id="reco-usim-cards" class="reco-usim-cards">
               <div class="reflected-empty">요금 구간을 선택하면 해당 유심 요금제가 표시됩니다.</div>
             </div>
           </div>
@@ -493,6 +507,7 @@ let lastTvTier = 'basic';
 let addedUsimLines = []; 
 let familyLines = [];
 let recoState = { speed:'500', tv:'basic', settopTier:'basic', router:'Y' };
+let lastRecoTvTier = 'basic';
 let recoUsimTier = null;
 
 const CARRIER_LABEL = { kt:'KT', lg:'LG', skb:'SK브로드밴드', skt:'SK텔레콤' };
@@ -703,8 +718,15 @@ function initRecoUsimTierDefault(){
   fetchRecoUsimPlans(recoUsimTier);
 }
 
+const RECO_USIM_COLUMNS = [
+  { key:'kt', label:'KT', net:'KT' },
+  { key:'lg', label:'LG', net:'LG' },
+  { key:'skb', label:CARRIER_LABEL.skb, net:'SK' },
+  { key:'skt', label:CARRIER_LABEL.skt, net:'SK' }
+];
+
 async function fetchRecoUsimPlans(tier){
-  const container = document.getElementById('reco-usim-list');
+  const container = document.getElementById('reco-usim-cards');
   if (!container) return;
   container.innerHTML = '<div class="reflected-empty">요금제 조회 중...</div>';
 
@@ -721,17 +743,37 @@ async function fetchRecoUsimPlans(tier){
     container.innerHTML = `<div class="reflected-empty">${USIM_TIER_LABEL[tier] || ''} 구간의 유심 요금제가 없습니다.</div>`;
     return;
   }
-  container.innerHTML = data.map(p => `
-    <div class="phone-line usim-added-line">
-      <div class="usim-added-row">
-        <span class="usim-added-carrier carrier-${String(p.carrier).toLowerCase()}">${p.carrier}</span>
-        <span class="usim-added-name">${p.plan_name}</span>
-        <span class="usim-added-data">${p.data_allowance || '-'}</span>
-        <span class="usim-added-fee">${(Number(p.monthly_fee) || 0).toLocaleString()}원</span>
-        ${isLoggedIn ? `<span class="usim-added-comm">수수료 ${getUsimCommission(p.carrier, Number(p.monthly_fee) || 0).toLocaleString()}원</span>` : ''}
+
+  const byNetwork = {};
+  data.forEach(p => {
+    const net = String(p.carrier || '').toUpperCase();
+    if (!byNetwork[net]) byNetwork[net] = [];
+    byNetwork[net].push(p);
+  });
+  Object.keys(byNetwork).forEach(net => byNetwork[net].sort((a, b) => (Number(a.monthly_fee) || 0) - (Number(b.monthly_fee) || 0)));
+
+  container.innerHTML = RECO_USIM_COLUMNS.map(col => {
+    const plans = byNetwork[col.net] || [];
+    const body = plans.length
+      ? plans.map(p => `
+        <div class="phone-line usim-added-line">
+          <div class="usim-added-row">
+            <span class="usim-added-name">${p.plan_name}</span>
+            <span class="usim-added-data">${p.data_allowance || '-'}</span>
+            <span class="usim-added-fee">${(Number(p.monthly_fee) || 0).toLocaleString()}원</span>
+            ${isLoggedIn ? `<span class="usim-added-comm">수수료 ${getUsimCommission(col.net, Number(p.monthly_fee) || 0).toLocaleString()}원</span>` : ''}
+          </div>
+        </div>
+      `).join('')
+      : `<div class="reflected-empty">해당 구간 요금제 없음</div>`;
+
+    return `
+      <div class="reco-product-card">
+        <div class="reco-product-card-title"><span>${col.label}</span></div>
+        ${body}
       </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 async function toggleTvOnOff(isOn){
@@ -743,6 +785,24 @@ async function toggleTvOnOff(isOn){
   }
   await loadFinanceData();
   render();
+}
+
+function syncRecoControlsUI(){
+  document.querySelectorAll('#reco-seg-tv button').forEach(b => b.classList.toggle('active', b.dataset.value === recoState.tv));
+  document.querySelectorAll('#reco-seg-tv button, #reco-seg-settop button').forEach(b => b.disabled = recoState.tv === 'none');
+  const toggle = document.getElementById('reco-tv-onoff-toggle');
+  if (toggle) toggle.checked = recoState.tv !== 'none';
+}
+
+function toggleRecoTvOnOff(isOn){
+  if (isOn) {
+    recoState.tv = lastRecoTvTier || 'basic';
+  } else {
+    if (recoState.tv !== 'none') lastRecoTvTier = recoState.tv;
+    recoState.tv = 'none';
+  }
+  syncRecoControlsUI();
+  renderRecoCards();
 }
 
 function toggleOldInternetSection(isOn){
@@ -947,10 +1007,11 @@ function renderFamilyDiscountAccordion(){
   const groups = [
     { key:'kt', label:'KT', matchLabel:'KT' },
     { key:'lg', label:'LG', matchLabel:'LG' },
-    { key:'sk', label:'SK', matchLabel:'SK' }
+    { key:'skb', label:CARRIER_LABEL.skb, matchLabel:'SK' },
+    { key:'skt', label:CARRIER_LABEL.skt, matchLabel:'SK' }
   ];
 
-  const html = groups.map(g => {
+  const cardsHtml = groups.map(g => {
     const lines = effectivePhones.filter(p => p.carrier === g.matchLabel);
     let options;
     if (g.key === 'kt') options = computeKTOptions(lines, speedNum, state.tcDistMode);
@@ -962,16 +1023,20 @@ function renderFamilyDiscountAccordion(){
     const maxKey = maxTotal !== null ? (availOptions.find(o => o.total === maxTotal) || {}).key : null;
 
     return `
-      <div class="fam-accordion-group">
-        <div class="fam-accordion-carrier carrier-${g.key}">${g.label}</div>
+      <div class="fam-accordion-card">
+        <div class="fam-accordion-card-header carrier-${g.key}">${g.label}</div>
         <div class="fam-accordion-items">
           ${options.map(opt => renderAccordionItem(opt, lines, opt.key === maxKey)).join('')}
         </div>
       </div>
     `;
-  }).join('') + `
+  }).join('');
+
+  const html = `
+    <div class="fam-accordion-grid">${cardsHtml}</div>
     <div class="fam-table-note">
       · "추가된 요금제" 목록에 담긴 회선들을 기준으로 계산됩니다.
+      <br>· SK브로드밴드/SK텔레콤은 동일한 SK 모바일 회선을 기준으로 계산됩니다(실제로는 인터넷을 SK브로드밴드로 가입할 때만 적용).
       <br>· 위 금액은 참고용이며 현재 카드의 "총 요금"에는 반영되지 않습니다.
     </div>
   `;
@@ -1756,9 +1821,11 @@ function reflectUsimPlan(idx) {
   setupSeg('seg-settop','settopTier');
   setupSeg('seg-router','router');
   setupRecoSeg('reco-seg-speed','speed');
+  setupRecoSeg('reco-seg-router','router');
   setupRecoSeg('reco-seg-tv','tv');
   setupRecoSeg('reco-seg-settop','settopTier');
   setupRecoUsimTierButtons();
+  syncRecoControlsUI();
   syncToDesignPhones();
   renderFamilyLines();
   initRecoUsimTierDefault();
