@@ -92,9 +92,9 @@ function normalizeSpeedValue(v){
 }
 
 async function loadFinanceData() {
-  const targetSpeed = Number(state.speed);
-  const tvTierForPromo = state.tv === 'none' ? 'none' : 'all';
-  const tvTierForComm = state.tv === 'none' ? 'none' : state.tv;
+  const targetSpeed = Number(recoState.speed);
+  const tvTierForPromo = recoState.tv === 'none' ? 'none' : 'all';
+  const tvTierForComm = recoState.tv === 'none' ? 'none' : recoState.tv;
 
   const promoPromise = sb.from('carrier_promotions').select('*').eq('tv_tier', tvTierForPromo);
   const commPromise = isLoggedIn ? sb.rpc('get_admin_commissions') : Promise.resolve({ data: null, error: null });
@@ -151,9 +151,9 @@ async function handleLogin(){
   isLoggedIn = true;
   updateAuthUI(data.session.user.email);
   closeLoginModal();
-  if (DATA) { await loadFinanceData(); render(); }
-  renderReflectedProducts();
-  if (typeof renderRecoCards === 'function') renderRecoCards();
+  if (DATA) { await loadFinanceData(); renderRecoCards(); }
+  renderProposalLists();
+  renderFinalProducts();
   if (typeof fetchRecoUsimPlans === 'function' && recoUsimTier) fetchRecoUsimPlans(recoUsimTier);
 }
 
@@ -163,8 +163,8 @@ async function handleLogout(){
   COMMISSION_DATA = {};
   RAW_COMMISSION_DATA = [];
   updateAuthUI();
-  if (DATA) render();
-  renderReflectedProducts();
-  if (typeof renderRecoCards === 'function') renderRecoCards();
+  if (DATA) renderRecoCards();
+  renderProposalLists();
+  renderFinalProducts();
   if (typeof fetchRecoUsimPlans === 'function' && recoUsimTier) fetchRecoUsimPlans(recoUsimTier);
 }
