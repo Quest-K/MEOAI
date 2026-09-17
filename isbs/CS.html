@@ -585,13 +585,6 @@ function setupRecoSeg(id, key){
   });
 }
 
-function getRecommendedCarriers(){
-  const oldOn = document.getElementById('old-internet-toggle')?.checked;
-  const oldIsp = document.getElementById('old-isp')?.value || '';
-  const excluded = oldOn ? (ISP_HOME_CARRIER_MAP[oldIsp] || []) : [];
-  return CARRIERS.filter(c => !excluded.includes(c));
-}
-
 function renderRecoCards(){
   const container = document.getElementById('reco-carrier-cards');
   if (!container) return;
@@ -600,17 +593,29 @@ function renderRecoCards(){
     return;
   }
 
-  const carriers = getRecommendedCarriers();
-  if (!carriers.length) {
-    container.innerHTML = '<div class="reflected-empty">추천 가능한 통신사가 없습니다. (기존 인터넷 통신사와 모두 중복)</div>';
-    return;
-  }
+  const oldOn = document.getElementById('old-internet-toggle')?.checked;
+  const oldIsp = document.getElementById('old-isp')?.value || '';
+  const excluded = oldOn ? (ISP_HOME_CARRIER_MAP[oldIsp] || []) : [];
 
   const mobileCarrierRaw = document.getElementById('cust-mobile-carrier')?.value || '';
   const isMvno = mobileCarrierRaw.includes('알뜰');
   const mobileGroup = mobileCarrierRaw.replace('알뜰', '');
 
-  container.innerHTML = carriers.map(c => {
+  const speedNum = Number(recoState.speed);
+  const tvTier = recoState.tv;
+
+  container.innerHTML = CARRIERS.map(c => {
+    if (excluded.includes(c)) {
+      return `
+        <div class="reco-product-card reco-product-card-disabled">
+          <div class="reco-product-card-title">
+            <span>${CARRIER_LABEL[c]}</span>
+          </div>
+          <div class="reco-unavailable">가입불가</div>
+        </div>
+      `;
+    }
+
     const price = computePrice(c, recoState);
     if (!price.available) {
       return `<div class="reco-product-card"><div class="reco-product-card-title"><span>${CARRIER_LABEL[c]}</span></div><div class="reflected-empty">해당 스펙의 상품 정보가 없습니다.</div></div>`;
@@ -618,13 +623,24 @@ function renderRecoCards(){
 
     const needsUsim = isMvno || MOBILE_GROUP_MAP[c] !== mobileGroup;
 
-    const lines = [];
-    lines.push(['인터넷', price.internetFee]);
-    if (price.routerFee) lines.push(['공유기', price.routerFee]);
-    if (price.tvFee) lines.push([price.tvInfo?.name || 'TV', price.tvFee]);
-    if (price.settopFee) lines.push([price.settopInfo?.name || '셋탑', price.settopFee]);
-    if (price.bundleDiscount) lines.push(['결합할인', -price.bundleDiscount]);
-    if (price.tvBundleDiscount) lines.push(['TV결합할인', -price.tvBundleDiscount]);
+    const tvName = price.tvInfo ? price.tvInfo.name : '기본형';
+    const tvChannels = price.tvInfo ? (price.tvInfo.channels || 200) : 200;
+    const settopName = price.settopInfo ? price.settopInfo.name : '기본셋톱';
+
+    const promo = PROMOTION_DATA[c] || { giftCard: 60000, cash: 340000 };
+    const benefitTotal = (promo.giftCard || 0) + (promo.cash || 0);
+
+    let commHtml = '';
+    if (isLoggedIn) {
+      const comm = lookupCommission(c, speedNum, tvTier);
+      const margin = comm.totalComm - benefitTotal;
+      commHtml = `
+        <div class="info-row main-label section-start"><span>대리점 판매 수수료</span><span>${comm.totalComm.toLocaleString()}원</span></div>
+        <div class="info-row sub-item-row"><span>└ 인터넷 수수료</span><span>${comm.internetComm.toLocaleString()}원</span></div>
+        ${tvTier !== 'none' ? `<div class="info-row sub-item-row"><span>└ TV 수수료</span><span>${comm.tvComm.toLocaleString()}원</span></div>` : ''}
+        <div class="total-row"><span>대리점 최종 마진</span><span class="amount" style="color:${margin >= 0 ? '#1E7E34' : '#D9534F'};">${margin.toLocaleString()}원</span></div>
+      `;
+    }
 
     return `
       <div class="reco-product-card">
@@ -632,12 +648,19 @@ function renderRecoCards(){
           <span>${CARRIER_LABEL[c]}${needsUsim ? ' <span class="reco-usim-badge">+유심</span>' : ''}</span>
           <span class="reco-product-total">${(price.total || 0).toLocaleString()}원</span>
         </div>
-        ${lines.map(([label, amount]) => `
-          <div class="reco-product-line">
-            <span>${label}</span>
-            <span>${amount < 0 ? '-' : ''}${Math.abs(amount).toLocaleString()}원</span>
-          </div>
-        `).join('')}
+        <div class="info-row main-label"><span>인터넷</span><span>${SPEED_LABEL[recoState.speed] || ''} (${(price.internetFee || 0).toLocaleString()}원)</span></div>
+        <div class="info-row sub-item-row"><span>└ 공유기</span><span>${ROUTER_LABEL[recoState.router] || ''} (${(price.routerFee || 0).toLocaleString()}원)</span></div>
+        ${price.bundleDiscount ? `<div class="info-row sub-item-row"><span>└ 인터넷 결합할인</span><span>-${price.bundleDiscount.toLocaleString()}원</span></div>` : ''}
+        ${tvTier !== 'none' ? `
+          <div class="info-row main-label section-start"><span>TV 요금제</span><span>${tvName} (${tvChannels}채널, ${(price.tvFee || 0).toLocaleString()}원)</span></div>
+          <div class="info-row sub-item-row"><span>└ 셋탑박스</span><span>${settopName} (${(price.settopFee || 0).toLocaleString()}원)</span></div>
+          ${price.tvBundleDiscount ? `<div class="info-row sub-item-row"><span>└ TV 결합할인</span><span>-${price.tvBundleDiscount.toLocaleString()}원</span></div>` : ''}
+        ` : ''}
+        <div class="gift-section-title">정산 및 혜택 상세</div>
+        <div class="info-row"><span>실제 지급 사은품 총액</span><span style="color:var(--gold); font-weight:700;">${benefitTotal.toLocaleString()}원</span></div>
+        <div class="info-row sub-item-row"><span>└ 상품권</span><span>${(promo.giftCard || 0).toLocaleString()}원</span></div>
+        <div class="info-row sub-item-row"><span>└ 현금</span><span>${(promo.cash || 0).toLocaleString()}원</span></div>
+        ${commHtml}
       </div>
     `;
   }).join('');
@@ -696,7 +719,9 @@ async function fetchRecoUsimPlans(tier){
       <div class="usim-added-row">
         <span class="usim-added-carrier carrier-${String(p.carrier).toLowerCase()}">${p.carrier}</span>
         <span class="usim-added-name">${p.plan_name}</span>
+        <span class="usim-added-data">${p.data_allowance || '-'}</span>
         <span class="usim-added-fee">${(Number(p.monthly_fee) || 0).toLocaleString()}원</span>
+        ${isLoggedIn ? `<span class="usim-added-comm">수수료 ${getUsimCommission(p.carrier, Number(p.monthly_fee) || 0).toLocaleString()}원</span>` : ''}
       </div>
     </div>
   `).join('');
