@@ -337,6 +337,16 @@
     <div class="design-split-grid">
       <div class="controls-col">
         <div class="cs-card design-card">
+          <h3>유심 요금제 - 통신사 선택</h3>
+          <div class="seg" id="seg-usim-carrier">
+            <button data-value="KT">KT</button>
+            <button data-value="LG">LG</button>
+            <button data-value="SK">SK</button>
+          </div>
+          <p class="usim-note">※ 알뜰폰 요금제는 목록에서 제외되어 있습니다.</p>
+        </div>
+
+        <div class="cs-card design-card">
           <h3>가족결합 할인 정보</h3>
           <div id="family-discount-table" class="cs-card-scroll" style="overflow-x:auto;"></div>
         </div>
@@ -344,16 +354,17 @@
 
       <div class="cs-card design-card">
         <div class="design-card-header">
-          <h3>전체 요금제 목록 (4분할 통신사별)</h3>
+          <h3>전체 요금제 목록</h3>
           <div style="display:flex; align-items:center; gap:8px;">
             <label style="font-size:12.5px; font-weight:600; cursor:pointer;" title="25% 선택약정 할인 적용">
               <input type="checkbox" id="contract-discount-toggle" onchange="toggleContractDiscount(this.checked)"> 선택약정(25%)
             </label>
           </div>
         </div>
-        <!-- 4분할 유심 결과 영역 -->
-        <div id="mobile-plan-results-quadrant" class="quadrant-container">
-          <div class="usim-placeholder">요금제 데이터를 불러오는 중입니다...</div>
+        <div class="results" id="mobile-plan-results">
+          <div class="usim-placeholder">
+            통신사를 선택하면 요금제 목록이 표시됩니다.
+          </div>
         </div>
       </div>
     </div>
@@ -448,6 +459,7 @@ const FEE_RANGES = [
   { value: 100000, label: '10만원 이상' }
 ];
 
+// 가족 회선 - 기존 인터넷 요금 구간 (참고용, 결합할인 계산 미사용)
 const OLD_INTERNET_FEE_RANGES = [
   '2만원대 미만', '2만원대', '3만원대', '4만원대', '5만원대 이상'
 ];
@@ -492,7 +504,7 @@ let logs = [];
 let reflectedProducts = []; 
 let finalProducts = []; 
 let isLoggedIn = false;
-let isContractDiscountActive = false;
+let isContractDiscountActive = false; // 선택약정 25% 적용 여부
 
 let barExpanded = { home:false, mobile:false, combo:false, gift:false };
 
@@ -519,7 +531,7 @@ function switchTab(tabId) {
       render();
       renderAddedUsimLines();
       renderFamilyDiscountAccordion();
-      fetchAllQuadrantUsimPlans();
+      loadMobilePlanCarriers();
     }
   } catch (err) {
     console.error('switchTab render error:', tabId, err);
@@ -637,19 +649,19 @@ function renderRecoCards(){
           <span>${CARRIER_LABEL[c]}${needsUsim ? ' <span class="reco-usim-badge">+유심</span>' : ''}</span>
           <span class="reco-product-total">${(price.total || 0).toLocaleString()}원</span>
         </div>
-        <div class="info-row main-label"><span>인터넷<span class="small-sub-text">(${SPEED_LABEL[recoState.speed] || ''})</span></span><span>${(price.internetFee || 0).toLocaleString()}원</span></div>
+        <div class="info-row main-label"><span>인터넷(${SPEED_LABEL[recoState.speed] || ''})</span><span>${(price.internetFee || 0).toLocaleString()}원</span></div>
         <div class="info-row sub-item-row"><span>공유기</span><span>${ROUTER_LABEL[recoState.router] || ''}(${(price.routerFee || 0).toLocaleString()}원)</span></div>
         ${price.bundleDiscount ? `<div class="info-row sub-item-row"><span>인터넷결합할인</span><span>-${price.bundleDiscount.toLocaleString()}원</span></div>` : ''}
         ${tvTier !== 'none' ? `
-          <div class="info-row main-label section-start"><span>TV<span class="small-sub-text">(${tvName}/${tvChannels}채널)</span></span><span>${(price.tvFee || 0).toLocaleString()}원</span></div>
-          <div class="info-row sub-item-row"><span>셋톱박스</span><span>${settopName}(${(price.settopFee || 0).toLocaleString()}원)</span></div>
+          <div class="info-row main-label section-start"><span>TV(${tvName}/${tvChannels}채널)</span><span>${(price.tvFee || 0).toLocaleString()}원</span></div>
+          <div class="info-row sub-item-row"><span>셋탑박스</span><span>${settopName}(${(price.settopFee || 0).toLocaleString()}원)</span></div>
           ${price.tvBundleDiscount ? `<div class="info-row sub-item-row"><span>TV결합할인</span><span>-${price.tvBundleDiscount.toLocaleString()}원</span></div>` : ''}
         ` : ''}
         <div class="gift-section-title section-start">정산 및 혜택 상세</div>
         <div class="info-row reco-gift-row">
           <span>실제 지급 사은품</span>
           <span>
-            <input type="text" inputmode="numeric" pattern="[0-9]*" class="gift-input compact-gift-input" value="${userGiftVal.toLocaleString()}"
+            <input type="text" inputmode="numeric" pattern="[0-9]*" class="gift-input" value="${userGiftVal.toLocaleString()}"
                    onchange="handleGiftInputChange('${c}', this.value)" onfocus="this.select()"> 원
           </span>
         </div>
@@ -1331,7 +1343,7 @@ function render(){
             <div class="comm-subhead-row large">
               <div class="comm-subhead large">💵 실제 지급 사은품</div>
               <div>
-                <input type="text" inputmode="numeric" pattern="[0-9]*" class="gift-input compact-gift-input" value="${userGiftVal.toLocaleString()}"
+                <input type="text" inputmode="numeric" pattern="[0-9]*" class="gift-input" value="${userGiftVal.toLocaleString()}"
                        onchange="handleGiftInputChange('${r.carrier}', this.value)" onfocus="this.select()"> 원
               </div>
             </div>
@@ -1564,211 +1576,12 @@ function renderCommissionPanels(homeItem, usimItems){
         <div class="info-row main-label"><span>총 수수료</span><span>${comm.totalComm.toLocaleString()}원</span></div>
         <div class="info-row sub-item-row"><span>└ 인터넷 수수료</span><span>${comm.internetComm.toLocaleString()}원</span></div>
         ${homeItem.tvTier !== 'none' ? `<div class="info-row sub-item-row"><span>└ TV 수수료</span><span>${comm.tvComm.toLocaleString()}원</span></div>` : ''}
-        <div class="info-row sub-item-row"><span>└ 지급 사은품(상품권+현금)</span><span>-${homeItem.benefitTotal.toLocaleString()}원</span></div>
-        <div class="total-row"><span>마진</span><span class="amount" style="color:${margin >= 0 ? '#1E7E34' : '#D9534F'};">${margin.toLocaleString()}원</span></div>
-      </div>
-    `;
-  }
-
-  if (!usimItems.length) {
-    usimPanel.innerHTML = `<div class="reflected-empty">최종상품이 반영되면 수수료 정보가 표시됩니다.</div>`;
-  } else {
-    const usimTotalComm = usimItems.reduce((sum, item) => sum + getUsimCommission(item.carrier, item.fee), 0);
-    usimPanel.innerHTML = `
-      <div class="final-card">
-        <div class="total-row"><span>총 수수료</span><span class="amount">${usimTotalComm.toLocaleString()}원</span></div>
-        ${usimItems.map(item => `<div class="info-row sub-item-row"><span>└ ${item.carrier} / ${item.planName}</span><span>${getUsimCommission(item.carrier, item.fee).toLocaleString()}원</span></div>`).join('')}
+        <div class="info-row sub-item-row"><span>└ 지급 사은품(상품권</span></div>
       </div>
     `;
   }
 }
-
-function openLoginModal(){
-  document.getElementById('login-error').textContent = '';
-  document.getElementById('login-modal').style.display = 'flex';
-}
-
-function closeLoginModal(){
-  document.getElementById('login-modal').style.display = 'none';
-}
-
-function updateAuthUI(email){
-  const box = document.getElementById('auth-box');
-  if (isLoggedIn) {
-    box.innerHTML = `<span class="whoami">${email || ''}</span><button class="logout-btn" onclick="handleLogout()">로그아웃</button>`;
-  } else {
-    box.innerHTML = `<button class="login-trigger-btn" onclick="openLoginModal()">🔐 관리자 로그인</button>`;
-  }
-}
-
-function jsRow(label, value) {
-  if (!value) return '';
-  return `<div class="js-row"><span>${label}</span><span>${value}</span></div>`;
-}
-
-let quadrantUsimData = { KT: [], LG: [], SKT: [], SKB: [] };
-
-async function fetchAllQuadrantUsimPlans() {
-  const container = document.getElementById('mobile-plan-results-quadrant');
-  if (!container) return;
-  container.innerHTML = `<div style="padding:20px; text-align:center; color:var(--ink-dim);">4분할 유심 요금제 목록을 불러오는 중...</div>`;
-
-  const carriers = ['KT', 'LG', 'SKT', 'SKB'];
-  for (const c of carriers) {
-    const { data, error } = await sb.from('usim_plans').select('*').eq('carrier', c).eq('is_active', true);
-    if (!error && data) {
-      quadrantUsimData[c] = data.sort((a, b) => (Number(b.monthly_fee) || 0) - (Number(a.monthly_fee) || 0));
-    } else {
-      quadrantUsimData[c] = [];
-    }
-  }
-  renderQuadrantUsimTables();
-}
-
-function toggleContractDiscount(active) {
-  isContractDiscountActive = active;
-  renderQuadrantUsimTables();
-}
-
-function renderQuadrantUsimTables() {
-  const container = document.getElementById('mobile-plan-results-quadrant');
-  if (!container) return;
-
-  const carriers = ['KT', 'LG', 'SKT', 'SKB'];
-
-  container.innerHTML = carriers.map(c => {
-    const plans = quadrantUsimData[c] || [];
-    return `
-      <div class="quadrant-section">
-        <div class="quadrant-title carrier-${c.toLowerCase()}">${c} 유심 요금제 (${plans.length}개)</div>
-        <div class="compare-table-wrap">
-          <table class="compare-table usim-plan-table">
-            <thead>
-              <tr>
-                <th class="action-col"></th>
-                <th class="brand-cell">요금제명</th>
-                <th>월요금${isContractDiscountActive ? ' (선약25%)' : ''}</th>
-                <th>수수료</th>
-                <th>데이터</th>
-                <th>통화</th>
-                <th>문자</th>
-                <th>테더링/공유</th>
-                <th>멤버십</th>
-                <th>가입대상</th>
-              </tr>
-            </thead>
- <tbody>
-    ${plans.length === 0 
-      ? `<tr><td colspan="10" style="text-align:center; padding:15px; color:var(--ink-dim);">등록된 ${c} 유심 요금제가 없습니다.</td></tr>`
-      : plans.map((p, idx) => {
-          let fee = Number(p.monthly_fee) || 0;
-          if (isContractDiscountActive) {
-            fee = Math.round((fee * 0.75 / 10) * 10);
-          }
-          const commissionFee = getUsimCommission(p.carrier, p.monthly_fee);
-          return `
-            <tr>
-              <td class="action-col"><button type="button" class="join-btn usim-reflect-btn" onclick="reflectQuadrantUsimPlan('${c}', ${idx})">✨ 상품반영</button></td>
-              <td class="brand-cell">${p.plan_name || '-'}</td>
-              <td class="fee-cell">${fee.toLocaleString()}원</td>
-              <td class="fee-cell">${commissionFee.toLocaleString()}원</td>
-              <td>${p.data_allowance || '-'}</td>
-              <td>${p.voice_allowance || '-'}</td>
-              <td>${p.sms_allowance || '-'}</td>
-              <td>${p.tethering_allowance || '-'}</td>
-              <td>${p.membership_benefit || '-'}</td>
-              <td>${p.target_age || '제한 없음'}</td>
-            </tr>
-          `;
-        }).join('')
-    }
-  </tbody>
-          </table>
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-function reflectQuadrantUsimPlan(carrier, idx) {
-  const plans = quadrantUsimData[carrier];
-  if (!plans || !plans[idx]) return;
-  const plan = plans[idx];
-
-  const baseFee = Number(plan.monthly_fee) || 0;
-  const contractFee = isContractDiscountActive
-    ? Math.round(baseFee * 0.75 / 10) * 10
-    : (plan.contract_discount_fee != null ? Number(plan.contract_discount_fee) : null);
-
-  addedUsimLines.push({
-    id: `usim-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    carrier: carrier,
-    planName: plan.plan_name || '-',
-    fee: baseFee,
-    teen: false
-  });
-  renderAddedUsimLines();
-  renderFamilyDiscountAccordion();
-
-  reflectedProducts.push({
-    id: `usim-prop-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    type: 'usim',
-    carrier: carrier,
-    planName: plan.plan_name || '-',
-    fee: baseFee,
-    contractFee: contractFee,
-    dataAllowance: plan.data_allowance || '-',
-    voiceAllowance: plan.voice_allowance || '-',
-    smsAllowance: plan.sms_allowance || '-',
-    tethering: plan.tethering_allowance || '-',
-    membership: plan.membership_benefit || '-',
-    targetAge: plan.target_age || '제한 없음'
-  });
-  renderProposalLists();
-  updateCsSummaryPanel();
-  showToast(`✓ ${carrier} · ${plan.plan_name || '요금제'} 반영되었습니다 · [고객상담] 제안상품에서 확인하세요`);
-}
-
-(async function init(){
-  displayLastModified();
-  initBottomBar();
-  setupSeg('seg-speed','speed');
-  setupSeg('seg-tv','tv');
-  setupSeg('seg-settop','settopTier');
-  setupSeg('seg-router','router');
-  setupRecoSeg('reco-seg-speed','speed');
-  setupRecoSeg('reco-seg-tv','tv');
-  setupRecoSeg('reco-seg-settop','settopTier');
-  setupRecoUsimTierButtons();
-  syncToDesignPhones();
-  renderFamilyLines();
-  initRecoUsimTierDefault();
-  updateCsSummaryPanel();
-  renderProposalLists();
-  renderFinalProducts();
-
-  const customerInfoCard = document.getElementById('cs-customer-info-card');
-  if (customerInfoCard) {
-    customerInfoCard.addEventListener('input', updateCsSummaryPanel);
-    customerInfoCard.addEventListener('change', updateCsSummaryPanel);
-    customerInfoCard.addEventListener('change', renderRecoCards);
-  }
-
-  const { data: { session } } = await sb.auth.getSession();
-  if (session) {
-    isLoggedIn = true;
-    updateAuthUI(session.user.email);
-  } else {
-    updateAuthUI();
-  }
-
-  if (await loadData()) {
-    await loadFinanceData();
-    render();
-    renderRecoCards();
-  }
-  renderFinalProducts();
-})();
 </script>
 </body>
 </html>
+```[cite: 6]
