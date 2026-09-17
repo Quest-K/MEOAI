@@ -123,7 +123,6 @@
               </label>
             </div>
             <div class="info-subsection-body" id="family-line-body" style="display:none;">
-              <div class="reflected-empty">※ 가족 회선 정보는 상담 참고용이며, 결합할인 계산에는 반영되지 않습니다.</div>
               <div id="family-lines-list" class="family-lines-list"></div>
               <button type="button" class="secondary-btn family-line-add-btn" onclick="addFamilyLine()">+ 가족회선 추가</button>
             </div>
@@ -225,7 +224,7 @@
           <div class="cs-split-col">
             <h4 class="cs-split-label">유심</h4>
             <div id="proposal-usim-list" class="cs-card-scroll">
-              <div class="reflected-empty">아직 반영된 유심 제안상품이 없습니다. [상품조회] 화면에서 [상품반영]을 눌러주세요.</div>
+              <div class="reflected-empty">아직 반영된 유심 제안상품이 없습니다. [상품설계] 화면에서 요금제를 반영해주세요.</div>
             </div>
           </div>
         </div>
@@ -341,13 +340,6 @@
 
     <!-- 하단: 유심(모바일) 설계 -->
     <div class="design-section-title">유심 (모바일)</div>
-
-    <div class="cs-card design-card mobile-grid-full">
-      <h3>추가된 요금제</h3>
-      <div id="added-usim-lines">
-        <div class="phone-empty">추가된 요금제가 없습니다. 아래 목록에서 요금제를 [상품반영]해주세요.</div>
-      </div>
-    </div>
 
     <div class="design-split-grid">
       <div class="controls-col">
@@ -545,7 +537,6 @@ function switchTab(tabId) {
       document.getElementById('view-design').classList.add('active');
       document.querySelectorAll('.tab-btn')[1].classList.add('active');
       render();
-      renderAddedUsimLines();
       renderFamilyDiscountAccordion();
       loadMobilePlanCarriers();
     }
@@ -756,16 +747,19 @@ async function fetchRecoUsimPlans(tier){
   container.innerHTML = RECO_USIM_COLUMNS.map(col => {
     const plans = byNetwork[col.net] || [];
     const body = plans.length
-      ? plans.map(p => `
-        <div class="phone-line usim-added-line">
-          <div class="usim-added-row">
-            <span class="usim-added-name">${p.plan_name}</span>
-            <span class="usim-added-data">${p.data_allowance || '-'}</span>
-            <span class="usim-added-fee">${(Number(p.monthly_fee) || 0).toLocaleString()}원</span>
-            ${isLoggedIn ? `<span class="usim-added-comm">수수료 ${getUsimCommission(col.net, Number(p.monthly_fee) || 0).toLocaleString()}원</span>` : ''}
-          </div>
+      ? plans.map(p => {
+          const fee = Number(p.monthly_fee) || 0;
+          const commission = getUsimCommission(col.net, fee);
+          const gift = Math.max(0, commission - 150000);
+          return `
+        <div class="phone-line usim-reco-line">
+          <div class="info-row"><span>${p.plan_name}</span><span>${fee.toLocaleString()}원</span></div>
+          <div class="info-row"><span>데이터</span><span>${p.data_allowance || '-'}</span></div>
+          ${isLoggedIn ? `<div class="info-row"><span>사은품</span><span>${gift.toLocaleString()}원</span></div>` : ''}
+          ${isLoggedIn ? `<div class="info-row"><span>수수료</span><span>${commission.toLocaleString()}원</span></div>` : ''}
         </div>
-      `).join('')
+      `;
+        }).join('')
       : `<div class="reflected-empty">해당 구간 요금제 없음</div>`;
 
     return `
@@ -816,6 +810,7 @@ function toggleOldInternetSection(isOn){
 function toggleFamilyLineSection(isOn){
   const body = document.getElementById('family-line-body');
   if (body) body.style.display = isOn ? '' : 'none';
+  if (isOn && !familyLines.length) addFamilyLine();
   updateCsSummaryPanel();
 }
 
@@ -898,39 +893,55 @@ function syncToDesignPhones() {
 }
 
 function renderAddedUsimLines(){
-  const container = document.getElementById('added-usim-lines');
+  const container = document.getElementById('proposal-usim-list');
   if (!container) return;
   if (!addedUsimLines.length) {
-    container.innerHTML = `<div class="phone-empty">추가된 요금제가 없습니다. 아래 목록에서 요금제를 체크한 뒤 [+ 선택 요금제 추가]를 눌러주세요.</div>`;
+    container.innerHTML = `<div class="reflected-empty">아직 반영된 유심 제안상품이 없습니다. [상품설계] 화면에서 요금제를 반영해주세요.</div>`;
     return;
   }
-  container.innerHTML = addedUsimLines.map((p, idx) => `
+  container.innerHTML = addedUsimLines.map((p) => {
+    const linked = reflectedProducts.find(r => r.id === p.id);
+    const dataAllowance = linked ? (linked.dataAllowance || '-') : '-';
+    const commission = getUsimCommission(p.carrier, Number(p.fee) || 0);
+    const gift = Math.max(0, commission - 150000);
+    const canFinalize = !p.synced && !!linked;
+    return `
     <div class="phone-line usim-added-line">
       <div class="usim-added-row">
         <span class="usim-added-carrier carrier-${p.carrier.toLowerCase()}">${p.carrier}</span>
         <span class="usim-added-name">${p.planName}${p.synced ? ' <span class=\"usim-synced-badge\">연동</span>' : ''}</span>
-        <span class="usim-added-fee">${(Number(p.fee) || 0).toLocaleString()}원</span>
+        <button type="button" class="phone-remove-btn" onclick="removeAddedUsimLine('${p.id}')">삭제</button>
+      </div>
+      <div class="info-row"><span>월요금</span><span>${(Number(p.fee) || 0).toLocaleString()}원</span></div>
+      <div class="info-row"><span>데이터</span><span>${dataAllowance}</span></div>
+      ${isLoggedIn ? `<div class="info-row"><span>사은품</span><span>${gift.toLocaleString()}원</span></div>` : ''}
+      ${isLoggedIn ? `<div class="info-row"><span>수수료</span><span>${commission.toLocaleString()}원</span></div>` : ''}
+      <div class="usim-line-actions">
         <label class="phone-teen-toggle">
-          <input type="checkbox" ${p.teen ? 'checked' : ''} onchange="updateAddedUsimLine(${idx}, 'teen', this.checked)">
+          <input type="checkbox" ${p.teen ? 'checked' : ''} onchange="updateAddedUsimLine('${p.id}', 'teen', this.checked)">
           청소년
         </label>
-        <button type="button" class="phone-remove-btn" onclick="removeAddedUsimLine(${idx})">삭제</button>
+        ${canFinalize ? `<button type="button" class="mini-btn mini-btn-primary" onclick="moveProposalToFinal('${p.id}')">➕ 최종반영</button>` : ''}
       </div>
     </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
-function updateAddedUsimLine(idx, field, value){
-  if (!addedUsimLines[idx]) return;
-  addedUsimLines[idx][field] = value;
+function updateAddedUsimLine(id, field, value){
+  const line = addedUsimLines.find(l => l.id === id);
+  if (!line) return;
+  line[field] = value;
   renderAddedUsimLines();
   renderFamilyDiscountAccordion();
 }
 
-function removeAddedUsimLine(idx){
-  addedUsimLines.splice(idx, 1);
+function removeAddedUsimLine(id){
+  addedUsimLines = addedUsimLines.filter(l => l.id !== id);
+  reflectedProducts = reflectedProducts.filter(p => p.id !== id);
   renderAddedUsimLines();
   renderFamilyDiscountAccordion();
+  updateCsSummaryPanel();
 }
 
 function toggleDiscountItem(key){
@@ -1492,37 +1503,17 @@ function buildProposalHomeRow(item){
   `;
 }
 
-function buildProposalUsimRow(item){
-  return `
-    <div class="proposal-row">
-      <div class="proposal-row-main">
-        <span class="proposal-carrier carrier-${item.carrier.toLowerCase()}">${item.carrier}</span>
-        <span class="proposal-desc">${item.planName}</span>
-        <span class="proposal-fee">${item.fee.toLocaleString()}원</span>
-      </div>
-      <div class="proposal-row-actions">
-        <button type="button" class="mini-btn mini-btn-primary" onclick="moveProposalToFinal('${item.id}')">➕ 최종반영</button>
-        <button type="button" class="mini-btn" onclick="removeProposal('${item.id}')">삭제</button>
-      </div>
-    </div>
-  `;
-}
-
 function renderProposalLists(){
   const homeContainer = document.getElementById('proposal-home-list');
-  const usimContainer = document.getElementById('proposal-usim-list');
-  if (!homeContainer || !usimContainer) return;
+  if (!homeContainer) return;
 
   const homeItems = reflectedProducts.filter(p => p.type === 'home');
-  const usimItems = reflectedProducts.filter(p => p.type === 'usim');
 
   homeContainer.innerHTML = homeItems.length
     ? homeItems.map(buildProposalHomeRow).join('')
     : `<div class="reflected-empty">아직 반영된 인터넷/TV 제안상품이 없습니다. [상품조회] 화면에서 [상품반영]을 눌러주세요.</div>`;
 
-  usimContainer.innerHTML = usimItems.length
-    ? usimItems.map(buildProposalUsimRow).join('')
-    : `<div class="reflected-empty">아직 반영된 유심 제안상품이 없습니다. [상품조회] 화면에서 [상품반영]을 눌러주세요.</div>`;
+  renderAddedUsimLines();
 }
 
 function removeProposal(id){
@@ -1785,8 +1776,10 @@ function reflectUsimPlan(idx) {
     ? Math.round(baseFee * 0.75 / 10) * 10
     : (plan.contract_discount_fee != null ? Number(plan.contract_discount_fee) : null);
 
+  const sharedUsimId = `usim-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
   addedUsimLines.push({
-    id: `usim-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    id: sharedUsimId,
     carrier: selectedUsimCarrier,
     planName: plan.plan_name || '-',
     fee: baseFee, // 결합할인 등급(예: KT 77,000원 이상)은 항상 정가 기준으로 판정
@@ -1796,7 +1789,7 @@ function reflectUsimPlan(idx) {
   renderFamilyDiscountAccordion();
 
   reflectedProducts.push({
-    id: `usim-prop-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    id: sharedUsimId,
     type: 'usim',
     carrier: selectedUsimCarrier,
     planName: plan.plan_name || '-',
