@@ -47,16 +47,6 @@
           <h3>고객정보</h3>
           <div class="form-row">
             <div class="form-group">
-              <label>고객명</label>
-              <input type="text" id="cust-name" value="홍길동" placeholder="고객 성명 입력">
-            </div>
-            <div class="form-group">
-              <label>연락처</label>
-              <input type="text" id="cust-phone" value="010-1234-5678" placeholder="연락처 입력">
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
               <label>휴대폰 통신사</label>
               <select id="cust-mobile-carrier" onchange="syncToDesignPhones()">
                 <option value="KT">KT</option>
@@ -102,26 +92,23 @@
                   </select>
                 </div>
                 <div class="form-group">
-                  <label>기존 인터넷 속도</label>
-                  <select id="old-internet-speed" onchange="syncOldComposition()">
-                    <option value="100M">100M</option>
-                    <option value="500M" selected>500M</option>
-                    <option value="1기가">1기가</option>
-                  </select>
-                </div>
-                <div class="form-group">
                   <label>기존 TV 대수</label>
-                  <select id="old-tv-count" onchange="syncOldComposition()">
+                  <select id="old-tv-count">
                     <option value="0">TV 없음</option>
                     <option value="1" selected>1대</option>
                     <option value="2">2대</option>
                     <option value="3">3대 이상</option>
                   </select>
-                  <input type="hidden" id="old-composition" value="인터넷(500M) + TV 1대">
                 </div>
                 <div class="form-group">
-                  <label>기존 월 요금</label>
-                  <input type="text" id="old-fee" value="38,500" placeholder="월 납부 금액">
+                  <label>기존 월요금 구간</label>
+                  <select id="old-internet-fee">
+                    <option value="2만원대 미만">2만원대 미만</option>
+                    <option value="2만원대">2만원대</option>
+                    <option value="3만원대" selected>3만원대</option>
+                    <option value="4만원대">4만원대</option>
+                    <option value="5만원대 이상">5만원대 이상</option>
+                  </select>
                 </div>
               </div>
             </div>
@@ -136,16 +123,7 @@
               </label>
             </div>
             <div class="info-subsection-body" id="family-line-body" style="display:none;">
-              <div class="form-row">
-                <div class="form-group">
-                  <label>가족결합 여부</label>
-                  <select id="cust-family-bundle">
-                    <option value="N">미결합</option>
-                    <option value="Y">결합 중</option>
-                  </select>
-                </div>
-              </div>
-              <div class="reflected-empty">※ 가족결합 여부는 상담 참고용이며, 결합할인 계산에는 반영되지 않습니다.</div>
+              <div class="reflected-empty">※ 가족 회선 정보는 상담 참고용이며, 결합할인 계산에는 반영되지 않습니다.</div>
               <div id="family-lines-list" class="family-lines-list"></div>
               <button type="button" class="secondary-btn family-line-add-btn" onclick="addFamilyLine()">+ 가족회선 추가</button>
             </div>
@@ -804,14 +782,6 @@ function renderFamilyLines(){
   `).join('');
 }
 
-function syncOldComposition(){
-  const speed = document.getElementById('old-internet-speed')?.value || '';
-  const tvCount = document.getElementById('old-tv-count')?.value || '0';
-  const tvText = tvCount === '0' ? 'TV 없음' : `TV ${tvCount}대`;
-  const hidden = document.getElementById('old-composition');
-  if (hidden) hidden.value = `인터넷(${speed}) + ${tvText}`;
-}
-
 function syncToDesignPhones() {
   const mCarrier = document.getElementById('cust-mobile-carrier').value;
   const mFee = Number(document.getElementById('cust-mobile-fee').value) || FEE_RANGES[0].value;
@@ -1148,17 +1118,17 @@ function getOldInternetSummaryValue(){
   const isOn = document.getElementById('old-internet-toggle')?.checked;
   if (!isOn) return '없음';
   const oldIsp = document.getElementById('old-isp')?.value || '';
-  const oldComposition = document.getElementById('old-composition')?.value || '';
-  const oldFee = document.getElementById('old-fee')?.value || '';
-  return `${oldIsp} / ${oldComposition} / 월 ${oldFee}원`;
+  const oldFee = document.getElementById('old-internet-fee')?.value || '';
+  const tvCount = document.getElementById('old-tv-count')?.value || '0';
+  const tvText = tvCount === '0' ? 'TV 없음' : `TV ${tvCount}대`;
+  return `${oldIsp} / 월 ${oldFee} / ${tvText}`;
 }
 
 function getFamilyLineSummaryItems(){
   const isOn = document.getElementById('family-line-toggle')?.checked;
   if (!isOn) return [{ label: '가족회선', value: '없음' }];
 
-  const bundleStatus = document.getElementById('cust-family-bundle')?.value === 'Y' ? '결합 중' : '미결합';
-  const items = [{ label: '가족결합 여부', value: bundleStatus }];
+  const items = [];
 
   if (!familyLines.length) {
     items.push({ label: '가족회선', value: '등록된 회선 없음' });
@@ -1175,15 +1145,11 @@ function getFamilyLineSummaryItems(){
 }
 
 function buildConsultSummary(){
-  const name = document.getElementById('cust-name')?.value || '';
-  const phone = document.getElementById('cust-phone')?.value || '';
   const mobileCarrier = document.getElementById('cust-mobile-carrier')?.value || '';
   const mobileFee = document.getElementById('cust-mobile-fee')?.value || '';
 
   const lines = [];
   lines.push('[고객 상담 요약]');
-  lines.push(`고객명: ${name}`);
-  lines.push(`연락처: ${phone}`);
   lines.push(`휴대폰: ${mobileCarrier} / ${getFeeRangeLabel(mobileFee)}`);
   lines.push(`기존 인터넷: ${getOldInternetSummaryValue()}`);
   getFamilyLineSummaryItems().forEach(item => lines.push(`${item.label}: ${item.value}`));
@@ -1208,14 +1174,10 @@ function updateCsSummaryPanel(){
   const productsEl = document.getElementById('cs-live-products-info');
   if (!customerEl || !productsEl) return;
 
-  const name = document.getElementById('cust-name')?.value || '';
-  const phone = document.getElementById('cust-phone')?.value || '';
   const mobileCarrier = document.getElementById('cust-mobile-carrier')?.value || '';
   const mobileFee = document.getElementById('cust-mobile-fee')?.value || '';
 
   let custHtml = '';
-  custHtml += jsRow('고객명', name);
-  custHtml += jsRow('연락처', phone);
   custHtml += jsRow('휴대폰', mobileCarrier ? `${mobileCarrier} / ${getFeeRangeLabel(mobileFee)}` : '');
   custHtml += jsRow('기존 인터넷', getOldInternetSummaryValue());
   getFamilyLineSummaryItems().forEach(item => {
@@ -1765,7 +1727,6 @@ function reflectUsimPlan(idx) {
   setupRecoSeg('reco-seg-settop','settopTier');
   setupRecoUsimTierButtons();
   syncToDesignPhones();
-  syncOldComposition();
   renderFamilyLines();
   initRecoUsimTierDefault();
   updateCsSummaryPanel();
