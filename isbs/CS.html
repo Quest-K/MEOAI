@@ -68,8 +68,18 @@
               </select>
             </div>
             <div class="form-group">
-              <label>휴대폰 요금 (원)</label>
-              <input type="text" id="cust-mobile-fee" value="69,000" onchange="syncToDesignPhones()">
+              <label>휴대폰 요금 구간</label>
+              <select id="cust-mobile-fee" onchange="syncToDesignPhones()">
+                <option value="25000">3만원 이하</option>
+                <option value="30000">3만원대</option>
+                <option value="40000">4만원대</option>
+                <option value="50000">5만원대</option>
+                <option value="60000" selected>6만원대</option>
+                <option value="70000">7만원대</option>
+                <option value="80000">8만원대</option>
+                <option value="90000">9만원대</option>
+                <option value="100000">10만원 이상</option>
+              </select>
             </div>
           </div>
           <div class="info-subsection" id="old-internet-subsection">
@@ -138,6 +148,52 @@
               <div class="reflected-empty">※ 가족결합 여부는 상담 참고용이며, 결합할인 계산에는 반영되지 않습니다.</div>
               <div id="family-lines-list" class="family-lines-list"></div>
               <button type="button" class="secondary-btn family-line-add-btn" onclick="addFamilyLine()">+ 가족회선 추가</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="cs-card" id="cs-reco-card">
+          <h3>추천상품</h3>
+          <div class="reco-controls">
+            <div class="control-group">
+              <label class="group-label">속도</label>
+              <div class="seg" id="reco-seg-speed">
+                <button data-value="100">100M</button>
+                <button data-value="500" class="active">500M</button>
+                <button data-value="1000">1기가</button>
+              </div>
+            </div>
+            <div class="control-group">
+              <label class="group-label">TV등급</label>
+              <div class="seg" id="reco-seg-tv">
+                <button data-value="low">저가형</button>
+                <button data-value="basic" class="active">기본형</button>
+                <button data-value="premium">고급형</button>
+              </div>
+            </div>
+            <div class="control-group">
+              <label class="group-label">셋탑등급</label>
+              <div class="seg" id="reco-seg-settop">
+                <button data-value="basic" class="active">기본형</button>
+                <button data-value="advanced">고급형/AI</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="reco-carrier-cards" class="reco-cards">
+            <div class="reflected-empty">상품 데이터 로딩 중입니다.</div>
+          </div>
+
+          <div class="reco-usim-block">
+            <label class="group-label">유심 요금 구간</label>
+            <div class="usim-tier-buttons" id="reco-usim-tier-buttons">
+              <button type="button" class="usim-tier-btn" data-tier="low">저가형</button>
+              <button type="button" class="usim-tier-btn" data-tier="mid">중가형</button>
+              <button type="button" class="usim-tier-btn" data-tier="high">고가형</button>
+              <button type="button" class="usim-tier-btn" data-tier="premium">프리미엄</button>
+            </div>
+            <div id="reco-usim-list" class="reco-usim-list">
+              <div class="reflected-empty">요금 구간을 선택하면 해당 유심 요금제가 표시됩니다.</div>
             </div>
           </div>
         </div>
@@ -454,6 +510,14 @@ let state = { speed:'500', tv:'basic', settopTier:'basic', router:'Y', tcDistMod
 let lastTvTier = 'basic';
 let addedUsimLines = []; 
 let familyLines = [];
+let recoState = { speed:'500', tv:'basic', settopTier:'basic', router:'Y' };
+let recoUsimTier = null;
+
+const CARRIER_LABEL = { kt:'KT', lg:'LG', skb:'SK브로드밴드', skt:'SK텔레콤' };
+const ISP_HOME_CARRIER_MAP = { 'KT':['kt'], 'LG':['lg'], 'SK':['skb','skt'], '기타':[] };
+const MOBILE_GROUP_MAP = { kt:'KT', lg:'LG', skb:'SK', skt:'SK' };
+const USIM_TIER_RANGE = { low:[0,29999], mid:[30000,49999], high:[50000,79999], premium:[80000,Infinity] };
+const USIM_TIER_LABEL = { low:'저가형', mid:'중가형', high:'고가형', premium:'프리미엄' };
 let logs = [];
 let reflectedProducts = []; 
 let finalProducts = []; 
@@ -527,6 +591,135 @@ function setupSeg(id, key){
   });
 }
 
+function setupRecoSeg(id, key){
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.querySelectorAll('button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      recoState[key] = btn.dataset.value;
+      el.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+      renderRecoCards();
+    });
+  });
+}
+
+function getRecommendedCarriers(){
+  const oldOn = document.getElementById('old-internet-toggle')?.checked;
+  const oldIsp = document.getElementById('old-isp')?.value || '';
+  const excluded = oldOn ? (ISP_HOME_CARRIER_MAP[oldIsp] || []) : [];
+  return CARRIERS.filter(c => !excluded.includes(c));
+}
+
+function renderRecoCards(){
+  const container = document.getElementById('reco-carrier-cards');
+  if (!container) return;
+  if (!DATA) {
+    container.innerHTML = '<div class="reflected-empty">상품 데이터 로딩 중입니다.</div>';
+    return;
+  }
+
+  const carriers = getRecommendedCarriers();
+  if (!carriers.length) {
+    container.innerHTML = '<div class="reflected-empty">추천 가능한 통신사가 없습니다. (기존 인터넷 통신사와 모두 중복)</div>';
+    return;
+  }
+
+  const mobileCarrierRaw = document.getElementById('cust-mobile-carrier')?.value || '';
+  const isMvno = mobileCarrierRaw.includes('알뜰');
+  const mobileGroup = mobileCarrierRaw.replace('알뜰', '');
+
+  container.innerHTML = carriers.map(c => {
+    const price = computePrice(c, recoState);
+    if (!price.available) {
+      return `<div class="reco-product-card"><div class="reco-product-card-title"><span>${CARRIER_LABEL[c]}</span></div><div class="reflected-empty">해당 스펙의 상품 정보가 없습니다.</div></div>`;
+    }
+
+    const needsUsim = isMvno || MOBILE_GROUP_MAP[c] !== mobileGroup;
+
+    const lines = [];
+    lines.push(['인터넷', price.internetFee]);
+    if (price.routerFee) lines.push(['공유기', price.routerFee]);
+    if (price.tvFee) lines.push([price.tvInfo?.name || 'TV', price.tvFee]);
+    if (price.settopFee) lines.push([price.settopInfo?.name || '셋탑', price.settopFee]);
+    if (price.bundleDiscount) lines.push(['결합할인', -price.bundleDiscount]);
+    if (price.tvBundleDiscount) lines.push(['TV결합할인', -price.tvBundleDiscount]);
+
+    return `
+      <div class="reco-product-card">
+        <div class="reco-product-card-title">
+          <span>${CARRIER_LABEL[c]}${needsUsim ? ' <span class="reco-usim-badge">+유심</span>' : ''}</span>
+          <span class="reco-product-total">${(price.total || 0).toLocaleString()}원</span>
+        </div>
+        ${lines.map(([label, amount]) => `
+          <div class="reco-product-line">
+            <span>${label}</span>
+            <span>${amount < 0 ? '-' : ''}${Math.abs(amount).toLocaleString()}원</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }).join('');
+}
+
+function getUsimTierForFee(fee){
+  const f = Number(fee) || 0;
+  if (f < 30000) return 'low';
+  if (f < 50000) return 'mid';
+  if (f < 80000) return 'high';
+  return 'premium';
+}
+
+function setupRecoUsimTierButtons(){
+  const el = document.getElementById('reco-usim-tier-buttons');
+  if (!el) return;
+  el.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      recoUsimTier = btn.dataset.tier;
+      el.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+      fetchRecoUsimPlans(recoUsimTier);
+    });
+  });
+}
+
+function initRecoUsimTierDefault(){
+  const mobileFee = document.getElementById('cust-mobile-fee')?.value;
+  recoUsimTier = getUsimTierForFee(mobileFee);
+  const el = document.getElementById('reco-usim-tier-buttons');
+  if (el) {
+    el.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.tier === recoUsimTier));
+  }
+  fetchRecoUsimPlans(recoUsimTier);
+}
+
+async function fetchRecoUsimPlans(tier){
+  const container = document.getElementById('reco-usim-list');
+  if (!container) return;
+  container.innerHTML = '<div class="reflected-empty">요금제 조회 중...</div>';
+
+  const [min, max] = USIM_TIER_RANGE[tier] || [0, Infinity];
+  let query = sb.from('usim_plans').select('*').eq('is_active', true).gte('monthly_fee', min);
+  if (max !== Infinity) query = query.lte('monthly_fee', max);
+  const { data, error } = await query;
+
+  if (error) {
+    container.innerHTML = `<div class="reflected-empty">조회 실패: ${error.message}</div>`;
+    return;
+  }
+  if (!data || !data.length) {
+    container.innerHTML = `<div class="reflected-empty">${USIM_TIER_LABEL[tier] || ''} 구간의 유심 요금제가 없습니다.</div>`;
+    return;
+  }
+  container.innerHTML = data.map(p => `
+    <div class="phone-line usim-added-line">
+      <div class="usim-added-row">
+        <span class="usim-added-carrier carrier-${String(p.carrier).toLowerCase()}">${p.carrier}</span>
+        <span class="usim-added-name">${p.plan_name}</span>
+        <span class="usim-added-fee">${(Number(p.monthly_fee) || 0).toLocaleString()}원</span>
+      </div>
+    </div>
+  `).join('');
+}
+
 async function toggleTvOnOff(isOn){
   if (isOn) {
     state.tv = lastTvTier || 'basic';
@@ -542,6 +735,7 @@ function toggleOldInternetSection(isOn){
   const body = document.getElementById('old-internet-body');
   if (body) body.style.display = isOn ? '' : 'none';
   updateCsSummaryPanel();
+  renderRecoCards();
 }
 
 function toggleFamilyLineSection(isOn){
@@ -616,8 +810,7 @@ function syncOldComposition(){
 
 function syncToDesignPhones() {
   const mCarrier = document.getElementById('cust-mobile-carrier').value;
-  const mFeeStr = document.getElementById('cust-mobile-fee').value.replace(/[^0-9]/g, '');
-  const mFee = nearestFeeRangeValue(Number(mFeeStr) || 60000);
+  const mFee = Number(document.getElementById('cust-mobile-fee').value) || FEE_RANGES[0].value;
 
   const syncedIdx = addedUsimLines.findIndex(l => l.synced);
   const syncedLine = {
@@ -634,6 +827,7 @@ function syncToDesignPhones() {
   renderAddedUsimLines();
   if (typeof render === 'function' && DATA) render();
   renderFamilyDiscountAccordion();
+  renderRecoCards();
 }
 
 function renderAddedUsimLines(){
@@ -941,23 +1135,54 @@ function productTitle(p){
   return p.type === 'usim' ? `${p.carrier} 유심` : p.carrierName;
 }
 
+function getFeeRangeLabel(value){
+  const found = FEE_RANGES.find(r => r.value === Number(value));
+  return found ? found.label : `${Number(value || 0).toLocaleString()}원`;
+}
+
+function getOldInternetSummaryValue(){
+  const isOn = document.getElementById('old-internet-toggle')?.checked;
+  if (!isOn) return '없음';
+  const oldIsp = document.getElementById('old-isp')?.value || '';
+  const oldComposition = document.getElementById('old-composition')?.value || '';
+  const oldFee = document.getElementById('old-fee')?.value || '';
+  return `${oldIsp} / ${oldComposition} / 월 ${oldFee}원`;
+}
+
+function getFamilyLineSummaryItems(){
+  const isOn = document.getElementById('family-line-toggle')?.checked;
+  if (!isOn) return [{ label: '가족회선', value: '없음' }];
+
+  const bundleStatus = document.getElementById('cust-family-bundle')?.value === 'Y' ? '결합 중' : '미결합';
+  const items = [{ label: '가족결합 여부', value: bundleStatus }];
+
+  if (!familyLines.length) {
+    items.push({ label: '가족회선', value: '등록된 회선 없음' });
+  } else {
+    familyLines.forEach((f, idx) => {
+      const feeLabel = FEE_RANGES.find(r => r.value === f.mobileFeeValue)?.label || '';
+      items.push({
+        label: `가족회선 ${idx + 1}`,
+        value: `휴대폰 ${f.mobileCarrier} ${feeLabel} / 인터넷 ${f.internetCarrier} ${f.internetFeeLabel}`
+      });
+    });
+  }
+  return items;
+}
+
 function buildConsultSummary(){
   const name = document.getElementById('cust-name')?.value || '';
   const phone = document.getElementById('cust-phone')?.value || '';
   const mobileCarrier = document.getElementById('cust-mobile-carrier')?.value || '';
   const mobileFee = document.getElementById('cust-mobile-fee')?.value || '';
-  const oldIsp = document.getElementById('old-isp')?.value || '';
-  const oldComposition = document.getElementById('old-composition')?.value || '';
-  const oldFee = document.getElementById('old-fee')?.value || '';
-  const familyBundle = document.getElementById('cust-family-bundle')?.value === 'Y' ? '결합 중' : '미결합';
 
   const lines = [];
   lines.push('[고객 상담 요약]');
   lines.push(`고객명: ${name}`);
   lines.push(`연락처: ${phone}`);
-  lines.push(`휴대폰: ${mobileCarrier} / ${mobileFee}원`);
-  lines.push(`기존 홈상품: ${oldIsp} / ${oldComposition} / 월 ${oldFee}원`);
-  lines.push(`가족결합 여부: ${familyBundle}`);
+  lines.push(`휴대폰: ${mobileCarrier} / ${getFeeRangeLabel(mobileFee)}`);
+  lines.push(`기존 인터넷: ${getOldInternetSummaryValue()}`);
+  getFamilyLineSummaryItems().forEach(item => lines.push(`${item.label}: ${item.value}`));
   lines.push('');
   lines.push('[제안 상품]');
 
@@ -983,17 +1208,15 @@ function updateCsSummaryPanel(){
   const phone = document.getElementById('cust-phone')?.value || '';
   const mobileCarrier = document.getElementById('cust-mobile-carrier')?.value || '';
   const mobileFee = document.getElementById('cust-mobile-fee')?.value || '';
-  const oldIsp = document.getElementById('old-isp')?.value || '';
-  const oldComposition = document.getElementById('old-composition')?.value || '';
-  const oldFee = document.getElementById('old-fee')?.value || '';
-  const familyBundle = document.getElementById('cust-family-bundle')?.value === 'Y' ? '결합 중' : '미결합';
 
   let custHtml = '';
   custHtml += jsRow('고객명', name);
   custHtml += jsRow('연락처', phone);
-  custHtml += jsRow('휴대폰', mobileCarrier ? `${mobileCarrier} / ${mobileFee}원` : '');
-  custHtml += jsRow('기존 홈상품', oldIsp ? `${oldIsp} / ${oldComposition} / 월 ${oldFee}원` : '');
-  custHtml += jsRow('가족결합', familyBundle);
+  custHtml += jsRow('휴대폰', mobileCarrier ? `${mobileCarrier} / ${getFeeRangeLabel(mobileFee)}` : '');
+  custHtml += jsRow('기존 인터넷', getOldInternetSummaryValue());
+  getFamilyLineSummaryItems().forEach(item => {
+    custHtml += jsRow(item.label, item.value);
+  });
   customerEl.innerHTML = custHtml || '<div class="js-empty">아직 입력된 정보가 없습니다.</div>';
 
   let prodHtml = '';
@@ -1533,9 +1756,14 @@ function reflectUsimPlan(idx) {
   setupSeg('seg-tv','tv');
   setupSeg('seg-settop','settopTier');
   setupSeg('seg-router','router');
+  setupRecoSeg('reco-seg-speed','speed');
+  setupRecoSeg('reco-seg-tv','tv');
+  setupRecoSeg('reco-seg-settop','settopTier');
+  setupRecoUsimTierButtons();
   syncToDesignPhones();
   syncOldComposition();
   renderFamilyLines();
+  initRecoUsimTierDefault();
   updateCsSummaryPanel();
   renderProposalLists();
   renderFinalProducts();
@@ -1544,6 +1772,7 @@ function reflectUsimPlan(idx) {
   if (customerInfoCard) {
     customerInfoCard.addEventListener('input', updateCsSummaryPanel);
     customerInfoCard.addEventListener('change', updateCsSummaryPanel);
+    customerInfoCard.addEventListener('change', renderRecoCards);
   }
 
   const { data: { session } } = await sb.auth.getSession();
@@ -1557,6 +1786,7 @@ function reflectUsimPlan(idx) {
   if (await loadData()) {
     await loadFinanceData();
     render();
+    renderRecoCards();
   }
   renderFinalProducts();
 })();
