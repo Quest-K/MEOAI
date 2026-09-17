@@ -1,364 +1,1359 @@
-// ============================================================
-// calculator.js
-// 통신사별(KT/LG/SKB/SKT) 결합 할인 및 요금 계산 로직
-// 이 파일은 CS.html 보다 먼저(또는 그 직전에) 로드되어야 합니다.
-// DATA / state / TV_BUNDLE_DISCOUNT / FEE_RANGES 등은 CS.html 쪽 전역
-// 변수를 그대로 참조합니다 (모듈이 아닌 일반 스크립트로 로드).
-// ============================================================
+:root{
+    --ink:#2C2E35;
+    --ink-dim:#6B6E76;
+    --bg:#F4F2EB;
+    --bg-raised:#FFFFFF;
+    --paper:#FFFFFF;
+    --paper-line:#E6E2D6;
+    --line-on-dark:#D8D3C5;
+    --gold:#C88A2B;
+    --kt:#C4763B;
+    --lg:#2F8F7E;
+    --skb:#5D52A3;
+    --skt:#3F4493;
+    --radius:6px;
+    --font-mono:'Inconsolata', monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Pretendard', -apple-system, sans-serif;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{
+    max-width:1440px;
+    margin:0 auto;
+    padding:104px 24px 96px;
+  }
+  .wrap.has-bar{
+    padding-bottom:96px;
+  }
+  @media (max-width: 720px){
+    .wrap.has-bar{ padding-bottom:120px; }
+  }
 
-function getSettopByTier(carrier, tier) {
-  const list = DATA[carrier]?.settopList || [];
-  if (!list.length) return { name:'기본 셋톱박스', fee:3300 };
-  if (tier === 'basic') return list.find(s => s.fee <= 4400) || list[0];
-  if (tier === 'advanced') return list.find(s => s.fee > 4400 && s.fee <= 7700) || list[1] || list[0];
-  return list.find(s => s.fee >= 8800) || list[list.length - 1];
-}
+  .tab-nav {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 500;
+    max-width: 1440px;
+    margin: 0 auto;
+    background: var(--bg);
+    border-bottom: 2px solid var(--paper-line);
+    padding: 16px 24px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.05);
+  }
+  .auth-box{ margin-left:auto; display:flex; align-items:center; gap:8px; }
+  .login-trigger-btn{
+    appearance:none;
+    border:1px solid var(--paper-line);
+    background:#FFFFFF;
+    color:var(--ink-dim);
+    padding:8px 14px;
+    font-size:13px;
+    font-weight:600;
+    border-radius:var(--radius);
+    cursor:pointer;
+  }
+  .login-trigger-btn:hover{ border-color:var(--gold); color:var(--gold); }
+  .whoami{ font-family:var(--font-mono); font-size:11.5px; color:var(--ink-dim); }
+  .logout-btn{
+    appearance:none;
+    border:1px solid var(--paper-line);
+    background:#FAFAF7;
+    color:var(--ink-dim);
+    padding:6px 12px;
+    font-size:12px;
+    border-radius:4px;
+    cursor:pointer;
+  }
+  .logout-btn:hover{ border-color:#D9534F; color:#D9534F; }
+  .login-label{
+    display:block;
+    font-family:var(--font-mono);
+    font-size:11.5px;
+    color:var(--ink-dim);
+    margin:14px 0 6px;
+    font-weight:600;
+  }
+  .login-input{
+    width:100%;
+    padding:10px 12px;
+    border:1px solid var(--paper-line);
+    border-radius:4px;
+    font-size:14px;
+    background:#FAFAF7;
+    box-sizing:border-box;
+  }
+  .login-input:focus{ outline:none; border-color:var(--gold); }
+  .login-error{
+    margin-top:10px;
+    font-size:12.5px;
+    color:#D9534F;
+    min-height:16px;
+  }
+  .tab-btn {
+    padding: 12px 24px;
+    font-size: 16px;
+    font-weight: 600;
+    background: #EAE8E1;
+    border: 1px solid var(--paper-line);
+    border-radius: var(--radius);
+    cursor: pointer;
+    color: var(--ink-dim);
+    transition: all 0.2s ease;
+  }
+  .tab-btn.active {
+    background: var(--ink);
+    color: #FFFFFF;
+    border-color: var(--ink);
+  }
 
-function computePrice(carrier){
-  const speedData = DATA[carrier]?.internet[state.speed];
-  if (!speedData) return { available:false };
+  .view-container { display: none; }
+  .view-container.active { display: block; }
 
-  let internetFee = speedData.fee;
-  let total = internetFee;
+  .top-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:32px;
+    align-items:stretch;
+    margin-bottom:32px;
+    padding-bottom:24px;
+    border-bottom:1px solid var(--line-on-dark);
+  }
+  @media (max-width: 900px){
+    .top-grid{ grid-template-columns:1fr; }
+  }
+
+  header{
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+  }
+  .eyebrow{
+    font-family:'Inconsolata', monospace;
+    font-size:12.5px;
+    color:var(--ink-dim);
+    letter-spacing:0.02em;
+    margin:0 0 14px;
+  }
+  h1{
+    font-family:'Newsreader', serif;
+    font-weight:600;
+    font-size:clamp(26px, 3.8vw, 38px);
+    margin:0 0 10px;
+    color:#1C1E24;
+  }
+  header p{
+    max-width:60ch;
+    color:var(--ink-dim);
+    font-size:14.5px;
+    margin:0;
+  }
+
+  #status-banner{
+    display:block;
+    padding:16px 20px;
+    border-radius:var(--radius);
+    font-size:13px;
+    line-height:1.6;
+    background:#EFEDE4;
+    border:1px solid var(--paper-line);
+    color:var(--ink);
+  }
+  .banner-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:6px;
+  }
+  #status-banner .title{
+    font-weight:700;
+    font-size:13.5px;
+  }
+  .last-modified{
+    font-family:'Inconsolata', monospace;
+    font-size:11.5px;
+    color:var(--ink-dim);
+  }
+  #status-banner .log-item{
+    font-family:'Inconsolata', monospace;
+    font-size:12px;
+    margin:2px 0;
+  }
+  #status-banner .success{ color:#1E7E34; }
+  #status-banner .error{ color:#D9534F; font-weight:600; }
+
+  .cs-card {
+    background: var(--bg-raised);
+    border: 1px solid var(--paper-line);
+    border-radius: var(--radius);
+    padding: 24px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.03);
+  }
+  .cs-card h3 {
+    margin-top: 0;
+    font-size: 20px;
+    font-weight: 700;
+    font-family: 'Pretendard', sans-serif;
+    border-bottom: 1px solid var(--paper-line);
+    padding-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .cs-card-flex{
+    display: flex;
+    flex-direction: column;
+  }
+  .cs-card-scroll{
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .reflected-empty{
+    color: var(--ink-dim);
+    font-size: 14px;
+    padding: 20px;
+    text-align: center;
+    background: #FFF;
+    border: 1px dashed var(--paper-line);
+    border-radius: var(--radius);
+  }
+  .form-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .form-group { margin-bottom: 16px; }
+  .form-group label {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink-dim);
+    margin-bottom: 6px;
+  }
+  .form-group input, .form-group select {
+    width: 100%;
+    padding: 10px 12px;
+    font-family: 'Pretendard', sans-serif;
+    font-size: 14px;
+    border: 1px solid var(--paper-line);
+    border-radius: var(--radius);
+    background: #FFFFFF;
+    color: var(--ink);
+  }
+  .form-group input:focus, .form-group select:focus {
+    outline: none;
+    border-color: var(--gold);
+  }
+
+  .info-subsection {
+    border: 1px solid var(--paper-line);
+    border-radius: var(--radius);
+    padding: 14px 16px 4px;
+    margin-bottom: 16px;
+    background: #FFFDF9;
+  }
+  .info-subsection-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 12px;
+  }
+  .info-subsection-body .form-row:last-child { margin-bottom: 12px; }
+
+  .primary-btn {
+    background: var(--gold);
+    color: #FFFFFF;
+    border: none;
+    padding: 12px 24px;
+    font-size: 15px;
+    font-weight: 600;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  .primary-btn:hover { background: #B37722; }
+  .secondary-btn {
+    background: #EAE8E1;
+    color: var(--ink);
+    border: 1px solid var(--paper-line);
+    padding: 12px 24px;
+    font-size: 15px;
+    font-weight: 600;
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  .secondary-btn:hover { background: #DEDBD0; }
+
+  .modal-overlay{
+    display:none;
+    position:fixed;
+    inset:0;
+    background:rgba(28,30,36,0.55);
+    z-index:1000;
+    align-items:center;
+    justify-content:center;
+    padding:20px;
+  }
+  .modal-box{
+    background:#FFFFFF;
+    border-radius:var(--radius);
+    padding:24px;
+    width:100%;
+    max-width:560px;
+    max-height:85vh;
+    display:flex;
+    flex-direction:column;
+  }
+  .modal-box h3{ margin:0 0 6px; font-size:18px; color:#1C1E24; }
+  .modal-desc{ margin:0 0 14px; font-size:13px; color:var(--ink-dim); }
+  .modal-actions{
+    display:flex;
+    justify-content:flex-end;
+    gap:8px;
+    margin-top:16px;
+  }
+
+  .compare-table-wrap {
+    margin-top: 16px;
+    overflow-x: auto;
+    max-width: 100%;
+    background: #FFFFFF;
+    border: 1px solid var(--paper-line);
+    border-radius: var(--radius);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+  }
+  .compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+    white-space: nowrap;
+  }
+  .compare-table th, .compare-table td {
+    padding: 10px 14px;
+    text-align: right;
+    border-bottom: 1px solid var(--paper-line);
+  }
+  .compare-table th:first-child, .compare-table td:first-child { text-align: left; }
+  .compare-table thead th {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink-dim);
+    font-weight: 600;
+    border-bottom: 2px solid var(--paper-line);
+    white-space: nowrap;
+  }
+  .compare-table th.brand-cell { text-align: left; }
+  .compare-table td.brand-cell { font-weight: 700; color: #1C1E24; text-align: left; }
+  .compare-table td.fee-cell { font-family: var(--font-mono); font-weight: 700; color: var(--ink); }
+
+  .control-group label.group-label{
+    display:block;
+    font-family:'Inconsolata', monospace;
+    font-size:12px;
+    color:var(--ink-dim);
+    margin-bottom:10px;
+    font-weight:600;
+  }
+  .seg{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+  .seg button{
+    appearance:none;
+    border:1px solid var(--paper-line);
+    background:#FAFAF7;
+    color:var(--ink);
+    padding:10px 18px;
+    font-family:'Pretendard', sans-serif;
+    font-size:14.5px;
+    font-weight:500;
+    border-radius:var(--radius);
+    cursor:pointer;
+    transition:border-color .15s ease, background .15s ease, color .15s ease;
+  }
+  .seg button:hover:not(:disabled){ border-color:var(--gold); background:#FFFDF9; }
+  .seg button.active{
+    background:var(--gold);
+    border-color:var(--gold);
+    color:#FFFFFF;
+    font-weight:600;
+  }
+  .seg button:disabled{
+    opacity:0.4;
+    cursor:not-allowed;
+    background:#EAE8E1;
+  }
+
+  #seg-speed, #seg-router, #seg-tv, #seg-settop{
+    flex-direction:column;
+    flex-wrap:nowrap;
+    align-items:stretch;
+  }
+  #seg-speed button, #seg-router button, #seg-tv button, #seg-settop button{
+    flex:none;
+    width:100%;
+    text-align:center;
+  }
+
+  .results{
+    display:grid;
+    grid-template-columns:repeat(4, 1fr);
+    gap:16px;
+  }
+  @media (max-width: 1280px){
+    .results{ grid-template-columns:repeat(2, 1fr); }
+  }
+  @media (max-width: 640px){
+    .results{ grid-template-columns:1fr; }
+  }
+
+  .results.results-compact{
+    grid-template-columns:repeat(4, 1fr);
+    gap:12px;
+  }
+  @media (max-width: 1100px){
+    .results.results-compact{ grid-template-columns:repeat(2, 1fr); }
+  }
+  @media (max-width: 640px){
+    .results.results-compact{ grid-template-columns:1fr; }
+  }
+  .results-compact .card-head{ padding:14px 14px 10px; }
+  .results-compact .price-block{ padding:12px 14px 10px; }
+  .results-compact .price-block .amount{ font-size:19px; }
+  .results-compact .items{ padding:10px 14px 12px; }
+  .results-compact .item-row{ font-size:12.5px; }
+
+  .card{
+    background:var(--paper);
+    color:#20211D;
+    border-radius:var(--radius);
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+    box-shadow:0 10px 30px -10px rgba(0,0,0,.08);
+    border:1px solid var(--paper-line);
+  }
   
-  let actualRouterFee = speedData.routerFee;
-  if (state.router === 'Y') {
-    if (carrier === 'lg') actualRouterFee = 0;
-    else if (carrier === 'kt' && Number(state.speed) >= 1000) actualRouterFee = 0;
-    total += actualRouterFee;
-  } else {
-    actualRouterFee = 0;
+  .card.highest-comm-card {
+    border: 2px solid #E67E22;
+    box-shadow: 0 12px 32px rgba(230,126,34,0.25);
+    background: #FFFDF9;
+  }
+  .highest-commission-badge {
+    color: #C0392B !important;
+    font-weight: 800 !important;
   }
 
-  let tvInfo = null, settopInfo = null, bundleDiscount = 0, tvBundleDiscount = 0;
-  let tvFee = 0, settopFee = 0;
-
-  if (state.tv !== 'none') {
-    tvInfo = DATA[carrier].tv[state.tv];
-    if (!tvInfo) tvInfo = { name:'기본형TV', fee:15400, channels:200 };
-    tvFee = tvInfo.fee;
-    total += tvFee;
-    
-    settopInfo = getSettopByTier(carrier, state.settopTier);
-    if (settopInfo) {
-      settopFee = settopInfo.fee;
-      total += settopFee;
-    }
-
-    const speedNum = Number(state.speed);
-    if (carrier === 'kt' || carrier === 'lg') {
-      if (speedNum === 100) bundleDiscount = 0;
-      else if (speedNum === 500 || speedNum === 1000) bundleDiscount = 5500;
-    } else if (carrier === 'skb' || carrier === 'skt') {
-      if (speedNum === 100) bundleDiscount = 1100;
-      else if (speedNum === 500) bundleDiscount = 5500;
-      else if (speedNum === 1000) bundleDiscount = 5500;
-    }
-    total -= bundleDiscount;
-
-    tvBundleDiscount = TV_BUNDLE_DISCOUNT[carrier]?.[state.tv] || 0;
-    total -= tvBundleDiscount;
+  .card-head{
+    padding:18px 18px 14px;
+    color:#fff;
+    position:relative;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+  .card-head .plan-name{
+    font-family:'Newsreader', serif;
+    font-weight:600;
+    font-size:18px;
+    margin:0;
+  }
+  .join-btn{
+    display:block;
+    width:calc(100% - 36px);
+    margin:0 18px 18px;
+    appearance:none;
+    border:none;
+    background:var(--gold);
+    color:#fff;
+    padding:11px 14px;
+    font-size:14px;
+    font-weight:600;
+    border-radius:var(--radius);
+    cursor:pointer;
+  }
+  .join-btn:hover{ background:#B37722; }
+  .usim-reflect-btn{
+    display:inline-block;
+    width:auto;
+    margin:0;
+    padding:7px 14px;
+    font-size:13px;
+    white-space:nowrap;
   }
 
-  return { available:true, total, internetFee, routerFee: actualRouterFee, tvFee, settopFee, bundleDiscount, tvBundleDiscount, tvInfo, settopInfo };
-}
+  .compare-table th.action-col, .compare-table td.action-col{ text-align:center; white-space:nowrap; }
 
-function nearestFeeRangeValue(fee){
-  let best = FEE_RANGES[0].value;
-  FEE_RANGES.forEach(r => { if (fee >= r.value) best = r.value; });
-  return best;
-}
-
-// ---- 공통 유틸 ----
-
-function basicAvailText(count){
-  return count > 0 ? '가입 가능' : '매칭 회선 없음';
-}
-
-function distributeAmount(lines, totalAmount, mode){
-  const n = lines.length;
-  let shares = new Array(n).fill(0);
-  if (totalAmount <= 0 || n === 0) return shares;
-  const feeSum = lines.reduce((a,p)=>a+(Number(p.fee)||0),0);
-  if (mode === 'concentrate') {
-    shares[0] = totalAmount;
-  } else if (mode === 'contribution' && feeSum > 0) {
-    let remaining = totalAmount;
-    lines.forEach((p, i) => {
-      if (i === n - 1) { shares[i] = remaining; }
-      else {
-        const share = Math.round((totalAmount * (Number(p.fee)||0) / feeSum) / 10) * 10;
-        shares[i] = share;
-        remaining -= share;
-      }
-    });
-  } else { // equal
-    let remaining = totalAmount;
-    lines.forEach((p, i) => {
-      if (i === n - 1) { shares[i] = remaining; }
-      else {
-        const share = Math.round((totalAmount / n) / 10) * 10;
-        shares[i] = share;
-        remaining -= share;
-      }
-    });
+  .mini-btn{
+    display:inline-block;
+    padding:5px 10px;
+    font-size:12px;
+    font-weight:600;
+    border:1px solid var(--paper-line);
+    background:#FFFFFF;
+    color:var(--ink);
+    border-radius:6px;
+    cursor:pointer;
+    white-space:nowrap;
+    transition:background .12s ease;
   }
-  return shares;
-}
+  .mini-btn:hover{ background:#F2F1EB; }
+  .mini-btn-primary{
+    border-color:var(--gold);
+    color:var(--gold);
+  }
+  .mini-btn-primary:hover{ background:#FBF4E8; }
+  .card-head .brand{
+    font-family:var(--font-mono);
+    font-size:11px;
+    letter-spacing:0.05em;
+    opacity:.9;
+    margin:0 0 3px;
+    min-height:13px;
+  }
+  .card[data-brand="kt"] .card-head{ background:var(--kt); }
+  .card[data-brand="lg"] .card-head{ background:var(--lg); }
+  .card[data-brand="skb"] .card-head{ background:var(--skb); }
+  .card[data-brand="skt"] .card-head{ background:var(--skt); }
 
-// ---- KT ----
+  .price-block{
+    padding:16px 18px 12px;
+    border-bottom:1px dashed var(--paper-line);
+  }
+  .price-block .amount{
+    font-family:'Inconsolata', monospace;
+    font-size:22px;
+    font-weight:600;
+    color:#1C1E24;
+  }
+  .price-block .amount span{ font-size:13px; font-weight:500; color:#6B6C64; margin-left:4px;}
 
-function tcInternetDiscountByTotal(total, is100){
-  if (total < 22000) return is100 ? 1650 : 2200;
-  if (total < 64900) return is100 ? 3300 : 5500;
-  return 5500;
-}
+  .items{
+    padding:14px 18px 16px;
+    flex:1;
+  }
+  .item-row{
+    display:flex;
+    align-items:baseline;
+    gap:6px;
+    font-size:13px;
+    padding:5px 0;
+    color:#4B4C45;
+  }
+  .item-row .label{ white-space:nowrap; color:#8C877A; }
+  .item-row .dots{ flex:1; border-bottom:1px dotted #C9C4B2; transform:translateY(-4px); }
+  .item-row .value{ white-space:nowrap; font-weight:500; color:#20211D; }
+  .item-row .value.discount{ color:#D9534F; font-weight:600; }
+  .item-row.sub{ padding-left:12px; color:#9C9890; font-size:12px; }
 
-function tcMobileDiscountByTotal(total, is100){
-  if (total < 64900) return 0;
-  if (total < 108900) return is100 ? 3300 : 5500;
-  if (total < 141900) return is100 ? 14300 : 16610;
-  if (total < 174900) return is100 ? 18700 : 22110;
-  return is100 ? 23100 : 27610;
-}
+  .commission-section{
+    border-top:1px solid var(--paper-line);
+    background:#FAFAF7;
+    padding:16px 14px;
+    font-size:12px;
+  }
+  .comm-title{
+    font-family:'Inconsolata', monospace;
+    font-size:11px;
+    font-weight:600;
+    color:var(--ink-dim);
+    margin-bottom:8px;
+    text-transform:uppercase;
+  }
+  .comm-subhead-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:4px;
+  }
+  .comm-subhead{ font-weight:600; color:#3A3C42; }
+  .comm-subhead.large{ font-size:12.5px; color:#1C1E24; }
+  .subtotal{ font-weight:700; color:var(--ink); font-size:12px; }
+  .comm-row{ display:flex; justify-content:space-between; align-items:center; padding:2px 0; color:#5C5E66; font-size:11.5px; }
+  .comm-row.large{ font-size:12.5px; }
+  .comm-row.highlight{ font-weight:600; color:var(--ink); }
+  .comm-group{ margin-bottom:6px; }
+  .comm-group.divider-strong{ margin-top:10px; padding-top:8px; border-top:2px solid var(--paper-line); }
+  .comm-group.divider{ margin-top:8px; padding-top:6px; border-top:1px solid var(--paper-line); }
+  .comm-group.divider-dashed{ margin-top:8px; padding-top:6px; border-top:1px dashed var(--paper-line); }
+  .gift-input{
+    width:120px;
+    text-align:right;
+    padding:5px 8px;
+    font-size:18px;
+    font-family:var(--font-mono);
+    font-weight:700;
+    border:1px solid var(--paper-line);
+    border-radius:4px;
+    background:#FFFFFF;
+    color:#1C1E24;
+  }
+  .gift-input:focus{ outline:none; border-color:var(--gold); }
+  .margin-text{ font-size:14px; font-weight:700; }
 
-function dcMobileDiscountByFee(fee){
-  if (fee >= 77000) return 7000;
-  if (fee >= 61000) return 5000;
-  if (fee >= 37000) return 3000;
-  return 0;
-}
-
-function ktPremiumFamily(lines, speedNum){
-  const count77kPlus = lines.filter(p => (Number(p.fee)||0) >= 77000).length;
-  const avail = (speedNum >= 500 && count77kPlus >= 2 && lines.length >= 2);
-  if (!avail) return { avail:false, internetDiscount:0, lineShares: lines.map(()=>0) };
-
-  const is100 = speedNum === 100;
-  let shares = new Array(lines.length).fill(0);
-  let poolIdx = [], poolFeeSum = 0;
-
-  lines.forEach((line, idx) => {
-    const fee = Number(line.fee) || 0;
-    const is25Eligible = (idx >= 1 && idx <= 6 && fee >= 77000);
-    if (is25Eligible) {
-      let d = Math.round(fee * 0.25 / 10) * 10;
-      if (line.teen && fee >= 80000) {
-        const hasGuardian80k = lines.some((l2, idx2) => idx2 !== idx && (Number(l2.fee)||0) >= 80000);
-        if (hasGuardian80k) d += 5500;
-      }
-      shares[idx] = d;
-    } else {
-      poolIdx.push(idx);
-      poolFeeSum += fee;
-    }
-  });
-
-  const poolMobileTotal = poolFeeSum > 0 ? tcMobileDiscountByTotal(poolFeeSum, is100) : 0;
-  if (poolMobileTotal > 0 && poolIdx.length > 0) {
-    let remaining = poolMobileTotal;
-    poolIdx.forEach((idx, i) => {
-      if (i === poolIdx.length - 1) {
-        shares[idx] = remaining;
-      } else {
-        const share = Math.round((poolMobileTotal * (lines[idx].fee / poolFeeSum)) / 10) * 10;
-        shares[idx] = share;
-        remaining -= share;
-      }
-    });
+  .design-split-grid{
+    display:grid;
+    grid-template-columns:260px 1fr;
+    gap:20px;
+    margin-bottom:32px;
+    align-items:start;
+  }
+  .design-split-grid > *{ min-width:0; }
+  @media (max-width: 900px){
+    .design-split-grid{ grid-template-columns:1fr; }
   }
 
-  return { avail:true, internetDiscount:5500, lineShares:shares };
-}
+  .design-split-grid-hometv{ align-items:stretch; }
+  .design-split-grid-hometv .results{ align-items:stretch; }
+  .design-split-grid-hometv .results .card{ height:100%; }
 
-function ktPremiumSingle(lines, speedNum){
-  const count77kPlus = lines.filter(p => (Number(p.fee)||0) >= 77000).length;
-  const avail = (speedNum >= 500 && count77kPlus >= 1 && lines.length === 1);
-  if (!avail) return { avail:false, internetDiscount:0, lineShares: lines.map(()=>0) };
+  .design-section-title{
+    font-family:'Newsreader', serif;
+    font-size:20px;
+    font-weight:600;
+    color:var(--ink);
+    margin:36px 0 14px;
+    padding-top:24px;
+    border-top:1px solid var(--paper-line);
+  }
+  .top-grid + .design-section-title{
+    margin-top:0;
+    padding-top:0;
+    border-top:none;
+  }
+  .design-section-title + .cs-card{ margin-bottom:20px; }
+  .design-card .control-group:last-child{ margin-bottom:0; }
+  .design-card .control-group{ margin-bottom:22px; }
+  .design-card-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    border-bottom:1px solid var(--paper-line);
+    padding-bottom:10px;
+    margin-bottom:20px;
+  }
+  .design-card-header h3{
+    margin:0;
+    border-bottom:none;
+    padding-bottom:0;
+  }
 
-  const lineShares = lines.map(line => {
-    const fee = Number(line.fee) || 0;
-    return fee >= 77000 ? Math.round(fee * 0.25 / 10) * 10 : 0;
-  });
-  return { avail:true, internetDiscount:5500, lineShares };
-}
+  .switch{
+    position:relative;
+    display:inline-block;
+    width:42px;
+    height:24px;
+    flex-shrink:0;
+  }
+  .switch input{ opacity:0; width:0; height:0; }
+  .switch-slider{
+    position:absolute;
+    cursor:pointer;
+    top:0; left:0; right:0; bottom:0;
+    background:#D8D3C5;
+    border-radius:24px;
+    transition:background .15s ease;
+  }
+  .switch-slider::before{
+    content:"";
+    position:absolute;
+    width:18px; height:18px;
+    left:3px; top:3px;
+    background:#FFFFFF;
+    border-radius:50%;
+    transition:transform .15s ease;
+    box-shadow:0 1px 3px rgba(0,0,0,.25);
+  }
+  .switch input:checked + .switch-slider{ background:#1E7E34; }
+  .switch input:checked + .switch-slider::before{ transform:translateX(18px); }
 
-function computeKTOptions(lines, speedNum, tcDistMode){
-  const is100 = speedNum === 100;
-  const count = lines.length;
-  const sum = lines.reduce((a,p)=>a+(Number(p.fee)||0),0);
+  .mobile-grid-full{ grid-column:1 / -1; }
+  .usim-note{ font-size:12px; color:var(--ink-dim); margin:8px 0 0; }
+  .usim-placeholder{
+    color:var(--ink-dim);
+    font-size:14px;
+    padding:20px;
+    text-align:center;
+    background:#FFF;
+    border:1px dashed var(--paper-line);
+    border-radius:var(--radius);
+  }
+  #mobile-plan-results.results{ display:block; min-width:0; max-width:100%; }
 
-  const tcInternet = count > 0 ? tcInternetDiscountByTotal(sum, is100) : 0;
-  const tcMobileTotal = count > 0 ? tcMobileDiscountByTotal(sum, is100) : 0;
-  const tcShares = distributeAmount(lines, tcMobileTotal, tcDistMode);
+  .usim-added-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+  .usim-added-carrier{
+    flex-shrink:0;
+    font-size:11.5px;
+    font-weight:700;
+    color:#FFFFFF;
+    padding:3px 9px;
+    border-radius:4px;
+  }
+  .usim-added-carrier.carrier-kt{ background:#1C1C1C; }
+  .usim-added-carrier.carrier-lg{ background:#1E50A2; }
+  .usim-added-carrier.carrier-sk{ background:#D6293E; }
+  .usim-added-name{
+    flex:1;
+    min-width:120px;
+    font-size:13.5px;
+    font-weight:600;
+    color:var(--ink);
+  }
+  .usim-synced-badge{
+    display:inline-block;
+    font-size:10.5px;
+    font-weight:700;
+    color:var(--gold);
+    border:1px solid var(--gold);
+    border-radius:3px;
+    padding:1px 5px;
+    margin-left:4px;
+  }
+  .usim-added-fee{
+    flex-shrink:0;
+    font-family:var(--font-mono);
+    font-weight:700;
+    font-size:13.5px;
+    color:var(--ink);
+  }
+  .phone-line{
+    border:1px solid var(--paper-line);
+    border-radius:var(--radius);
+    padding:10px 12px;
+    margin-bottom:8px;
+    background:#FAFAF7;
+    overflow-x:auto;
+  }
+  .phone-remove-btn{
+    appearance:none;
+    border:1px solid var(--paper-line);
+    background:#FAFAF7;
+    color:#D9534F;
+    padding:7px 10px;
+    font-size:12.5px;
+    border-radius:4px;
+    cursor:pointer;
+    margin-left:auto;
+  }
+  .phone-remove-btn:hover{ background:#FDEDEC; }
+  .phone-empty{ color:var(--ink-dim); font-size:13px; padding:8px 0; }
 
-  const dcInternet = count > 0 ? 5500 : 0;
-  const dcShares = lines.map(p => dcMobileDiscountByFee(Number(p.fee)||0));
-  const dcMobileTotal = dcShares.reduce((a,b)=>a+b,0);
+  .family-lines-list{ margin-top:10px; }
+  .family-line-row{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    flex-wrap:wrap;
+  }
+  .family-line-group{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    flex-wrap:wrap;
+  }
+  .family-line-label{
+    flex-shrink:0;
+    font-size:12px;
+    font-weight:700;
+    color:var(--ink-dim);
+  }
+  .family-line-group select{
+    padding:6px 8px;
+    font-size:13px;
+    border:1px solid var(--paper-line);
+    border-radius:4px;
+    background:#FFFFFF;
+    color:var(--ink);
+  }
+  .family-line-add-btn{ margin-top:4px; }
 
-  const pf = ktPremiumFamily(lines, speedNum);
-  const ps = ktPremiumSingle(lines, speedNum);
+  .reco-controls{
+    display:flex;
+    flex-wrap:wrap;
+    gap:20px;
+    margin-bottom:18px;
+    padding-bottom:16px;
+    border-bottom:1px solid var(--paper-line);
+  }
+  .reco-cards{
+    display:grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap:14px;
+    margin-bottom:20px;
+  }
+  .reco-product-card{
+    border:1px solid var(--paper-line);
+    border-radius:var(--radius);
+    padding:14px 16px;
+    background:#FFFFFF;
+  }
+  .reco-product-card-title{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    font-size:14px;
+    font-weight:700;
+    color:var(--ink);
+    padding-bottom:10px;
+    margin-bottom:8px;
+    border-bottom:1px solid var(--paper-line);
+  }
+  .reco-product-total{
+    font-family:var(--font-mono);
+    font-size:15px;
+    font-weight:700;
+    color:var(--gold);
+  }
+  .reco-usim-badge{
+    display:inline-block;
+    font-size:10.5px;
+    font-weight:700;
+    color:#1E50A2;
+    border:1px solid #1E50A2;
+    border-radius:3px;
+    padding:1px 5px;
+    margin-left:4px;
+  }
+  .reco-product-line{
+    display:flex;
+    justify-content:space-between;
+    font-size:13px;
+    color:var(--ink-dim);
+    padding:3px 0;
+  }
+  .reco-usim-block{ margin-top:6px; }
+  .usim-tier-buttons{
+    display:flex;
+    gap:8px;
+    margin:8px 0 14px;
+    flex-wrap:wrap;
+  }
+  .usim-tier-btn{
+    appearance:none;
+    border:1px solid var(--paper-line);
+    background:#FFFFFF;
+    color:var(--ink-dim);
+    padding:8px 16px;
+    font-size:13px;
+    font-weight:600;
+    border-radius:var(--radius);
+    cursor:pointer;
+  }
+  .usim-tier-btn:hover{ border-color:var(--gold); background:#FFFDF9; }
+  .usim-tier-btn.active{
+    border-color:var(--gold);
+    background:var(--gold);
+    color:#FFFFFF;
+  }
+  .reco-usim-list .phone-line{ margin-bottom:6px; }
 
-  return [
-    {
-      key:'kt-total', name:'총액 결합', avail: count > 0,
-      availText: basicAvailText(count),
-      internetDiscount: tcInternet, lineShares: tcShares,
-      total: tcInternet + tcMobileTotal, hasDistMode: true,
-      desc: 'KT 매칭 회선의 요금제 합산액 구간에 따라 인터넷 할인과 모바일 할인 총액이 정해지고, 모바일 할인 총액은 아래 배분 방식대로 회선별로 나눠집니다.'
-    },
-    {
-      key:'kt-flat', name:'정액 결합', avail: count > 0,
-      availText: basicAvailText(count),
-      internetDiscount: dcInternet, lineShares: dcShares,
-      total: dcInternet + dcMobileTotal,
-      desc: '인터넷 할인 5,500원 고정, 회선별 요금제 구간(37,000/61,000/77,000원 이상)에 따라 회선마다 개별 할인이 적용됩니다.'
-    },
-    {
-      key:'kt-premium-family', name:'프리미엄 가족결합', avail: pf.avail,
-      availText: pf.avail ? '가입 가능' : '조건 미달',
-      reason: pf.avail ? null : '500M↑, 77,000원↑ 요금제 2회선 필요',
-      internetDiscount: pf.internetDiscount, lineShares: pf.lineShares,
-      total: pf.internetDiscount + pf.lineShares.reduce((a,b)=>a+b,0),
-      desc: '인터넷 500M 이상 + 77,000원 이상 요금제 2회선 이상일 때 가능. 2~7번째 회선 중 77,000원 이상 회선은 25% 할인(청소년 조건 충족 시 5,500원 추가), 나머지 회선은 총액결합 모바일 할인 풀을 요금 비율로 배분받습니다.'
-    },
-    {
-      key:'kt-premium-single', name:'프리미엄 싱글결합', avail: ps.avail,
-      availText: ps.avail ? '가입 가능' : '조건 미달',
-      reason: ps.avail ? null : '500M↑, 77,000원↑ 요금제 1회선 전용',
-      internetDiscount: ps.internetDiscount, lineShares: ps.lineShares,
-      total: ps.internetDiscount + ps.lineShares.reduce((a,b)=>a+b,0),
-      desc: '인터넷 500M 이상 + 77,000원 이상 요금제 1회선만 있을 때 가능. 인터넷 5,500원 할인 + 해당 회선 25% 할인이 적용됩니다.'
+  .phone-teen-toggle{
+    display:flex;
+    align-items:center;
+    gap:4px;
+    font-size:12px;
+    color:var(--ink-dim);
+    white-space:nowrap;
+    flex-shrink:0;
+    cursor:pointer;
+    margin-left:auto;
+  }
+  .phone-teen-toggle input{ cursor:pointer; }
+
+  .fam-accordion-group{
+    display:flex;
+    align-items:stretch;
+    gap:6px;
+    margin-bottom:6px;
+  }
+  .fam-accordion-group:last-child{ margin-bottom:0; }
+  .fam-accordion-carrier{
+    writing-mode:vertical-rl;
+    text-orientation:upright;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-family:var(--font-mono);
+    font-size:10px;
+    font-weight:700;
+    color:var(--ink-dim);
+    letter-spacing:.05em;
+    flex-shrink:0;
+    width:16px;
+    border-radius:4px;
+    background:#F0EEE5;
+  }
+  .fam-accordion-carrier.carrier-kt{ background:#1C1C1C; color:#FFFFFF; }
+  .fam-accordion-carrier.carrier-lg{ background:#1E50A2; color:#FFFFFF; }
+  .fam-accordion-carrier.carrier-sk{ background:#D6293E; color:#FFFFFF; }
+  .fam-accordion-items{
+    flex:1;
+    min-width:0;
+    display:flex;
+    flex-direction:column;
+    gap:3px;
+  }
+  .fam-accordion-item{
+    border:1px solid var(--paper-line);
+    border-radius:6px;
+    background:#FFFFFF;
+    overflow:hidden;
+  }
+  .fam-accordion-item.disabled{ opacity:.55; }
+  .fam-accordion-item.max-discount{ border:2px solid #D6293E; }
+  .fam-accordion-header{
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+    padding:6px 9px;
+    cursor:pointer;
+    user-select:none;
+  }
+  .fam-accordion-header:hover:not(.disabled *){ background:#FAFAF7; }
+  .fam-accordion-row1{
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .fam-accordion-row2{
+    font-size:10.5px;
+    color:var(--ink-dim);
+    line-height:1.4;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .fam-accordion-name{
+    font-size:12px;
+    font-weight:600;
+    color:#1C1E24;
+    flex:1;
+  }
+  .fam-badge{
+    font-family:var(--font-mono);
+    font-size:10px;
+    font-weight:600;
+    padding:2px 7px;
+    border-radius:10px;
+    white-space:nowrap;
+  }
+  .fam-badge.badge-avail{ background:#E7F5EF; color:#1E7E34; }
+  .fam-badge.badge-unavail{ background:#F2F1EB; color:#8C877A; }
+  .fam-accordion-total{
+    font-family:var(--font-mono);
+    font-size:12.5px;
+    font-weight:700;
+    color:var(--gold);
+    white-space:nowrap;
+    min-width:62px;
+    text-align:right;
+  }
+  .fam-accordion-chevron{
+    color:var(--ink-dim);
+    font-size:11px;
+    width:10px;
+    text-align:center;
+  }
+  .fam-detail-panel{
+    border-top:1px dashed var(--paper-line);
+    background:#FAFAF7;
+    padding:8px 10px 10px;
+  }
+  .fam-detail-desc{
+    font-size:11px;
+    color:#5C5E66;
+    line-height:1.5;
+    margin-bottom:8px;
+  }
+  .fam-detail-distmode{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    margin-bottom:8px;
+  }
+  .fam-detail-distmode label{
+    font-family:var(--font-mono);
+    font-size:10px;
+    color:var(--ink-dim);
+    font-weight:600;
+    white-space:nowrap;
+  }
+  .fam-detail-distmode select{
+    appearance:none;
+    flex:1;
+    padding:4px 6px;
+    font-size:11.5px;
+    border:1px solid var(--paper-line);
+    border-radius:4px;
+    background:#FFFFFF;
+    color:var(--ink);
+  }
+
+  .fam-detail-line-row, .bar-line, .bar-mobile-detail-row, .bar-subline {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+  }
+  .discount-info { text-align: left; }
+  .discount-amount { text-align: right; }
+
+  .fam-detail-line-row{
+    padding:2px 0;
+    font-size:11.5px;
+    color:#4B4C45;
+    border-bottom:1px dotted #E0DCCF;
+  }
+  .fam-detail-line-row:last-child{ border-bottom:none; }
+  .fam-detail-line-row.fam-detail-header{
+    font-weight:700;
+    color:#1C1E24;
+    border-bottom:1px solid var(--paper-line);
+    margin-bottom:2px;
+  }
+
+  .fam-table-note{
+    font-size:12px;
+    color:var(--ink-dim);
+    margin-top:10px;
+    line-height:1.55;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px dotted var(--paper-line);
+    font-size: 14px;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row span:first-child { color: var(--ink-dim); }
+  .info-row span:last-child { font-weight: 600; color: #20211D; }
+  .info-row.main-label span:first-child { font-size: 16px; font-weight: 700; color: #1C1E24; }
+  .info-row.main-label span:last-child { font-size: 15px; }
+  .info-row.section-start {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--paper-line);
+  }
+  .sub-item-row { padding-left: 14px; font-size: 13.5px; }
+  .sub-item-row span:first-child { color: #8C8F96; }
+  
+  .total-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 2px solid var(--paper-line);
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .total-row .amount {
+    font-family: var(--font-mono);
+    font-size: 24px;
+    color: var(--gold);
+  }
+
+  .gift-section-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ink);
+    margin: 20px 0 10px;
+  }
+
+  .cs-layout{
+    display:grid;
+    grid-template-columns: 320px 1fr 340px 280px;
+    grid-template-rows: auto auto auto auto 1fr;
+    grid-template-areas:
+      "cust label-home label-home label-home"
+      "cust prod-home  final-home comm-home"
+      "cust label-usim label-usim label-usim"
+      "cust prod-usim  final-usim comm-usim"
+      "cust prod-combo summary    comm-gap";
+    gap:20px;
+    align-items:stretch;
+  }
+  @media (max-width: 1180px){
+    .cs-layout{
+      grid-template-columns:1fr;
+      grid-template-rows:none;
+      grid-template-areas:
+        "cust"
+        "label-home"
+        "prod-home"
+        "final-home"
+        "comm-home"
+        "label-usim"
+        "prod-usim"
+        "final-usim"
+        "comm-usim"
+        "prod-combo"
+        "summary";
     }
-  ];
-}
+    .cs-col{ height:auto !important; }
+  }
+  .cs-col-customer{ grid-area: cust; }
+  .area-label-home{ grid-area: label-home; }
+  .area-label-usim{ grid-area: label-usim; }
+  .area-prod-home{ grid-area: prod-home; }
+  .area-prod-usim{ grid-area: prod-usim; }
+  .area-prod-combo{ grid-area: prod-combo; }
+  .area-comm-home{ grid-area: comm-home; }
+  .area-comm-usim{ grid-area: comm-usim; }
+  .area-final-home{ grid-area: final-home; }
+  .area-final-usim{ grid-area: final-usim; }
+  .area-summary{ grid-area: summary; }
+  .cs-group-label{
+    font-family:'Newsreader', serif;
+    font-size:18px;
+    font-weight:600;
+    color:var(--ink);
+    margin:0;
+    padding-bottom:6px;
+    border-bottom:1px solid var(--paper-line);
+  }
+  .cs-col{
+    display:flex;
+    flex-direction:column;
+    gap:24px;
+    min-height:0;
+  }
+  .cs-col > .cs-card,
+  .cs-col > .cs-summary-panel{
+    flex:1;
+    min-height:0;
+  }
+  .cs-summary-panel{
+    display:flex;
+    flex-direction:column;
+    background:var(--bg-raised);
+    border:1px solid var(--paper-line);
+    border-radius:var(--radius);
+    padding:20px;
+  }
+  .cs-summary-panel h3{
+    margin:0;
+    font-size:20px;
+    font-weight:700;
+    font-family:'Pretendard', sans-serif;
+  }
+  .cs-summary-panel .js-desc{
+    font-size:12px;
+    color:var(--ink-dim);
+    margin:0 0 16px;
+    padding-bottom:12px;
+    border-bottom:1px solid var(--paper-line);
+  }
+  .js-product-block{
+    margin-bottom:10px;
+    padding-bottom:8px;
+    border-bottom:1px dashed var(--paper-line);
+  }
+  .js-product-block:last-child{ border-bottom:none; margin-bottom:0; padding-bottom:0; }
+  .js-product-title{
+    font-weight:700;
+    font-size:12px;
+    color:#1C1E24;
+    margin-bottom:3px;
+  }
+  .js-compact-line{
+    font-size:12px;
+    line-height:1.55;
+    color:var(--ink);
+  }
+  .js-header-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:8px;
+    margin-bottom:4px;
+  }
+  .js-copy-btn{
+    appearance:none;
+    flex-shrink:0;
+    border:1px solid var(--paper-line);
+    background:#FAFAF7;
+    color:var(--ink);
+    padding:5px 10px;
+    font-size:11.5px;
+    font-weight:600;
+    border-radius:4px;
+    cursor:pointer;
+  }
+  .js-copy-btn:hover{ border-color:var(--gold); color:var(--gold); }
+  .js-section{
+    margin-bottom:10px;
+    padding-bottom:8px;
+    border-bottom:1px dashed var(--paper-line);
+  }
+  .js-section:last-child{ border-bottom:none; margin-bottom:0; }
+  .js-section-title{
+    font-family:var(--font-mono);
+    font-size:10.5px;
+    font-weight:700;
+    color:var(--gold);
+    text-transform:uppercase;
+    letter-spacing:.03em;
+    margin-bottom:5px;
+  }
+  .js-row{
+    display:flex;
+    justify-content:space-between;
+    gap:8px;
+    font-size:12px;
+    line-height:1.4;
+    padding:1.5px 0;
+    color:var(--ink);
+  }
+  .js-row span:first-child{ color:var(--ink-dim); white-space:nowrap; }
+  .js-row span:last-child{ font-weight:600; text-align:right; word-break:break-all; }
+  .js-empty{ font-size:12px; color:var(--ink-dim); font-style:italic; }
 
-// ---- LG ----
+  .bottom-bar{
+    display:flex;
+    position:fixed;
+    left:0; right:0; bottom:0;
+    z-index:400;
+    background:#1a1a1a !important;
+    border-top:2px solid #333 !important;
+    box-shadow:0 -6px 16px rgba(0,0,0,0.4);
+    color: #f8f9fa !important;
+  }
+  .bottom-bar-inner{
+    display:grid;
+    grid-template-columns:repeat(4, 1fr);
+    max-width:1440px;
+    width:100%;
+    margin:0 auto;
+  }
+  .bar-cell{
+    position:relative;
+    padding:12px 16px;
+    border-left:1px solid #333;
+  }
+  .bar-cell:first-child{ border-left:none; }
 
-function computeLGOptions(lines, speedNum){
-  const count = lines.length;
-  const internetMap = { 100:5500, 500:9900, 1000:13200 };
-  const internetDiscount = count > 0 ? (internetMap[speedNum] || 0) : 0;
+  .bar-cell-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    border-bottom-width: 4px;
+    border-bottom-style: solid;
+  }
+  .bar-cell-home .bar-cell-head{ border-bottom-color:var(--kt); }
+  .bar-cell-mobile .bar-cell-head{ border-bottom-color:var(--gold); }
+  .bar-cell-combo .bar-cell-head{ border-bottom-color:var(--lg); }
+  .bar-cell-gift .bar-cell-head{ border-bottom-color:var(--skb); }
 
-  let countBucket;
-  if (count === 1) countBucket = 1;
-  else if (count === 2) countBucket = 2;
-  else if (count === 3) countBucket = 3;
-  else countBucket = 4;
+  .bar-cell-head-clickable{ cursor:pointer; padding-bottom:8px; }
+  .bar-cell-title{
+    flex:1;
+    font-size:13.5px;
+    font-weight:700;
+    color:#ffffff !important;
+  }
+  .bar-cell-summary{
+    font-family:'Inconsolata', monospace;
+    font-size:12.5px;
+    font-weight:700;
+    color:var(--gold);
+    white-space:nowrap;
+  }
+  .bar-cell-chevron{ font-size:11px; color:#bbb; }
 
-  const matrix = {
-    1: { low:0, mid:0, high:0 },
-    2: { low:2200, mid:3300, high:4400 },
-    3: { low:3300, mid:5500, high:6600 },
-    4: { low:4400, mid:6600, high:8800 }
-  };
-  const lineShares = lines.map(p => {
-    const fee = Number(p.fee) || 0;
-    let tier = 'low';
-    if (fee >= 88000) tier = 'high';
-    else if (fee >= 69000) tier = 'mid';
-    return count > 0 ? matrix[countBucket][tier] : 0;
-  });
-  const mobileTotal = lineShares.reduce((a,b)=>a+b,0);
+  .bar-line span:last-child, .bar-mobile-detail-row span:last-child{
+    font-family:var(--font-mono);
+    font-weight:600;
+    white-space:nowrap;
+    color: #4dabf7;
+  }
+  .bar-subline{ font-size:11px; color:#aaa; padding:1px 0; }
+  
+  .bar-total{
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px dashed #444;
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 13.5px;
+    color: #fff;
+    text-align: right;
+  }
+  .bar-empty{ font-size:11.5px; color:#888; font-style:italic; padding:4px 0; }
 
-  // ---- 투게더결합할인 ----
-  const togetherQualCount = lines.filter(p => (Number(p.fee)||0) >= 85000).length;
-  const togetherEligible = speedNum >= 500 && togetherQualCount > 0;
-  let togetherPerLine = 0;
-  if (togetherQualCount === 2) togetherPerLine = 10000;
-  else if (togetherQualCount === 3) togetherPerLine = 14000;
-  else if (togetherQualCount >= 4) togetherPerLine = 20000;
-  const togetherLineShares = togetherEligible
-    ? lines.map(p => ((Number(p.fee)||0) >= 85000 ? togetherPerLine + (p.teen ? 10000 : 0) : 0))
-    : lines.map(()=>0);
-  const togetherInternetDiscount = togetherEligible ? 11000 : 0;
-  const togetherMobileTotal = togetherLineShares.reduce((a,b)=>a+b,0);
+  .bar-detail{
+    display:none;
+    position:absolute;
+    left:0; right:0; bottom:100%;
+    max-height:240px;
+    overflow-y:auto;
+    background:#222;
+    border:1px solid #444;
+    border-bottom:none;
+    border-radius:var(--radius) var(--radius) 0 0;
+    box-shadow:0 -6px 16px rgba(0,0,0,0.5);
+    padding:10px 14px;
+    color: #f8f9fa;
+  }
+  .bar-detail.open{ display:block; }
+  .bar-mobile-detail-row{ padding:4px 0; border-bottom:1px dashed #333; font-size:12px; }
+  .bar-mobile-detail-row:last-child{ border-bottom:none; }
 
-  return [
-    {
-      key:'lg-easy-family', name:'참쉬운가족결합', avail: count > 0,
-      availText: basicAvailText(count),
-      internetDiscount, lineShares, total: internetDiscount + mobileTotal,
-      desc: 'LG 매칭 회선 수와 인터넷 속도 구간에 따라 인터넷 할인이 정해지고, 회선별 요금제 구간(저가/중가/고가)에 따라 개별 모바일 할인이 적용됩니다.'
-    },
-    {
-      key:'lg-together', name:'투게더결합', avail: togetherEligible,
-      availText: togetherEligible ? '가입 가능' : '조건 미달',
-      reason: togetherEligible ? null : '500M↑ 인터넷 + 85,000원↑ 요금제 1회선 필요',
-      internetDiscount: togetherInternetDiscount, lineShares: togetherLineShares,
-      total: togetherInternetDiscount + togetherMobileTotal,
-      desc: '인터넷 500M 이상 + 매칭 회선 중 85,000원 이상 요금제 1회선 이상일 때 가능(알뜰폰 제외 LG 휴대폰 기준). 인터넷 할인 11,000원 고정, 85,000원 이상인 회선만 회선 수로 카운트되어 그 수에 따라 회선당 정액 할인(2회선 10,000원/3회선 14,000원/4회선 이상 20,000원)이 적용되며(85,000원 미만 회선은 할인 대상에서 제외), 만 18세 이하 청소년 회선은 회선당 10,000원이 추가로 할인됩니다.'
-    }
-  ];
-}
+  @media (max-width: 720px){
+    .bottom-bar-inner{ grid-template-columns:repeat(2, 1fr); }
+    .bar-cell{ padding:10px 12px; }
+    .bar-cell:nth-child(3){ border-left:1px solid #333; }
+  }
 
-// ---- 유심(모바일) 결합개통 수수료 구간표 ----
-// carrier_commissions 테이블(product_type=USIM_MOBILE)의 요금제군별 dongpan_fee(결합개통)를
-// usim_plans의 monthly_fee 구간으로 환산한 표입니다. 요금제군 자체가 DB에 숫자 구간으로
-// 저장되어 있지 않아 실제 요금제 목록을 기준으로 구간을 정리했습니다.
-// (요금제군이 신설/변경되면 이 표도 함께 업데이트가 필요합니다.)
-const USIM_COMMISSION_BANDS = {
-  SK: [
-    { max: 38999, fee: 320000 },
-    { max: 48999, fee: 370000 },
-    { max: 68999, fee: 410000 },
-    { max: 88999, fee: 460000 },
-    { max: Infinity, fee: 530000 }
-  ],
-  KT: [
-    { max: 43999, fee: 40000 },
-    { max: 58999, fee: 300000 },
-    { max: 69999, fee: 340000 },
-    { max: 74999, fee: 370000 },
-    { max: 84999, fee: 410000 },
-    { max: 94999, fee: 440000 },
-    { max: 104999, fee: 460000 },
-    { max: 114999, fee: 480000 },
-    { max: Infinity, fee: 490000 }
-  ],
-  LG: [
-    { max: 32999, fee: 40000 },
-    { max: 54999, fee: 200000 },
-    { max: 60999, fee: 300000 },
-    { max: 69999, fee: 340000 },
-    { max: 74999, fee: 370000 },
-    { max: 84999, fee: 410000 },
-    { max: 94999, fee: 440000 },
-    { max: 104999, fee: 460000 },
-    { max: 114999, fee: 480000 },
-    { max: Infinity, fee: 490000 }
-  ]
-};
-
-function getUsimCommission(carrier, monthlyFee){
-  const bands = USIM_COMMISSION_BANDS[carrier];
-  const fee = Number(monthlyFee) || 0;
-  if (!bands) return 0;
-  const band = bands.find(b => fee <= b.max);
-  return band ? band.fee : 0;
-}
-
-// ---- SKB / SKT ----
-
-function computeSKOptions(lines, speedNum, groupKey){
-  const count = lines.length;
-  const internetMap = { 100:4400, 500:11000, 1000:13200 };
-  const internetDiscount = count > 0 ? (internetMap[speedNum] || 0) : 0;
-
-  let mobileTotal = 0;
-  if (count === 1) mobileTotal = 3500;
-  else if (count === 2) mobileTotal = 3500 * 2;
-  else if (count === 3) mobileTotal = 6000 * 3;
-  else if (count >= 4) mobileTotal = 18000;
-
-  const lineShares = distributeAmount(lines, mobileTotal, 'equal');
-
-  return [
-    {
-      key:`sk-${groupKey}`, name:'요즘가족결합', avail: count > 0,
-      availText: basicAvailText(count),
-      internetDiscount, lineShares, total: internetDiscount + mobileTotal,
-      desc: 'SK 매칭 회선 수와 인터넷 속도 구간에 따라 인터넷 할인이 정해지고, 모바일 할인 총액은 회선 수 기준으로 산정됩니다(회선별 금액은 이해를 돕기 위한 균등 배분 표시입니다).'
-    }
-  ];
-}
+  .toast-container{
+    position:fixed;
+    top:20px; right:20px;
+    z-index:2000;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    pointer-events:none;
+  }
+  .toast{
+    background:#1C1E24;
+    color:#fff;
+    font-size:13.5px;
+    font-weight:600;
+    padding:12px 18px;
+    border-radius:var(--radius);
+    box-shadow:0 10px 30px -8px rgba(0,0,0,.35);
+    border-left:4px solid var(--gold);
+    opacity:0;
+    transform:translateY(-8px);
+    transition:opacity .2s ease, transform .2s ease;
+    max-width:320px;
+  }
+  .toast.toast-visible{ opacity:1; transform:translateY(0); }
