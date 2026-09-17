@@ -153,6 +153,8 @@ async function handleLogin(){
   closeLoginModal();
   if (DATA) { await loadFinanceData(); render(); }
   renderReflectedProducts();
+  if (typeof renderRecoCards === 'function') renderRecoCards();
+  if (typeof fetchRecoUsimPlans === 'function' && recoUsimTier) fetchRecoUsimPlans(recoUsimTier);
 }
 
 async function handleLogout(){
@@ -163,4 +165,6 @@ async function handleLogout(){
   updateAuthUI();
   if (DATA) render();
   renderReflectedProducts();
+  if (typeof renderRecoCards === 'function') renderRecoCards();
+  if (typeof fetchRecoUsimPlans === 'function' && recoUsimTier) fetchRecoUsimPlans(recoUsimTier);
 }
