@@ -628,17 +628,18 @@ function renderRecoCards(){
     const settopName = price.settopInfo ? price.settopInfo.name : '기본셋톱';
 
     const promo = PROMOTION_DATA[c] || { giftCard: 60000, cash: 340000 };
-    const benefitTotal = (promo.giftCard || 0) + (promo.cash || 0);
+    const userGiftVal = customGiftValues[c] !== undefined ? customGiftValues[c] : (promo.maxLimit || (promo.giftCard + promo.cash));
+    const calcCash = Math.max(0, userGiftVal - (promo.giftCard || 0));
 
     let commHtml = '';
     if (isLoggedIn) {
       const comm = lookupCommission(c, speedNum, tvTier);
-      const margin = comm.totalComm - benefitTotal;
+      const margin = comm.totalComm - userGiftVal;
       commHtml = `
         <div class="info-row main-label section-start"><span>대리점 판매 수수료</span><span>${comm.totalComm.toLocaleString()}원</span></div>
-        <div class="info-row sub-item-row"><span>└ 인터넷 수수료</span><span>${comm.internetComm.toLocaleString()}원</span></div>
-        ${tvTier !== 'none' ? `<div class="info-row sub-item-row"><span>└ TV 수수료</span><span>${comm.tvComm.toLocaleString()}원</span></div>` : ''}
-        <div class="total-row"><span>대리점 최종 마진</span><span class="amount" style="color:${margin >= 0 ? '#1E7E34' : '#D9534F'};">${margin.toLocaleString()}원</span></div>
+        <div class="info-row sub-item-row"><span>인터넷 수수료</span><span>${comm.internetComm.toLocaleString()}원</span></div>
+        ${tvTier !== 'none' ? `<div class="info-row sub-item-row"><span>TV 수수료</span><span>${comm.tvComm.toLocaleString()}원</span></div>` : ''}
+        <div class="total-row reco-margin-row"><span>최종마진</span><span class="amount" style="color:${margin >= 0 ? '#1E7E34' : '#D9534F'};">${margin.toLocaleString()}원</span></div>
       `;
     }
 
@@ -648,18 +649,24 @@ function renderRecoCards(){
           <span>${CARRIER_LABEL[c]}${needsUsim ? ' <span class="reco-usim-badge">+유심</span>' : ''}</span>
           <span class="reco-product-total">${(price.total || 0).toLocaleString()}원</span>
         </div>
-        <div class="info-row main-label"><span>인터넷</span><span>${SPEED_LABEL[recoState.speed] || ''} (${(price.internetFee || 0).toLocaleString()}원)</span></div>
-        <div class="info-row sub-item-row"><span>└ 공유기</span><span>${ROUTER_LABEL[recoState.router] || ''} (${(price.routerFee || 0).toLocaleString()}원)</span></div>
-        ${price.bundleDiscount ? `<div class="info-row sub-item-row"><span>└ 인터넷 결합할인</span><span>-${price.bundleDiscount.toLocaleString()}원</span></div>` : ''}
+        <div class="info-row main-label"><span>인터넷(${SPEED_LABEL[recoState.speed] || ''})</span><span>${(price.internetFee || 0).toLocaleString()}원</span></div>
+        <div class="info-row sub-item-row"><span>공유기</span><span>${ROUTER_LABEL[recoState.router] || ''}(${(price.routerFee || 0).toLocaleString()}원)</span></div>
+        ${price.bundleDiscount ? `<div class="info-row sub-item-row"><span>인터넷결합할인</span><span>-${price.bundleDiscount.toLocaleString()}원</span></div>` : ''}
         ${tvTier !== 'none' ? `
-          <div class="info-row main-label section-start"><span>TV 요금제</span><span>${tvName} (${tvChannels}채널, ${(price.tvFee || 0).toLocaleString()}원)</span></div>
-          <div class="info-row sub-item-row"><span>└ 셋탑박스</span><span>${settopName} (${(price.settopFee || 0).toLocaleString()}원)</span></div>
-          ${price.tvBundleDiscount ? `<div class="info-row sub-item-row"><span>└ TV 결합할인</span><span>-${price.tvBundleDiscount.toLocaleString()}원</span></div>` : ''}
+          <div class="info-row main-label section-start"><span>TV(${tvName}/${tvChannels}채널)</span><span>${(price.tvFee || 0).toLocaleString()}원</span></div>
+          <div class="info-row sub-item-row"><span>셋탑박스</span><span>${settopName}(${(price.settopFee || 0).toLocaleString()}원)</span></div>
+          ${price.tvBundleDiscount ? `<div class="info-row sub-item-row"><span>TV결합할인</span><span>-${price.tvBundleDiscount.toLocaleString()}원</span></div>` : ''}
         ` : ''}
-        <div class="gift-section-title">정산 및 혜택 상세</div>
-        <div class="info-row"><span>실제 지급 사은품 총액</span><span style="color:var(--gold); font-weight:700;">${benefitTotal.toLocaleString()}원</span></div>
-        <div class="info-row sub-item-row"><span>└ 상품권</span><span>${(promo.giftCard || 0).toLocaleString()}원</span></div>
-        <div class="info-row sub-item-row"><span>└ 현금</span><span>${(promo.cash || 0).toLocaleString()}원</span></div>
+        <div class="gift-section-title section-start">정산 및 혜택 상세</div>
+        <div class="info-row reco-gift-row">
+          <span>실제 지급 사은품</span>
+          <span>
+            <input type="text" inputmode="numeric" pattern="[0-9]*" class="gift-input" value="${userGiftVal.toLocaleString()}"
+                   onchange="handleGiftInputChange('${c}', this.value)" onfocus="this.select()"> 원
+          </span>
+        </div>
+        <div class="info-row sub-item-row"><span>상품권</span><span>${(promo.giftCard || 0).toLocaleString()}원</span></div>
+        <div class="info-row sub-item-row"><span>현금</span><span>${calcCash.toLocaleString()}원</span></div>
         ${commHtml}
       </div>
     `;
@@ -1112,6 +1119,7 @@ function handleGiftInputChange(carrier, rawVal) {
   const numVal = parseInt(rawVal.replace(/[^0-9]/g, ''), 10);
   customGiftValues[carrier] = !isNaN(numVal) ? numVal : 0;
   render();
+  if (typeof renderRecoCards === 'function') renderRecoCards();
 }
 
 function buildProductSummaryLines(p){
