@@ -337,18 +337,19 @@ table.cust-wide-table .cs-money-cell input.cs-money-input{ width:auto; flex:1 1 
             <div class="cs-inline-form-group">
               <label>휴대폰 통신사</label>
               <select class="cs-w-carrier" id="cust-mobile-carrier" onchange="syncToDesignPhones()">
+                <option value="확인안됨">확인안됨</option>
                 <option value="KT">KT</option>
                 <option value="LG">LG</option>
                 <option value="SK">SK</option>
                 <option value="KT알뜰">KT알뜰</option>
                 <option value="LG알뜰">LG알뜰</option>
                 <option value="SK알뜰">SK알뜰</option>
-                <option value="확인안됨">확인안됨</option>
               </select>
             </div>
             <div class="cs-inline-form-group">
               <label>요금 구간</label>
               <select class="cs-w-fee" id="cust-mobile-fee" onchange="syncToDesignPhones()">
+                <option value="">확인안됨</option>
                 <option value="25000">3만원 이하</option>
                 <option value="30000">3만원대</option>
                 <option value="40000">4만원대</option>
@@ -1448,8 +1449,16 @@ function handleGiftInputChange(carrier, rawVal) {
 
 function buildProductSummaryLines(p){
   if (p.type === 'usim') {
-    const lines = [`${p.planName} · 월 ${p.fee.toLocaleString()}원${p.contractFee != null ? ` (약정후 ${p.contractFee.toLocaleString()}원)` : ''}`];
-    lines.push(`데이터 ${p.dataAllowance} · 통화 ${p.voiceAllowance} · 문자 ${p.smsAllowance}`);
+    const commission = isLoggedIn ? getUsimCommission(p.carrier, Number(p.fee) || 0) : null;
+    const gift = commission != null ? Math.max(0, commission - 150000) : null;
+    const lines = [p.planName];
+    lines.push(`월요금: ${p.fee.toLocaleString()}원`);
+    if (p.contractFee != null) lines.push(`약정후: ${p.contractFee.toLocaleString()}원`);
+    lines.push(`데이터: ${p.dataAllowance}`);
+    if (isLoggedIn) {
+      lines.push(`사은품: ${gift.toLocaleString()}원`);
+      lines.push(`수수료: ${commission.toLocaleString()}원`);
+    }
     return lines;
   }
   const lines = [];
@@ -1458,7 +1467,11 @@ function buildProductSummaryLines(p){
     lines.push(`TV(${p.tvName}/${p.tvChannels}채널)+셋탑(${p.settopLabel})`);
   }
   lines.push(`월요금 ${p.totalFee.toLocaleString()}원`);
-  lines.push(`사은품 총 ${p.benefitTotal.toLocaleString()}원 (상 ${p.giftCard.toLocaleString()}원,현 ${p.cash.toLocaleString()}원)`);
+  lines.push(`사은품 ${p.benefitTotal.toLocaleString()}원 (상 ${p.giftCard.toLocaleString()}원,현 ${p.cash.toLocaleString()}원)`);
+  if (isLoggedIn) {
+    const comm = lookupCommission(p.carrierKey, p.speedNum, p.tvTier);
+    lines.push(`수수료 ${comm.totalComm.toLocaleString()}원`);
+  }
   return lines;
 }
 
