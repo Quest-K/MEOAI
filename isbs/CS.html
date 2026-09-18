@@ -149,6 +149,12 @@
 .cust-status-chip.stage-3{ background:#E9F6EE; color:#1E7E34; }
 .cust-status-chip.stage-4{ background:#FFF4E0; color:#B77400; }
 .cust-status-chip.stage-5{ background:#FDECEC; color:#B3001B; }
+select.cust-status-chip{
+  border:none; cursor:pointer; font-family:inherit;
+  appearance:none; -webkit-appearance:none; -moz-appearance:none;
+}
+select.cust-status-chip:focus{ outline:2px solid var(--gold); outline-offset:1px; }
+select.cust-status-chip:disabled{ opacity:.6; cursor:wait; }
 
 .cust-form-grid{ display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:10px; }
 @media (max-width:1180px){ .cust-form-grid{ grid-template-columns:repeat(2, minmax(0,1fr)); } }
@@ -189,7 +195,9 @@ table.cust-wide-table input[type=text], table.cust-wide-table input[type=number]
 table.cust-wide-table td.col-actions{ white-space:nowrap; text-align:right; }
 table.cust-wide-table td.col-final{ text-align:center; }
 .cs-money-input{ text-align:right; }
-.cs-money-suffix{ font-size:11px; color:#888; margin-left:2px; white-space:nowrap; }
+table.cust-wide-table .cs-money-cell{ display:flex; align-items:center; gap:4px; }
+table.cust-wide-table .cs-money-cell input.cs-money-input{ width:auto; flex:1 1 auto; min-width:0; }
+.cs-money-suffix{ font-size:11px; color:#888; white-space:nowrap; flex:0 0 auto; }
 .wide-table-empty{ padding:14px 10px; font-size:12px; color:#999; }
 .wide-table-foot{ padding:8px 10px; border-top:1px solid #F0F0F0; }
 .mini-btn-row{ display:inline-flex; gap:4px; }
@@ -2179,9 +2187,32 @@ function renderCustomerList(rows, emptyText){
       <span>${c.contact || '-'}</span>
       <span class="cust-row-sub">${c.guided_carrier || '-'} ${c.guided_internet_speed || ''}</span>
       <span class="cust-row-sub">${formatDateShort(c.updated_at)}</span>
-      <span class="cust-status-chip stage-${getFunnelStage(c.funnel_status)}">${c.funnel_status || '-'}</span>
+      <select class="cust-status-chip stage-${getFunnelStage(c.funnel_status)}"
+              onclick="event.stopPropagation()"
+              onchange="quickUpdateFunnelStatus(this, ${c.customer_id})">${funnelStatusOptionsHtml(c.funnel_status, false)}</select>
     </div>
   `).join('');
+}
+
+// 고객 목록에서 상세화면을 거치지 않고 바로 상태값(퍼널)만 변경
+async function quickUpdateFunnelStatus(selectEl, customerId){
+  const newStatus = selectEl.value;
+  selectEl.disabled = true;
+  const { error } = await sb.from('customers').update({ funnel_status: newStatus }).eq('customer_id', customerId);
+  selectEl.disabled = false;
+  if (error) { alert('상태값 변경 실패: ' + error.message); return; }
+
+  const c = customerListCache.find(x => x.customer_id === customerId);
+  if (c) c.funnel_status = newStatus;
+  selectEl.className = `cust-status-chip stage-${getFunnelStage(newStatus)}`;
+
+  if (currentCustomerId === customerId) {
+    const detailSel = document.getElementById('cf-funnel');
+    if (detailSel) detailSel.value = newStatus;
+  }
+
+  showToast('✓ 상태값이 변경되었습니다');
+  loadFunnelDashboard();
 }
 
 function formatDateShort(iso){
@@ -2339,9 +2370,9 @@ function buildMultiHomeTable(rows){
               <td><input type="text" id="pr-${r.id}-routerLabel" value="${escAttr(d.routerLabel)}"></td>
               <td><input type="text" id="pr-${r.id}-tvLabel" value="${escAttr(d.tvLabel)}"></td>
               <td><input type="text" id="pr-${r.id}-settopLabel" value="${escAttr(d.settopLabel)}"></td>
-              <td><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="pr-${r.id}-monthly_fee" value="${moneyOrEmpty(r.monthly_fee)}"> <span class="cs-money-suffix">원</span></td>
-              <td><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="pr-${r.id}-gift_amount" value="${moneyOrEmpty(r.gift_amount)}"> <span class="cs-money-suffix">원</span></td>
-              <td><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="pr-${r.id}-commission" value="${moneyOrEmpty(r.commission)}"> <span class="cs-money-suffix">원</span></td>
+              <td><div class="cs-money-cell"><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="pr-${r.id}-monthly_fee" value="${moneyOrEmpty(r.monthly_fee)}"> <span class="cs-money-suffix">원</span></div></td>
+              <td><div class="cs-money-cell"><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="pr-${r.id}-gift_amount" value="${moneyOrEmpty(r.gift_amount)}"> <span class="cs-money-suffix">원</span></div></td>
+              <td><div class="cs-money-cell"><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="pr-${r.id}-commission" value="${moneyOrEmpty(r.commission)}"> <span class="cs-money-suffix">원</span></div></td>
               <td class="col-final"><input type="checkbox" id="pr-${r.id}-is_final" ${r.is_final ? 'checked' : ''}></td>
               <td class="col-actions">
                 <span class="mini-btn-row">
@@ -2370,9 +2401,9 @@ function buildMultiUsimTable(rows){
             <tr class="${r.is_final ? 'is-final' : ''}" data-row-id="${r.id}">
               <td><input type="text" id="pr-${r.id}-carrier" value="${escAttr(r.carrier)}"></td>
               <td><input type="text" id="pr-${r.id}-product_name" value="${escAttr(r.product_name)}"></td>
-              <td><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="pr-${r.id}-monthly_fee" value="${moneyOrEmpty(r.monthly_fee)}"> <span class="cs-money-suffix">원</span></td>
-              <td><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="pr-${r.id}-gift_amount" value="${moneyOrEmpty(r.gift_amount)}"> <span class="cs-money-suffix">원</span></td>
-              <td><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="pr-${r.id}-commission" value="${moneyOrEmpty(r.commission)}"> <span class="cs-money-suffix">원</span></td>
+              <td><div class="cs-money-cell"><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="pr-${r.id}-monthly_fee" value="${moneyOrEmpty(r.monthly_fee)}"> <span class="cs-money-suffix">원</span></div></td>
+              <td><div class="cs-money-cell"><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="pr-${r.id}-gift_amount" value="${moneyOrEmpty(r.gift_amount)}"> <span class="cs-money-suffix">원</span></div></td>
+              <td><div class="cs-money-cell"><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="pr-${r.id}-commission" value="${moneyOrEmpty(r.commission)}"> <span class="cs-money-suffix">원</span></div></td>
               <td class="col-final"><input type="checkbox" id="pr-${r.id}-is_final" ${r.is_final ? 'checked' : ''}></td>
               <td class="col-actions">
                 <span class="mini-btn-row">
@@ -2403,9 +2434,9 @@ function buildLegacyHomeTable(c){
             <td><input type="text" id="cf-g-router" value="${escAttr(c.guided_router)}"></td>
             <td><input type="text" id="cf-g-tv" value="${escAttr(c.guided_tv_channel)}"></td>
             <td><input type="text" id="cf-g-settop" value="${escAttr(c.guided_settop)}"></td>
-            <td><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="cf-g-fee" value="${moneyOrEmpty(c.guided_home_fee)}"> <span class="cs-money-suffix">원</span></td>
-            <td><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="cf-g-gift" value="${moneyOrEmpty(c.guided_home_gift)}"> <span class="cs-money-suffix">원</span></td>
-            <td><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="cf-g-comm" value="${moneyOrEmpty(c.guided_home_commission)}"> <span class="cs-money-suffix">원</span></td>
+            <td><div class="cs-money-cell"><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="cf-g-fee" value="${moneyOrEmpty(c.guided_home_fee)}"> <span class="cs-money-suffix">원</span></div></td>
+            <td><div class="cs-money-cell"><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="cf-g-gift" value="${moneyOrEmpty(c.guided_home_gift)}"> <span class="cs-money-suffix">원</span></div></td>
+            <td><div class="cs-money-cell"><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="cf-g-comm" value="${moneyOrEmpty(c.guided_home_commission)}"> <span class="cs-money-suffix">원</span></div></td>
           </tr>
         </tbody>
       </table>
@@ -2423,9 +2454,9 @@ function buildLegacyUsimTable(c){
           <tr>
             <td><input type="text" id="cf-u-telecom" value="${escAttr(c.usim_telecom)}"></td>
             <td><input type="text" id="cf-u-plan" value="${escAttr(c.usim_plan)}"></td>
-            <td><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="cf-u-fee" value="${moneyOrEmpty(c.usim_fee)}"> <span class="cs-money-suffix">원</span></td>
-            <td><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="cf-u-gift" value="${moneyOrEmpty(c.usim_gift)}"> <span class="cs-money-suffix">원</span></td>
-            <td><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="cf-u-comm" value="${moneyOrEmpty(c.usim_commission)}"> <span class="cs-money-suffix">원</span></td>
+            <td><div class="cs-money-cell"><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="cf-u-fee" value="${moneyOrEmpty(c.usim_fee)}"> <span class="cs-money-suffix">원</span></div></td>
+            <td><div class="cs-money-cell"><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="cf-u-gift" value="${moneyOrEmpty(c.usim_gift)}"> <span class="cs-money-suffix">원</span></div></td>
+            <td><div class="cs-money-cell"><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="cf-u-comm" value="${moneyOrEmpty(c.usim_commission)}"> <span class="cs-money-suffix">원</span></div></td>
           </tr>
         </tbody>
       </table>
