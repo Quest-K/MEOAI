@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>레이아웃 미리보기 — 단계형 서브탭 + 인풋 밀도</title>
+<style>
+  :root{
+    --ink:#2C2E35;
+    --ink-dim:#6B6E76;
+    --bg:#F4F2EB;
+    --bg-raised:#FFFFFF;
+    --paper-line:#E6E2D6;
+    --gold:#C88A2B;
+    --gold-bg:#FBF3E4;
+    --radius:6px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ink:#E9E7E1; --ink-dim:#A6A39A; --bg:#1B1A17; --bg-raised:#242320;
+      --paper-line:#3A382F; --gold:#D9A24B; --gold-bg:#332A17;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ink:#E9E7E1; --ink-dim:#A6A39A; --bg:#1B1A17; --bg-raised:#242320;
+    --paper-line:#3A382F; --gold:#D9A24B; --gold-bg:#332A17;
+  }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:'Pretendard', -apple-system, 'Malgun Gothic', sans-serif;
+    padding:28px 20px 60px;
+  }
+  .note{
+    max-width:900px; margin:0 auto 20px; font-size:12.5px; color:var(--ink-dim);
+    background:var(--bg-raised); border:1px dashed var(--paper-line); border-radius:var(--radius);
+    padding:10px 14px; line-height:1.6;
+  }
+  .note b{ color:var(--ink); }
+  .preview-wrap{ max-width:900px; margin:0 auto; }
+
+  /* ===== 단계형 서브탭 네비게이션 ===== */
+  .wizard-nav{
+    display:flex; align-items:center; gap:6px; margin-bottom:18px;
+    background:var(--bg-raised); border:1px solid var(--paper-line); border-radius:var(--radius);
+    padding:10px 12px;
+  }
+  .wizard-step{
+    flex:1; display:flex; align-items:center; justify-content:center; gap:0;
+    text-align:center;
+  }
+  .wizard-btn{
+    font-family:inherit; font-size:14px; font-weight:700; letter-spacing:-0.2px;
+    padding:9px 4px; width:100%; border:1px solid transparent; border-radius:var(--radius);
+    background:transparent; color:var(--ink-dim); cursor:pointer;
+    transition:background .15s ease, color .15s ease, border-color .15s ease;
+  }
+  .wizard-btn:hover{ background:var(--gold-bg); color:var(--ink); }
+  .wizard-btn.active{
+    background:var(--gold-bg); color:var(--gold); border-color:var(--gold);
+  }
+  .wizard-arrow{ color:var(--paper-line); font-size:14px; padding:0 2px; user-select:none; }
+
+  /* ===== 패널 공통 ===== */
+  .cs-card{
+    background:var(--bg-raised); border:1px solid var(--paper-line); border-radius:var(--radius);
+    padding:22px; box-shadow:0 4px 20px rgba(0,0,0,0.03);
+  }
+  .cs-card h3{
+    margin:0 0 14px; font-size:18px; font-weight:700;
+    border-bottom:1px solid var(--paper-line); padding-bottom:10px;
+  }
+  .wizard-panel{ display:none; }
+  .wizard-panel.active{ display:block; }
+
+  .placeholder-block{
+    border:1px dashed var(--paper-line); border-radius:var(--radius);
+    padding:24px; text-align:center; color:var(--ink-dim); font-size:13px;
+    background:var(--bg);
+  }
+  .sub-block{ margin-top:16px; padding-top:14px; border-top:1px dashed var(--paper-line); }
+  .sub-block-title{ font-size:13px; font-weight:800; color:var(--ink-dim); margin-bottom:8px; }
+
+  /* ===== 고객정보 : 밀도 높이기(인라인 라벨) ===== */
+  .inline-form-group{
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+    background:var(--bg); border:1px solid var(--paper-line); border-radius:var(--radius);
+    padding:6px 10px;
+  }
+  .inline-form-row{
+    display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px;
+  }
+  .inline-form-group{
+    flex-direction:row; align-items:center; gap:8px;
+  }
+  .inline-form-group label{
+    font-size:12px; font-weight:600; color:var(--ink-dim); white-space:nowrap;
+  }
+  .inline-form-group .req{ color:#C0392B; }
+  .inline-form-group input, .inline-form-group select{
+    font-family:inherit; font-size:13px; border:1px solid var(--paper-line); border-radius:4px;
+    background:var(--bg-raised); color:var(--ink); padding:6px 8px;
+  }
+  .w-name{ width:190px; }
+  .w-contact{ width:130px; }
+  .w-carrier{ width:88px; }
+  .w-fee{ width:190px; }
+  .w-oldisp{ width:100%; }
+  .w-tvcount{ width:100%; }
+  .w-oldfee{ width:100%; }
+  .w-funnel{ width:100%; }
+  .w-datetime{ width:100%; }
+
+  .mini-field-grid{
+    display:grid; column-gap:10px; row-gap:6px;
+  }
+  .mini-field-grid.cols-3{ grid-template-columns:repeat(3, 1fr); }
+  .mini-field-grid.cols-2{ grid-template-columns:repeat(2, 1fr); }
+  .mini-field-grid label{
+    font-size:12px; font-weight:600; color:var(--ink-dim); white-space:nowrap;
+  }
+  .mini-field-grid select, .mini-field-grid input{
+    width:100%; font-family:inherit; font-size:13px; border:1px solid var(--paper-line);
+    border-radius:4px; background:var(--bg-raised); color:var(--ink); padding:6px 8px;
+  }
+
+  .info-subsection{
+    border:1px solid var(--paper-line); border-radius:var(--radius);
+    padding:12px 12px 4px; margin-bottom:12px; background:var(--bg);
+  }
+  .info-subsection-title{
+    font-size:12.5px; font-weight:700; color:var(--ink); margin-bottom:10px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .info-subsection-title .toggle-fake{
+    font-size:11px; color:var(--ink-dim); border:1px solid var(--paper-line);
+    border-radius:999px; padding:2px 8px;
+  }
+  textarea.compact-textarea{
+    width:100%; font-family:inherit; font-size:13px; border:1px solid var(--paper-line);
+    border-radius:4px; padding:6px 8px; resize:vertical; background:var(--bg-raised); color:var(--ink);
+  }
+
+  .before-after{
+    display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:6px;
+  }
+  @media (max-width:640px){ .before-after{ grid-template-columns:1fr; } }
+  .split-2-row{
+    display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:start;
+  }
+  @media (max-width:640px){ .split-2-row{ grid-template-columns:1fr; } }
+  .split-2-row .info-subsection{ margin-bottom:0; height:100%; }
+  .ba-label{ font-size:11px; font-weight:800; color:var(--ink-dim); margin-bottom:6px; }
+  .ba-before .fake-wide-input{
+    width:100%; height:38px; border:1px solid var(--paper-line); border-radius:4px;
+    background:var(--bg); margin-bottom:8px; display:flex; align-items:center; padding:0 10px;
+    font-size:12px; color:var(--ink-dim);
+  }
+</style>
+</head>
+<body>
+
+<div class="note">
+  <b>미리보기 전용 파일입니다.</b> 실제 CS.html에는 아직 반영되지 않았습니다. 상단 탭을 눌러 "고객정보 → 추천상품 → 제안상품(결합할인 포함) → 최종상품(수수료 포함)" 흐름을 확인하시고, 고객정보 탭에서 인풋 밀도를 높인 형태를 확인해주세요. 실제 적용 시 폰트는 Pretendard, 색상·버튼 스타일은 기존 CS.html 톤을 그대로 사용합니다.
+</div>
+
+<div class="preview-wrap">
+
+  <!-- 단계형 서브탭 네비게이션 -->
+  <div class="wizard-nav">
+    <div class="wizard-step"><button class="wizard-btn active" data-step="1" onclick="goStep(1)">[고객정보]</button></div>
+    <div class="wizard-arrow">→</div>
+    <div class="wizard-step"><button class="wizard-btn" data-step="2" onclick="goStep(2)">[추천상품]</button></div>
+    <div class="wizard-arrow">→</div>
+    <div class="wizard-step"><button class="wizard-btn" data-step="3" onclick="goStep(3)">[제안상품]</button></div>
+    <div class="wizard-arrow">→</div>
+    <div class="wizard-step"><button class="wizard-btn" data-step="4" onclick="goStep(4)">[최종상품]</button></div>
+  </div>
+
+  <!-- STEP 1 : 고객정보 -->
+  <div class="wizard-panel active" id="panel-1">
+    <div class="cs-card">
+      <h3>고객정보</h3>
+
+      <div class="ba-label">밀도 비교 — 위: 기존(가로로 넓은 인풋) / 아래: 개선(내용만큼만 폭 차지)</div>
+      <div class="before-after">
+        <div class="ba-before">
+          <div class="ba-label" style="margin-top:0;">기존</div>
+          <div class="fake-wide-input">이름 입력란 (가로 전체 절반 차지)</div>
+          <div class="fake-wide-input">연락처 입력란 (가로 전체 절반 차지)</div>
+        </div>
+        <div>
+          <div class="ba-label" style="margin-top:0;">개선</div>
+          <div class="inline-form-row">
+            <div class="inline-form-group">
+              <label>이름</label>
+              <input class="w-name" type="text" value="(인생비서)">
+            </div>
+            <div class="inline-form-group">
+              <label>연락처 <span class="req">*</span></label>
+              <input class="w-contact" type="text" placeholder="010-0000-0000">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sub-block">
+        <div class="sub-block-title">개선안 전체 — 고객정보 한 화면</div>
+
+        <div class="split-2-row" style="margin-bottom:10px;">
+          <div class="inline-form-row" style="margin-bottom:0; justify-content:space-between;">
+            <div class="inline-form-group">
+              <label>이름</label>
+              <input class="w-name" type="text" value="(인생비서)">
+            </div>
+            <div class="inline-form-group">
+              <label>연락처 <span class="req">*</span></label>
+              <input class="w-contact" type="text" placeholder="010-0000-0000">
+            </div>
+          </div>
+          <div class="inline-form-row" style="margin-bottom:0; justify-content:space-between;">
+            <div class="inline-form-group">
+              <label>휴대폰 통신사</label>
+              <select class="w-carrier"><option>KT</option><option>LG</option><option>SK</option></select>
+            </div>
+            <div class="inline-form-group">
+              <label>요금 구간</label>
+              <select class="w-fee"><option>6만원대</option></select>
+            </div>
+          </div>
+        </div>
+
+        <div class="split-2-row">
+          <div class="info-subsection">
+            <div class="info-subsection-title"><span>기존 인터넷</span><span class="toggle-fake">보유 ON</span></div>
+            <div class="mini-field-grid cols-3">
+              <label>통신사</label>
+              <label>TV 대수</label>
+              <label>월요금</label>
+              <select class="w-oldisp"><option>KT</option></select>
+              <select class="w-tvcount"><option>1대</option></select>
+              <select class="w-oldfee"><option>3만원대</option></select>
+            </div>
+          </div>
+
+          <div class="info-subsection">
+            <div class="info-subsection-title"><span>상담 관리</span></div>
+            <div class="mini-field-grid cols-2">
+              <label>상태값</label>
+              <label>추가컨택일시</label>
+              <select class="w-funnel"><option>상담대기</option></select>
+              <input class="w-datetime" type="datetime-local">
+            </div>
+          </div>
+        </div>
+
+        <div class="info-subsection" style="margin-top:12px;">
+          <div class="info-subsection-title"><span>특이사항</span></div>
+          <textarea class="compact-textarea" rows="2" placeholder="상담 중 특이사항을 입력하세요."></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 2 : 추천상품 -->
+  <div class="wizard-panel" id="panel-2">
+    <div class="cs-card">
+      <h3>추천상품</h3>
+      <div class="placeholder-block">
+        기존 추천상품 4분할(KT/LG/SKB/SKT) 카드 구성을 이 탭 안에 그대로 유지<br>
+        (컨트롤 · 요금 카드 · 유심 카드)
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 3 : 제안상품 (결합할인 포함) -->
+  <div class="wizard-panel" id="panel-3">
+    <div class="cs-card">
+      <h3>제안상품</h3>
+      <div class="placeholder-block">
+        인터넷+TV / 유심 제안 리스트 (기존 상하 배치 유지)
+      </div>
+      <div class="sub-block">
+        <div class="sub-block-title">결합할인 (이 탭 하위 섹션으로 이동)</div>
+        <div class="placeholder-block">
+          제안상품 기준 통신사별 결합할인 아코디언
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 4 : 최종상품 (수수료 포함) -->
+  <div class="wizard-panel" id="panel-4">
+    <div class="cs-card">
+      <h3>최종상품</h3>
+      <div class="placeholder-block">
+        확정된 최종 인터넷+TV / 유심 카드 (가족결합할인 금액 포함)
+      </div>
+      <div class="sub-block">
+        <div class="sub-block-title">수수료 (이 탭 하위 섹션으로 이동, 관리자 로그인 시만 노출)</div>
+        <div class="placeholder-block">
+          인터넷·유심 수수료 / 마진 패널
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function goStep(n){
+  document.querySelectorAll('.wizard-btn').forEach(b => b.classList.toggle('active', Number(b.dataset.step) === n));
+  document.querySelectorAll('.wizard-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + n));
+}
+</script>
+</body>
+</html>
