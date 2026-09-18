@@ -75,10 +75,26 @@ function formatStartAt(date){
   return `${mm}월 ${dd}일 ${hh}시부터 적용`;
 }
 
+// 동일한 (통신사/속도/TV등급) 조합에 대해 여러 시점의 수수료 이력(start_at)이
+// 공존할 수 있어(정책 갱신 시 UPDATE 대신 새 행을 추가하는 경우 포함),
+// 단순 .find()로 첫 매칭 행을 쓰면 옛 정책이 계속 선택될 수 있습니다.
+// -> start_at이 이미 지난 행들 중 가장 최근(effective) 행을 선택합니다.
+function pickLatestRow(rows){
+  if (!rows || !rows.length) return null;
+  const now = Date.now();
+  const effective = rows.filter(r => !r.start_at || new Date(r.start_at).getTime() <= now);
+  const pool = effective.length ? effective : rows; // 전부 미래 시점뿐이면 fallback
+  return pool.reduce((latest, r) => {
+    const rt = r.start_at ? new Date(r.start_at).getTime() : -Infinity;
+    const lt = latest.start_at ? new Date(latest.start_at).getTime() : -Infinity;
+    return rt >= lt ? r : latest;
+  });
+}
+
 function lookupCommission(carrierKey, speedNum, tvTier){
   const rows = RAW_COMMISSION_DATA.filter(r => String(r.carrier).toLowerCase() === carrierKey && normalizeSpeedValue(r.speed) === speedNum);
-  const internetComm = rows.find(r => String(r.tv_tier) === 'none')?.commission_amount || 0;
-  const tvComm = tvTier !== 'none' ? (rows.find(r => String(r.tv_tier) === tvTier)?.commission_amount || 0) : 0;
+  const internetComm = pickLatestRow(rows.filter(r => String(r.tv_tier) === 'none'))?.commission_amount || 0;
+  const tvComm = tvTier !== 'none' ? (pickLatestRow(rows.filter(r => String(r.tv_tier) === tvTier))?.commission_amount || 0) : 0;
   return { internetComm, tvComm, totalComm: internetComm + tvComm };
 }
 
@@ -111,8 +127,8 @@ async function loadFinanceData() {
     const commRows = commRes.data
       ? commRes.data.filter(r => String(r.carrier).toLowerCase() === carrier && normalizeSpeedValue(r.speed) === targetSpeed)
       : [];
-    const internetComm = commRows.find(r => String(r.tv_tier) === 'none')?.commission_amount || 0;
-    const tvComm = tvTierForComm !== 'none' ? (commRows.find(r => String(r.tv_tier) === tvTierForComm)?.commission_amount || 0) : 0;
+    const internetComm = pickLatestRow(commRows.filter(r => String(r.tv_tier) === 'none'))?.commission_amount || 0;
+    const tvComm = tvTierForComm !== 'none' ? (pickLatestRow(commRows.filter(r => String(r.tv_tier) === tvTierForComm))?.commission_amount || 0) : 0;
 
     const startAtTimes = commRows.map(r => r.start_at).filter(Boolean).map(v => new Date(v)).filter(d => !isNaN(d.getTime()));
     const startAt = startAtTimes.length ? new Date(Math.max(...startAtTimes.map(d => d.getTime()))) : null;
