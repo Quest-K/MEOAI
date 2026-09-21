@@ -408,6 +408,14 @@ table.cust-wide-table .cs-money-cell input.cs-money-input{ width:auto; flex:1 1 
             </div>
           </div>
 
+          <div class="info-subsection" id="customer-tags-subsection">
+            <div class="info-subsection-title cust-tag-accordion-header" onclick="toggleCustomerTagsBody()">
+              <span>🏷️ 고객 태그</span>
+              <span class="accordion-chevron" id="customer-tags-chevron">▾</span>
+            </div>
+            <div class="info-subsection-body" id="customer-tags-body" style="display:none;"></div>
+          </div>
+
           <div class="info-subsection" id="consult-manage-subsection">
             <div class="info-subsection-title"><span>상담 관리</span></div>
             <div class="info-subsection-body">
@@ -1852,6 +1860,78 @@ function jsRow(label, value) {
    ========================================================================= */
 
 // 인생비서 퍼널 상태값 (24개 · 5단계)
+// 고객 태그 시스템 : 카테고리별 태그 + 판별근거/참고포인트 (교육 문서 기준)
+const CUSTOMER_TAG_GROUPS = [
+  { label: '연령대', tags: [
+    { key: '2030청년', desc: '판별근거: "자취", "1인가구", "이사" 등 언급, 빠르고 캐주얼한 말투\n참고: 복잡한 설명 배제, 현금성 사은품·빠른 개통일정 위주 안내' },
+    { key: '4050중장년', desc: '판별근거: "아이들", "가족", "부모님" 등 언급\n참고: 가족결합·안정성 논리 강조. 단, [관계/명의] 태그와 함께 확인' },
+    { key: '60대이상시니어', desc: '판별근거: 통신 용어에 낯설어함, 재질문이 잦음\n참고: 전문용어 배제, 친절한 톤으로 안심 부여' }
+  ]},
+  { label: '관계/명의', tags: [
+    { key: '본인가입', desc: '판별근거: "제가 쓸 거예요", "이사해서" 등 본인 사용 명시\n참고: 연령대별 표준 전략 그대로 적용' },
+    { key: '대리상담-자녀몫', desc: '판별근거: "자취방에 놓을 거예요", "제 방에" 등 자녀/가족 몫으로 별도 회선 신설\n참고: 계약자와 실사용자가 다름 → 실사용자 사용 패턴 별도 확인' },
+    { key: '대리상담-부모님댁', desc: '판별근거: "부모님 댁 약정이 끝나서", "본가에" 등 대신 상담\n참고: 명의자(부모님) 본인확인 절차 사전 안내. 실사용자 니즈는 자녀에게 되물어 간접 확인' }
+  ]},
+  { label: '성 성향', tags: [
+    { key: '남성-기술/혜택중시', desc: '판별근거: 속도(Mbps), 커버리지, 사은품 액수를 구체적 수치로 캐물음\n참고: 수치 기반 어필 (속도, 사은품 금액을 투명하게 제시)' },
+    { key: '여성-가계경제/절감중시', desc: '판별근거: "매달 얼마씩 나가는지"를 반복 질문\n참고: 월 실납부액 절감분을 구체적 금액으로 제시' }
+  ]},
+  { label: '약정 상태', tags: [
+    { key: '만료임박/지났음', desc: '판별근거: "약정 언제 끝났는지 모르겠다" 등\n참고: 처음부터 저렴하게 세팅하는 화법 적용' },
+    { key: '약정많이남음', desc: '판별근거: 위약금 언급, 이동에 망설임\n참고: 12개월 경과 골든타임 화법 적용' }
+  ]},
+  { label: '기존 통신사', tags: [
+    { key: 'KT', desc: '현재 사용 통신사 KT' },
+    { key: 'SKB', desc: '현재 사용 통신사 SKB' },
+    { key: 'LGU+', desc: '현재 사용 통신사 LGU+' },
+    { key: '타사알뜰폰', desc: '현재 알뜰폰 사용 중' }
+  ]},
+  { label: '핵심 니즈', tags: [
+    { key: '상품조합(인터넷/TV/유심)', desc: '판별근거: "인터넷이랑 TV랑 같이" 등 언급\n참고: 결합 할인 극대화 강조' },
+    { key: '사은품최우선', desc: '판별근거: 첫마디부터 "사은품 얼마예요?"\n참고: 니즈 확인 질문 플로우로 실제 우선순위 재확인' },
+    { key: '요금고정비절감', desc: '판별근거: "요금 줄이고 싶어요" 등 언급\n참고: 니즈 확인 질문 플로우의 "요금 선택" 분기로 연결' }
+  ]},
+  { label: '상담 성향', tags: [
+    { key: '체리피커(이동선호)', desc: '판별근거: 여러 통신사 견적을 비교 중, 타사 언급이 잦음\n참고: 타사 조건 이상 매칭 제시' },
+    { key: '안정지향(재약정/귀찮음)', desc: '판별근거: "그냥 지금 통신사로 편하게"\n참고: 재약정 시 손해 여부만 간단히 안내, 무리한 이동 유도 지양' },
+    { key: '프로슈머(정보완료)', desc: '판별근거: 전문용어·숫자를 직접 언급, 비교표 요구\n참고: 투명한 수치 비교자료 즉시 제공' }
+  ]}
+];
+
+let selectedCustomerTags = new Set();
+
+function renderCustomerTags(){
+  const body = document.getElementById('customer-tags-body');
+  if (!body) return;
+  body.innerHTML = CUSTOMER_TAG_GROUPS.map(group => `
+    <div class="cust-tag-group">
+      <div class="cust-tag-group-label">${group.label}</div>
+      <div class="cust-tag-chip-row">
+        ${group.tags.map(t => `
+          <span class="cust-tag-chip ${selectedCustomerTags.has(t.key) ? 'active' : ''}"
+                title="${escAttr(t.desc)}"
+                onclick="toggleCustomerTag('${t.key.replace(/'/g, "\\'")}')">#${t.key}</span>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+function toggleCustomerTag(tagKey){
+  if (selectedCustomerTags.has(tagKey)) selectedCustomerTags.delete(tagKey);
+  else selectedCustomerTags.add(tagKey);
+  renderCustomerTags();
+}
+
+function toggleCustomerTagsBody(){
+  const body = document.getElementById('customer-tags-body');
+  const chevron = document.getElementById('customer-tags-chevron');
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : '';
+  if (chevron) chevron.textContent = isOpen ? '▾' : '▴';
+}
+
 const FUNNEL_STAGES = [
   { stage: 1, label: '1. 접수·상담', items: ['신규접수', '상담진행', '고객부재', '고객부재_종결'] },
   { stage: 2, label: '2. 상담·계약', items: ['상품안내', '계약진행', '보류확인', '이탈(고객취소)', '접수반려'] },
@@ -1865,7 +1945,7 @@ const DEFAULT_FUNNEL_STATUS = '상담대기';
 const INITIAL_FUNNEL_STATUS = '신규접수'; // 신규 상담 시작 시 기본 선택값
 const NAME_PREFIX = '(인생비서)';
 
-let CUSTOMER_SCHEMA = { hasProductsTable: false, hasSnapshot: false, checked: false };
+let CUSTOMER_SCHEMA = { hasProductsTable: false, hasSnapshot: false, hasTags: false, checked: false };
 let currentCustomerId = null;
 let customerListCache = [];
 let customerViewInited = false;
@@ -1953,6 +2033,10 @@ function buildCustomerPayload(){
     next_contact_at: nextContact ? new Date(nextContact).toISOString() : null
   };
 
+  if (CUSTOMER_SCHEMA.hasTags) {
+    payload.customer_tags = Array.from(selectedCustomerTags);
+  }
+
   if (CUSTOMER_SCHEMA.hasSnapshot) {
     payload.proposal_snapshot = {
       savedAt: new Date().toISOString(),
@@ -2023,6 +2107,8 @@ async function probeCustomerSchema(){
   CUSTOMER_SCHEMA.hasSnapshot = !snap.error;
   const prod = await sb.from('customer_products').select('customer_id').limit(1);
   CUSTOMER_SCHEMA.hasProductsTable = !prod.error;
+  const tags = await sb.from('customers').select('customer_tags').limit(1);
+  CUSTOMER_SCHEMA.hasTags = !tags.error;
   CUSTOMER_SCHEMA.checked = true;
   return CUSTOMER_SCHEMA;
 }
@@ -2087,6 +2173,8 @@ function resetConsultation(){
   setVal('cust-funnel-status', INITIAL_FUNNEL_STATUS);
   const oldToggleReset = document.getElementById('old-internet-toggle');
   if (oldToggleReset) { oldToggleReset.checked = false; toggleOldInternetSection(false); }
+  selectedCustomerTags = new Set();
+  renderCustomerTags();
   reflectedProducts = [];
   finalProducts = [];
   addedUsimLines = [];
@@ -2182,6 +2270,7 @@ function initCustomerView(){
     const warn = [];
     if (!CUSTOMER_SCHEMA.hasProductsTable) warn.push('customer_products 테이블 없음');
     if (!CUSTOMER_SCHEMA.hasSnapshot) warn.push('customers.proposal_snapshot 칼럼 없음');
+    if (!CUSTOMER_SCHEMA.hasTags) warn.push('customers.customer_tags 칼럼 없음');
     const el = document.getElementById('cust-db-state');
     if (el) el.textContent = warn.length ? '⚠ ' + warn.join(' · ') : '스키마 정상';
   });
@@ -2686,6 +2775,9 @@ async function loadCustomerToConsult(id){
     setVal('old-tv-count', String(c.old_tv_count || 0));
   }
 
+  selectedCustomerTags = new Set(Array.isArray(c.customer_tags) ? c.customer_tags : []);
+  renderCustomerTags();
+
   const snap = c.proposal_snapshot;
   if (snap && typeof snap === 'object') {
     reflectedProducts = Array.isArray(snap.proposals) ? snap.proposals : [];
@@ -2717,6 +2809,7 @@ async function loadCustomerToConsult(id){
   syncRecoControlsUI();
   syncToDesignPhones();
   renderFamilyLines();
+  renderCustomerTags();
   initRecoUsimTierDefault();
   updateCsSummaryPanel();
   renderProposalLists();
