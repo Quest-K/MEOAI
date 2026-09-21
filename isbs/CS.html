@@ -354,7 +354,7 @@ table.cust-wide-table .cs-money-cell input.cs-money-input{ width:auto; flex:1 1 
                 <option value="30000">3만원대</option>
                 <option value="40000">4만원대</option>
                 <option value="50000">5만원대</option>
-                <option value="60000" selected>6만원대</option>
+                <option value="60000">6만원대</option>
                 <option value="70000">7만원대</option>
                 <option value="80000">8만원대</option>
                 <option value="90000">9만원대</option>
@@ -366,11 +366,11 @@ table.cust-wide-table .cs-money-cell input.cs-money-input{ width:auto; flex:1 1 
             <div class="info-subsection-title">
               <span>기존 인터넷</span>
               <label class="switch" title="기존 인터넷 보유 여부">
-                <input type="checkbox" id="old-internet-toggle" checked onchange="toggleOldInternetSection(this.checked)">
+                <input type="checkbox" id="old-internet-toggle" onchange="toggleOldInternetSection(this.checked)">
                 <span class="switch-slider"></span>
               </label>
             </div>
-            <div class="info-subsection-body" id="old-internet-body">
+            <div class="info-subsection-body" id="old-internet-body" style="display:none;">
               <div class="form-row">
                 <div class="form-group">
                   <label>기존 홈상품 통신사</label>
@@ -423,7 +423,7 @@ table.cust-wide-table .cs-money-cell input.cs-money-input{ width:auto; flex:1 1 
               </div>
               <div class="form-group">
                 <label>특이사항</label>
-                <textarea id="cust-notes" rows="2" placeholder="상담 중 특이사항을 입력하세요."></textarea>
+                <textarea id="cust-notes" rows="4" placeholder="상담 중 특이사항을 입력하세요."></textarea>
               </div>
             </div>
           </div>
@@ -1862,6 +1862,7 @@ const FUNNEL_STAGES = [
 ];
 
 const DEFAULT_FUNNEL_STATUS = '상담대기';
+const INITIAL_FUNNEL_STATUS = '신규접수'; // 신규 상담 시작 시 기본 선택값
 const NAME_PREFIX = '(인생비서)';
 
 let CUSTOMER_SCHEMA = { hasProductsTable: false, hasSnapshot: false, checked: false };
@@ -1887,7 +1888,7 @@ function funnelStatusOptionsHtml(selected, includeAll){
 
 function initFunnelSelects(){
   const a = document.getElementById('cust-funnel-status');
-  if (a) a.innerHTML = funnelStatusOptionsHtml(DEFAULT_FUNNEL_STATUS, false);
+  if (a) a.innerHTML = funnelStatusOptionsHtml(INITIAL_FUNNEL_STATUS, false);
   const b = document.getElementById('cust-search-status');
   if (b) b.innerHTML = funnelStatusOptionsHtml('', true);
 }
@@ -2082,8 +2083,10 @@ function resetConsultation(){
   setVal('cust-name', NAME_PREFIX);
   setVal('cust-contact', '');
   setVal('cust-notes', '');
-  setVal('cust-next-contact', '');
-  setVal('cust-funnel-status', DEFAULT_FUNNEL_STATUS);
+  setVal('cust-next-contact', getDefaultNextContactValue());
+  setVal('cust-funnel-status', INITIAL_FUNNEL_STATUS);
+  const oldToggleReset = document.getElementById('old-internet-toggle');
+  if (oldToggleReset) { oldToggleReset.checked = false; toggleOldInternetSection(false); }
   reflectedProducts = [];
   finalProducts = [];
   addedUsimLines = [];
@@ -2238,6 +2241,14 @@ function formatDateShort(iso){
   if (isNaN(d.getTime())) return '-';
   const pad = n => String(n).padStart(2, '0');
   return `${String(d.getFullYear()).slice(2)}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// 신규 상담 시작 시 "추가컨택일시" 기본값: 조회 당시 일시에서 날짜만 +1일
+function getDefaultNextContactValue(){
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function toLocalInputValue(iso){
@@ -2689,6 +2700,7 @@ async function loadCustomerToConsult(id){
 (async function init(){
   displayLastModified();
   initFunnelSelects();
+  setVal('cust-next-contact', getDefaultNextContactValue());
   setupRecoSeg('reco-seg-speed','speed');
   setupRecoSeg('reco-seg-router','router');
   setupRecoSeg('reco-seg-tv','tv');
