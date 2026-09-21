@@ -408,6 +408,15 @@ table.cust-wide-table .cs-money-cell input.cs-money-input{ width:auto; flex:1 1 
             </div>
           </div>
 
+          <div class="info-subsection" id="customer-tags-subsection">
+            <div class="info-subsection-title cust-tag-accordion-header" onclick="toggleCustomerTagsBody()">
+              <span>🏷️ 고객 태그</span>
+              <span class="accordion-chevron" id="customer-tags-chevron">▾</span>
+            </div>
+            <div class="info-subsection-body" id="customer-tags-body" style="display:none;"></div>
+          </div>
+          <div class="cust-tag-strategy-box" id="customer-tags-strategy" style="display:none;"></div>
+
           <div class="info-subsection" id="consult-manage-subsection">
             <div class="info-subsection-title"><span>상담 관리</span></div>
             <div class="info-subsection-body">
@@ -1852,6 +1861,112 @@ function jsRow(label, value) {
    ========================================================================= */
 
 // 인생비서 퍼널 상태값 (24개 · 5단계)
+// 고객 태그 시스템 : 카테고리별 태그 + 판별근거/참고포인트 (교육 문서 기준)
+const CUSTOMER_TAG_GROUPS = [
+  { label: '연령대', single: true, tags: [
+    { key: '2030청년', desc: '판별근거: "자취", "1인가구", "이사" 등 언급, 빠르고 캐주얼한 말투\n참고: 복잡한 설명 배제, 현금성 사은품·빠른 개통일정 위주 안내' },
+    { key: '4050중장년', desc: '판별근거: "아이들", "가족", "부모님" 등 언급\n참고: 가족결합·안정성 논리 강조. 단, [관계/명의] 태그와 함께 확인' },
+    { key: '60대이상시니어', desc: '판별근거: 통신 용어에 낯설어함, 재질문이 잦음\n참고: 전문용어 배제, 친절한 톤으로 안심 부여' }
+  ]},
+  { label: '관계/명의', single: true, tags: [
+    { key: '본인가입', desc: '판별근거: "제가 쓸 거예요", "이사해서" 등 본인 사용 명시\n참고: 연령대별 표준 전략 그대로 적용' },
+    { key: '대리상담-자녀몫', desc: '판별근거: "자취방에 놓을 거예요", "제 방에" 등 자녀/가족 몫으로 별도 회선 신설\n참고: 계약자와 실사용자가 다름 → 실사용자 사용 패턴 별도 확인' },
+    { key: '대리상담-부모님댁', desc: '판별근거: "부모님 댁 약정이 끝나서", "본가에" 등 대신 상담\n참고: 명의자(부모님) 본인확인 절차 사전 안내. 실사용자 니즈는 자녀에게 되물어 간접 확인' }
+  ]},
+  { label: '성 성향', single: true, tags: [
+    { key: '남성-기술/혜택중시', desc: '판별근거: 속도(Mbps), 커버리지, 사은품 액수를 구체적 수치로 캐물음\n참고: 수치 기반 어필 (속도, 사은품 금액을 투명하게 제시)' },
+    { key: '여성-가계경제/절감중시', desc: '판별근거: "매달 얼마씩 나가는지"를 반복 질문\n참고: 월 실납부액 절감분을 구체적 금액으로 제시' }
+  ]},
+  { label: '약정 상태', single: true, tags: [
+    { key: '만료임박/지났음', desc: '판별근거: "약정 언제 끝났는지 모르겠다" 등\n참고: 처음부터 저렴하게 세팅하는 화법 적용' },
+    { key: '약정많이남음', desc: '판별근거: 위약금 언급, 이동에 망설임\n참고: 12개월 경과 골든타임 화법 적용' }
+  ]},
+  { label: '핵심 니즈', tags: [
+    { key: '상품조합(인터넷/TV/유심)', desc: '판별근거: "인터넷이랑 TV랑 같이" 등 언급\n참고: 결합 할인 극대화 강조' },
+    { key: '사은품최우선', desc: '판별근거: 첫마디부터 "사은품 얼마예요?"\n참고: 니즈 확인 질문 플로우로 실제 우선순위 재확인' },
+    { key: '요금고정비절감', desc: '판별근거: "요금 줄이고 싶어요" 등 언급\n참고: 니즈 확인 질문 플로우의 "요금 선택" 분기로 연결' }
+  ]},
+  { label: '상담 성향', tags: [
+    { key: '체리피커(이동선호)', desc: '판별근거: 여러 통신사 견적을 비교 중, 타사 언급이 잦음\n참고: 타사 조건 이상 매칭 제시' },
+    { key: '안정지향(재약정/귀찮음)', desc: '판별근거: "그냥 지금 통신사로 편하게"\n참고: 재약정 시 손해 여부만 간단히 안내, 무리한 이동 유도 지양' },
+    { key: '프로슈머(정보완료)', desc: '판별근거: 전문용어·숫자를 직접 언급, 비교표 요구\n참고: 투명한 수치 비교자료 즉시 제공' }
+  ]}
+];
+
+let selectedCustomerTags = new Set();
+
+function renderCustomerTags(){
+  const body = document.getElementById('customer-tags-body');
+  if (body) {
+    body.innerHTML = CUSTOMER_TAG_GROUPS.map(group => `
+      <div class="cust-tag-group">
+        <div class="cust-tag-group-label">${group.label}</div>
+        <div class="cust-tag-chip-row">
+          ${group.tags.map(t => `
+            <span class="cust-tag-chip ${selectedCustomerTags.has(t.key) ? 'active' : ''}"
+                  title="${escAttr(t.desc)}"
+                  onclick="toggleCustomerTag('${t.key.replace(/'/g, "\\'")}')">#${t.key}</span>
+          `).join('')}
+        </div>
+      </div>
+    `).join('');
+  }
+  renderCustomerTagStrategy();
+}
+
+// 설명(desc) 중 "참고:" 이후 문구만 추출 (툴팁과 동일한 내용을 재사용)
+function tagStrategyText(desc){
+  const parts = String(desc || '').split('참고:');
+  return (parts.length > 1 ? parts[1] : desc).trim();
+}
+
+function renderCustomerTagStrategy(){
+  const box = document.getElementById('customer-tags-strategy');
+  if (!box) return;
+
+  const allTags = CUSTOMER_TAG_GROUPS.flatMap(g => g.tags);
+  const selected = allTags.filter(t => selectedCustomerTags.has(t.key));
+
+  if (!selected.length) {
+    box.style.display = 'none';
+    box.innerHTML = '';
+    return;
+  }
+
+  box.style.display = '';
+  box.innerHTML = `
+    <div class="cust-tag-strategy-title">📌 선택된 태그 기반 상담 전략</div>
+    <ul class="cust-tag-strategy-list">
+      ${selected.map(t => `<li><b>#${t.key}</b> — ${tagStrategyText(t.desc)}</li>`).join('')}
+    </ul>
+  `;
+}
+
+function toggleCustomerTag(tagKey){
+  const group = CUSTOMER_TAG_GROUPS.find(g => g.tags.some(t => t.key === tagKey));
+  if (group && group.single) {
+    if (selectedCustomerTags.has(tagKey)) {
+      selectedCustomerTags.delete(tagKey);
+    } else {
+      group.tags.forEach(t => selectedCustomerTags.delete(t.key));
+      selectedCustomerTags.add(tagKey);
+    }
+  } else {
+    if (selectedCustomerTags.has(tagKey)) selectedCustomerTags.delete(tagKey);
+    else selectedCustomerTags.add(tagKey);
+  }
+  renderCustomerTags();
+}
+
+function toggleCustomerTagsBody(){
+  const body = document.getElementById('customer-tags-body');
+  const chevron = document.getElementById('customer-tags-chevron');
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : '';
+  if (chevron) chevron.textContent = isOpen ? '▾' : '▴';
+}
+
 const FUNNEL_STAGES = [
   { stage: 1, label: '1. 접수·상담', items: ['신규접수', '상담진행', '고객부재', '고객부재_종결'] },
   { stage: 2, label: '2. 상담·계약', items: ['상품안내', '계약진행', '보류확인', '이탈(고객취소)', '접수반려'] },
@@ -1865,7 +1980,7 @@ const DEFAULT_FUNNEL_STATUS = '상담대기';
 const INITIAL_FUNNEL_STATUS = '신규접수'; // 신규 상담 시작 시 기본 선택값
 const NAME_PREFIX = '(인생비서)';
 
-let CUSTOMER_SCHEMA = { hasProductsTable: false, hasSnapshot: false, checked: false };
+let CUSTOMER_SCHEMA = { hasProductsTable: false, hasSnapshot: false, hasTags: false, checked: false };
 let currentCustomerId = null;
 let customerListCache = [];
 let customerViewInited = false;
@@ -1953,6 +2068,10 @@ function buildCustomerPayload(){
     next_contact_at: nextContact ? new Date(nextContact).toISOString() : null
   };
 
+  if (CUSTOMER_SCHEMA.hasTags) {
+    payload.customer_tags = Array.from(selectedCustomerTags);
+  }
+
   if (CUSTOMER_SCHEMA.hasSnapshot) {
     payload.proposal_snapshot = {
       savedAt: new Date().toISOString(),
@@ -2023,6 +2142,8 @@ async function probeCustomerSchema(){
   CUSTOMER_SCHEMA.hasSnapshot = !snap.error;
   const prod = await sb.from('customer_products').select('customer_id').limit(1);
   CUSTOMER_SCHEMA.hasProductsTable = !prod.error;
+  const tags = await sb.from('customers').select('customer_tags').limit(1);
+  CUSTOMER_SCHEMA.hasTags = !tags.error;
   CUSTOMER_SCHEMA.checked = true;
   return CUSTOMER_SCHEMA;
 }
@@ -2087,6 +2208,8 @@ function resetConsultation(){
   setVal('cust-funnel-status', INITIAL_FUNNEL_STATUS);
   const oldToggleReset = document.getElementById('old-internet-toggle');
   if (oldToggleReset) { oldToggleReset.checked = false; toggleOldInternetSection(false); }
+  selectedCustomerTags = new Set();
+  renderCustomerTags();
   reflectedProducts = [];
   finalProducts = [];
   addedUsimLines = [];
@@ -2182,6 +2305,7 @@ function initCustomerView(){
     const warn = [];
     if (!CUSTOMER_SCHEMA.hasProductsTable) warn.push('customer_products 테이블 없음');
     if (!CUSTOMER_SCHEMA.hasSnapshot) warn.push('customers.proposal_snapshot 칼럼 없음');
+    if (!CUSTOMER_SCHEMA.hasTags) warn.push('customers.customer_tags 칼럼 없음');
     const el = document.getElementById('cust-db-state');
     if (el) el.textContent = warn.length ? '⚠ ' + warn.join(' · ') : '스키마 정상';
   });
@@ -2393,14 +2517,14 @@ function buildMultiHomeTable(rows){
             const d = detailOf(r);
             return `
             <tr class="${r.is_final ? 'is-final' : ''}" data-row-id="${r.id}">
-              <td><input type="text" id="pr-${r.id}-carrier" value="${escAttr(r.carrier)}"></td>
-              <td><input type="text" id="pr-${r.id}-internetLabel" value="${escAttr(d.internetLabel)}"></td>
-              <td><input type="text" id="pr-${r.id}-routerLabel" value="${escAttr(d.routerLabel)}"></td>
-              <td><input type="text" id="pr-${r.id}-tvLabel" value="${escAttr(d.tvLabel)}"></td>
-              <td><input type="text" id="pr-${r.id}-settopLabel" value="${escAttr(d.settopLabel)}"></td>
-              <td><div class="cs-money-cell"><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="pr-${r.id}-monthly_fee" value="${moneyOrEmpty(r.monthly_fee)}"> <span class="cs-money-suffix">원</span></div></td>
-              <td><div class="cs-money-cell"><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="pr-${r.id}-gift_amount" value="${moneyOrEmpty(r.gift_amount)}"> <span class="cs-money-suffix">원</span></div></td>
-              <td><div class="cs-money-cell"><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="pr-${r.id}-commission" value="${moneyOrEmpty(r.commission)}"> <span class="cs-money-suffix">원</span></div></td>
+              ${textCell(`pr-${r.id}-carrier`, r.carrier)}
+              ${textCell(`pr-${r.id}-internetLabel`, d.internetLabel)}
+              ${textCell(`pr-${r.id}-routerLabel`, d.routerLabel)}
+              ${textCell(`pr-${r.id}-tvLabel`, d.tvLabel)}
+              ${textCell(`pr-${r.id}-settopLabel`, d.settopLabel)}
+              ${moneyCell(`pr-${r.id}-monthly_fee`, r.monthly_fee)}
+              ${moneyCell(`pr-${r.id}-gift_amount`, r.gift_amount)}
+              ${moneyCell(`pr-${r.id}-commission`, r.commission)}
               <td class="col-final"><input type="checkbox" id="pr-${r.id}-is_final" ${r.is_final ? 'checked' : ''}></td>
               <td class="col-actions">
                 <span class="mini-btn-row">
@@ -2427,11 +2551,11 @@ function buildMultiUsimTable(rows){
         <tbody>
           ${rows.map(r => `
             <tr class="${r.is_final ? 'is-final' : ''}" data-row-id="${r.id}">
-              <td><input type="text" id="pr-${r.id}-carrier" value="${escAttr(r.carrier)}"></td>
-              <td><input type="text" id="pr-${r.id}-product_name" value="${escAttr(r.product_name)}"></td>
-              <td><div class="cs-money-cell"><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="pr-${r.id}-monthly_fee" value="${moneyOrEmpty(r.monthly_fee)}"> <span class="cs-money-suffix">원</span></div></td>
-              <td><div class="cs-money-cell"><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="pr-${r.id}-gift_amount" value="${moneyOrEmpty(r.gift_amount)}"> <span class="cs-money-suffix">원</span></div></td>
-              <td><div class="cs-money-cell"><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="pr-${r.id}-commission" value="${moneyOrEmpty(r.commission)}"> <span class="cs-money-suffix">원</span></div></td>
+              ${textCell(`pr-${r.id}-carrier`, r.carrier)}
+              ${textCell(`pr-${r.id}-product_name`, r.product_name)}
+              ${moneyCell(`pr-${r.id}-monthly_fee`, r.monthly_fee)}
+              ${moneyCell(`pr-${r.id}-gift_amount`, r.gift_amount)}
+              ${moneyCell(`pr-${r.id}-commission`, r.commission)}
               <td class="col-final"><input type="checkbox" id="pr-${r.id}-is_final" ${r.is_final ? 'checked' : ''}></td>
               <td class="col-actions">
                 <span class="mini-btn-row">
@@ -2457,14 +2581,14 @@ function buildLegacyHomeTable(c){
         </tr></thead>
         <tbody>
           <tr>
-            <td><input type="text" id="cf-g-carrier" value="${escAttr(c.guided_carrier)}"></td>
-            <td><input type="text" id="cf-g-speed" value="${escAttr(c.guided_internet_speed)}"></td>
-            <td><input type="text" id="cf-g-router" value="${escAttr(c.guided_router)}"></td>
-            <td><input type="text" id="cf-g-tv" value="${escAttr(c.guided_tv_channel)}"></td>
-            <td><input type="text" id="cf-g-settop" value="${escAttr(c.guided_settop)}"></td>
-            <td><div class="cs-money-cell"><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="cf-g-fee" value="${moneyOrEmpty(c.guided_home_fee)}"> <span class="cs-money-suffix">원</span></div></td>
-            <td><div class="cs-money-cell"><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="cf-g-gift" value="${moneyOrEmpty(c.guided_home_gift)}"> <span class="cs-money-suffix">원</span></div></td>
-            <td><div class="cs-money-cell"><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="cf-g-comm" value="${moneyOrEmpty(c.guided_home_commission)}"> <span class="cs-money-suffix">원</span></div></td>
+            ${textCell('cf-g-carrier', c.guided_carrier)}
+            ${textCell('cf-g-speed', c.guided_internet_speed)}
+            ${textCell('cf-g-router', c.guided_router)}
+            ${textCell('cf-g-tv', c.guided_tv_channel)}
+            ${textCell('cf-g-settop', c.guided_settop)}
+            ${moneyCell('cf-g-fee', c.guided_home_fee)}
+            ${moneyCell('cf-g-gift', c.guided_home_gift)}
+            ${moneyCell('cf-g-comm', c.guided_home_commission)}
           </tr>
         </tbody>
       </table>
@@ -2480,11 +2604,11 @@ function buildLegacyUsimTable(c){
         <thead><tr><th>유심통신사</th><th>요금제</th><th>요금</th><th>사은품</th><th>수수료</th></tr></thead>
         <tbody>
           <tr>
-            <td><input type="text" id="cf-u-telecom" value="${escAttr(c.usim_telecom)}"></td>
-            <td><input type="text" id="cf-u-plan" value="${escAttr(c.usim_plan)}"></td>
-            <td><div class="cs-money-cell"><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="cf-u-fee" value="${moneyOrEmpty(c.usim_fee)}"> <span class="cs-money-suffix">원</span></div></td>
-            <td><div class="cs-money-cell"><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="cf-u-gift" value="${moneyOrEmpty(c.usim_gift)}"> <span class="cs-money-suffix">원</span></div></td>
-            <td><div class="cs-money-cell"><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="cf-u-comm" value="${moneyOrEmpty(c.usim_commission)}"> <span class="cs-money-suffix">원</span></div></td>
+            ${textCell('cf-u-telecom', c.usim_telecom)}
+            ${textCell('cf-u-plan', c.usim_plan)}
+            ${moneyCell('cf-u-fee', c.usim_fee)}
+            ${moneyCell('cf-u-gift', c.usim_gift)}
+            ${moneyCell('cf-u-comm', c.usim_commission)}
           </tr>
         </tbody>
       </table>
@@ -2497,6 +2621,14 @@ function escAttr(v){
   return String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 }
 function numOrEmpty(v){ return (v === null || v === undefined) ? '' : v; }
+
+// 표 안에서 반복되는 <td> 구조 : 일반 텍스트 입력칸 / 금액 입력칸(콤마 표시 + "원" 접미사)
+function textCell(id, value){
+  return `<td><input type="text" id="${id}" value="${escAttr(value)}"></td>`;
+}
+function moneyCell(id, value){
+  return `<td><div class="cs-money-cell"><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="${id}" value="${moneyOrEmpty(value)}"> <span class="cs-money-suffix">원</span></div></td>`;
+}
 
 // 금액 입력칸 콤마 표시용 : 표시는 "48,400"처럼 콤마 포함, 저장 시엔 numOrNull()이
 // 콤마를 다시 제거하고 숫자로 변환하므로 별도 파싱 로직 추가가 필요 없습니다.
@@ -2678,6 +2810,9 @@ async function loadCustomerToConsult(id){
     setVal('old-tv-count', String(c.old_tv_count || 0));
   }
 
+  selectedCustomerTags = new Set(Array.isArray(c.customer_tags) ? c.customer_tags : []);
+  renderCustomerTags();
+
   const snap = c.proposal_snapshot;
   if (snap && typeof snap === 'object') {
     reflectedProducts = Array.isArray(snap.proposals) ? snap.proposals : [];
@@ -2709,6 +2844,7 @@ async function loadCustomerToConsult(id){
   syncRecoControlsUI();
   syncToDesignPhones();
   renderFamilyLines();
+  renderCustomerTags();
   initRecoUsimTierDefault();
   updateCsSummaryPanel();
   renderProposalLists();
