@@ -10,7 +10,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 async function loadData(){
-  logs = [];
+  logs = {};
   const [internetRes, tvRes, settopRes] = await Promise.all([
     sb.from('internet_plans').select('*').in('carrier', CARRIERS),
     sb.from('tv_plans').select('*').in('carrier', CARRIERS),
