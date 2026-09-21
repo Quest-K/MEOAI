@@ -1862,21 +1862,21 @@ function jsRow(label, value) {
 // 인생비서 퍼널 상태값 (24개 · 5단계)
 // 고객 태그 시스템 : 카테고리별 태그 + 판별근거/참고포인트 (교육 문서 기준)
 const CUSTOMER_TAG_GROUPS = [
-  { label: '연령대', tags: [
+  { label: '연령대', single: true, tags: [
     { key: '2030청년', desc: '판별근거: "자취", "1인가구", "이사" 등 언급, 빠르고 캐주얼한 말투\n참고: 복잡한 설명 배제, 현금성 사은품·빠른 개통일정 위주 안내' },
     { key: '4050중장년', desc: '판별근거: "아이들", "가족", "부모님" 등 언급\n참고: 가족결합·안정성 논리 강조. 단, [관계/명의] 태그와 함께 확인' },
     { key: '60대이상시니어', desc: '판별근거: 통신 용어에 낯설어함, 재질문이 잦음\n참고: 전문용어 배제, 친절한 톤으로 안심 부여' }
   ]},
-  { label: '관계/명의', tags: [
+  { label: '관계/명의', single: true, tags: [
     { key: '본인가입', desc: '판별근거: "제가 쓸 거예요", "이사해서" 등 본인 사용 명시\n참고: 연령대별 표준 전략 그대로 적용' },
     { key: '대리상담-자녀몫', desc: '판별근거: "자취방에 놓을 거예요", "제 방에" 등 자녀/가족 몫으로 별도 회선 신설\n참고: 계약자와 실사용자가 다름 → 실사용자 사용 패턴 별도 확인' },
     { key: '대리상담-부모님댁', desc: '판별근거: "부모님 댁 약정이 끝나서", "본가에" 등 대신 상담\n참고: 명의자(부모님) 본인확인 절차 사전 안내. 실사용자 니즈는 자녀에게 되물어 간접 확인' }
   ]},
-  { label: '성 성향', tags: [
+  { label: '성 성향', single: true, tags: [
     { key: '남성-기술/혜택중시', desc: '판별근거: 속도(Mbps), 커버리지, 사은품 액수를 구체적 수치로 캐물음\n참고: 수치 기반 어필 (속도, 사은품 금액을 투명하게 제시)' },
     { key: '여성-가계경제/절감중시', desc: '판별근거: "매달 얼마씩 나가는지"를 반복 질문\n참고: 월 실납부액 절감분을 구체적 금액으로 제시' }
   ]},
-  { label: '약정 상태', tags: [
+  { label: '약정 상태', single: true, tags: [
     { key: '만료임박/지났음', desc: '판별근거: "약정 언제 끝났는지 모르겠다" 등\n참고: 처음부터 저렴하게 세팅하는 화법 적용' },
     { key: '약정많이남음', desc: '판별근거: 위약금 언급, 이동에 망설임\n참고: 12개월 경과 골든타임 화법 적용' }
   ]},
@@ -1912,8 +1912,18 @@ function renderCustomerTags(){
 }
 
 function toggleCustomerTag(tagKey){
-  if (selectedCustomerTags.has(tagKey)) selectedCustomerTags.delete(tagKey);
-  else selectedCustomerTags.add(tagKey);
+  const group = CUSTOMER_TAG_GROUPS.find(g => g.tags.some(t => t.key === tagKey));
+  if (group && group.single) {
+    if (selectedCustomerTags.has(tagKey)) {
+      selectedCustomerTags.delete(tagKey);
+    } else {
+      group.tags.forEach(t => selectedCustomerTags.delete(t.key));
+      selectedCustomerTags.add(tagKey);
+    }
+  } else {
+    if (selectedCustomerTags.has(tagKey)) selectedCustomerTags.delete(tagKey);
+    else selectedCustomerTags.add(tagKey);
+  }
   renderCustomerTags();
 }
 
