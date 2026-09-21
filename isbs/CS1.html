@@ -415,6 +415,7 @@ table.cust-wide-table .cs-money-cell input.cs-money-input{ width:auto; flex:1 1 
             </div>
             <div class="info-subsection-body" id="customer-tags-body" style="display:none;"></div>
           </div>
+          <div class="cust-tag-strategy-box" id="customer-tags-strategy" style="display:none;"></div>
 
           <div class="info-subsection" id="consult-manage-subsection">
             <div class="info-subsection-title"><span>상담 관리</span></div>
@@ -1896,19 +1897,49 @@ let selectedCustomerTags = new Set();
 
 function renderCustomerTags(){
   const body = document.getElementById('customer-tags-body');
-  if (!body) return;
-  body.innerHTML = CUSTOMER_TAG_GROUPS.map(group => `
-    <div class="cust-tag-group">
-      <div class="cust-tag-group-label">${group.label}</div>
-      <div class="cust-tag-chip-row">
-        ${group.tags.map(t => `
-          <span class="cust-tag-chip ${selectedCustomerTags.has(t.key) ? 'active' : ''}"
-                title="${escAttr(t.desc)}"
-                onclick="toggleCustomerTag('${t.key.replace(/'/g, "\\'")}')">#${t.key}</span>
-        `).join('')}
+  if (body) {
+    body.innerHTML = CUSTOMER_TAG_GROUPS.map(group => `
+      <div class="cust-tag-group">
+        <div class="cust-tag-group-label">${group.label}</div>
+        <div class="cust-tag-chip-row">
+          ${group.tags.map(t => `
+            <span class="cust-tag-chip ${selectedCustomerTags.has(t.key) ? 'active' : ''}"
+                  title="${escAttr(t.desc)}"
+                  onclick="toggleCustomerTag('${t.key.replace(/'/g, "\\'")}')">#${t.key}</span>
+          `).join('')}
+        </div>
       </div>
-    </div>
-  `).join('');
+    `).join('');
+  }
+  renderCustomerTagStrategy();
+}
+
+// 설명(desc) 중 "참고:" 이후 문구만 추출 (툴팁과 동일한 내용을 재사용)
+function tagStrategyText(desc){
+  const parts = String(desc || '').split('참고:');
+  return (parts.length > 1 ? parts[1] : desc).trim();
+}
+
+function renderCustomerTagStrategy(){
+  const box = document.getElementById('customer-tags-strategy');
+  if (!box) return;
+
+  const allTags = CUSTOMER_TAG_GROUPS.flatMap(g => g.tags);
+  const selected = allTags.filter(t => selectedCustomerTags.has(t.key));
+
+  if (!selected.length) {
+    box.style.display = 'none';
+    box.innerHTML = '';
+    return;
+  }
+
+  box.style.display = '';
+  box.innerHTML = `
+    <div class="cust-tag-strategy-title">📌 선택된 태그 기반 상담 전략</div>
+    <ul class="cust-tag-strategy-list">
+      ${selected.map(t => `<li><b>#${t.key}</b> — ${tagStrategyText(t.desc)}</li>`).join('')}
+    </ul>
+  `;
 }
 
 function toggleCustomerTag(tagKey){
