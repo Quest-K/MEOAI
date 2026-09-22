@@ -134,16 +134,21 @@
 .cust-search-row input{ flex:1 1 220px; padding:8px 10px; border:1px solid #DDD; border-radius:6px; font-size:13px; }
 .cust-search-row select{ flex:0 0 160px; padding:8px; border:1px solid #DDD; border-radius:6px; font-size:13px; }
 
-.cust-list{ display:flex; flex-direction:column; gap:6px; max-height:360px; overflow-y:auto; }
-.cust-row{
-  display:grid; grid-template-columns:1.2fr 1.4fr 1fr 1fr auto; gap:8px; align-items:center;
-  padding:9px 10px; border:1px solid #E6E6E6; border-radius:8px; background:#fff;
-  font-size:12.5px; cursor:pointer;
+.cust-list-wrap{ max-height:360px; overflow-y:auto; border:1px solid #E6E6E6; border-radius:8px; }
+.cust-list-table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+.cust-list-table thead th{
+  position:sticky; top:0; z-index:1; background:#FAF7F0; text-align:left;
+  padding:8px 10px; font-weight:700; color:#555; white-space:nowrap;
+  border-bottom:1px solid #E6E6E6; cursor:pointer; user-select:none;
 }
-.cust-row:hover{ background:#FAF7F0; border-color:#E0CDA0; }
-.cust-row.active{ background:#FFF7E6; border-color:#C9A227; }
-.cust-row .cust-row-name{ font-weight:700; }
-.cust-row .cust-row-sub{ color:#888; }
+.cust-list-table thead th.no-sort{ cursor:default; }
+.cust-list-table thead th .sort-arrow{ font-size:10px; color:#C9A227; margin-left:2px; }
+.cust-list-table tbody tr{ cursor:pointer; background:#fff; }
+.cust-list-table tbody tr:hover{ background:#FAF7F0; }
+.cust-list-table tbody tr.active{ background:#FFF7E6; }
+.cust-list-table td{ padding:8px 10px; border-bottom:1px solid #F0F0F0; }
+.cust-list-table td.cust-row-name{ font-weight:700; }
+.cust-list-table td.cust-row-sub{ color:#888; }
 .cust-status-chip{
   display:inline-block; padding:3px 8px; border-radius:999px; font-size:11px; font-weight:700;
   background:#EFEFEF; color:#555; white-space:nowrap;
@@ -645,8 +650,22 @@ table.cust-wide-table .cs-money-cell input.cs-money-input{ width:auto; flex:1 1 
             <button type="button" class="primary-btn" onclick="searchCustomers()">🔍 조회</button>
             <button type="button" class="secondary-btn" onclick="loadRecentCustomers()">최근 등록</button>
           </div>
-          <div id="cust-list" class="cust-list">
-            <div class="reflected-empty">조회 결과가 여기에 표시됩니다.</div>
+          <div class="cust-list-wrap">
+            <table class="cust-list-table">
+              <thead>
+                <tr>
+                  <th onclick="sortCustomerList('name')">이름<span class="sort-arrow" id="sort-arrow-name"></span></th>
+                  <th class="no-sort">연락처</th>
+                  <th class="no-sort">상품(인터넷/TV)</th>
+                  <th onclick="sortCustomerList('next_contact_at')">상담예약일시<span class="sort-arrow" id="sort-arrow-next_contact_at"></span></th>
+                  <th onclick="sortCustomerList('updated_at')">최종수정<span class="sort-arrow" id="sort-arrow-updated_at"></span></th>
+                  <th class="no-sort">상태값</th>
+                </tr>
+              </thead>
+              <tbody id="cust-list">
+                <tr><td colspan="6"><div class="reflected-empty">조회 결과가 여기에 표시됩니다.</div></td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -2344,24 +2363,57 @@ function renderCustomerList(rows, emptyText){
   const el = document.getElementById('cust-list');
   const logs = document.getElementById('cust-banner-logs');
   if (!el) return;
+  updateSortArrows();
   if (!customerListCache.length) {
-    el.innerHTML = `<div class="reflected-empty">${emptyText || '조회 결과가 없습니다.'}</div>`;
+    el.innerHTML = `<tr><td colspan="6"><div class="reflected-empty">${emptyText || '조회 결과가 없습니다.'}</div></td></tr>`;
     if (logs) logs.textContent = '조회 결과 0건';
     return;
   }
   if (logs) logs.textContent = `조회 결과 ${customerListCache.length}건`;
 
-  el.innerHTML = customerListCache.map(c => `
-    <div class="cust-row ${c.customer_id === currentCustomerId ? 'active' : ''}" onclick="openCustomer(${c.customer_id})">
-      <span class="cust-row-name">${c.name || '(이름없음)'}</span>
-      <span>${c.contact || '-'}</span>
-      <span class="cust-row-sub">${c.guided_carrier || '-'} ${c.guided_internet_speed || ''}</span>
-      <span class="cust-row-sub">${formatDateShort(c.updated_at)}</span>
-      <select class="cust-status-chip stage-${getFunnelStage(c.funnel_status)}"
-              onclick="event.stopPropagation()"
-              onchange="quickUpdateFunnelStatus(this, ${c.customer_id})">${funnelStatusOptionsHtml(c.funnel_status, false)}</select>
-    </div>
-  `).join('');
+  el.innerHTML = customerListCache.map(c => {
+    const product = [c.guided_carrier, c.guided_internet_speed, c.guided_tv_channel].filter(Boolean).join(' ');
+    return `
+    <tr class="${c.customer_id === currentCustomerId ? 'active' : ''}" onclick="openCustomer(${c.customer_id})">
+      <td class="cust-row-name">${c.name || '(이름없음)'}</td>
+      <td>${c.contact || '-'}</td>
+      <td class="cust-row-sub">${product || '-'}</td>
+      <td class="cust-row-sub">${formatDateShort(c.next_contact_at)}</td>
+      <td class="cust-row-sub">${formatDateShort(c.updated_at)}</td>
+      <td>
+        <select class="cust-status-chip stage-${getFunnelStage(c.funnel_status)}"
+                onclick="event.stopPropagation()"
+                onchange="quickUpdateFunnelStatus(this, ${c.customer_id})">${funnelStatusOptionsHtml(c.funnel_status, false)}</select>
+      </td>
+    </tr>
+  `;}).join('');
+}
+
+/* ---- 고객 목록 정렬 ---- */
+let custListSortColumn = 'updated_at';
+let custListSortAscending = false;
+
+function sortCustomerList(column){
+  if (custListSortColumn === column) {
+    custListSortAscending = !custListSortAscending;
+  } else {
+    custListSortColumn = column;
+    custListSortAscending = column === 'name'; // 이름은 오름차순(가나다) 기본, 날짜는 최신순 기본
+  }
+  updateSortArrows();
+  if ((elVal('cust-search-contact') || '').trim() || elVal('cust-search-status')) {
+    searchCustomers();
+  } else {
+    loadRecentCustomers();
+  }
+}
+
+function updateSortArrows(){
+  ['name', 'next_contact_at', 'updated_at'].forEach(col => {
+    const arrow = document.getElementById('sort-arrow-' + col);
+    if (!arrow) return;
+    arrow.textContent = col === custListSortColumn ? (custListSortAscending ? '▲' : '▼') : '';
+  });
 }
 
 // 고객 목록에서 상세화면을 거치지 않고 바로 상태값(퍼널)만 변경
@@ -2410,7 +2462,8 @@ function toLocalInputValue(iso){
 }
 
 async function loadRecentCustomers(){
-  const { data, error } = await sb.from('customers').select('*').order('updated_at', { ascending: false }).limit(30);
+  const { data, error } = await sb.from('customers').select('*')
+    .order(custListSortColumn, { ascending: custListSortAscending }).limit(30);
   if (error) { renderCustomerList([], '조회 실패: ' + error.message); return; }
   renderCustomerList(data, '등록된 고객이 없습니다.');
 }
@@ -2426,7 +2479,7 @@ async function searchCustomers(){
   }
   if (status) query = query.eq('funnel_status', status);
 
-  const { data, error } = await query.order('updated_at', { ascending: false }).limit(100);
+  const { data, error } = await query.order(custListSortColumn, { ascending: custListSortAscending }).limit(100);
   if (error) { renderCustomerList([], '조회 실패: ' + error.message); return; }
   renderCustomerList(data, '해당 연락처로 등록된 고객이 없습니다.');
 }
