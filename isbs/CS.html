@@ -134,16 +134,21 @@
 .cust-search-row input{ flex:1 1 220px; padding:8px 10px; border:1px solid #DDD; border-radius:6px; font-size:13px; }
 .cust-search-row select{ flex:0 0 160px; padding:8px; border:1px solid #DDD; border-radius:6px; font-size:13px; }
 
-.cust-list{ display:flex; flex-direction:column; gap:6px; max-height:360px; overflow-y:auto; }
-.cust-row{
-  display:grid; grid-template-columns:1.2fr 1.4fr 1fr 1fr auto; gap:8px; align-items:center;
-  padding:9px 10px; border:1px solid #E6E6E6; border-radius:8px; background:#fff;
-  font-size:12.5px; cursor:pointer;
+.cust-list-wrap{ max-height:360px; overflow-y:auto; border:1px solid #E6E6E6; border-radius:8px; }
+.cust-list-table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+.cust-list-table thead th{
+  position:sticky; top:0; z-index:1; background:#FAF7F0; text-align:left;
+  padding:8px 10px; font-weight:700; color:#555; white-space:nowrap;
+  border-bottom:1px solid #E6E6E6; cursor:pointer; user-select:none;
 }
-.cust-row:hover{ background:#FAF7F0; border-color:#E0CDA0; }
-.cust-row.active{ background:#FFF7E6; border-color:#C9A227; }
-.cust-row .cust-row-name{ font-weight:700; }
-.cust-row .cust-row-sub{ color:#888; }
+.cust-list-table thead th.no-sort{ cursor:default; }
+.cust-list-table thead th .sort-arrow{ font-size:10px; color:#C9A227; margin-left:2px; }
+.cust-list-table tbody tr{ cursor:pointer; background:#fff; }
+.cust-list-table tbody tr:hover{ background:#FAF7F0; }
+.cust-list-table tbody tr.active{ background:#FFF7E6; }
+.cust-list-table td{ padding:8px 10px; border-bottom:1px solid #F0F0F0; }
+.cust-list-table td.cust-row-name{ font-weight:700; }
+.cust-list-table td.cust-row-sub{ color:#888; }
 .cust-status-chip{
   display:inline-block; padding:3px 8px; border-radius:999px; font-size:11px; font-weight:700;
   background:#EFEFEF; color:#555; white-space:nowrap;
@@ -180,6 +185,8 @@ select.cust-status-chip:disabled{ opacity:.6; cursor:wait; }
 .cust-prod-item{ border:1px solid #EEE; border-radius:8px; padding:8px 10px; margin-bottom:6px; font-size:12px; }
 .cust-prod-item .tag{ font-size:10.5px; font-weight:700; padding:2px 6px; border-radius:4px; background:#EEE; color:#666; margin-right:6px; }
 .cust-prod-item .tag.final{ background:#FFF0CC; color:#8A6A00; }
+.cust-prod-item.cust-prod-home{ border-left:3px solid #2A5CAA; background:#F5F8FF; }
+.cust-prod-item.cust-prod-usim{ border-left:3px solid #C97A2E; background:#FFF8F0; }
 .schema-warn{ font-size:11.5px; color:#B77400; margin-top:8px; }
 
 /* 안내상품 : 가로로 긴 표 형식 (상단 제목행 + 하단 값행), 여러 상품일 때 값행이 아래로 쌓임 */
@@ -643,8 +650,22 @@ table.cust-wide-table .cs-money-cell input.cs-money-input{ width:auto; flex:1 1 
             <button type="button" class="primary-btn" onclick="searchCustomers()">🔍 조회</button>
             <button type="button" class="secondary-btn" onclick="loadRecentCustomers()">최근 등록</button>
           </div>
-          <div id="cust-list" class="cust-list">
-            <div class="reflected-empty">조회 결과가 여기에 표시됩니다.</div>
+          <div class="cust-list-wrap">
+            <table class="cust-list-table">
+              <thead>
+                <tr>
+                  <th onclick="sortCustomerList('name')">이름<span class="sort-arrow" id="sort-arrow-name"></span></th>
+                  <th class="no-sort">연락처</th>
+                  <th class="no-sort">상품(인터넷/TV)</th>
+                  <th onclick="sortCustomerList('next_contact_at')">상담예약일시<span class="sort-arrow" id="sort-arrow-next_contact_at"></span></th>
+                  <th onclick="sortCustomerList('updated_at')">최종수정<span class="sort-arrow" id="sort-arrow-updated_at"></span></th>
+                  <th class="no-sort">상태값</th>
+                </tr>
+              </thead>
+              <tbody id="cust-list">
+                <tr><td colspan="6"><div class="reflected-empty">조회 결과가 여기에 표시됩니다.</div></td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -1570,7 +1591,7 @@ function updateCsSummaryPanel(){
     prodHtml = '<div class="js-empty">아직 반영된 제안 상품이 없습니다.</div>';
   } else {
     reflectedProducts.forEach((p, idx) => {
-      prodHtml += `<div class="js-product-block">`;
+      prodHtml += `<div class="js-product-block js-product-${p.type === 'usim' ? 'usim' : 'home'}">`;
       prodHtml += `<div class="js-product-title">${idx + 1}. ${productTitle(p)}</div>`;
       buildProductSummaryLines(p).forEach(line => {
         prodHtml += `<div class="js-compact-line">${line}</div>`;
@@ -1893,25 +1914,25 @@ const CUSTOMER_TAG_GROUPS = [
   ]}
 ];
 
-let selectedCustomerTags = new Set();
+let selectedCustomerTags = new Set();   // 고객상담 화면용
+let detailCustomerTags = new Set();     // 고객조회 화면용 (서로 독립적인 선택 상태)
 
-function renderCustomerTags(){
-  const body = document.getElementById('customer-tags-body');
-  if (body) {
-    body.innerHTML = CUSTOMER_TAG_GROUPS.map(group => `
-      <div class="cust-tag-group">
-        <div class="cust-tag-group-label">${group.label}</div>
-        <div class="cust-tag-chip-row">
-          ${group.tags.map(t => `
-            <span class="cust-tag-chip ${selectedCustomerTags.has(t.key) ? 'active' : ''}"
-                  title="${escAttr(t.desc)}"
-                  onclick="toggleCustomerTag('${t.key.replace(/'/g, "\\'")}')">#${t.key}</span>
-          `).join('')}
-        </div>
+// 태그 칩 목록을 그려주는 공용 함수 (containerId 자리에 렌더링, toggleFnName을 각 칩의 onclick에 연결)
+function renderTagChips(containerId, tagSet, toggleFnName){
+  const body = document.getElementById(containerId);
+  if (!body) return;
+  body.innerHTML = CUSTOMER_TAG_GROUPS.map(group => `
+    <div class="cust-tag-group">
+      <div class="cust-tag-group-label">${group.label}</div>
+      <div class="cust-tag-chip-row">
+        ${group.tags.map(t => `
+          <span class="cust-tag-chip ${tagSet.has(t.key) ? 'active' : ''}"
+                title="${escAttr(t.desc)}"
+                onclick="${toggleFnName}('${t.key.replace(/'/g, "\\'")}')">#${t.key}</span>
+        `).join('')}
       </div>
-    `).join('');
-  }
-  renderCustomerTagStrategy();
+    </div>
+  `).join('');
 }
 
 // 설명(desc) 중 "참고:" 이후 문구만 추출 (툴팁과 동일한 내용을 재사용)
@@ -1920,12 +1941,13 @@ function tagStrategyText(desc){
   return (parts.length > 1 ? parts[1] : desc).trim();
 }
 
-function renderCustomerTagStrategy(){
-  const box = document.getElementById('customer-tags-strategy');
+// 선택된 태그 기반 상담 전략 박스를 그려주는 공용 함수
+function renderTagStrategyBox(boxId, tagSet){
+  const box = document.getElementById(boxId);
   if (!box) return;
 
   const allTags = CUSTOMER_TAG_GROUPS.flatMap(g => g.tags);
-  const selected = allTags.filter(t => selectedCustomerTags.has(t.key));
+  const selected = allTags.filter(t => tagSet.has(t.key));
 
   if (!selected.length) {
     box.style.display = 'none';
@@ -1942,22 +1964,27 @@ function renderCustomerTagStrategy(){
   `;
 }
 
-function toggleCustomerTag(tagKey){
+// 태그 선택/해제 로직 (단일선택 그룹은 같은 그룹 내 기존 선택을 자동 해제)
+function toggleTagInSet(tagSet, tagKey){
   const group = CUSTOMER_TAG_GROUPS.find(g => g.tags.some(t => t.key === tagKey));
   if (group && group.single) {
-    if (selectedCustomerTags.has(tagKey)) {
-      selectedCustomerTags.delete(tagKey);
-    } else {
-      group.tags.forEach(t => selectedCustomerTags.delete(t.key));
-      selectedCustomerTags.add(tagKey);
-    }
+    if (tagSet.has(tagKey)) tagSet.delete(tagKey);
+    else { group.tags.forEach(t => tagSet.delete(t.key)); tagSet.add(tagKey); }
   } else {
-    if (selectedCustomerTags.has(tagKey)) selectedCustomerTags.delete(tagKey);
-    else selectedCustomerTags.add(tagKey);
+    if (tagSet.has(tagKey)) tagSet.delete(tagKey);
+    else tagSet.add(tagKey);
   }
-  renderCustomerTags();
 }
 
+/* ---- 고객상담 화면용 ---- */
+function renderCustomerTags(){
+  renderTagChips('customer-tags-body', selectedCustomerTags, 'toggleCustomerTag');
+  renderTagStrategyBox('customer-tags-strategy', selectedCustomerTags);
+}
+function toggleCustomerTag(tagKey){
+  toggleTagInSet(selectedCustomerTags, tagKey);
+  renderCustomerTags();
+}
 function toggleCustomerTagsBody(){
   const body = document.getElementById('customer-tags-body');
   const chevron = document.getElementById('customer-tags-chevron');
@@ -1967,13 +1994,31 @@ function toggleCustomerTagsBody(){
   if (chevron) chevron.textContent = isOpen ? '▾' : '▴';
 }
 
+/* ---- 고객조회 화면용 ---- */
+function renderDetailCustomerTags(){
+  renderTagChips('detail-tags-body', detailCustomerTags, 'toggleDetailCustomerTag');
+  renderTagStrategyBox('detail-tags-strategy', detailCustomerTags);
+}
+function toggleDetailCustomerTag(tagKey){
+  toggleTagInSet(detailCustomerTags, tagKey);
+  renderDetailCustomerTags();
+}
+function toggleDetailTagsBody(){
+  const body = document.getElementById('detail-tags-body');
+  const chevron = document.getElementById('detail-tags-chevron');
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : '';
+  if (chevron) chevron.textContent = isOpen ? '▾' : '▴';
+}
+
 const FUNNEL_STAGES = [
   { stage: 1, label: '1. 접수·상담', items: ['신규접수', '상담진행', '고객부재', '고객부재_종결'] },
-  { stage: 2, label: '2. 상담·계약', items: ['상품안내', '계약진행', '보류확인', '이탈(고객취소)', '접수반려'] },
+  { stage: 2, label: '2. 상담·계약', items: ['상품안내', '계약진행', '보류확인', '접수불가'] },
   { stage: 3, label: '3. 설치', items: ['접수완료', '설치대기', '개통대기'] },
   { stage: 4, label: '4. 사은품 지급', items: ['개통완료', '지급요청', '지급완료', '지급반려'] },
-  { stage: 5, label: '5. 환수', items: ['환수필요', '환수요청', '환수진행중', '환수완료', '환수부재', '환수불가'] },
-  { stage: 0, label: '종결', items: ['종결(정상)', '종결(리드소멸)'] }
+  { stage: 5, label: '5. 환수', items: ['환수필요', '환수요청', '환수진행'] },
+  { stage: 0, label: '종결', items: ['종결(정상)', '종결(리드소멸)', '이탈'] }
 ];
 
 const DEFAULT_FUNNEL_STATUS = '상담대기';
@@ -2318,24 +2363,57 @@ function renderCustomerList(rows, emptyText){
   const el = document.getElementById('cust-list');
   const logs = document.getElementById('cust-banner-logs');
   if (!el) return;
+  updateSortArrows();
   if (!customerListCache.length) {
-    el.innerHTML = `<div class="reflected-empty">${emptyText || '조회 결과가 없습니다.'}</div>`;
+    el.innerHTML = `<tr><td colspan="6"><div class="reflected-empty">${emptyText || '조회 결과가 없습니다.'}</div></td></tr>`;
     if (logs) logs.textContent = '조회 결과 0건';
     return;
   }
   if (logs) logs.textContent = `조회 결과 ${customerListCache.length}건`;
 
-  el.innerHTML = customerListCache.map(c => `
-    <div class="cust-row ${c.customer_id === currentCustomerId ? 'active' : ''}" onclick="openCustomer(${c.customer_id})">
-      <span class="cust-row-name">${c.name || '(이름없음)'}</span>
-      <span>${c.contact || '-'}</span>
-      <span class="cust-row-sub">${c.guided_carrier || '-'} ${c.guided_internet_speed || ''}</span>
-      <span class="cust-row-sub">${formatDateShort(c.updated_at)}</span>
-      <select class="cust-status-chip stage-${getFunnelStage(c.funnel_status)}"
-              onclick="event.stopPropagation()"
-              onchange="quickUpdateFunnelStatus(this, ${c.customer_id})">${funnelStatusOptionsHtml(c.funnel_status, false)}</select>
-    </div>
-  `).join('');
+  el.innerHTML = customerListCache.map(c => {
+    const product = [c.guided_carrier, c.guided_internet_speed, c.guided_tv_channel].filter(Boolean).join(' ');
+    return `
+    <tr class="${c.customer_id === currentCustomerId ? 'active' : ''}" onclick="openCustomer(${c.customer_id})">
+      <td class="cust-row-name">${c.name || '(이름없음)'}</td>
+      <td>${c.contact || '-'}</td>
+      <td class="cust-row-sub">${product || '-'}</td>
+      <td class="cust-row-sub">${formatDateShort(c.next_contact_at)}</td>
+      <td class="cust-row-sub">${formatDateShort(c.updated_at)}</td>
+      <td>
+        <select class="cust-status-chip stage-${getFunnelStage(c.funnel_status)}"
+                onclick="event.stopPropagation()"
+                onchange="quickUpdateFunnelStatus(this, ${c.customer_id})">${funnelStatusOptionsHtml(c.funnel_status, false)}</select>
+      </td>
+    </tr>
+  `;}).join('');
+}
+
+/* ---- 고객 목록 정렬 ---- */
+let custListSortColumn = 'updated_at';
+let custListSortAscending = false;
+
+function sortCustomerList(column){
+  if (custListSortColumn === column) {
+    custListSortAscending = !custListSortAscending;
+  } else {
+    custListSortColumn = column;
+    custListSortAscending = column === 'name'; // 이름은 오름차순(가나다) 기본, 날짜는 최신순 기본
+  }
+  updateSortArrows();
+  if ((elVal('cust-search-contact') || '').trim() || elVal('cust-search-status')) {
+    searchCustomers();
+  } else {
+    loadRecentCustomers();
+  }
+}
+
+function updateSortArrows(){
+  ['name', 'next_contact_at', 'updated_at'].forEach(col => {
+    const arrow = document.getElementById('sort-arrow-' + col);
+    if (!arrow) return;
+    arrow.textContent = col === custListSortColumn ? (custListSortAscending ? '▲' : '▼') : '';
+  });
 }
 
 // 고객 목록에서 상세화면을 거치지 않고 바로 상태값(퍼널)만 변경
@@ -2384,7 +2462,8 @@ function toLocalInputValue(iso){
 }
 
 async function loadRecentCustomers(){
-  const { data, error } = await sb.from('customers').select('*').order('updated_at', { ascending: false }).limit(30);
+  const { data, error } = await sb.from('customers').select('*')
+    .order(custListSortColumn, { ascending: custListSortAscending }).limit(30);
   if (error) { renderCustomerList([], '조회 실패: ' + error.message); return; }
   renderCustomerList(data, '등록된 고객이 없습니다.');
 }
@@ -2400,7 +2479,7 @@ async function searchCustomers(){
   }
   if (status) query = query.eq('funnel_status', status);
 
-  const { data, error } = await query.order('updated_at', { ascending: false }).limit(100);
+  const { data, error } = await query.order(custListSortColumn, { ascending: custListSortAscending }).limit(100);
   if (error) { renderCustomerList([], '조회 실패: ' + error.message); return; }
   renderCustomerList(data, '해당 연락처로 등록된 고객이 없습니다.');
 }
@@ -2444,6 +2523,15 @@ async function openCustomer(id){
       ${custField('추가컨택일시', 'cf-next-contact', toLocalInputValue(c.next_contact_at), 'datetime-local')}
     </div>
 
+    <div class="info-subsection" id="detail-tags-subsection">
+      <div class="info-subsection-title cust-tag-accordion-header" onclick="toggleDetailTagsBody()">
+        <span>🏷️ 고객 태그</span>
+        <span class="accordion-chevron" id="detail-tags-chevron">▾</span>
+      </div>
+      <div class="info-subsection-body" id="detail-tags-body" style="display:none;"></div>
+    </div>
+    <div class="cust-tag-strategy-box" id="detail-tags-strategy" style="display:none;"></div>
+
     <div class="cust-form-section">
       안내상품 · 인터넷/TV
       <button type="button" class="mini-btn mini-btn-primary" onclick="addGuidedProductRow(${c.customer_id}, 'home')">+ 상품 추가</button>
@@ -2473,6 +2561,8 @@ async function openCustomer(id){
 
   renderCustomerProducts(c);
   renderGuidedProductTables(c);
+  detailCustomerTags = new Set(Array.isArray(c.customer_tags) ? c.customer_tags : []);
+  renderDetailCustomerTags();
 }
 
 // 안내상품 · 인터넷/TV, 유심 : 가로로 긴 표 형식 렌더링
@@ -2711,7 +2801,7 @@ async function renderCustomerProducts(c){
   if (!data || !data.length) { box.innerHTML = `<div class="js-empty">저장된 제안 상품이 없습니다.</div>`; return; }
 
   box.innerHTML = data.map(r => `
-    <div class="cust-prod-item">
+    <div class="cust-prod-item cust-prod-${r.product_type === 'usim' ? 'usim' : 'home'}">
       <div>
         <span class="tag ${r.is_final ? 'final' : ''}">${r.is_final ? '최종' : '제안'}</span>
         <strong>${r.carrier || '-'}</strong> · ${r.product_name || '-'}
@@ -2737,6 +2827,10 @@ async function updateCustomer(id){
     funnel_status: elVal('cf-funnel') || DEFAULT_FUNNEL_STATUS,
     next_contact_at: nextContact ? new Date(nextContact).toISOString() : null
   };
+
+  if (CUSTOMER_SCHEMA.hasTags) {
+    payload.customer_tags = Array.from(detailCustomerTags);
+  }
 
   // customer_products 테이블이 없을 때만 레거시 단일 안내상품 칼럼을 함께 수정합니다.
   // (테이블이 있으면 안내상품은 표의 [저장] 버튼으로 개별 저장되므로 여기서 건드리지 않습니다.)
