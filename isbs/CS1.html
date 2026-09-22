@@ -1895,25 +1895,25 @@ const CUSTOMER_TAG_GROUPS = [
   ]}
 ];
 
-let selectedCustomerTags = new Set();
+let selectedCustomerTags = new Set();   // 고객상담 화면용
+let detailCustomerTags = new Set();     // 고객조회 화면용 (서로 독립적인 선택 상태)
 
-function renderCustomerTags(){
-  const body = document.getElementById('customer-tags-body');
-  if (body) {
-    body.innerHTML = CUSTOMER_TAG_GROUPS.map(group => `
-      <div class="cust-tag-group">
-        <div class="cust-tag-group-label">${group.label}</div>
-        <div class="cust-tag-chip-row">
-          ${group.tags.map(t => `
-            <span class="cust-tag-chip ${selectedCustomerTags.has(t.key) ? 'active' : ''}"
-                  title="${escAttr(t.desc)}"
-                  onclick="toggleCustomerTag('${t.key.replace(/'/g, "\\'")}')">#${t.key}</span>
-          `).join('')}
-        </div>
+// 태그 칩 목록을 그려주는 공용 함수 (containerId 자리에 렌더링, toggleFnName을 각 칩의 onclick에 연결)
+function renderTagChips(containerId, tagSet, toggleFnName){
+  const body = document.getElementById(containerId);
+  if (!body) return;
+  body.innerHTML = CUSTOMER_TAG_GROUPS.map(group => `
+    <div class="cust-tag-group">
+      <div class="cust-tag-group-label">${group.label}</div>
+      <div class="cust-tag-chip-row">
+        ${group.tags.map(t => `
+          <span class="cust-tag-chip ${tagSet.has(t.key) ? 'active' : ''}"
+                title="${escAttr(t.desc)}"
+                onclick="${toggleFnName}('${t.key.replace(/'/g, "\\'")}')">#${t.key}</span>
+        `).join('')}
       </div>
-    `).join('');
-  }
-  renderCustomerTagStrategy();
+    </div>
+  `).join('');
 }
 
 // 설명(desc) 중 "참고:" 이후 문구만 추출 (툴팁과 동일한 내용을 재사용)
@@ -1922,12 +1922,13 @@ function tagStrategyText(desc){
   return (parts.length > 1 ? parts[1] : desc).trim();
 }
 
-function renderCustomerTagStrategy(){
-  const box = document.getElementById('customer-tags-strategy');
+// 선택된 태그 기반 상담 전략 박스를 그려주는 공용 함수
+function renderTagStrategyBox(boxId, tagSet){
+  const box = document.getElementById(boxId);
   if (!box) return;
 
   const allTags = CUSTOMER_TAG_GROUPS.flatMap(g => g.tags);
-  const selected = allTags.filter(t => selectedCustomerTags.has(t.key));
+  const selected = allTags.filter(t => tagSet.has(t.key));
 
   if (!selected.length) {
     box.style.display = 'none';
@@ -1944,25 +1945,48 @@ function renderCustomerTagStrategy(){
   `;
 }
 
-function toggleCustomerTag(tagKey){
+// 태그 선택/해제 로직 (단일선택 그룹은 같은 그룹 내 기존 선택을 자동 해제)
+function toggleTagInSet(tagSet, tagKey){
   const group = CUSTOMER_TAG_GROUPS.find(g => g.tags.some(t => t.key === tagKey));
   if (group && group.single) {
-    if (selectedCustomerTags.has(tagKey)) {
-      selectedCustomerTags.delete(tagKey);
-    } else {
-      group.tags.forEach(t => selectedCustomerTags.delete(t.key));
-      selectedCustomerTags.add(tagKey);
-    }
+    if (tagSet.has(tagKey)) tagSet.delete(tagKey);
+    else { group.tags.forEach(t => tagSet.delete(t.key)); tagSet.add(tagKey); }
   } else {
-    if (selectedCustomerTags.has(tagKey)) selectedCustomerTags.delete(tagKey);
-    else selectedCustomerTags.add(tagKey);
+    if (tagSet.has(tagKey)) tagSet.delete(tagKey);
+    else tagSet.add(tagKey);
   }
-  renderCustomerTags();
 }
 
+/* ---- 고객상담 화면용 ---- */
+function renderCustomerTags(){
+  renderTagChips('customer-tags-body', selectedCustomerTags, 'toggleCustomerTag');
+  renderTagStrategyBox('customer-tags-strategy', selectedCustomerTags);
+}
+function toggleCustomerTag(tagKey){
+  toggleTagInSet(selectedCustomerTags, tagKey);
+  renderCustomerTags();
+}
 function toggleCustomerTagsBody(){
   const body = document.getElementById('customer-tags-body');
   const chevron = document.getElementById('customer-tags-chevron');
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : '';
+  if (chevron) chevron.textContent = isOpen ? '▾' : '▴';
+}
+
+/* ---- 고객조회 화면용 ---- */
+function renderDetailCustomerTags(){
+  renderTagChips('detail-tags-body', detailCustomerTags, 'toggleDetailCustomerTag');
+  renderTagStrategyBox('detail-tags-strategy', detailCustomerTags);
+}
+function toggleDetailCustomerTag(tagKey){
+  toggleTagInSet(detailCustomerTags, tagKey);
+  renderDetailCustomerTags();
+}
+function toggleDetailTagsBody(){
+  const body = document.getElementById('detail-tags-body');
+  const chevron = document.getElementById('detail-tags-chevron');
   if (!body) return;
   const isOpen = body.style.display !== 'none';
   body.style.display = isOpen ? 'none' : '';
@@ -2446,6 +2470,15 @@ async function openCustomer(id){
       ${custField('추가컨택일시', 'cf-next-contact', toLocalInputValue(c.next_contact_at), 'datetime-local')}
     </div>
 
+    <div class="info-subsection" id="detail-tags-subsection">
+      <div class="info-subsection-title cust-tag-accordion-header" onclick="toggleDetailTagsBody()">
+        <span>🏷️ 고객 태그</span>
+        <span class="accordion-chevron" id="detail-tags-chevron">▾</span>
+      </div>
+      <div class="info-subsection-body" id="detail-tags-body" style="display:none;"></div>
+    </div>
+    <div class="cust-tag-strategy-box" id="detail-tags-strategy" style="display:none;"></div>
+
     <div class="cust-form-section">
       안내상품 · 인터넷/TV
       <button type="button" class="mini-btn mini-btn-primary" onclick="addGuidedProductRow(${c.customer_id}, 'home')">+ 상품 추가</button>
@@ -2475,6 +2508,8 @@ async function openCustomer(id){
 
   renderCustomerProducts(c);
   renderGuidedProductTables(c);
+  detailCustomerTags = new Set(Array.isArray(c.customer_tags) ? c.customer_tags : []);
+  renderDetailCustomerTags();
 }
 
 // 안내상품 · 인터넷/TV, 유심 : 가로로 긴 표 형식 렌더링
@@ -2739,6 +2774,10 @@ async function updateCustomer(id){
     funnel_status: elVal('cf-funnel') || DEFAULT_FUNNEL_STATUS,
     next_contact_at: nextContact ? new Date(nextContact).toISOString() : null
   };
+
+  if (CUSTOMER_SCHEMA.hasTags) {
+    payload.customer_tags = Array.from(detailCustomerTags);
+  }
 
   // customer_products 테이블이 없을 때만 레거시 단일 안내상품 칼럼을 함께 수정합니다.
   // (테이블이 있으면 안내상품은 표의 [저장] 버튼으로 개별 저장되므로 여기서 건드리지 않습니다.)
