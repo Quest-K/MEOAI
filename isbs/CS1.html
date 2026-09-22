@@ -598,7 +598,7 @@ table.cust-wide-table .cs-money-cell input.cs-money-input{ width:auto; flex:1 1 
         <div class="consult-save-row consult-save-row-top">
           <span class="consult-save-state" id="consult-save-state">신규 상담</span>
           <button type="button" class="secondary-btn" onclick="resetConsultation()">🆕 신규상담</button>
-          <button type="button" class="primary-btn" onclick="saveConsultation()">💾 상담저장</button>
+          <button type="button" class="primary-btn" onclick="saveConsultation(this)">💾 상담저장</button>
         </div>
         <div class="js-header-row">
           <h3>상담요약</h3>
@@ -650,8 +650,9 @@ table.cust-wide-table .cs-money-cell input.cs-money-input{ width:auto; flex:1 1 
             <input type="text" id="cust-search-contact" placeholder="연락처 (숫자만 입력해도 검색)"
                    inputmode="numeric" onkeydown="if(event.key==='Enter') searchCustomers()">
             <select id="cust-search-status"></select>
-            <button type="button" class="primary-btn" onclick="searchCustomers()">🔍 조회</button>
-            <button type="button" class="secondary-btn" onclick="loadRecentCustomers()">최근 등록</button>
+            <button type="button" id="cust-search-btn" class="primary-btn" onclick="searchCustomers(this)">🔍 조회</button>
+            <button type="button" class="secondary-btn" onclick="loadRecentCustomers(this)">최근 등록</button>
+            <button type="button" class="secondary-btn" onclick="openReservationModal()">+ 상담예약 빠르게 등록</button>
           </div>
           <div class="cust-list-wrap">
             <table class="cust-list-table">
@@ -704,6 +705,24 @@ table.cust-wide-table .cs-money-cell input.cs-money-input{ width:auto; flex:1 1 
     <div class="modal-actions">
       <button class="secondary-btn" onclick="closeLoginModal()">취소</button>
       <button class="primary-btn" onclick="handleLogin()">로그인</button>
+    </div>
+  </div>
+</div>
+
+<div id="reservation-modal" class="modal-overlay">
+  <div class="modal-box" style="max-width:400px;">
+    <h3>상담예약 빠르게 등록</h3>
+    <p class="modal-desc">연락처와 대략적인 예상 시점만 남겨두면, 나중에 고객조회에서 상태값을 바꿔 실제 상담으로 이어갈 수 있습니다.</p>
+    <label class="login-label">연락처 *</label>
+    <input type="text" id="resv-contact" class="login-input" placeholder="010-0000-0000" inputmode="numeric">
+    <label class="login-label">예상 시점</label>
+    <input type="text" id="resv-timing" class="login-input" placeholder="예: 11월 중순, 27년 12월">
+    <label class="login-label">메모</label>
+    <input type="text" id="resv-memo" class="login-input" placeholder="예: KT 69이상, 만료 예정">
+    <div class="login-error" id="resv-error"></div>
+    <div class="modal-actions">
+      <button class="secondary-btn" onclick="closeReservationModal()">취소</button>
+      <button class="primary-btn" id="resv-submit-btn" onclick="submitReservation(this)">등록</button>
     </div>
   </div>
 </div>
@@ -766,6 +785,22 @@ function showToast(message){
   }, 2200);
 }
 
+// 저장/삭제/조회 등 비동기 버튼의 중복 클릭 방지 + 진행 상태 표시 공용 헬퍼
+function setBtnLoading(btn, loadingLabel){
+  if (!btn || btn.disabled) return;
+  btn.dataset.originalLabel = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = loadingLabel;
+}
+function clearBtnLoading(btn){
+  if (!btn) return;
+  btn.disabled = false;
+  if (btn.dataset.originalLabel !== undefined) {
+    btn.innerHTML = btn.dataset.originalLabel;
+    delete btn.dataset.originalLabel;
+  }
+}
+
 let openDiscountItems = new Set();
 let state = { speed:'500', tv:'basic', settopTier:'basic', router:'Y', tcDistMode:'equal' };
 let lastTvTier = 'basic';
@@ -811,6 +846,11 @@ function switchTab(tabId) {
 
 // [고객상담] 단계형 서브탭 : 고객정보 → 추천상품 → 제안상품 → 최종상품
 function goCsStep(n) {
+  if (n > 1 && !(elVal('cust-contact') || '').trim()) {
+    alert('연락처를 먼저 입력해주세요.');
+    document.getElementById('cust-contact')?.focus();
+    return;
+  }
   document.querySelectorAll('#cs-wiz-nav .cs-wiz-btn').forEach(b => {
     b.classList.toggle('active', Number(b.dataset.step) === n);
   });
@@ -1209,6 +1249,7 @@ function updateFamilyLine(idx, field, value){
 }
 
 function removeFamilyLine(idx){
+  if (!confirm('해당 가족회선을 삭제할까요?')) return;
   familyLines.splice(idx, 1);
   renderFamilyLines();
   updateCsSummaryPanel();
@@ -1879,6 +1920,98 @@ function closeLoginModal(){
   document.getElementById('login-modal').style.display = 'none';
 }
 
+function openReservationModal(){
+  document.getElementById('resv-error').textContent = '';
+  setVal('resv-contact', '');
+  setVal('resv-timing', '');
+  setVal('resv-memo', '');
+  document.getElementById('reservation-modal').style.display = 'flex';
+}
+
+function closeReservationModal(){
+  document.getElementById('reservation-modal').style.display = 'none';
+}
+
+// "11월 중순", "27년 12월", "12월 5일" 같은 대략적 표현을 실제 날짜(YYYY-MM-DDT09:00)로 변환.
+// 초순=5일, 중순=15일, 말/하순=25일, 일자 언급 없으면 1일. 연도 미기재 시 이미 지난 날짜면 내년으로 이동.
+function parseRoughDateText(text){
+  const t = String(text || '').trim();
+  if (!t) return null;
+
+  const monthMatch = t.match(/(\d{1,2})\s*월/);
+  if (!monthMatch) return null;
+  const month = parseInt(monthMatch[1], 10);
+  if (month < 1 || month > 12) return null;
+
+  const yearMatch = t.match(/(\d{2,4})\s*년/);
+  let year = new Date().getFullYear();
+  if (yearMatch) {
+    let y = parseInt(yearMatch[1], 10);
+    if (y < 100) y += 2000;
+    year = y;
+  }
+
+  let day = 1;
+  if (t.includes('초순')) day = 5;
+  else if (t.includes('중순')) day = 15;
+  else if (t.includes('하순') || t.includes('말')) day = 25;
+  const dayMatch = t.match(/(\d{1,2})\s*일/);
+  if (dayMatch) day = parseInt(dayMatch[1], 10);
+
+  if (!yearMatch) {
+    const candidate = new Date(year, month - 1, day);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    if (candidate < today) year += 1;
+  }
+
+  const pad = n => String(n).padStart(2, '0');
+  return `${year}-${pad(month)}-${pad(day)}T09:00`;
+}
+
+async function submitReservation(btn){
+  const errEl = document.getElementById('resv-error');
+  errEl.textContent = '';
+
+  const contact = (elVal('resv-contact') || '').trim();
+  if (!contact) { errEl.textContent = '연락처는 필수 입력값입니다.'; return; }
+
+  const timingRaw = (elVal('resv-timing') || '').trim();
+  const memoRaw = (elVal('resv-memo') || '').trim();
+  const parsedDate = parseRoughDateText(timingRaw);
+
+  const noteParts = [];
+  if (timingRaw) noteParts.push(`예상 시점: ${timingRaw}`);
+  if (memoRaw) noteParts.push(memoRaw);
+
+  setBtnLoading(btn, '등록 중...');
+  try {
+    const { data: exist } = await sb.from('customers').select('customer_id').eq('contact', contact).limit(1);
+    const payload = {
+      contact,
+      funnel_status: RESERVATION_STATUS,
+      next_contact_at: parsedDate ? new Date(parsedDate).toISOString() : null,
+      notes: noteParts.join(' / ') || null
+    };
+
+    let error;
+    if (exist && exist.length) {
+      if (!confirm(`동일한 연락처(${contact})의 고객이 이미 등록되어 있습니다.\n기존 정보를 상담예약 상태로 업데이트할까요?`)) return;
+      ({ error } = await sb.from('customers').update(payload).eq('customer_id', exist[0].customer_id));
+    } else {
+      ({ error } = await sb.from('customers').insert(payload));
+    }
+
+    if (error) { errEl.textContent = '등록 실패: ' + error.message; return; }
+
+    showToast('✓ 상담예약이 등록되었습니다');
+    closeReservationModal();
+    await searchOrRefresh();
+    if (document.getElementById('funnel-dashboard')) loadFunnelDashboard();
+  } finally {
+    clearBtnLoading(btn);
+  }
+}
+
 function updateAuthUI(email){
   const box = document.getElementById('auth-box');
   if (isLoggedIn) {
@@ -2218,47 +2351,52 @@ async function probeCustomerSchema(){
   return CUSTOMER_SCHEMA;
 }
 
-async function saveConsultation(){
+async function saveConsultation(btn){
   const contact = (elVal('cust-contact') || '').trim();
   if (!contact) { alert('연락처는 필수 입력값입니다.'); document.getElementById('cust-contact')?.focus(); return; }
   if (!reflectedProducts.length && !confirm('제안상품이 없습니다. 고객 정보만 저장할까요?')) return;
 
-  await probeCustomerSchema();
-  const payload = buildCustomerPayload();
+  setBtnLoading(btn, '저장 중...');
+  try {
+    await probeCustomerSchema();
+    const payload = buildCustomerPayload();
 
-  let customerId = currentCustomerId;
-  if (!customerId) {
-    const { data: exist } = await sb.from('customers').select('customer_id').eq('contact', contact).limit(1);
-    if (exist && exist.length) {
-      if (!confirm(`동일한 연락처(${contact})의 고객이 이미 등록되어 있습니다.\n기존 고객 정보를 업데이트할까요?`)) return;
-      customerId = exist[0].customer_id;
+    let customerId = currentCustomerId;
+    if (!customerId) {
+      const { data: exist } = await sb.from('customers').select('customer_id').eq('contact', contact).limit(1);
+      if (exist && exist.length) {
+        if (!confirm(`동일한 연락처(${contact})의 고객이 이미 등록되어 있습니다.\n기존 고객 정보를 업데이트할까요?`)) return;
+        customerId = exist[0].customer_id;
+      }
     }
-  }
 
-  const res = customerId
-    ? await sb.from('customers').update(payload).eq('customer_id', customerId).select()
-    : await sb.from('customers').insert(payload).select();
+    const res = customerId
+      ? await sb.from('customers').update(payload).eq('customer_id', customerId).select()
+      : await sb.from('customers').insert(payload).select();
 
-  if (res.error) { alert('저장 실패: ' + res.error.message); return; }
+    if (res.error) { alert('저장 실패: ' + res.error.message); return; }
 
-  customerId = (res.data && res.data[0]) ? res.data[0].customer_id : customerId;
-  currentCustomerId = customerId;
+    customerId = (res.data && res.data[0]) ? res.data[0].customer_id : customerId;
+    currentCustomerId = customerId;
 
-  let prodMsg = '';
-  if (CUSTOMER_SCHEMA.hasProductsTable) {
-    await sb.from('customer_products').delete().eq('customer_id', customerId);
-    const rows = buildProductRows(customerId);
-    if (rows.length) {
-      const pr = await sb.from('customer_products').insert(rows);
-      if (pr.error) prodMsg = ' (상품 이력 저장 실패: ' + pr.error.message + ')';
+    let prodMsg = '';
+    if (CUSTOMER_SCHEMA.hasProductsTable) {
+      await sb.from('customer_products').delete().eq('customer_id', customerId);
+      const rows = buildProductRows(customerId);
+      if (rows.length) {
+        const pr = await sb.from('customer_products').insert(rows);
+        if (pr.error) prodMsg = ' (상품 이력 저장 실패: ' + pr.error.message + ')';
+      }
+    } else {
+      prodMsg = ' · customer_products 테이블 미생성으로 상품 이력은 저장되지 않았습니다';
     }
-  } else {
-    prodMsg = ' · customer_products 테이블 미생성으로 상품 이력은 저장되지 않았습니다';
-  }
 
-  setConsultSaveState(`저장됨 · 고객ID ${customerId}`, true);
-  showToast('✓ 상담 내용이 저장되었습니다' + prodMsg);
-  if (document.getElementById('funnel-dashboard')) loadFunnelDashboard();
+    setConsultSaveState(`저장됨 · 고객ID ${customerId}`, true);
+    showToast('✓ 상담 내용이 저장되었습니다' + prodMsg);
+    if (document.getElementById('funnel-dashboard')) loadFunnelDashboard();
+  } finally {
+    clearBtnLoading(btn);
+  }
 }
 
 function setConsultSaveState(text, saved){
@@ -2486,14 +2624,20 @@ function toLocalInputValue(iso){
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-async function loadRecentCustomers(){
-  const { data, error } = await sb.from('customers').select('*')
-    .order(custListSortColumn, { ascending: custListSortAscending }).limit(30);
-  if (error) { renderCustomerList([], '조회 실패: ' + error.message); return; }
-  renderCustomerList(data, '등록된 고객이 없습니다.');
+async function loadRecentCustomers(btn){
+  setBtnLoading(btn, '조회 중...');
+  try {
+    const { data, error } = await sb.from('customers').select('*')
+      .order(custListSortColumn, { ascending: custListSortAscending }).limit(30);
+    if (error) { renderCustomerList([], '조회 실패: ' + error.message); return; }
+    renderCustomerList(data, '등록된 고객이 없습니다.');
+  } finally {
+    clearBtnLoading(btn);
+  }
 }
 
-async function searchCustomers(){
+async function searchCustomers(btn){
+  btn = btn || document.getElementById('cust-search-btn');
   const raw = (elVal('cust-search-contact') || '').trim();
   const status = elVal('cust-search-status');
   let query = sb.from('customers').select('*');
@@ -2504,9 +2648,14 @@ async function searchCustomers(){
   }
   if (status) query = query.eq('funnel_status', status);
 
-  const { data, error } = await query.order(custListSortColumn, { ascending: custListSortAscending }).limit(100);
-  if (error) { renderCustomerList([], '조회 실패: ' + error.message); return; }
-  renderCustomerList(data, '해당 연락처로 등록된 고객이 없습니다.');
+  setBtnLoading(btn, '조회 중...');
+  try {
+    const { data, error } = await query.order(custListSortColumn, { ascending: custListSortAscending }).limit(100);
+    if (error) { renderCustomerList([], '조회 실패: ' + error.message); return; }
+    renderCustomerList(data, '해당 연락처로 등록된 고객이 없습니다.');
+  } finally {
+    clearBtnLoading(btn);
+  }
 }
 
 function custField(label, id, value, type, span){
@@ -2578,9 +2727,9 @@ async function openCustomer(id){
 
     <div class="cust-meta">고객ID ${c.customer_id} · 최초저장 ${formatDateShort(c.created_at)} · 최종수정 ${formatDateShort(c.updated_at)}</div>
     <div class="cust-detail-actions">
-      <button type="button" class="danger-btn" onclick="deleteCustomer(${c.customer_id})">삭제</button>
+      <button type="button" class="danger-btn" onclick="deleteCustomer(${c.customer_id}, this)">삭제</button>
       <button type="button" class="secondary-btn" onclick="loadCustomerToConsult(${c.customer_id})">📥 상담화면으로 불러오기</button>
-      <button type="button" class="primary-btn" onclick="updateCustomer(${c.customer_id})">💾 수정 저장</button>
+      <button type="button" class="primary-btn" onclick="updateCustomer(${c.customer_id}, this)">💾 수정 저장</button>
     </div>
   `;
 
@@ -2836,7 +2985,7 @@ async function renderCustomerProducts(c){
   `).join('');
 }
 
-async function updateCustomer(id){
+async function updateCustomer(id, btn){
   const contact = (elVal('cf-contact') || '').trim();
   if (!contact) { alert('연락처는 필수 입력값입니다.'); return; }
   const nextContact = elVal('cf-next-contact');
@@ -2877,11 +3026,16 @@ async function updateCustomer(id){
     });
   }
 
-  const { error } = await sb.from('customers').update(payload).eq('customer_id', id);
-  if (error) { alert('수정 실패: ' + error.message); return; }
-  showToast('✓ 고객 정보가 수정되었습니다');
-  await searchOrRefresh();
-  loadFunnelDashboard();
+  setBtnLoading(btn, '저장 중...');
+  try {
+    const { error } = await sb.from('customers').update(payload).eq('customer_id', id);
+    if (error) { alert('수정 실패: ' + error.message); return; }
+    showToast('✓ 고객 정보가 수정되었습니다');
+    await searchOrRefresh();
+    loadFunnelDashboard();
+  } finally {
+    clearBtnLoading(btn);
+  }
 }
 
 function numOrNull(v){
@@ -2895,17 +3049,22 @@ async function searchOrRefresh(){
   else await loadRecentCustomers();
 }
 
-async function deleteCustomer(id){
+async function deleteCustomer(id, btn){
   if (!confirm('해당 고객 정보를 삭제할까요? 되돌릴 수 없습니다.')) return;
-  if (CUSTOMER_SCHEMA.hasProductsTable) await sb.from('customer_products').delete().eq('customer_id', id);
-  const { error } = await sb.from('customers').delete().eq('customer_id', id);
-  if (error) { alert('삭제 실패: ' + error.message); return; }
-  if (currentCustomerId === id) currentCustomerId = null;
-  document.getElementById('cust-detail').innerHTML = `<div class="reflected-empty">목록에서 고객을 선택하면 상세 정보가 표시됩니다.</div>`;
-  document.getElementById('cust-products').innerHTML = `<div class="js-empty">선택된 고객이 없습니다.</div>`;
-  showToast('✓ 삭제되었습니다');
-  await searchOrRefresh();
-  loadFunnelDashboard();
+  setBtnLoading(btn, '삭제 중...');
+  try {
+    if (CUSTOMER_SCHEMA.hasProductsTable) await sb.from('customer_products').delete().eq('customer_id', id);
+    const { error } = await sb.from('customers').delete().eq('customer_id', id);
+    if (error) { alert('삭제 실패: ' + error.message); return; }
+    if (currentCustomerId === id) currentCustomerId = null;
+    document.getElementById('cust-detail').innerHTML = `<div class="reflected-empty">목록에서 고객을 선택하면 상세 정보가 표시됩니다.</div>`;
+    document.getElementById('cust-products').innerHTML = `<div class="js-empty">선택된 고객이 없습니다.</div>`;
+    showToast('✓ 삭제되었습니다');
+    await searchOrRefresh();
+    loadFunnelDashboard();
+  } finally {
+    clearBtnLoading(btn);
+  }
 }
 
 // 고객 정보를 [고객상담] 화면으로 불러오기 (상품 스냅샷이 있으면 함께 복원)
