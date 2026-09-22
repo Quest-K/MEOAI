@@ -157,7 +157,7 @@
 .cust-status-chip.stage-2{ background:#F1EEFF; color:#5B3FA8; }
 .cust-status-chip.stage-3{ background:#E9F6EE; color:#1E7E34; }
 .cust-status-chip.stage-4{ background:#FFF4E0; color:#B77400; }
-.cust-status-chip.stage-5{ background:#FDECEC; color:#B3001B; }
+.cust-status-chip.stage-wait{ background:#F0F0F0; color:#666; }
 select.cust-status-chip{
   border:none; cursor:pointer; font-family:inherit;
   appearance:none; -webkit-appearance:none; -moz-appearance:none;
@@ -2013,16 +2013,17 @@ function toggleDetailTagsBody(){
 }
 
 const FUNNEL_STAGES = [
-  { stage: 1, label: '1. 접수·상담', items: ['신규접수', '상담진행', '고객부재', '고객부재_종결'] },
-  { stage: 2, label: '2. 상담·계약', items: ['상품안내', '계약진행', '보류확인', '접수불가'] },
-  { stage: 3, label: '3. 설치', items: ['접수완료', '설치대기', '개통대기'] },
-  { stage: 4, label: '4. 사은품 지급', items: ['개통완료', '지급요청', '지급완료', '지급반려'] },
-  { stage: 5, label: '5. 환수', items: ['환수필요', '환수요청', '환수진행'] },
-  { stage: 0, label: '종결', items: ['종결(정상)', '종결(리드소멸)', '이탈'] }
+  { stage: 1, label: '1. 상담·계약', items: ['상품안내', '계약진행', '보류확인', '접수불가'] },
+  { stage: 2, label: '2. 설치', items: ['접수완료', '설치대기', '개통대기'] },
+  { stage: 3, label: '3. 사은품 지급', items: ['개통완료', '지급요청', '지급완료', '지급반려'] },
+  { stage: 4, label: '4. 환수', items: ['환수필요', '환수요청', '환수진행'] },
+  { stage: 0, label: '종결', items: ['종결(정상)', '종결(리드소멸)', '이탈', '고객부재_종결'] }
 ];
 
 const DEFAULT_FUNNEL_STATUS = '상담대기';
-const INITIAL_FUNNEL_STATUS = '신규접수'; // 신규 상담 시작 시 기본 선택값
+const RESERVATION_STATUS = '상담예약';
+// 아직 본 상담 전 단계로 취급하는 상태값들 (대시보드 "상담대기" 묶음에 함께 표시)
+const PRE_STAGE_STATUSES = [DEFAULT_FUNNEL_STATUS, RESERVATION_STATUS, '고객부재'];
 const NAME_PREFIX = '(인생비서)';
 
 let CUSTOMER_SCHEMA = { hasProductsTable: false, hasSnapshot: false, hasTags: false, checked: false };
@@ -2031,13 +2032,18 @@ let customerListCache = [];
 let customerViewInited = false;
 
 function getFunnelStage(status){
+  if (PRE_STAGE_STATUSES.includes(status)) return 'wait';
   const found = FUNNEL_STAGES.find(g => g.items.includes(status));
   return found ? found.stage : 0;
 }
 
 function funnelStatusOptionsHtml(selected, includeAll){
   let html = includeAll ? `<option value="">상태값 전체</option>` : '';
-  html += `<option value="${DEFAULT_FUNNEL_STATUS}" ${selected === DEFAULT_FUNNEL_STATUS ? 'selected' : ''}>${DEFAULT_FUNNEL_STATUS}</option>`;
+  html += `
+    <optgroup label="상담대기">
+      ${PRE_STAGE_STATUSES.map(v => `<option value="${v}" ${v === selected ? 'selected' : ''}>${v}</option>`).join('')}
+    </optgroup>
+  `;
   html += FUNNEL_STAGES.map(g => `
     <optgroup label="${g.label}">
       ${g.items.map(v => `<option value="${v}" ${v === selected ? 'selected' : ''}>${v}</option>`).join('')}
@@ -2048,7 +2054,7 @@ function funnelStatusOptionsHtml(selected, includeAll){
 
 function initFunnelSelects(){
   const a = document.getElementById('cust-funnel-status');
-  if (a) a.innerHTML = funnelStatusOptionsHtml(INITIAL_FUNNEL_STATUS, false);
+  if (a) a.innerHTML = funnelStatusOptionsHtml(DEFAULT_FUNNEL_STATUS, false);
   const b = document.getElementById('cust-search-status');
   if (b) b.innerHTML = funnelStatusOptionsHtml('', true);
 }
@@ -2250,7 +2256,7 @@ function resetConsultation(){
   setVal('cust-contact', '');
   setVal('cust-notes', '');
   setVal('cust-next-contact', getDefaultNextContactValue());
-  setVal('cust-funnel-status', INITIAL_FUNNEL_STATUS);
+  setVal('cust-funnel-status', DEFAULT_FUNNEL_STATUS);
   const oldToggleReset = document.getElementById('old-internet-toggle');
   if (oldToggleReset) { oldToggleReset.checked = false; toggleOldInternetSection(false); }
   selectedCustomerTags = new Set();
@@ -2270,8 +2276,8 @@ function resetConsultation(){
 
 // 퍼널 대시보드 : 상태값별 건수를 대분류(5단계+대기+종결)로 묶어 표시, 클릭 시 하위 상태값 건수 토글
 const DASHBOARD_GROUPS = [
-  { key: 'wait', label: '상담대기', items: [DEFAULT_FUNNEL_STATUS] },
-  ...FUNNEL_STAGES.filter(g => g.stage >= 1 && g.stage <= 5).map(g => ({ key: 's' + g.stage, label: g.label, items: g.items })),
+  { key: 'wait', label: '상담대기', items: PRE_STAGE_STATUSES },
+  ...FUNNEL_STAGES.filter(g => g.stage >= 1 && g.stage <= 4).map(g => ({ key: 's' + g.stage, label: g.label, items: g.items })),
   ...FUNNEL_STAGES.filter(g => g.stage === 0).map(g => ({ key: 'done', label: g.label, items: g.items }))
 ];
 
