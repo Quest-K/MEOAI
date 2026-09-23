@@ -166,6 +166,11 @@
 .cust-search-row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
 .cust-search-row input{ flex:1 1 220px; padding:8px 10px; border:1px solid #DDD; border-radius:6px; font-size:13px; }
 .cust-search-row select{ flex:0 0 160px; padding:8px; border:1px solid #DDD; border-radius:6px; font-size:13px; }
+.cust-search-copy-btn{
+  flex:0 0 auto; width:34px; height:34px; padding:0; font-size:14px; line-height:1;
+  border:1px solid #DDD; border-radius:6px; background:#FAFAFA; color:#666; cursor:pointer;
+}
+.cust-search-copy-btn:hover{ background:#F0F0F0; }
 
 .cust-list-wrap{ max-height:360px; overflow-y:auto; border:1px solid #E6E6E6; border-radius:8px; }
 .cust-list-table{ width:100%; border-collapse:collapse; font-size:12.5px; }
@@ -371,7 +376,7 @@ table.cust-wide-table .cs-money-cell input.cs-money-input{ width:auto; flex:1 1 
             </div>
             <div class="cs-inline-form-group">
               <label>연락처 <span class="req-mark">*</span></label>
-              <input class="cs-w-contact" type="text" id="cust-contact" placeholder="010-0000-0000" inputmode="numeric"
+              <input class="cs-w-contact" type="text" id="cust-contact" placeholder="010-0000-0000" inputmode="numeric" value="010"
                      oninput="formatContactInput(this)" onblur="updateCsSummaryPanel()">
             </div>
             <div class="cs-inline-form-group">
@@ -686,6 +691,7 @@ table.cust-wide-table .cs-money-cell input.cs-money-input{ width:auto; flex:1 1 
           <div class="cust-search-row">
             <input type="text" id="cust-search-contact" placeholder="연락처 (숫자만 입력해도 검색)"
                    inputmode="numeric" onkeydown="if(event.key==='Enter') searchCustomers()">
+            <button type="button" class="cust-search-copy-btn" title="입력된 연락처 복사" onclick="copySearchContact()">📋</button>
             <select id="cust-search-status"></select>
             <button type="button" id="cust-search-btn" class="primary-btn" onclick="searchCustomers(this)">🔍 조회</button>
             <button type="button" class="secondary-btn" onclick="loadRecentCustomers(this)">최근 등록</button>
@@ -884,7 +890,7 @@ function switchTab(tabId) {
 
 // [고객상담] 단계형 서브탭 : 고객정보 → 추천상품 → 제안상품 → 최종상품
 function goCsStep(n) {
-  if (n > 1 && !(elVal('cust-contact') || '').trim()) {
+  if (n > 1 && !hasValidContact()) {
     alert('연락처를 먼저 입력해주세요.');
     document.getElementById('cust-contact')?.focus();
     return;
@@ -1024,14 +1030,14 @@ function renderRecoCards(){
     return `
       <div class="reco-product-card">
         <div class="reco-product-card-title carrier-${c}">
-          <span>${CARRIER_LABEL[c]}${needsUsim ? ' <span class="reco-usim-badge">+유심</span>' : ''}</span>
+          <span>${CARRIER_LABEL[c]}</span>
           <span class="reco-product-total">${(price.total || 0).toLocaleString()}</span>
         </div>
         <div class="reco-block first">
           <div class="info-row main-label reco-subtotal-row"><span>인터넷</span><span>${internetSubtotal.toLocaleString()}</span></div>
           <div class="info-row sub-item-row reco-sub-lv2"><span>${SPEED_LABEL[recoState.speed] || ''}</span><span>${(price.internetFee || 0).toLocaleString()}</span></div>
           <div class="info-row sub-item-row reco-sub-lv2"><span>공유기<span class="reco-detail-sm">(${ROUTER_LABEL[recoState.router] || ''})</span></span><span>${(price.routerFee || 0).toLocaleString()}</span></div>
-          ${price.bundleDiscount ? `<div class="info-row sub-item-row reco-sub-lv2"><span>인터넷결합할인</span><span>-${price.bundleDiscount.toLocaleString()}</span></div>` : ''}
+          <div class="info-row sub-item-row reco-sub-lv2"><span>인터넷결합할인</span><span>${price.bundleDiscount ? '-' + price.bundleDiscount.toLocaleString() : '0'}</span></div>
         </div>
         ${tvTier !== 'none' ? `
         <div class="reco-block">
@@ -2433,6 +2439,12 @@ function formatContactInput(el){
   el.value = out;
 }
 
+// 연락처 기본값(010)만 남아있는 등 미입력 상태를 걸러내기 위한 검증 (숫자 10자리 이상)
+function hasValidContact(){
+  const digits = (elVal('cust-contact') || '').replace(/[^0-9]/g, '');
+  return digits.length >= 10;
+}
+
 function elVal(id){ const el = document.getElementById(id); return el ? el.value : ''; }
 function setVal(id, v){ const el = document.getElementById(id); if (el) el.value = (v === null || v === undefined) ? '' : v; }
 
@@ -2567,7 +2579,7 @@ async function probeCustomerSchema(){
 
 async function saveConsultation(btn){
   const contact = (elVal('cust-contact') || '').trim();
-  if (!contact) { alert('연락처는 필수 입력값입니다.'); document.getElementById('cust-contact')?.focus(); return; }
+  if (!hasValidContact()) { alert('연락처를 정확히 입력해주세요.'); document.getElementById('cust-contact')?.focus(); return; }
   if (!reflectedProducts.length && !confirm('제안상품이 없습니다. 고객 정보만 저장할까요?')) return;
 
   setBtnLoading(btn, '저장 중...');
@@ -2624,7 +2636,7 @@ function resetConsultation(){
   if (!confirm('현재 상담 내용을 비우고 신규 상담을 시작할까요?')) return;
   currentCustomerId = null;
   setVal('cust-name', NAME_PREFIX);
-  setVal('cust-contact', '');
+  setVal('cust-contact', '010');
   setVal('cust-notes', '');
   setVal('cust-next-contact', getDefaultNextContactValue());
   setVal('cust-funnel-status', DEFAULT_FUNNEL_STATUS);
@@ -2847,6 +2859,21 @@ async function loadRecentCustomers(btn){
     renderCustomerList(data, '등록된 고객이 없습니다.');
   } finally {
     clearBtnLoading(btn);
+  }
+}
+
+// 고객검색창에 입력된 연락처를 클립보드로 복사
+function copySearchContact(){
+  const val = (elVal('cust-search-contact') || '').trim();
+  if (!val) { alert('복사할 연락처를 먼저 입력해주세요.'); return; }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(val).then(() => {
+      showToast('✓ 연락처가 복사되었습니다');
+    }).catch(() => {
+      alert('복사에 실패했습니다. 브라우저 권한을 확인해주세요.');
+    });
+  } else {
+    alert('이 브라우저에서는 복사 기능을 지원하지 않습니다.');
   }
 }
 
