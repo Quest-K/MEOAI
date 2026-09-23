@@ -94,7 +94,24 @@
   font-size:11.5px; letter-spacing:-0.4px; white-space:nowrap;
   box-sizing:border-box; display:flex; align-items:center; justify-content:center;
 }
-#reco-seg-settop button{ font-size:10.5px; letter-spacing:-0.6px; }
+
+/* 서브 TV(2대째부터): "+TV" 버튼은 셋탑 라벨 줄 오른쪽에 작게,
+   목록은 TV채널·셋탑 바로 아래(3~4번째 칸)에 맞춰 쌓임 */
+.mini-add-tv-btn{
+  height:20px; padding:0 8px; font-size:10.5px; font-weight:700; line-height:1;
+  border:1px solid var(--gold,#C9A15B); border-radius:10px; background:#FFF8EC; color:#8A6A1F;
+  cursor:pointer; white-space:nowrap; flex:0 0 auto;
+}
+.mini-add-tv-btn:disabled{ opacity:.4; cursor:not-allowed; }
+.extra-tv-col{ grid-column:3 / span 2; min-width:0; }
+.extra-tv-block{ margin-top:10px; padding-top:10px; border-top:1px dashed #E3D9C6; }
+.extra-tv-block:first-child{ margin-top:10px; }
+.extra-tv-cols{ display:grid !important; grid-template-columns:repeat(2, minmax(0, 1fr)) !important; gap:12px !important; }
+.extra-tv-cols .control-group{ min-width:0; display:flex; flex-direction:column; }
+.extra-tv-remove-btn{
+  height:20px; padding:0 8px; font-size:10.5px; font-weight:700; line-height:1;
+  border:1px solid #DDD; border-radius:10px; background:#FAFAFA; color:#888; cursor:pointer; white-space:nowrap;
+}
 
 /* 추천상품 : 상세 문구는 작게, 한 줄 유지 */
 .reco-product-card .info-row.main-label > span{ white-space:nowrap; }
@@ -105,6 +122,20 @@
 .reco-gift-row .gift-input{
   width:74px; max-width:74px; padding:2px 4px; font-size:12px; text-align:right;
 }
+
+/* 추천상품 : 적정사은품(참고) 행 */
+.proper-gift-row{ color:#8A6A1F; }
+.proper-gift-detail-row{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  margin-top:2px;
+}
+.proper-gift-detail-row .reco-detail-sm{ color:#B79045; }
+.proper-gift-apply-btn{
+  height:18px; padding:0 7px; font-size:10.5px; font-weight:700; line-height:1;
+  border:1px solid var(--gold,#C9A15B); border-radius:9px; background:#FFF8EC; color:#8A6A1F;
+  cursor:pointer; white-space:nowrap; flex:0 0 auto;
+}
+.proper-gift-apply-btn:hover{ background:#FFF1D6; }
 
 /* 제안상품 : 인터넷·TV / 유심 상하 배치 */
 .cs-stack-2{ display:flex; flex-direction:column; gap:20px; }
@@ -137,6 +168,11 @@
 .cust-search-row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
 .cust-search-row input{ flex:1 1 220px; padding:8px 10px; border:1px solid #DDD; border-radius:6px; font-size:13px; }
 .cust-search-row select{ flex:0 0 160px; padding:8px; border:1px solid #DDD; border-radius:6px; font-size:13px; }
+.cust-search-copy-btn{
+  flex:0 0 auto; width:34px; height:34px; padding:0; font-size:14px; line-height:1;
+  border:1px solid #DDD; border-radius:6px; background:#FAFAFA; color:#666; cursor:pointer;
+}
+.cust-search-copy-btn:hover{ background:#F0F0F0; }
 
 .cust-list-wrap{ max-height:360px; overflow-y:auto; border:1px solid #E6E6E6; border-radius:8px; }
 .cust-list-table{ width:100%; border-collapse:collapse; font-size:12.5px; }
@@ -342,7 +378,7 @@ table.cust-wide-table .cs-money-cell input.cs-money-input{ width:auto; flex:1 1 
             </div>
             <div class="cs-inline-form-group">
               <label>연락처 <span class="req-mark">*</span></label>
-              <input class="cs-w-contact" type="text" id="cust-contact" placeholder="010-0000-0000" inputmode="numeric"
+              <input class="cs-w-contact" type="text" id="cust-contact" placeholder="010-0000-0000" inputmode="numeric" value="010"
                      oninput="formatContactInput(this)" onblur="updateCsSummaryPanel()">
             </div>
             <div class="cs-inline-form-group">
@@ -502,13 +538,17 @@ table.cust-wide-table .cs-money-cell input.cs-money-input{ width:auto; flex:1 1 
               </div>
             </div>
             <div class="control-group">
-              <label class="group-label">셋탑</label>
+              <div class="group-label-row">
+                <label class="group-label">셋탑</label>
+                <button type="button" class="mini-add-tv-btn" id="reco-extra-tv-add-btn" onclick="addExtraTv()" title="서브 TV 추가">+ TV</button>
+              </div>
               <div class="seg" id="reco-seg-settop">
                 <button data-value="basic" class="active">기본형</button>
                 <button data-value="advanced">고급형/AI</button>
                 <button data-value="soundbar">사운드바</button>
               </div>
             </div>
+            <div id="reco-extra-tv-list" class="extra-tv-col"></div>
           </div>
 
           <div id="reco-carrier-cards" class="reco-cards">
@@ -653,6 +693,7 @@ table.cust-wide-table .cs-money-cell input.cs-money-input{ width:auto; flex:1 1 
           <div class="cust-search-row">
             <input type="text" id="cust-search-contact" placeholder="연락처 (숫자만 입력해도 검색)"
                    inputmode="numeric" onkeydown="if(event.key==='Enter') searchCustomers()">
+            <button type="button" class="cust-search-copy-btn" title="입력된 연락처 복사" onclick="copySearchContact()">📋</button>
             <select id="cust-search-status"></select>
             <button type="button" id="cust-search-btn" class="primary-btn" onclick="searchCustomers(this)">🔍 조회</button>
             <button type="button" class="secondary-btn" onclick="loadRecentCustomers(this)">최근 등록</button>
@@ -811,7 +852,7 @@ let state = { speed:'500', tv:'basic', settopTier:'basic', router:'Y', tcDistMod
 let lastTvTier = 'basic';
 let addedUsimLines = []; 
 let familyLines = [];
-let recoState = { speed:'500', tv:'basic', settopTier:'basic', router:'Y' };
+let recoState = { speed:'500', tv:'basic', settopTier:'basic', router:'Y', extraTVs:[] };
 let lastRecoTvTier = 'basic';
 let recoUsimTier = null;
 let recoUsimPlanPool = [];
@@ -851,11 +892,6 @@ function switchTab(tabId) {
 
 // [고객상담] 단계형 서브탭 : 고객정보 → 추천상품 → 제안상품 → 최종상품
 function goCsStep(n) {
-  if (n > 1 && !(elVal('cust-contact') || '').trim()) {
-    alert('연락처를 먼저 입력해주세요.');
-    document.getElementById('cust-contact')?.focus();
-    return;
-  }
   document.querySelectorAll('#cs-wiz-nav .cs-wiz-btn').forEach(b => {
     b.classList.toggle('active', Number(b.dataset.step) === n);
   });
@@ -891,11 +927,30 @@ function setupRecoSeg(id, key){
       }
       el.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
       if (key === 'speed' || key === 'tv') {
+        customGiftValues = {};
         await loadFinanceData();
       }
       renderRecoCards();
     });
   });
+}
+
+// 적정사은품 정책 : 기본 60% + 속도(500M +5%, 1기가 +10%) + TV등급(기본형 +5%, 고급형 +10%)
+// 대리점 판매 수수료 총액(comm.totalComm) 기준, 결과는 10,000원 단위 내림
+const PROPER_GIFT_BASE_PERCENT = 60;
+const PROPER_GIFT_SPEED_BONUS = { 100: 0, 500: 5, 1000: 10 };
+const PROPER_GIFT_TV_BONUS = { none: 0, low: 0, basic: 5, premium: 10 };
+
+function computeProperGiftPercent(speedNum, tvTier){
+  const speedBonus = PROPER_GIFT_SPEED_BONUS[speedNum] || 0;
+  const tvBonus = PROPER_GIFT_TV_BONUS[tvTier] || 0;
+  return PROPER_GIFT_BASE_PERCENT + speedBonus + tvBonus;
+}
+
+function computeProperGiftAmount(commTotal, speedNum, tvTier){
+  const percent = computeProperGiftPercent(speedNum, tvTier);
+  const raw = (Number(commTotal) || 0) * percent / 100;
+  return Math.floor(raw / 10000) * 10000;
 }
 
 function renderRecoCards(){
@@ -940,13 +995,19 @@ function renderRecoCards(){
     const tvChannels = price.tvInfo ? (price.tvInfo.channels || 200) : 200;
     const settopName = price.settopInfo ? price.settopInfo.name : '기본셋톱';
     const internetSubtotal = (price.internetFee || 0) + (price.routerFee || 0) - (price.bundleDiscount || 0);
-    const tvSubtotal = tvTier !== 'none' ? (price.tvFee || 0) + (price.settopFee || 0) - (price.tvBundleDiscount || 0) : 0;
+    const tvSubtotal = tvTier !== 'none' ? (price.tvFee || 0) + (price.settopFee || 0) - (price.tvBundleDiscount || 0) + (price.extraTvFee || 0) : 0;
 
     const promo = PROMOTION_DATA[c] || { giftCard: 60000, cash: 340000 };
     const userGiftVal = customGiftValues[c] !== undefined ? customGiftValues[c] : (promo.maxLimit || (promo.giftCard + promo.cash));
     const calcCash = Math.max(0, userGiftVal - (promo.giftCard || 0));
 
+    // 경품고시제 : 지급사은품 기본값과 동일한 방식으로 산출(프로모션 기본 한도), 수정 불가(읽기 전용)
+    const noticeGiftCard = promo.giftCard || 0;
+    const noticeTotal = promo.maxLimit || (noticeGiftCard + (promo.cash || 0));
+    const noticeCash = Math.max(0, noticeTotal - noticeGiftCard);
+
     let commHtml = '';
+    let properGiftRowHtml = '';
     if (isLoggedIn) {
       const comm = lookupCommission(c, speedNum, tvTier);
       const margin = comm.totalComm - userGiftVal;
@@ -958,19 +1019,31 @@ function renderRecoCards(){
           <div class="total-row reco-margin-row"><span>최종마진</span><span class="amount" style="color:${margin >= 0 ? '#1E7E34' : '#D9534F'};">${margin.toLocaleString()}</span></div>
         </div>
       `;
+
+      const properGiftPercent = computeProperGiftPercent(speedNum, tvTier);
+      const properGiftAmount = computeProperGiftAmount(comm.totalComm, speedNum, tvTier);
+      properGiftRowHtml = `
+        <div class="info-row sub-item-row proper-gift-row">
+          <span>적정사은품</span><span>${properGiftAmount.toLocaleString()}</span>
+        </div>
+        <div class="proper-gift-detail-row">
+          <span class="reco-detail-sm">수수료 ${comm.totalComm.toLocaleString()} × ${properGiftPercent}%</span>
+          <button type="button" class="proper-gift-apply-btn" onclick="handleGiftInputChange('${c}', '${properGiftAmount}')">적용</button>
+        </div>
+      `;
     }
 
     return `
       <div class="reco-product-card">
         <div class="reco-product-card-title carrier-${c}">
-          <span>${CARRIER_LABEL[c]}${needsUsim ? ' <span class="reco-usim-badge">+유심</span>' : ''}</span>
+          <span>${CARRIER_LABEL[c]}</span>
           <span class="reco-product-total">${(price.total || 0).toLocaleString()}</span>
         </div>
         <div class="reco-block first">
           <div class="info-row main-label reco-subtotal-row"><span>인터넷</span><span>${internetSubtotal.toLocaleString()}</span></div>
           <div class="info-row sub-item-row reco-sub-lv2"><span>${SPEED_LABEL[recoState.speed] || ''}</span><span>${(price.internetFee || 0).toLocaleString()}</span></div>
           <div class="info-row sub-item-row reco-sub-lv2"><span>공유기<span class="reco-detail-sm">(${ROUTER_LABEL[recoState.router] || ''})</span></span><span>${(price.routerFee || 0).toLocaleString()}</span></div>
-          ${price.bundleDiscount ? `<div class="info-row sub-item-row reco-sub-lv2"><span>인터넷결합할인</span><span>-${price.bundleDiscount.toLocaleString()}</span></div>` : ''}
+          <div class="info-row sub-item-row reco-sub-lv2"><span>인터넷결합할인</span><span>${price.bundleDiscount ? '-' + price.bundleDiscount.toLocaleString() : '0'}</span></div>
         </div>
         ${tvTier !== 'none' ? `
         <div class="reco-block">
@@ -978,6 +1051,10 @@ function renderRecoCards(){
           <div class="info-row sub-item-row reco-sub-lv2"><span>${tvName}/${tvChannels}채널</span><span>${(price.tvFee || 0).toLocaleString()}</span></div>
           <div class="info-row sub-item-row reco-sub-lv2"><span>셋탑박스<span class="reco-detail-sm">(${settopName})</span></span><span>${(price.settopFee || 0).toLocaleString()}</span></div>
           ${price.tvBundleDiscount ? `<div class="info-row sub-item-row reco-sub-lv2"><span>TV결합할인</span><span>-${price.tvBundleDiscount.toLocaleString()}</span></div>` : ''}
+          ${(price.extraTvDetails || []).map(ex => `
+          <div class="info-row sub-item-row reco-sub-lv2"><span>${ex.tvName}/${ex.tvChannels}채널</span><span>${ex.tvHalfFee.toLocaleString()}</span></div>
+          <div class="info-row sub-item-row reco-sub-lv2"><span>셋탑박스<span class="reco-detail-sm">(${ex.settopName})</span></span><span>${ex.settopFee.toLocaleString()}</span></div>
+          `).join('')}
         </div>` : ''}
         <div class="reco-block">
           <div class="info-row main-label reco-gift-row">
@@ -989,6 +1066,12 @@ function renderRecoCards(){
           </div>
           <div class="info-row sub-item-row"><span>상품권</span><span>${(promo.giftCard || 0).toLocaleString()}</span></div>
           <div class="info-row sub-item-row"><span>현금</span><span>${calcCash.toLocaleString()}</span></div>
+          ${properGiftRowHtml}
+        </div>
+        <div class="reco-block reco-notice-block">
+          <div class="info-row main-label"><span>경품고시제</span><span>${noticeTotal.toLocaleString()}</span></div>
+          <div class="info-row sub-item-row"><span>상품권</span><span>${noticeGiftCard.toLocaleString()}</span></div>
+          <div class="info-row sub-item-row"><span>현금</span><span>${noticeCash.toLocaleString()}</span></div>
         </div>
         ${commHtml}
         <button type="button" class="join-btn" onclick="reflectRecoCardToProposal('${c}')">✨ 상품반영</button>
@@ -1035,6 +1118,9 @@ function reflectRecoCardToProposal(carrier){
     settopFee: recoState.tv === 'none' ? 0 : res.settopFee,
     tvBundleDiscount: recoState.tv !== 'none' ? res.tvBundleDiscount : 0,
     totalFee: res.total,
+    extraTVs: recoState.tv !== 'none' ? JSON.parse(JSON.stringify(recoState.extraTVs || [])) : [],
+    extraTvFee: recoState.tv !== 'none' ? (res.extraTvFee || 0) : 0,
+    extraTvDetails: recoState.tv !== 'none' ? (res.extraTvDetails || []) : [],
     benefitTotal: userGiftVal,
     giftCard: promo.giftCard,
     cash: calcCash
@@ -1256,11 +1342,76 @@ function handleUsimFinalGiftChange(id, rawVal){
   updateCsSummaryPanel();
 }
 
+// 서브 TV(2대째부터) 채널등급/셋탑박스 선택 UI
+// 요금 계산(채널요금 50% + 셋탑박스 동일 적용)은 Calculator.js의 computePrice에서 처리
+const EXTRA_TV_TIER_OPTIONS = [
+  { value:'low', label:'저가형' },
+  { value:'basic', label:'기본형' },
+  { value:'premium', label:'고급형' }
+];
+const EXTRA_TV_SETTOP_OPTIONS = [
+  { value:'basic', label:'기본형' },
+  { value:'advanced', label:'고급형/AI' },
+  { value:'soundbar', label:'사운드바' }
+];
+
+function renderExtraTvControls(){
+  const container = document.getElementById('reco-extra-tv-list');
+  if (!container) return;
+  const disabled = recoState.tv === 'none';
+
+  container.innerHTML = recoState.extraTVs.map((ex, idx) => `
+    <div class="extra-tv-block">
+      <div class="extra-tv-cols">
+        <div class="control-group">
+          <div class="group-label-row">
+            <label class="group-label">TV${idx + 2}</label>
+            <button type="button" class="extra-tv-remove-btn" ${disabled ? 'disabled' : ''} onclick="removeExtraTv(${idx})">삭제</button>
+          </div>
+          <div class="seg">
+            ${EXTRA_TV_TIER_OPTIONS.map(o => `<button type="button" data-value="${o.value}" class="${ex.tv === o.value ? 'active' : ''}" ${disabled ? 'disabled' : ''} onclick="setExtraTvValue(${idx}, 'tv', '${o.value}')">${o.label}</button>`).join('')}
+          </div>
+        </div>
+        <div class="control-group">
+          <div class="group-label-row"><label class="group-label">&nbsp;</label></div>
+          <div class="seg">
+            ${EXTRA_TV_SETTOP_OPTIONS.map(o => `<button type="button" data-value="${o.value}" class="${ex.settopTier === o.value ? 'active' : ''}" ${disabled ? 'disabled' : ''} onclick="setExtraTvValue(${idx}, 'settopTier', '${o.value}')">${o.label}</button>`).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  const addBtn = document.getElementById('reco-extra-tv-add-btn');
+  if (addBtn) addBtn.disabled = disabled;
+}
+
+function addExtraTv(){
+  if (recoState.tv === 'none') return;
+  recoState.extraTVs.push({ tv:'basic', settopTier:'basic' });
+  renderExtraTvControls();
+  renderRecoCards();
+}
+
+function removeExtraTv(idx){
+  recoState.extraTVs.splice(idx, 1);
+  renderExtraTvControls();
+  renderRecoCards();
+}
+
+function setExtraTvValue(idx, key, val){
+  if (!recoState.extraTVs[idx]) return;
+  recoState.extraTVs[idx][key] = val;
+  renderExtraTvControls();
+  renderRecoCards();
+}
+
 function syncRecoControlsUI(){
   document.querySelectorAll('#reco-seg-tv button').forEach(b => b.classList.toggle('active', b.dataset.value === recoState.tv));
   document.querySelectorAll('#reco-seg-tv button, #reco-seg-settop button').forEach(b => b.disabled = recoState.tv === 'none');
   const toggle = document.getElementById('reco-tv-onoff-toggle');
   if (toggle) toggle.checked = recoState.tv !== 'none';
+  renderExtraTvControls();
 }
 
 async function toggleRecoTvOnOff(isOn){
@@ -1270,6 +1421,7 @@ async function toggleRecoTvOnOff(isOn){
     if (recoState.tv !== 'none') lastRecoTvTier = recoState.tv;
     recoState.tv = 'none';
   }
+  customGiftValues = {};
   syncRecoControlsUI();
   await loadFinanceData();
   renderRecoCards();
@@ -1882,6 +2034,10 @@ function buildFinalHomeCard(item, usimItems){
         <div class="info-row main-label section-start"><span>TV 요금제</span><span>${item.tvName} (${item.tvChannels}채널, ${item.tvFee.toLocaleString()}원)</span></div>
         <div class="info-row sub-item-row"><span>└ 셋톱박스</span><span>${item.settopLabel} (${item.settopFee.toLocaleString()}원)</span></div>
         ${item.tvBundleDiscount ? `<div class="info-row sub-item-row"><span>└ TV 결합할인</span><span>-${item.tvBundleDiscount.toLocaleString()}원</span></div>` : ''}
+        ${(item.extraTvDetails || []).map((ex, i) => `
+        <div class="info-row sub-item-row"><span>└ ${i + 2}호기 ${ex.tvName}/${ex.tvChannels}채널</span><span>${ex.tvHalfFee.toLocaleString()}원</span></div>
+        <div class="info-row sub-item-row"><span>└ ${i + 2}호기 셋톱박스</span><span>${ex.settopName} (${ex.settopFee.toLocaleString()}원)</span></div>
+        `).join('')}
       ` : ''}
       <div class="total-row"><span>월 청구 요금 (할인 포함)</span><span class="amount">${item.totalFee.toLocaleString()}원</span></div>
       ${buildFinalComboBlock(item, usimItems)}
@@ -2241,10 +2397,10 @@ function toggleDetailTagsBody(){
 
 const FUNNEL_STAGES = [
   { stage: 1, label: '1. 상담·계약', items: ['상품안내', '계약진행', '보류확인', '접수불가'] },
-  { stage: 2, label: '2. 설치', items: ['접수완료', '설치대기', '개통대기'] },
-  { stage: 3, label: '3. 사은품 지급', items: ['개통완료', '지급요청', '지급완료', '지급반려'] },
+  { stage: 2, label: '2. 설치', items: ['접수완료', '개통대기', '개통완료'] },
+  { stage: 3, label: '3. 사은품 지급', items: ['지급요청', '지급완료', '지급보류'] },
   { stage: 4, label: '4. 환수', items: ['환수필요', '환수요청', '환수진행'] },
-  { stage: 0, label: '종결', items: ['종결(정상)', '종결(리드소멸)', '이탈', '고객부재_종결'] }
+  { stage: 0, label: '종결 및 이탈', items: ['종결(정상)', '이탈(기존유지)', '이탈(타사가입)', '종결(컨택불가)', '종결(오인입)', '종결(타부서)', '고객부재_종결'] }
 ];
 
 const DEFAULT_FUNNEL_STATUS = '상담대기';
@@ -2293,6 +2449,12 @@ function formatContactInput(el){
   if (digits.length > 3 && digits.length <= 7) out = `${digits.slice(0,3)}-${digits.slice(3)}`;
   else if (digits.length > 7) out = `${digits.slice(0,3)}-${digits.slice(3,7)}-${digits.slice(7)}`;
   el.value = out;
+}
+
+// 연락처 기본값(010)만 남아있는 등 미입력 상태를 걸러내기 위한 검증 (숫자 10자리 이상)
+function hasValidContact(){
+  const digits = (elVal('cust-contact') || '').replace(/[^0-9]/g, '');
+  return digits.length >= 10;
 }
 
 function elVal(id){ const el = document.getElementById(id); return el ? el.value : ''; }
@@ -2429,7 +2591,7 @@ async function probeCustomerSchema(){
 
 async function saveConsultation(btn){
   const contact = (elVal('cust-contact') || '').trim();
-  if (!contact) { alert('연락처는 필수 입력값입니다.'); document.getElementById('cust-contact')?.focus(); return; }
+  if (!hasValidContact()) { alert('연락처를 정확히 입력해주세요.'); document.getElementById('cust-contact')?.focus(); return; }
   if (!reflectedProducts.length && !confirm('제안상품이 없습니다. 고객 정보만 저장할까요?')) return;
 
   setBtnLoading(btn, '저장 중...');
@@ -2486,7 +2648,7 @@ function resetConsultation(){
   if (!confirm('현재 상담 내용을 비우고 신규 상담을 시작할까요?')) return;
   currentCustomerId = null;
   setVal('cust-name', NAME_PREFIX);
-  setVal('cust-contact', '');
+  setVal('cust-contact', '010');
   setVal('cust-notes', '');
   setVal('cust-next-contact', getDefaultNextContactValue());
   setVal('cust-funnel-status', DEFAULT_FUNNEL_STATUS);
@@ -2709,6 +2871,21 @@ async function loadRecentCustomers(btn){
     renderCustomerList(data, '등록된 고객이 없습니다.');
   } finally {
     clearBtnLoading(btn);
+  }
+}
+
+// 고객검색창에 입력된 연락처를 클립보드로 복사
+function copySearchContact(){
+  const val = (elVal('cust-search-contact') || '').trim();
+  if (!val) { alert('복사할 연락처를 먼저 입력해주세요.'); return; }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(val).then(() => {
+      showToast('✓ 연락처가 복사되었습니다');
+    }).catch(() => {
+      alert('복사에 실패했습니다. 브라우저 권한을 확인해주세요.');
+    });
+  } else {
+    alert('이 브라우저에서는 복사 기능을 지원하지 않습니다.');
   }
 }
 
