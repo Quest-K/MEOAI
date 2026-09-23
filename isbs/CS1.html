@@ -27,7 +27,11 @@
 .reco-product-card-title.carrier-lg{ background:#FCEAF2; border-color:#F0C8DC; color:#A50034; }
 .reco-product-card-title.carrier-skb{ background:#FFF1E4; border-color:#F5D7B6; color:#C25E00; }
 .reco-product-card-title.carrier-skt{ background:#FDECEF; border-color:#F2C9D1; color:#D4002C; }
-.reco-product-card-title .reco-product-total{ color:#333; }
+.reco-product-card-title .reco-product-total{ color:#333; font-size:22px; font-weight:800; letter-spacing:-0.3px; }
+
+/* 추천상품 : 인터넷/TV 소계 아래 2단 들여쓰기 */
+.reco-product-card .reco-sub-lv2{ padding-left:28px !important; }
+.reco-product-card .reco-subtotal-row{ font-weight:700; }
 
 /* 추천상품 : 블록 구분선 */
 .reco-product-card .reco-block{ padding:8px 0; border-top:1px dashed #DFDFDF; }
@@ -770,6 +774,7 @@ let COMMISSION_DATA = {};
 let RAW_COMMISSION_DATA = [];
 let PROMOTION_DATA = {};
 let customGiftValues = {};
+let customUsimGiftValues = {}; // key: `${carrier}|${planName}` (추천상품 단계에서 상담원이 직접 고친 유심 사은품)
 
 function showToast(message){
   const container = document.getElementById('toast-container');
@@ -934,6 +939,8 @@ function renderRecoCards(){
     const tvName = price.tvInfo ? price.tvInfo.name : '기본형';
     const tvChannels = price.tvInfo ? (price.tvInfo.channels || 200) : 200;
     const settopName = price.settopInfo ? price.settopInfo.name : '기본셋톱';
+    const internetSubtotal = (price.internetFee || 0) + (price.routerFee || 0) - (price.bundleDiscount || 0);
+    const tvSubtotal = tvTier !== 'none' ? (price.tvFee || 0) + (price.settopFee || 0) - (price.tvBundleDiscount || 0) : 0;
 
     const promo = PROMOTION_DATA[c] || { giftCard: 60000, cash: 340000 };
     const userGiftVal = customGiftValues[c] !== undefined ? customGiftValues[c] : (promo.maxLimit || (promo.giftCard + promo.cash));
@@ -960,15 +967,17 @@ function renderRecoCards(){
           <span class="reco-product-total">${(price.total || 0).toLocaleString()}</span>
         </div>
         <div class="reco-block first">
-          <div class="info-row main-label"><span>인터넷<span class="reco-detail-sm">(${SPEED_LABEL[recoState.speed] || ''})</span></span><span>${(price.internetFee || 0).toLocaleString()}</span></div>
-          <div class="info-row sub-item-row"><span>공유기<span class="reco-detail-sm">(${ROUTER_LABEL[recoState.router] || ''})</span></span><span>${(price.routerFee || 0).toLocaleString()}</span></div>
-          ${price.bundleDiscount ? `<div class="info-row sub-item-row"><span>인터넷결합할인</span><span>-${price.bundleDiscount.toLocaleString()}</span></div>` : ''}
+          <div class="info-row main-label reco-subtotal-row"><span>인터넷</span><span>${internetSubtotal.toLocaleString()}</span></div>
+          <div class="info-row sub-item-row reco-sub-lv2"><span>${SPEED_LABEL[recoState.speed] || ''}</span><span>${(price.internetFee || 0).toLocaleString()}</span></div>
+          <div class="info-row sub-item-row reco-sub-lv2"><span>공유기<span class="reco-detail-sm">(${ROUTER_LABEL[recoState.router] || ''})</span></span><span>${(price.routerFee || 0).toLocaleString()}</span></div>
+          ${price.bundleDiscount ? `<div class="info-row sub-item-row reco-sub-lv2"><span>인터넷결합할인</span><span>-${price.bundleDiscount.toLocaleString()}</span></div>` : ''}
         </div>
         ${tvTier !== 'none' ? `
         <div class="reco-block">
-          <div class="info-row main-label"><span>TV<span class="reco-detail-sm">(${tvName}/${tvChannels}채널)</span></span><span>${(price.tvFee || 0).toLocaleString()}</span></div>
-          <div class="info-row sub-item-row"><span>셋탑박스<span class="reco-detail-sm">(${settopName})</span></span><span>${(price.settopFee || 0).toLocaleString()}</span></div>
-          ${price.tvBundleDiscount ? `<div class="info-row sub-item-row"><span>TV결합할인</span><span>-${price.tvBundleDiscount.toLocaleString()}</span></div>` : ''}
+          <div class="info-row main-label reco-subtotal-row"><span>TV</span><span>${tvSubtotal.toLocaleString()}</span></div>
+          <div class="info-row sub-item-row reco-sub-lv2"><span>${tvName}/${tvChannels}채널</span><span>${(price.tvFee || 0).toLocaleString()}</span></div>
+          <div class="info-row sub-item-row reco-sub-lv2"><span>셋탑박스<span class="reco-detail-sm">(${settopName})</span></span><span>${(price.settopFee || 0).toLocaleString()}</span></div>
+          ${price.tvBundleDiscount ? `<div class="info-row sub-item-row reco-sub-lv2"><span>TV결합할인</span><span>-${price.tvBundleDiscount.toLocaleString()}</span></div>` : ''}
         </div>` : ''}
         <div class="reco-block">
           <div class="info-row main-label reco-gift-row">
@@ -1109,12 +1118,21 @@ async function fetchRecoUsimPlans(tier){
       ? plans.map(p => {
           const fee = Number(p.monthly_fee) || 0;
           const commission = getUsimCommission(col.net, fee);
-          const gift = Math.max(0, commission - 150000);
+          const defaultGift = Math.max(0, commission - 150000);
+          const giftKey = `${col.net}|${p.plan_name}`;
+          const gift = customUsimGiftValues[giftKey] !== undefined ? customUsimGiftValues[giftKey] : defaultGift;
           return `
         <div class="phone-line usim-reco-line">
           <div class="info-row"><span>${p.plan_name}</span><span>${fee.toLocaleString()}원</span></div>
           <div class="info-row"><span>데이터</span><span>${p.data_allowance || '-'}</span></div>
-          ${isLoggedIn ? `<div class="info-row"><span>사은품</span><span>${gift.toLocaleString()}원</span></div>` : ''}
+          ${isLoggedIn ? `
+          <div class="info-row">
+            <span>사은품</span>
+            <span>
+              <input type="text" inputmode="numeric" pattern="[0-9]*" class="gift-input" value="${gift.toLocaleString()}"
+                     onchange="handleUsimRecoGiftChange(${p.__poolIdx}, this.value)" onfocus="this.select()">
+            </span>
+          </div>` : ''}
           ${isLoggedIn ? `<div class="info-row"><span>수수료</span><span>${commission.toLocaleString()}원</span></div>` : ''}
           <button type="button" class="join-btn usim-reflect-btn" onclick="reflectRecoUsimPlan(${p.__poolIdx})">✨ 상품반영</button>
         </div>
@@ -1164,6 +1182,11 @@ function reflectRecoUsimPlan(poolIdx){
   const baseFee = Number(plan.monthly_fee) || 0;
   const contractFee = plan.contract_discount_fee != null ? Number(plan.contract_discount_fee) : Math.round(baseFee * 0.75 / 10) * 10;
 
+  const commission = isLoggedIn ? getUsimCommission(net, baseFee) : null;
+  const defaultGift = commission != null ? Math.max(0, commission - 150000) : 0;
+  const giftKey = `${net}|${plan.plan_name}`;
+  const gift = customUsimGiftValues[giftKey] !== undefined ? customUsimGiftValues[giftKey] : defaultGift;
+
   const sharedUsimId = `usim-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
   addedUsimLines.push({
@@ -1171,7 +1194,8 @@ function reflectRecoUsimPlan(poolIdx){
     carrier: net,
     planName: plan.plan_name || '-',
     fee: baseFee,
-    teen: false
+    teen: false,
+    gift: gift
   });
   renderAddedUsimLines();
   renderFamilyDiscountAccordion();
@@ -1188,11 +1212,48 @@ function reflectRecoUsimPlan(poolIdx){
     smsAllowance: plan.sms_allowance || '-',
     tethering: plan.tethering_allowance || '-',
     membership: plan.membership_benefit || '-',
-    targetAge: plan.target_age || '제한 없음'
+    targetAge: plan.target_age || '제한 없음',
+    gift: gift
   });
   renderProposalLists();
   updateCsSummaryPanel();
   showToast(`✓ ${net} · ${plan.plan_name || '요금제'} 반영되었습니다 · [고객상담] 제안상품에서 확인하세요`);
+}
+
+// 추천상품 유심 카드에서 사은품을 직접 고쳤을 때 (반영 전 임시 저장)
+function handleUsimRecoGiftChange(poolIdx, rawVal){
+  const plan = recoUsimPlanPool[poolIdx];
+  if (!plan) return;
+  const net = String(plan.carrier || '').toUpperCase();
+  const numVal = parseInt(String(rawVal).replace(/[^0-9]/g, ''), 10);
+  const giftKey = `${net}|${plan.plan_name}`;
+  customUsimGiftValues[giftKey] = !isNaN(numVal) ? Math.max(0, numVal) : 0;
+}
+
+// 제안상품 유심 카드에서 사은품을 직접 고쳤을 때
+// - addedUsimLines(제안상품 화면 표시용)와 reflectedProducts(최종반영·결합할인·저장에 쓰이는 원본) 둘 다 갱신
+// - reflectedProducts 항목은 최종반영 시 finalProducts에 그대로(동일 참조) 들어가므로, 아직 최종반영 전이면 최종상품에는 영향 없음
+function handleUsimProposalGiftChange(id, rawVal){
+  const numVal = parseInt(String(rawVal).replace(/[^0-9]/g, ''), 10);
+  const gift = !isNaN(numVal) ? Math.max(0, numVal) : 0;
+  const line = addedUsimLines.find(l => l.id === id);
+  if (line) line.gift = gift;
+  const linked = reflectedProducts.find(p => p.id === id);
+  if (linked) linked.gift = gift;
+  renderAddedUsimLines();
+  updateCsSummaryPanel();
+}
+
+// 최종상품 유심 카드에서 사은품을 직접 고쳤을 때
+// - finalProducts 항목은 reflectedProducts와 동일한 객체를 참조하므로 저장 데이터에도 바로 반영됨
+// - 제안상품 화면(addedUsimLines)의 표시값은 그대로 두어, "제안했던 금액"과 "최종 확정 금액"을 구분해서 볼 수 있게 함
+function handleUsimFinalGiftChange(id, rawVal){
+  const numVal = parseInt(String(rawVal).replace(/[^0-9]/g, ''), 10);
+  const gift = !isNaN(numVal) ? Math.max(0, numVal) : 0;
+  const item = finalProducts.find(p => p.id === id);
+  if (item) item.gift = gift;
+  renderFinalProducts();
+  updateCsSummaryPanel();
 }
 
 function syncRecoControlsUI(){
@@ -1328,7 +1389,7 @@ const PROPOSAL_USIM_COLUMNS = [
 function buildProposalUsimCard(p){
   const linked = reflectedProducts.find(r => r.id === p.id);
   const commission = getUsimCommission(p.carrier, Number(p.fee) || 0);
-  const gift = Math.max(0, commission - 150000);
+  const gift = p.gift != null ? p.gift : Math.max(0, commission - 150000);
   const canFinalize = !p.synced && !!linked;
   return `
     <div class="phone-line usim-added-line">
@@ -1338,7 +1399,15 @@ function buildProposalUsimCard(p){
         <button type="button" class="phone-remove-btn" onclick="removeAddedUsimLine('${p.id}')">삭제</button>
       </div>
       <div class="info-row"><span>월요금</span><span>${(Number(p.fee) || 0).toLocaleString()}원</span></div>
-      ${isLoggedIn ? `<div class="info-row"><span>사은품</span><span>${gift.toLocaleString()}원</span></div>` : ''}
+      ${isLoggedIn ? `
+      <div class="info-row">
+        <span>사은품</span>
+        <span>
+          <input type="text" inputmode="numeric" pattern="[0-9]*" class="gift-input" value="${gift.toLocaleString()}"
+                 ${p.synced ? 'disabled' : ''}
+                 onchange="handleUsimProposalGiftChange('${p.id}', this.value)" onfocus="this.select()">
+        </span>
+      </div>` : ''}
       ${isLoggedIn ? `<div class="info-row"><span>수수료</span><span>${commission.toLocaleString()}원</span></div>` : ''}
       <div class="usim-line-actions">
         <label class="phone-teen-toggle">
@@ -1535,7 +1604,7 @@ function handleGiftInputChange(carrier, rawVal) {
 function buildProductSummaryLines(p){
   if (p.type === 'usim') {
     const commission = isLoggedIn ? getUsimCommission(p.carrier, Number(p.fee) || 0) : null;
-    const gift = commission != null ? Math.max(0, commission - 150000) : null;
+    const gift = p.gift != null ? p.gift : (commission != null ? Math.max(0, commission - 150000) : null);
     const lines = [p.planName];
     lines.push(`월요금: ${p.fee.toLocaleString()}원`);
     if (p.contractFee != null) lines.push(`약정후: ${p.contractFee.toLocaleString()}원`);
@@ -1826,7 +1895,7 @@ function buildFinalHomeCard(item, usimItems){
 function buildFinalUsimCard(item){
   const contractDiscount = item.contractFee != null ? (item.fee - item.contractFee) : null;
   const commission = getUsimCommission(item.carrier, item.fee);
-  const gift = Math.max(0, commission - 150000);
+  const gift = item.gift != null ? item.gift : Math.max(0, commission - 150000);
   return `
     <div class="final-card">
       <div class="final-card-head">
@@ -1845,7 +1914,13 @@ function buildFinalUsimCard(item){
       <div class="info-row"><span>멤버십</span><span>${item.membership}</span></div>
       <div class="info-row"><span>가입대상</span><span>${item.targetAge}</span></div>
       ${isLoggedIn ? `
-        <div class="info-row main-label section-start"><span>사은품</span><span style="color:var(--gold); font-weight:700;">${gift.toLocaleString()}원</span></div>
+        <div class="info-row main-label section-start">
+          <span>사은품</span>
+          <span>
+            <input type="text" inputmode="numeric" pattern="[0-9]*" class="gift-input" value="${gift.toLocaleString()}"
+                   onchange="handleUsimFinalGiftChange('${item.id}', this.value)" onfocus="this.select()">
+          </span>
+        </div>
         <div class="info-row sub-item-row"><span>└ 결합수수료</span><span>${commission.toLocaleString()}원</span></div>
       ` : ''}
     </div>
@@ -2264,7 +2339,7 @@ function buildCustomerPayload(){
     usim_telecom: usim ? usim.carrier : null,
     usim_plan: usim ? usim.planName : null,
     usim_fee: usim ? Number(usim.fee) || 0 : null,
-    usim_gift: usim && isLoggedIn ? Math.max(0, getUsimCommission(usim.carrier, Number(usim.fee) || 0) - 150000) : null,
+    usim_gift: usim ? (usim.gift != null ? usim.gift : (isLoggedIn ? Math.max(0, getUsimCommission(usim.carrier, Number(usim.fee) || 0) - 150000) : null)) : null,
     usim_commission: usim && isLoggedIn ? getUsimCommission(usim.carrier, Number(usim.fee) || 0) : null,
     notes: elVal('cust-notes') || null,
     funnel_status: elVal('cust-funnel-status') || DEFAULT_FUNNEL_STATUS,
@@ -2323,6 +2398,7 @@ function buildProductRows(customerId){
     const linked = reflectedProducts.find(r => r.id === p.id);
     const fee = Number(p.fee) || 0;
     const commission = isLoggedIn ? getUsimCommission(p.carrier, fee) : null;
+    const giftAmount = linked && linked.gift != null ? linked.gift : (commission != null ? Math.max(0, commission - 150000) : null);
     rows.push({
       customer_id: customerId,
       product_type: 'usim',
@@ -2330,7 +2406,7 @@ function buildProductRows(customerId){
       carrier: p.carrier,
       product_name: p.planName,
       monthly_fee: fee,
-      gift_amount: commission != null ? Math.max(0, commission - 150000) : null,
+      gift_amount: giftAmount,
       commission: commission,
       detail: linked || p
     });
