@@ -61,7 +61,30 @@ function computePrice(carrier, overrideState){
     total -= tvBundleDiscount;
   }
 
-  return { available:true, total, internetFee, routerFee: actualRouterFee, tvFee, settopFee, bundleDiscount, tvBundleDiscount, tvInfo, settopInfo };
+  // ---- 서브 TV (2대째부터) ----
+  // 요금: 선택한 채널 요금제의 50%, 셋탑박스 요금: 동일(할인 없음)
+  // TV결합할인은 메인 TV에만 적용되며 서브 TV에는 적용하지 않음
+  let extraTvFee = 0;
+  const extraTvDetails = [];
+  if (st.tv !== 'none' && Array.isArray(st.extraTVs)) {
+    st.extraTVs.forEach(ex => {
+      const exTvInfo = DATA[carrier]?.tv[ex.tv] || { name:'기본형TV', fee:15400, channels:200 };
+      const exSettopInfo = getSettopByTier(carrier, ex.settopTier);
+      const exTvHalfFee = Math.round(exTvInfo.fee / 2);
+      const exSettopFee = exSettopInfo ? exSettopInfo.fee : 0;
+      extraTvFee += exTvHalfFee + exSettopFee;
+      extraTvDetails.push({
+        tvName: exTvInfo.name,
+        tvChannels: exTvInfo.channels || 200,
+        tvHalfFee: exTvHalfFee,
+        settopName: exSettopInfo ? exSettopInfo.name : '기본셋톱',
+        settopFee: exSettopFee
+      });
+    });
+    total += extraTvFee;
+  }
+
+  return { available:true, total, internetFee, routerFee: actualRouterFee, tvFee, settopFee, bundleDiscount, tvBundleDiscount, tvInfo, settopInfo, extraTvFee, extraTvDetails };
 }
 
 function nearestFeeRangeValue(fee){
