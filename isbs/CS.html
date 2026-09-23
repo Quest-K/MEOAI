@@ -27,7 +27,11 @@
 .reco-product-card-title.carrier-lg{ background:#FCEAF2; border-color:#F0C8DC; color:#A50034; }
 .reco-product-card-title.carrier-skb{ background:#FFF1E4; border-color:#F5D7B6; color:#C25E00; }
 .reco-product-card-title.carrier-skt{ background:#FDECEF; border-color:#F2C9D1; color:#D4002C; }
-.reco-product-card-title .reco-product-total{ color:#333; }
+.reco-product-card-title .reco-product-total{ color:#333; font-size:22px; font-weight:800; letter-spacing:-0.3px; }
+
+/* 추천상품 : 인터넷/TV 소계 아래 2단 들여쓰기 */
+.reco-product-card .reco-sub-lv2{ padding-left:28px !important; }
+.reco-product-card .reco-subtotal-row{ font-weight:700; }
 
 /* 추천상품 : 블록 구분선 */
 .reco-product-card .reco-block{ padding:8px 0; border-top:1px dashed #DFDFDF; }
@@ -157,7 +161,7 @@
 .cust-status-chip.stage-2{ background:#F1EEFF; color:#5B3FA8; }
 .cust-status-chip.stage-3{ background:#E9F6EE; color:#1E7E34; }
 .cust-status-chip.stage-4{ background:#FFF4E0; color:#B77400; }
-.cust-status-chip.stage-5{ background:#FDECEC; color:#B3001B; }
+.cust-status-chip.stage-wait{ background:#F0F0F0; color:#666; }
 select.cust-status-chip{
   border:none; cursor:pointer; font-family:inherit;
   appearance:none; -webkit-appearance:none; -moz-appearance:none;
@@ -454,7 +458,10 @@ table.cust-wide-table .cs-money-cell input.cs-money-input{ width:auto; flex:1 1 
             </div>
             <div class="info-subsection-body" id="family-line-body" style="display:none;">
               <div id="family-lines-list" class="family-lines-list"></div>
-              <button type="button" class="secondary-btn family-line-add-btn" onclick="addFamilyLine()">+ 가족회선 추가</button>
+              <div class="family-line-add-row">
+                <button type="button" class="secondary-btn family-line-add-btn" onclick="addFamilyLine('mobile')">+ 휴대폰 회선 추가</button>
+                <button type="button" class="secondary-btn family-line-add-btn" onclick="addFamilyLine('internet')">+ 인터넷 회선 추가</button>
+              </div>
             </div>
           </div>
         </div>
@@ -595,7 +602,7 @@ table.cust-wide-table .cs-money-cell input.cs-money-input{ width:auto; flex:1 1 
         <div class="consult-save-row consult-save-row-top">
           <span class="consult-save-state" id="consult-save-state">신규 상담</span>
           <button type="button" class="secondary-btn" onclick="resetConsultation()">🆕 신규상담</button>
-          <button type="button" class="primary-btn" onclick="saveConsultation()">💾 상담저장</button>
+          <button type="button" class="primary-btn" onclick="saveConsultation(this)">💾 상담저장</button>
         </div>
         <div class="js-header-row">
           <h3>상담요약</h3>
@@ -647,8 +654,9 @@ table.cust-wide-table .cs-money-cell input.cs-money-input{ width:auto; flex:1 1 
             <input type="text" id="cust-search-contact" placeholder="연락처 (숫자만 입력해도 검색)"
                    inputmode="numeric" onkeydown="if(event.key==='Enter') searchCustomers()">
             <select id="cust-search-status"></select>
-            <button type="button" class="primary-btn" onclick="searchCustomers()">🔍 조회</button>
-            <button type="button" class="secondary-btn" onclick="loadRecentCustomers()">최근 등록</button>
+            <button type="button" id="cust-search-btn" class="primary-btn" onclick="searchCustomers(this)">🔍 조회</button>
+            <button type="button" class="secondary-btn" onclick="loadRecentCustomers(this)">최근 등록</button>
+            <button type="button" class="secondary-btn" onclick="openReservationModal()">+ 상담예약 빠르게 등록</button>
           </div>
           <div class="cust-list-wrap">
             <table class="cust-list-table">
@@ -705,6 +713,24 @@ table.cust-wide-table .cs-money-cell input.cs-money-input{ width:auto; flex:1 1 
   </div>
 </div>
 
+<div id="reservation-modal" class="modal-overlay">
+  <div class="modal-box" style="max-width:400px;">
+    <h3>상담예약 빠르게 등록</h3>
+    <p class="modal-desc">연락처와 대략적인 예상 시점만 남겨두면, 나중에 고객조회에서 상태값을 바꿔 실제 상담으로 이어갈 수 있습니다.</p>
+    <label class="login-label">연락처 *</label>
+    <input type="text" id="resv-contact" class="login-input" placeholder="010-0000-0000" inputmode="numeric">
+    <label class="login-label">예상 시점</label>
+    <input type="text" id="resv-timing" class="login-input" placeholder="예: 11월 중순, 27년 12월">
+    <label class="login-label">메모</label>
+    <input type="text" id="resv-memo" class="login-input" placeholder="예: KT 69이상, 만료 예정">
+    <div class="login-error" id="resv-error"></div>
+    <div class="modal-actions">
+      <button class="secondary-btn" onclick="closeReservationModal()">취소</button>
+      <button class="primary-btn" id="resv-submit-btn" onclick="submitReservation(this)">등록</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
 <script src="Calculator.js"></script>
@@ -748,6 +774,7 @@ let COMMISSION_DATA = {};
 let RAW_COMMISSION_DATA = [];
 let PROMOTION_DATA = {};
 let customGiftValues = {};
+let customUsimGiftValues = {}; // key: `${carrier}|${planName}` (추천상품 단계에서 상담원이 직접 고친 유심 사은품)
 
 function showToast(message){
   const container = document.getElementById('toast-container');
@@ -761,6 +788,22 @@ function showToast(message){
     toast.classList.remove('toast-visible');
     setTimeout(() => toast.remove(), 250);
   }, 2200);
+}
+
+// 저장/삭제/조회 등 비동기 버튼의 중복 클릭 방지 + 진행 상태 표시 공용 헬퍼
+function setBtnLoading(btn, loadingLabel){
+  if (!btn || btn.disabled) return;
+  btn.dataset.originalLabel = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = loadingLabel;
+}
+function clearBtnLoading(btn){
+  if (!btn) return;
+  btn.disabled = false;
+  if (btn.dataset.originalLabel !== undefined) {
+    btn.innerHTML = btn.dataset.originalLabel;
+    delete btn.dataset.originalLabel;
+  }
 }
 
 let openDiscountItems = new Set();
@@ -808,6 +851,11 @@ function switchTab(tabId) {
 
 // [고객상담] 단계형 서브탭 : 고객정보 → 추천상품 → 제안상품 → 최종상품
 function goCsStep(n) {
+  if (n > 1 && !(elVal('cust-contact') || '').trim()) {
+    alert('연락처를 먼저 입력해주세요.');
+    document.getElementById('cust-contact')?.focus();
+    return;
+  }
   document.querySelectorAll('#cs-wiz-nav .cs-wiz-btn').forEach(b => {
     b.classList.toggle('active', Number(b.dataset.step) === n);
   });
@@ -891,6 +939,8 @@ function renderRecoCards(){
     const tvName = price.tvInfo ? price.tvInfo.name : '기본형';
     const tvChannels = price.tvInfo ? (price.tvInfo.channels || 200) : 200;
     const settopName = price.settopInfo ? price.settopInfo.name : '기본셋톱';
+    const internetSubtotal = (price.internetFee || 0) + (price.routerFee || 0) - (price.bundleDiscount || 0);
+    const tvSubtotal = tvTier !== 'none' ? (price.tvFee || 0) + (price.settopFee || 0) - (price.tvBundleDiscount || 0) : 0;
 
     const promo = PROMOTION_DATA[c] || { giftCard: 60000, cash: 340000 };
     const userGiftVal = customGiftValues[c] !== undefined ? customGiftValues[c] : (promo.maxLimit || (promo.giftCard + promo.cash));
@@ -917,15 +967,17 @@ function renderRecoCards(){
           <span class="reco-product-total">${(price.total || 0).toLocaleString()}</span>
         </div>
         <div class="reco-block first">
-          <div class="info-row main-label"><span>인터넷<span class="reco-detail-sm">(${SPEED_LABEL[recoState.speed] || ''})</span></span><span>${(price.internetFee || 0).toLocaleString()}</span></div>
-          <div class="info-row sub-item-row"><span>공유기<span class="reco-detail-sm">(${ROUTER_LABEL[recoState.router] || ''})</span></span><span>${(price.routerFee || 0).toLocaleString()}</span></div>
-          ${price.bundleDiscount ? `<div class="info-row sub-item-row"><span>인터넷결합할인</span><span>-${price.bundleDiscount.toLocaleString()}</span></div>` : ''}
+          <div class="info-row main-label reco-subtotal-row"><span>인터넷</span><span>${internetSubtotal.toLocaleString()}</span></div>
+          <div class="info-row sub-item-row reco-sub-lv2"><span>${SPEED_LABEL[recoState.speed] || ''}</span><span>${(price.internetFee || 0).toLocaleString()}</span></div>
+          <div class="info-row sub-item-row reco-sub-lv2"><span>공유기<span class="reco-detail-sm">(${ROUTER_LABEL[recoState.router] || ''})</span></span><span>${(price.routerFee || 0).toLocaleString()}</span></div>
+          ${price.bundleDiscount ? `<div class="info-row sub-item-row reco-sub-lv2"><span>인터넷결합할인</span><span>-${price.bundleDiscount.toLocaleString()}</span></div>` : ''}
         </div>
         ${tvTier !== 'none' ? `
         <div class="reco-block">
-          <div class="info-row main-label"><span>TV<span class="reco-detail-sm">(${tvName}/${tvChannels}채널)</span></span><span>${(price.tvFee || 0).toLocaleString()}</span></div>
-          <div class="info-row sub-item-row"><span>셋탑박스<span class="reco-detail-sm">(${settopName})</span></span><span>${(price.settopFee || 0).toLocaleString()}</span></div>
-          ${price.tvBundleDiscount ? `<div class="info-row sub-item-row"><span>TV결합할인</span><span>-${price.tvBundleDiscount.toLocaleString()}</span></div>` : ''}
+          <div class="info-row main-label reco-subtotal-row"><span>TV</span><span>${tvSubtotal.toLocaleString()}</span></div>
+          <div class="info-row sub-item-row reco-sub-lv2"><span>${tvName}/${tvChannels}채널</span><span>${(price.tvFee || 0).toLocaleString()}</span></div>
+          <div class="info-row sub-item-row reco-sub-lv2"><span>셋탑박스<span class="reco-detail-sm">(${settopName})</span></span><span>${(price.settopFee || 0).toLocaleString()}</span></div>
+          ${price.tvBundleDiscount ? `<div class="info-row sub-item-row reco-sub-lv2"><span>TV결합할인</span><span>-${price.tvBundleDiscount.toLocaleString()}</span></div>` : ''}
         </div>` : ''}
         <div class="reco-block">
           <div class="info-row main-label reco-gift-row">
@@ -1066,12 +1118,21 @@ async function fetchRecoUsimPlans(tier){
       ? plans.map(p => {
           const fee = Number(p.monthly_fee) || 0;
           const commission = getUsimCommission(col.net, fee);
-          const gift = Math.max(0, commission - 150000);
+          const defaultGift = Math.max(0, commission - 150000);
+          const giftKey = `${col.net}|${p.plan_name}`;
+          const gift = customUsimGiftValues[giftKey] !== undefined ? customUsimGiftValues[giftKey] : defaultGift;
           return `
         <div class="phone-line usim-reco-line">
           <div class="info-row"><span>${p.plan_name}</span><span>${fee.toLocaleString()}원</span></div>
           <div class="info-row"><span>데이터</span><span>${p.data_allowance || '-'}</span></div>
-          ${isLoggedIn ? `<div class="info-row"><span>사은품</span><span>${gift.toLocaleString()}원</span></div>` : ''}
+          ${isLoggedIn ? `
+          <div class="info-row">
+            <span>사은품</span>
+            <span>
+              <input type="text" inputmode="numeric" pattern="[0-9]*" class="gift-input" value="${gift.toLocaleString()}"
+                     onchange="handleUsimRecoGiftChange(${p.__poolIdx}, this.value)" onfocus="this.select()">
+            </span>
+          </div>` : ''}
           ${isLoggedIn ? `<div class="info-row"><span>수수료</span><span>${commission.toLocaleString()}원</span></div>` : ''}
           <button type="button" class="join-btn usim-reflect-btn" onclick="reflectRecoUsimPlan(${p.__poolIdx})">✨ 상품반영</button>
         </div>
@@ -1121,6 +1182,11 @@ function reflectRecoUsimPlan(poolIdx){
   const baseFee = Number(plan.monthly_fee) || 0;
   const contractFee = plan.contract_discount_fee != null ? Number(plan.contract_discount_fee) : Math.round(baseFee * 0.75 / 10) * 10;
 
+  const commission = isLoggedIn ? getUsimCommission(net, baseFee) : null;
+  const defaultGift = commission != null ? Math.max(0, commission - 150000) : 0;
+  const giftKey = `${net}|${plan.plan_name}`;
+  const gift = customUsimGiftValues[giftKey] !== undefined ? customUsimGiftValues[giftKey] : defaultGift;
+
   const sharedUsimId = `usim-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
   addedUsimLines.push({
@@ -1128,7 +1194,8 @@ function reflectRecoUsimPlan(poolIdx){
     carrier: net,
     planName: plan.plan_name || '-',
     fee: baseFee,
-    teen: false
+    teen: false,
+    gift: gift
   });
   renderAddedUsimLines();
   renderFamilyDiscountAccordion();
@@ -1145,11 +1212,48 @@ function reflectRecoUsimPlan(poolIdx){
     smsAllowance: plan.sms_allowance || '-',
     tethering: plan.tethering_allowance || '-',
     membership: plan.membership_benefit || '-',
-    targetAge: plan.target_age || '제한 없음'
+    targetAge: plan.target_age || '제한 없음',
+    gift: gift
   });
   renderProposalLists();
   updateCsSummaryPanel();
   showToast(`✓ ${net} · ${plan.plan_name || '요금제'} 반영되었습니다 · [고객상담] 제안상품에서 확인하세요`);
+}
+
+// 추천상품 유심 카드에서 사은품을 직접 고쳤을 때 (반영 전 임시 저장)
+function handleUsimRecoGiftChange(poolIdx, rawVal){
+  const plan = recoUsimPlanPool[poolIdx];
+  if (!plan) return;
+  const net = String(plan.carrier || '').toUpperCase();
+  const numVal = parseInt(String(rawVal).replace(/[^0-9]/g, ''), 10);
+  const giftKey = `${net}|${plan.plan_name}`;
+  customUsimGiftValues[giftKey] = !isNaN(numVal) ? Math.max(0, numVal) : 0;
+}
+
+// 제안상품 유심 카드에서 사은품을 직접 고쳤을 때
+// - addedUsimLines(제안상품 화면 표시용)와 reflectedProducts(최종반영·결합할인·저장에 쓰이는 원본) 둘 다 갱신
+// - reflectedProducts 항목은 최종반영 시 finalProducts에 그대로(동일 참조) 들어가므로, 아직 최종반영 전이면 최종상품에는 영향 없음
+function handleUsimProposalGiftChange(id, rawVal){
+  const numVal = parseInt(String(rawVal).replace(/[^0-9]/g, ''), 10);
+  const gift = !isNaN(numVal) ? Math.max(0, numVal) : 0;
+  const line = addedUsimLines.find(l => l.id === id);
+  if (line) line.gift = gift;
+  const linked = reflectedProducts.find(p => p.id === id);
+  if (linked) linked.gift = gift;
+  renderAddedUsimLines();
+  updateCsSummaryPanel();
+}
+
+// 최종상품 유심 카드에서 사은품을 직접 고쳤을 때
+// - finalProducts 항목은 reflectedProducts와 동일한 객체를 참조하므로 저장 데이터에도 바로 반영됨
+// - 제안상품 화면(addedUsimLines)의 표시값은 그대로 두어, "제안했던 금액"과 "최종 확정 금액"을 구분해서 볼 수 있게 함
+function handleUsimFinalGiftChange(id, rawVal){
+  const numVal = parseInt(String(rawVal).replace(/[^0-9]/g, ''), 10);
+  const gift = !isNaN(numVal) ? Math.max(0, numVal) : 0;
+  const item = finalProducts.find(p => p.id === id);
+  if (item) item.gift = gift;
+  renderFinalProducts();
+  updateCsSummaryPanel();
 }
 
 function syncRecoControlsUI(){
@@ -1181,29 +1285,32 @@ function toggleOldInternetSection(isOn){
 function toggleFamilyLineSection(isOn){
   const body = document.getElementById('family-line-body');
   if (body) body.style.display = isOn ? '' : 'none';
-  if (isOn && !familyLines.length) addFamilyLine();
   updateCsSummaryPanel();
 }
 
-function addFamilyLine(){
-  familyLines.push({
-    id: 'fam-' + Date.now() + '-' + Math.floor(Math.random()*1000),
-    mobileCarrier: 'KT',
-    mobileFeeValue: FEE_RANGES[0].value,
-    internetCarrier: 'KT',
-    internetFeeLabel: OLD_INTERNET_FEE_RANGES[0]
-  });
+function addFamilyLine(type){
+  const line = { id: 'fam-' + Date.now() + '-' + Math.floor(Math.random()*1000), type };
+  if (type === 'internet') {
+    line.carrier = 'KT';
+    line.feeLabel = OLD_INTERNET_FEE_RANGES[0];
+  } else {
+    line.type = 'mobile';
+    line.carrier = 'KT';
+    line.feeValue = FEE_RANGES[0].value;
+  }
+  familyLines.push(line);
   renderFamilyLines();
   updateCsSummaryPanel();
 }
 
 function updateFamilyLine(idx, field, value){
   if (!familyLines[idx]) return;
-  familyLines[idx][field] = (field === 'mobileFeeValue') ? Number(value) : value;
+  familyLines[idx][field] = (field === 'feeValue') ? Number(value) : value;
   updateCsSummaryPanel();
 }
 
 function removeFamilyLine(idx){
+  if (!confirm('해당 가족회선을 삭제할까요?')) return;
   familyLines.splice(idx, 1);
   renderFamilyLines();
   updateCsSummaryPanel();
@@ -1213,32 +1320,41 @@ function renderFamilyLines(){
   const container = document.getElementById('family-lines-list');
   if (!container) return;
   if (!familyLines.length) {
-    container.innerHTML = `<div class="phone-empty">등록된 가족 회선이 없습니다. [+ 가족회선 추가]를 눌러주세요.</div>`;
+    container.innerHTML = `<div class="phone-empty">등록된 가족 회선이 없습니다. 아래 버튼으로 휴대폰 또는 인터넷 회선을 추가해주세요.</div>`;
     return;
   }
-  container.innerHTML = familyLines.map((f, idx) => `
-    <div class="phone-line family-line-row">
-      <div class="family-line-group">
-        <span class="family-line-label">휴대폰</span>
-        <select onchange="updateFamilyLine(${idx}, 'mobileCarrier', this.value)">
-          ${MOBILE_CARRIER_OPTIONS.map(c => `<option value="${c}" ${f.mobileCarrier===c?'selected':''}>${c}</option>`).join('')}
-        </select>
-        <select onchange="updateFamilyLine(${idx}, 'mobileFeeValue', this.value)">
-          ${FEE_RANGES.map(r => `<option value="${r.value}" ${f.mobileFeeValue===r.value?'selected':''}>${r.label}</option>`).join('')}
-        </select>
+  container.innerHTML = familyLines.map((f, idx) => {
+    if (f.type === 'internet') {
+      return `
+      <div class="phone-line family-line-row">
+        <div class="family-line-group">
+          <span class="family-line-label">인터넷</span>
+          <select onchange="updateFamilyLine(${idx}, 'carrier', this.value)">
+            ${HOME_CARRIER_OPTIONS.map(c => `<option value="${c}" ${f.carrier===c?'selected':''}>${c}</option>`).join('')}
+          </select>
+          <select onchange="updateFamilyLine(${idx}, 'feeLabel', this.value)">
+            ${OLD_INTERNET_FEE_RANGES.map(l => `<option value="${l}" ${f.feeLabel===l?'selected':''}>${l}</option>`).join('')}
+          </select>
+        </div>
+        <button type="button" class="phone-remove-btn" onclick="removeFamilyLine(${idx})">삭제</button>
       </div>
-      <div class="family-line-group">
-        <span class="family-line-label">인터넷</span>
-        <select onchange="updateFamilyLine(${idx}, 'internetCarrier', this.value)">
-          ${HOME_CARRIER_OPTIONS.map(c => `<option value="${c}" ${f.internetCarrier===c?'selected':''}>${c}</option>`).join('')}
-        </select>
-        <select onchange="updateFamilyLine(${idx}, 'internetFeeLabel', this.value)">
-          ${OLD_INTERNET_FEE_RANGES.map(l => `<option value="${l}" ${f.internetFeeLabel===l?'selected':''}>${l}</option>`).join('')}
-        </select>
+    `;
+    }
+    return `
+      <div class="phone-line family-line-row">
+        <div class="family-line-group">
+          <span class="family-line-label">휴대폰</span>
+          <select onchange="updateFamilyLine(${idx}, 'carrier', this.value)">
+            ${MOBILE_CARRIER_OPTIONS.map(c => `<option value="${c}" ${f.carrier===c?'selected':''}>${c}</option>`).join('')}
+          </select>
+          <select onchange="updateFamilyLine(${idx}, 'feeValue', this.value)">
+            ${FEE_RANGES.map(r => `<option value="${r.value}" ${f.feeValue===r.value?'selected':''}>${r.label}</option>`).join('')}
+          </select>
+        </div>
+        <button type="button" class="phone-remove-btn" onclick="removeFamilyLine(${idx})">삭제</button>
       </div>
-      <button type="button" class="phone-remove-btn" onclick="removeFamilyLine(${idx})">삭제</button>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 function syncToDesignPhones() {
@@ -1273,7 +1389,7 @@ const PROPOSAL_USIM_COLUMNS = [
 function buildProposalUsimCard(p){
   const linked = reflectedProducts.find(r => r.id === p.id);
   const commission = getUsimCommission(p.carrier, Number(p.fee) || 0);
-  const gift = Math.max(0, commission - 150000);
+  const gift = p.gift != null ? p.gift : Math.max(0, commission - 150000);
   const canFinalize = !p.synced && !!linked;
   return `
     <div class="phone-line usim-added-line">
@@ -1283,7 +1399,15 @@ function buildProposalUsimCard(p){
         <button type="button" class="phone-remove-btn" onclick="removeAddedUsimLine('${p.id}')">삭제</button>
       </div>
       <div class="info-row"><span>월요금</span><span>${(Number(p.fee) || 0).toLocaleString()}원</span></div>
-      ${isLoggedIn ? `<div class="info-row"><span>사은품</span><span>${gift.toLocaleString()}원</span></div>` : ''}
+      ${isLoggedIn ? `
+      <div class="info-row">
+        <span>사은품</span>
+        <span>
+          <input type="text" inputmode="numeric" pattern="[0-9]*" class="gift-input" value="${gift.toLocaleString()}"
+                 ${p.synced ? 'disabled' : ''}
+                 onchange="handleUsimProposalGiftChange('${p.id}', this.value)" onfocus="this.select()">
+        </span>
+      </div>` : ''}
       ${isLoggedIn ? `<div class="info-row"><span>수수료</span><span>${commission.toLocaleString()}원</span></div>` : ''}
       <div class="usim-line-actions">
         <label class="phone-teen-toggle">
@@ -1480,7 +1604,7 @@ function handleGiftInputChange(carrier, rawVal) {
 function buildProductSummaryLines(p){
   if (p.type === 'usim') {
     const commission = isLoggedIn ? getUsimCommission(p.carrier, Number(p.fee) || 0) : null;
-    const gift = commission != null ? Math.max(0, commission - 150000) : null;
+    const gift = p.gift != null ? p.gift : (commission != null ? Math.max(0, commission - 150000) : null);
     const lines = [p.planName];
     lines.push(`월요금: ${p.fee.toLocaleString()}원`);
     if (p.contractFee != null) lines.push(`약정후: ${p.contractFee.toLocaleString()}원`);
@@ -1534,12 +1658,16 @@ function getFamilyLineSummaryItems(){
   if (!familyLines.length) {
     items.push({ label: '가족회선', value: '등록된 회선 없음' });
   } else {
-    familyLines.forEach((f, idx) => {
-      const feeLabel = FEE_RANGES.find(r => r.value === f.mobileFeeValue)?.label || '';
-      items.push({
-        label: `가족회선 ${idx + 1}`,
-        value: `휴대폰 ${f.mobileCarrier} ${feeLabel} / 인터넷 ${f.internetCarrier} ${f.internetFeeLabel}`
-      });
+    let mobileCount = 0, internetCount = 0;
+    familyLines.forEach(f => {
+      if (f.type === 'internet') {
+        internetCount += 1;
+        items.push({ label: `가족회선(인터넷) ${internetCount}`, value: `${f.carrier} ${f.feeLabel}` });
+      } else {
+        mobileCount += 1;
+        const feeLabel = FEE_RANGES.find(r => r.value === f.feeValue)?.label || '';
+        items.push({ label: `가족회선(휴대폰) ${mobileCount}`, value: `${f.carrier} ${feeLabel}` });
+      }
     });
   }
   return items;
@@ -1767,7 +1895,7 @@ function buildFinalHomeCard(item, usimItems){
 function buildFinalUsimCard(item){
   const contractDiscount = item.contractFee != null ? (item.fee - item.contractFee) : null;
   const commission = getUsimCommission(item.carrier, item.fee);
-  const gift = Math.max(0, commission - 150000);
+  const gift = item.gift != null ? item.gift : Math.max(0, commission - 150000);
   return `
     <div class="final-card">
       <div class="final-card-head">
@@ -1786,7 +1914,13 @@ function buildFinalUsimCard(item){
       <div class="info-row"><span>멤버십</span><span>${item.membership}</span></div>
       <div class="info-row"><span>가입대상</span><span>${item.targetAge}</span></div>
       ${isLoggedIn ? `
-        <div class="info-row main-label section-start"><span>사은품</span><span style="color:var(--gold); font-weight:700;">${gift.toLocaleString()}원</span></div>
+        <div class="info-row main-label section-start">
+          <span>사은품</span>
+          <span>
+            <input type="text" inputmode="numeric" pattern="[0-9]*" class="gift-input" value="${gift.toLocaleString()}"
+                   onchange="handleUsimFinalGiftChange('${item.id}', this.value)" onfocus="this.select()">
+          </span>
+        </div>
         <div class="info-row sub-item-row"><span>└ 결합수수료</span><span>${commission.toLocaleString()}원</span></div>
       ` : ''}
     </div>
@@ -1861,6 +1995,98 @@ function closeLoginModal(){
   document.getElementById('login-modal').style.display = 'none';
 }
 
+function openReservationModal(){
+  document.getElementById('resv-error').textContent = '';
+  setVal('resv-contact', '');
+  setVal('resv-timing', '');
+  setVal('resv-memo', '');
+  document.getElementById('reservation-modal').style.display = 'flex';
+}
+
+function closeReservationModal(){
+  document.getElementById('reservation-modal').style.display = 'none';
+}
+
+// "11월 중순", "27년 12월", "12월 5일" 같은 대략적 표현을 실제 날짜(YYYY-MM-DDT09:00)로 변환.
+// 초순=5일, 중순=15일, 말/하순=25일, 일자 언급 없으면 1일. 연도 미기재 시 이미 지난 날짜면 내년으로 이동.
+function parseRoughDateText(text){
+  const t = String(text || '').trim();
+  if (!t) return null;
+
+  const monthMatch = t.match(/(\d{1,2})\s*월/);
+  if (!monthMatch) return null;
+  const month = parseInt(monthMatch[1], 10);
+  if (month < 1 || month > 12) return null;
+
+  const yearMatch = t.match(/(\d{2,4})\s*년/);
+  let year = new Date().getFullYear();
+  if (yearMatch) {
+    let y = parseInt(yearMatch[1], 10);
+    if (y < 100) y += 2000;
+    year = y;
+  }
+
+  let day = 1;
+  if (t.includes('초순')) day = 5;
+  else if (t.includes('중순')) day = 15;
+  else if (t.includes('하순') || t.includes('말')) day = 25;
+  const dayMatch = t.match(/(\d{1,2})\s*일/);
+  if (dayMatch) day = parseInt(dayMatch[1], 10);
+
+  if (!yearMatch) {
+    const candidate = new Date(year, month - 1, day);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    if (candidate < today) year += 1;
+  }
+
+  const pad = n => String(n).padStart(2, '0');
+  return `${year}-${pad(month)}-${pad(day)}T09:00`;
+}
+
+async function submitReservation(btn){
+  const errEl = document.getElementById('resv-error');
+  errEl.textContent = '';
+
+  const contact = (elVal('resv-contact') || '').trim();
+  if (!contact) { errEl.textContent = '연락처는 필수 입력값입니다.'; return; }
+
+  const timingRaw = (elVal('resv-timing') || '').trim();
+  const memoRaw = (elVal('resv-memo') || '').trim();
+  const parsedDate = parseRoughDateText(timingRaw);
+
+  const noteParts = [];
+  if (timingRaw) noteParts.push(`예상 시점: ${timingRaw}`);
+  if (memoRaw) noteParts.push(memoRaw);
+
+  setBtnLoading(btn, '등록 중...');
+  try {
+    const { data: exist } = await sb.from('customers').select('customer_id').eq('contact', contact).limit(1);
+    const payload = {
+      contact,
+      funnel_status: RESERVATION_STATUS,
+      next_contact_at: parsedDate ? new Date(parsedDate).toISOString() : null,
+      notes: noteParts.join(' / ') || null
+    };
+
+    let error;
+    if (exist && exist.length) {
+      if (!confirm(`동일한 연락처(${contact})의 고객이 이미 등록되어 있습니다.\n기존 정보를 상담예약 상태로 업데이트할까요?`)) return;
+      ({ error } = await sb.from('customers').update(payload).eq('customer_id', exist[0].customer_id));
+    } else {
+      ({ error } = await sb.from('customers').insert(payload));
+    }
+
+    if (error) { errEl.textContent = '등록 실패: ' + error.message; return; }
+
+    showToast('✓ 상담예약이 등록되었습니다');
+    closeReservationModal();
+    await searchOrRefresh();
+    if (document.getElementById('funnel-dashboard')) loadFunnelDashboard();
+  } finally {
+    clearBtnLoading(btn);
+  }
+}
+
 function updateAuthUI(email){
   const box = document.getElementById('auth-box');
   if (isLoggedIn) {
@@ -1899,6 +2125,7 @@ const CUSTOMER_TAG_GROUPS = [
     { key: '여성-가계경제/절감중시', desc: '판별근거: "매달 얼마씩 나가는지"를 반복 질문\n참고: 월 실납부액 절감분을 구체적 금액으로 제시' }
   ]},
   { label: '약정 상태', single: true, tags: [
+    { key: '신규가입', desc: '판별근거: 완전 신규 회선(비교 대상이 되는 기존 약정 자체가 없음)\n참고: 만료임박/약정많이남음 화법 대신, 신규가입 전용 안내(가족결합·최초 요금제 설계)로 접근' },
     { key: '만료임박/지났음', desc: '판별근거: "약정 언제 끝났는지 모르겠다" 등\n참고: 처음부터 저렴하게 세팅하는 화법 적용' },
     { key: '약정많이남음', desc: '판별근거: 위약금 언급, 이동에 망설임\n참고: 12개월 경과 골든타임 화법 적용' }
   ]},
@@ -2013,16 +2240,17 @@ function toggleDetailTagsBody(){
 }
 
 const FUNNEL_STAGES = [
-  { stage: 1, label: '1. 접수·상담', items: ['신규접수', '상담진행', '고객부재', '고객부재_종결'] },
-  { stage: 2, label: '2. 상담·계약', items: ['상품안내', '계약진행', '보류확인', '접수불가'] },
-  { stage: 3, label: '3. 설치', items: ['접수완료', '설치대기', '개통대기'] },
-  { stage: 4, label: '4. 사은품 지급', items: ['개통완료', '지급요청', '지급완료', '지급반려'] },
-  { stage: 5, label: '5. 환수', items: ['환수필요', '환수요청', '환수진행'] },
-  { stage: 0, label: '종결', items: ['종결(정상)', '종결(리드소멸)', '이탈'] }
+  { stage: 1, label: '1. 상담·계약', items: ['상품안내', '계약진행', '보류확인', '접수불가'] },
+  { stage: 2, label: '2. 설치', items: ['접수완료', '설치대기', '개통대기'] },
+  { stage: 3, label: '3. 사은품 지급', items: ['개통완료', '지급요청', '지급완료', '지급반려'] },
+  { stage: 4, label: '4. 환수', items: ['환수필요', '환수요청', '환수진행'] },
+  { stage: 0, label: '종결', items: ['종결(정상)', '종결(리드소멸)', '이탈', '고객부재_종결'] }
 ];
 
 const DEFAULT_FUNNEL_STATUS = '상담대기';
-const INITIAL_FUNNEL_STATUS = '신규접수'; // 신규 상담 시작 시 기본 선택값
+const RESERVATION_STATUS = '상담예약';
+// 아직 본 상담 전 단계로 취급하는 상태값들 (대시보드 "상담대기" 묶음에 함께 표시)
+const PRE_STAGE_STATUSES = [DEFAULT_FUNNEL_STATUS, RESERVATION_STATUS, '고객부재'];
 const NAME_PREFIX = '(인생비서)';
 
 let CUSTOMER_SCHEMA = { hasProductsTable: false, hasSnapshot: false, hasTags: false, checked: false };
@@ -2031,13 +2259,18 @@ let customerListCache = [];
 let customerViewInited = false;
 
 function getFunnelStage(status){
+  if (PRE_STAGE_STATUSES.includes(status)) return 'wait';
   const found = FUNNEL_STAGES.find(g => g.items.includes(status));
   return found ? found.stage : 0;
 }
 
 function funnelStatusOptionsHtml(selected, includeAll){
   let html = includeAll ? `<option value="">상태값 전체</option>` : '';
-  html += `<option value="${DEFAULT_FUNNEL_STATUS}" ${selected === DEFAULT_FUNNEL_STATUS ? 'selected' : ''}>${DEFAULT_FUNNEL_STATUS}</option>`;
+  html += `
+    <optgroup label="상담대기">
+      ${PRE_STAGE_STATUSES.map(v => `<option value="${v}" ${v === selected ? 'selected' : ''}>${v}</option>`).join('')}
+    </optgroup>
+  `;
   html += FUNNEL_STAGES.map(g => `
     <optgroup label="${g.label}">
       ${g.items.map(v => `<option value="${v}" ${v === selected ? 'selected' : ''}>${v}</option>`).join('')}
@@ -2048,7 +2281,7 @@ function funnelStatusOptionsHtml(selected, includeAll){
 
 function initFunnelSelects(){
   const a = document.getElementById('cust-funnel-status');
-  if (a) a.innerHTML = funnelStatusOptionsHtml(INITIAL_FUNNEL_STATUS, false);
+  if (a) a.innerHTML = funnelStatusOptionsHtml(DEFAULT_FUNNEL_STATUS, false);
   const b = document.getElementById('cust-search-status');
   if (b) b.innerHTML = funnelStatusOptionsHtml('', true);
 }
@@ -2106,7 +2339,7 @@ function buildCustomerPayload(){
     usim_telecom: usim ? usim.carrier : null,
     usim_plan: usim ? usim.planName : null,
     usim_fee: usim ? Number(usim.fee) || 0 : null,
-    usim_gift: usim && isLoggedIn ? Math.max(0, getUsimCommission(usim.carrier, Number(usim.fee) || 0) - 150000) : null,
+    usim_gift: usim ? (usim.gift != null ? usim.gift : (isLoggedIn ? Math.max(0, getUsimCommission(usim.carrier, Number(usim.fee) || 0) - 150000) : null)) : null,
     usim_commission: usim && isLoggedIn ? getUsimCommission(usim.carrier, Number(usim.fee) || 0) : null,
     notes: elVal('cust-notes') || null,
     funnel_status: elVal('cust-funnel-status') || DEFAULT_FUNNEL_STATUS,
@@ -2165,6 +2398,7 @@ function buildProductRows(customerId){
     const linked = reflectedProducts.find(r => r.id === p.id);
     const fee = Number(p.fee) || 0;
     const commission = isLoggedIn ? getUsimCommission(p.carrier, fee) : null;
+    const giftAmount = linked && linked.gift != null ? linked.gift : (commission != null ? Math.max(0, commission - 150000) : null);
     rows.push({
       customer_id: customerId,
       product_type: 'usim',
@@ -2172,7 +2406,7 @@ function buildProductRows(customerId){
       carrier: p.carrier,
       product_name: p.planName,
       monthly_fee: fee,
-      gift_amount: commission != null ? Math.max(0, commission - 150000) : null,
+      gift_amount: giftAmount,
       commission: commission,
       detail: linked || p
     });
@@ -2193,47 +2427,52 @@ async function probeCustomerSchema(){
   return CUSTOMER_SCHEMA;
 }
 
-async function saveConsultation(){
+async function saveConsultation(btn){
   const contact = (elVal('cust-contact') || '').trim();
   if (!contact) { alert('연락처는 필수 입력값입니다.'); document.getElementById('cust-contact')?.focus(); return; }
   if (!reflectedProducts.length && !confirm('제안상품이 없습니다. 고객 정보만 저장할까요?')) return;
 
-  await probeCustomerSchema();
-  const payload = buildCustomerPayload();
+  setBtnLoading(btn, '저장 중...');
+  try {
+    await probeCustomerSchema();
+    const payload = buildCustomerPayload();
 
-  let customerId = currentCustomerId;
-  if (!customerId) {
-    const { data: exist } = await sb.from('customers').select('customer_id').eq('contact', contact).limit(1);
-    if (exist && exist.length) {
-      if (!confirm(`동일한 연락처(${contact})의 고객이 이미 등록되어 있습니다.\n기존 고객 정보를 업데이트할까요?`)) return;
-      customerId = exist[0].customer_id;
+    let customerId = currentCustomerId;
+    if (!customerId) {
+      const { data: exist } = await sb.from('customers').select('customer_id').eq('contact', contact).limit(1);
+      if (exist && exist.length) {
+        if (!confirm(`동일한 연락처(${contact})의 고객이 이미 등록되어 있습니다.\n기존 고객 정보를 업데이트할까요?`)) return;
+        customerId = exist[0].customer_id;
+      }
     }
-  }
 
-  const res = customerId
-    ? await sb.from('customers').update(payload).eq('customer_id', customerId).select()
-    : await sb.from('customers').insert(payload).select();
+    const res = customerId
+      ? await sb.from('customers').update(payload).eq('customer_id', customerId).select()
+      : await sb.from('customers').insert(payload).select();
 
-  if (res.error) { alert('저장 실패: ' + res.error.message); return; }
+    if (res.error) { alert('저장 실패: ' + res.error.message); return; }
 
-  customerId = (res.data && res.data[0]) ? res.data[0].customer_id : customerId;
-  currentCustomerId = customerId;
+    customerId = (res.data && res.data[0]) ? res.data[0].customer_id : customerId;
+    currentCustomerId = customerId;
 
-  let prodMsg = '';
-  if (CUSTOMER_SCHEMA.hasProductsTable) {
-    await sb.from('customer_products').delete().eq('customer_id', customerId);
-    const rows = buildProductRows(customerId);
-    if (rows.length) {
-      const pr = await sb.from('customer_products').insert(rows);
-      if (pr.error) prodMsg = ' (상품 이력 저장 실패: ' + pr.error.message + ')';
+    let prodMsg = '';
+    if (CUSTOMER_SCHEMA.hasProductsTable) {
+      await sb.from('customer_products').delete().eq('customer_id', customerId);
+      const rows = buildProductRows(customerId);
+      if (rows.length) {
+        const pr = await sb.from('customer_products').insert(rows);
+        if (pr.error) prodMsg = ' (상품 이력 저장 실패: ' + pr.error.message + ')';
+      }
+    } else {
+      prodMsg = ' · customer_products 테이블 미생성으로 상품 이력은 저장되지 않았습니다';
     }
-  } else {
-    prodMsg = ' · customer_products 테이블 미생성으로 상품 이력은 저장되지 않았습니다';
-  }
 
-  setConsultSaveState(`저장됨 · 고객ID ${customerId}`, true);
-  showToast('✓ 상담 내용이 저장되었습니다' + prodMsg);
-  if (document.getElementById('funnel-dashboard')) loadFunnelDashboard();
+    setConsultSaveState(`저장됨 · 고객ID ${customerId}`, true);
+    showToast('✓ 상담 내용이 저장되었습니다' + prodMsg);
+    if (document.getElementById('funnel-dashboard')) loadFunnelDashboard();
+  } finally {
+    clearBtnLoading(btn);
+  }
 }
 
 function setConsultSaveState(text, saved){
@@ -2250,7 +2489,7 @@ function resetConsultation(){
   setVal('cust-contact', '');
   setVal('cust-notes', '');
   setVal('cust-next-contact', getDefaultNextContactValue());
-  setVal('cust-funnel-status', INITIAL_FUNNEL_STATUS);
+  setVal('cust-funnel-status', DEFAULT_FUNNEL_STATUS);
   const oldToggleReset = document.getElementById('old-internet-toggle');
   if (oldToggleReset) { oldToggleReset.checked = false; toggleOldInternetSection(false); }
   selectedCustomerTags = new Set();
@@ -2270,8 +2509,8 @@ function resetConsultation(){
 
 // 퍼널 대시보드 : 상태값별 건수를 대분류(5단계+대기+종결)로 묶어 표시, 클릭 시 하위 상태값 건수 토글
 const DASHBOARD_GROUPS = [
-  { key: 'wait', label: '상담대기', items: [DEFAULT_FUNNEL_STATUS] },
-  ...FUNNEL_STAGES.filter(g => g.stage >= 1 && g.stage <= 5).map(g => ({ key: 's' + g.stage, label: g.label, items: g.items })),
+  { key: 'wait', label: '상담대기', items: PRE_STAGE_STATUSES },
+  ...FUNNEL_STAGES.filter(g => g.stage >= 1 && g.stage <= 4).map(g => ({ key: 's' + g.stage, label: g.label, items: g.items })),
   ...FUNNEL_STAGES.filter(g => g.stage === 0).map(g => ({ key: 'done', label: g.label, items: g.items }))
 ];
 
@@ -2461,14 +2700,20 @@ function toLocalInputValue(iso){
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-async function loadRecentCustomers(){
-  const { data, error } = await sb.from('customers').select('*')
-    .order(custListSortColumn, { ascending: custListSortAscending }).limit(30);
-  if (error) { renderCustomerList([], '조회 실패: ' + error.message); return; }
-  renderCustomerList(data, '등록된 고객이 없습니다.');
+async function loadRecentCustomers(btn){
+  setBtnLoading(btn, '조회 중...');
+  try {
+    const { data, error } = await sb.from('customers').select('*')
+      .order(custListSortColumn, { ascending: custListSortAscending }).limit(30);
+    if (error) { renderCustomerList([], '조회 실패: ' + error.message); return; }
+    renderCustomerList(data, '등록된 고객이 없습니다.');
+  } finally {
+    clearBtnLoading(btn);
+  }
 }
 
-async function searchCustomers(){
+async function searchCustomers(btn){
+  btn = btn || document.getElementById('cust-search-btn');
   const raw = (elVal('cust-search-contact') || '').trim();
   const status = elVal('cust-search-status');
   let query = sb.from('customers').select('*');
@@ -2479,9 +2724,14 @@ async function searchCustomers(){
   }
   if (status) query = query.eq('funnel_status', status);
 
-  const { data, error } = await query.order(custListSortColumn, { ascending: custListSortAscending }).limit(100);
-  if (error) { renderCustomerList([], '조회 실패: ' + error.message); return; }
-  renderCustomerList(data, '해당 연락처로 등록된 고객이 없습니다.');
+  setBtnLoading(btn, '조회 중...');
+  try {
+    const { data, error } = await query.order(custListSortColumn, { ascending: custListSortAscending }).limit(100);
+    if (error) { renderCustomerList([], '조회 실패: ' + error.message); return; }
+    renderCustomerList(data, '해당 연락처로 등록된 고객이 없습니다.');
+  } finally {
+    clearBtnLoading(btn);
+  }
 }
 
 function custField(label, id, value, type, span){
@@ -2553,9 +2803,9 @@ async function openCustomer(id){
 
     <div class="cust-meta">고객ID ${c.customer_id} · 최초저장 ${formatDateShort(c.created_at)} · 최종수정 ${formatDateShort(c.updated_at)}</div>
     <div class="cust-detail-actions">
-      <button type="button" class="danger-btn" onclick="deleteCustomer(${c.customer_id})">삭제</button>
+      <button type="button" class="danger-btn" onclick="deleteCustomer(${c.customer_id}, this)">삭제</button>
       <button type="button" class="secondary-btn" onclick="loadCustomerToConsult(${c.customer_id})">📥 상담화면으로 불러오기</button>
-      <button type="button" class="primary-btn" onclick="updateCustomer(${c.customer_id})">💾 수정 저장</button>
+      <button type="button" class="primary-btn" onclick="updateCustomer(${c.customer_id}, this)">💾 수정 저장</button>
     </div>
   `;
 
@@ -2811,7 +3061,7 @@ async function renderCustomerProducts(c){
   `).join('');
 }
 
-async function updateCustomer(id){
+async function updateCustomer(id, btn){
   const contact = (elVal('cf-contact') || '').trim();
   if (!contact) { alert('연락처는 필수 입력값입니다.'); return; }
   const nextContact = elVal('cf-next-contact');
@@ -2852,11 +3102,16 @@ async function updateCustomer(id){
     });
   }
 
-  const { error } = await sb.from('customers').update(payload).eq('customer_id', id);
-  if (error) { alert('수정 실패: ' + error.message); return; }
-  showToast('✓ 고객 정보가 수정되었습니다');
-  await searchOrRefresh();
-  loadFunnelDashboard();
+  setBtnLoading(btn, '저장 중...');
+  try {
+    const { error } = await sb.from('customers').update(payload).eq('customer_id', id);
+    if (error) { alert('수정 실패: ' + error.message); return; }
+    showToast('✓ 고객 정보가 수정되었습니다');
+    await searchOrRefresh();
+    loadFunnelDashboard();
+  } finally {
+    clearBtnLoading(btn);
+  }
 }
 
 function numOrNull(v){
@@ -2870,17 +3125,22 @@ async function searchOrRefresh(){
   else await loadRecentCustomers();
 }
 
-async function deleteCustomer(id){
+async function deleteCustomer(id, btn){
   if (!confirm('해당 고객 정보를 삭제할까요? 되돌릴 수 없습니다.')) return;
-  if (CUSTOMER_SCHEMA.hasProductsTable) await sb.from('customer_products').delete().eq('customer_id', id);
-  const { error } = await sb.from('customers').delete().eq('customer_id', id);
-  if (error) { alert('삭제 실패: ' + error.message); return; }
-  if (currentCustomerId === id) currentCustomerId = null;
-  document.getElementById('cust-detail').innerHTML = `<div class="reflected-empty">목록에서 고객을 선택하면 상세 정보가 표시됩니다.</div>`;
-  document.getElementById('cust-products').innerHTML = `<div class="js-empty">선택된 고객이 없습니다.</div>`;
-  showToast('✓ 삭제되었습니다');
-  await searchOrRefresh();
-  loadFunnelDashboard();
+  setBtnLoading(btn, '삭제 중...');
+  try {
+    if (CUSTOMER_SCHEMA.hasProductsTable) await sb.from('customer_products').delete().eq('customer_id', id);
+    const { error } = await sb.from('customers').delete().eq('customer_id', id);
+    if (error) { alert('삭제 실패: ' + error.message); return; }
+    if (currentCustomerId === id) currentCustomerId = null;
+    document.getElementById('cust-detail').innerHTML = `<div class="reflected-empty">목록에서 고객을 선택하면 상세 정보가 표시됩니다.</div>`;
+    document.getElementById('cust-products').innerHTML = `<div class="js-empty">선택된 고객이 없습니다.</div>`;
+    showToast('✓ 삭제되었습니다');
+    await searchOrRefresh();
+    loadFunnelDashboard();
+  } finally {
+    clearBtnLoading(btn);
+  }
 }
 
 // 고객 정보를 [고객상담] 화면으로 불러오기 (상품 스냅샷이 있으면 함께 복원)
