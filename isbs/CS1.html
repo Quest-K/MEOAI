@@ -96,6 +96,24 @@
 }
 #reco-seg-settop button{ font-size:10.5px; letter-spacing:-0.6px; }
 
+/* 서브 TV(2대째부터): "+TV" 버튼은 셋탑 라벨 줄 오른쪽에 작게,
+   목록은 TV채널·셋탑 바로 아래(3~4번째 칸)에 맞춰 쌓임 */
+.mini-add-tv-btn{
+  height:20px; padding:0 8px; font-size:10.5px; font-weight:700; line-height:1;
+  border:1px solid var(--gold,#C9A15B); border-radius:10px; background:#FFF8EC; color:#8A6A1F;
+  cursor:pointer; white-space:nowrap; flex:0 0 auto;
+}
+.mini-add-tv-btn:disabled{ opacity:.4; cursor:not-allowed; }
+.extra-tv-col{ grid-column:3 / span 2; min-width:0; }
+.extra-tv-block{ margin-top:10px; padding-top:10px; border-top:1px dashed #E3D9C6; }
+.extra-tv-block:first-child{ margin-top:10px; }
+.extra-tv-cols{ display:grid !important; grid-template-columns:repeat(2, minmax(0, 1fr)) !important; gap:12px !important; }
+.extra-tv-cols .control-group{ min-width:0; display:flex; flex-direction:column; }
+.extra-tv-remove-btn{
+  height:20px; padding:0 8px; font-size:10.5px; font-weight:700; line-height:1;
+  border:1px solid #DDD; border-radius:10px; background:#FAFAFA; color:#888; cursor:pointer; white-space:nowrap;
+}
+
 /* 추천상품 : 상세 문구는 작게, 한 줄 유지 */
 .reco-product-card .info-row.main-label > span{ white-space:nowrap; }
 .reco-product-card .info-row.sub-item-row{ font-size:11.5px; }
@@ -502,20 +520,17 @@ table.cust-wide-table .cs-money-cell input.cs-money-input{ width:auto; flex:1 1 
               </div>
             </div>
             <div class="control-group">
-              <label class="group-label">셋탑</label>
+              <div class="group-label-row">
+                <label class="group-label">셋탑</label>
+                <button type="button" class="mini-add-tv-btn" id="reco-extra-tv-add-btn" onclick="addExtraTv()" title="서브 TV 추가">+ TV</button>
+              </div>
               <div class="seg" id="reco-seg-settop">
                 <button data-value="basic" class="active">기본형</button>
                 <button data-value="advanced">고급형/AI</button>
                 <button data-value="soundbar">사운드바</button>
               </div>
             </div>
-            <div class="control-group" id="reco-extra-tv-group">
-              <div class="group-label-row">
-                <label class="group-label">서브 TV (2대째부터)</label>
-                <button type="button" class="secondary-btn family-line-add-btn" id="reco-extra-tv-add-btn" onclick="addExtraTv()">+ TV 추가</button>
-              </div>
-              <div id="reco-extra-tv-list" class="family-lines-list"></div>
-            </div>
+            <div id="reco-extra-tv-list" class="extra-tv-col"></div>
           </div>
 
           <div id="reco-carrier-cards" class="reco-cards">
@@ -1288,24 +1303,27 @@ function renderExtraTvControls(){
   if (!container) return;
   const disabled = recoState.tv === 'none';
 
-  if (!recoState.extraTVs.length) {
-    container.innerHTML = `<div class="phone-empty">추가된 서브 TV가 없습니다. "+ TV 추가"로 2대째부터 설정할 수 있습니다.</div>`;
-  } else {
-    container.innerHTML = recoState.extraTVs.map((ex, idx) => `
-      <div class="phone-line family-line-row">
-        <div class="family-line-group">
-          <span class="family-line-label">${idx + 2}호기</span>
-          <select ${disabled ? 'disabled' : ''} onchange="setExtraTvValue(${idx}, 'tv', this.value)">
-            ${EXTRA_TV_TIER_OPTIONS.map(o => `<option value="${o.value}" ${ex.tv === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}
-          </select>
-          <select ${disabled ? 'disabled' : ''} onchange="setExtraTvValue(${idx}, 'settopTier', this.value)">
-            ${EXTRA_TV_SETTOP_OPTIONS.map(o => `<option value="${o.value}" ${ex.settopTier === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}
-          </select>
+  container.innerHTML = recoState.extraTVs.map((ex, idx) => `
+    <div class="extra-tv-block">
+      <div class="extra-tv-cols">
+        <div class="control-group">
+          <div class="group-label-row">
+            <label class="group-label">TV${idx + 2}</label>
+            <button type="button" class="extra-tv-remove-btn" ${disabled ? 'disabled' : ''} onclick="removeExtraTv(${idx})">삭제</button>
+          </div>
+          <div class="seg">
+            ${EXTRA_TV_TIER_OPTIONS.map(o => `<button type="button" data-value="${o.value}" class="${ex.tv === o.value ? 'active' : ''}" ${disabled ? 'disabled' : ''} onclick="setExtraTvValue(${idx}, 'tv', '${o.value}')">${o.label}</button>`).join('')}
+          </div>
         </div>
-        <button type="button" class="phone-remove-btn" ${disabled ? 'disabled' : ''} onclick="removeExtraTv(${idx})">삭제</button>
+        <div class="control-group">
+          <div class="group-label-row"><label class="group-label">&nbsp;</label></div>
+          <div class="seg">
+            ${EXTRA_TV_SETTOP_OPTIONS.map(o => `<button type="button" data-value="${o.value}" class="${ex.settopTier === o.value ? 'active' : ''}" ${disabled ? 'disabled' : ''} onclick="setExtraTvValue(${idx}, 'settopTier', '${o.value}')">${o.label}</button>`).join('')}
+          </div>
+        </div>
       </div>
-    `).join('');
-  }
+    </div>
+  `).join('');
 
   const addBtn = document.getElementById('reco-extra-tv-add-btn');
   if (addBtn) addBtn.disabled = disabled;
