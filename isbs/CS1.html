@@ -124,6 +124,17 @@
   width:74px; max-width:74px; padding:2px 4px; font-size:12px; text-align:right;
 }
 
+/* 추천상품 : 적정사은품(참고) 행 */
+.proper-gift-row{ color:#8A6A1F; }
+.proper-gift-row .reco-detail-sm{ color:#B79045; }
+.proper-gift-value{ display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+.proper-gift-apply-btn{
+  height:18px; padding:0 7px; font-size:10.5px; font-weight:700; line-height:1;
+  border:1px solid var(--gold,#C9A15B); border-radius:9px; background:#FFF8EC; color:#8A6A1F;
+  cursor:pointer; white-space:nowrap;
+}
+.proper-gift-apply-btn:hover{ background:#FFF1D6; }
+
 /* 제안상품 : 인터넷·TV / 유심 상하 배치 */
 .cs-stack-2{ display:flex; flex-direction:column; gap:20px; }
 .cs-stack-block .cs-split-label{ margin:0 0 8px; }
@@ -920,6 +931,24 @@ function setupRecoSeg(id, key){
   });
 }
 
+// 적정사은품 정책 : 기본 60% + 속도(500M +5%, 1기가 +10%) + TV등급(기본형 +5%, 고급형 +10%)
+// 대리점 판매 수수료 총액(comm.totalComm) 기준, 결과는 10,000원 단위 내림
+const PROPER_GIFT_BASE_PERCENT = 60;
+const PROPER_GIFT_SPEED_BONUS = { 100: 0, 500: 5, 1000: 10 };
+const PROPER_GIFT_TV_BONUS = { none: 0, low: 0, basic: 5, premium: 10 };
+
+function computeProperGiftPercent(speedNum, tvTier){
+  const speedBonus = PROPER_GIFT_SPEED_BONUS[speedNum] || 0;
+  const tvBonus = PROPER_GIFT_TV_BONUS[tvTier] || 0;
+  return PROPER_GIFT_BASE_PERCENT + speedBonus + tvBonus;
+}
+
+function computeProperGiftAmount(commTotal, speedNum, tvTier){
+  const percent = computeProperGiftPercent(speedNum, tvTier);
+  const raw = (Number(commTotal) || 0) * percent / 100;
+  return Math.floor(raw / 10000) * 10000;
+}
+
 function renderRecoCards(){
   const container = document.getElementById('reco-carrier-cards');
   if (!container) return;
@@ -969,6 +998,7 @@ function renderRecoCards(){
     const calcCash = Math.max(0, userGiftVal - (promo.giftCard || 0));
 
     let commHtml = '';
+    let properGiftRowHtml = '';
     if (isLoggedIn) {
       const comm = lookupCommission(c, speedNum, tvTier);
       const margin = comm.totalComm - userGiftVal;
@@ -978,6 +1008,15 @@ function renderRecoCards(){
           <div class="info-row sub-item-row"><span>인터넷 수수료</span><span>${comm.internetComm.toLocaleString()}</span></div>
           ${tvTier !== 'none' ? `<div class="info-row sub-item-row"><span>TV 수수료</span><span>${comm.tvComm.toLocaleString()}</span></div>` : ''}
           <div class="total-row reco-margin-row"><span>최종마진</span><span class="amount" style="color:${margin >= 0 ? '#1E7E34' : '#D9534F'};">${margin.toLocaleString()}</span></div>
+        </div>
+      `;
+
+      const properGiftPercent = computeProperGiftPercent(speedNum, tvTier);
+      const properGiftAmount = computeProperGiftAmount(comm.totalComm, speedNum, tvTier);
+      properGiftRowHtml = `
+        <div class="info-row sub-item-row proper-gift-row">
+          <span>적정사은품<span class="reco-detail-sm">(수수료 ${comm.totalComm.toLocaleString()} × ${properGiftPercent}%)</span></span>
+          <span class="proper-gift-value">${properGiftAmount.toLocaleString()}<button type="button" class="proper-gift-apply-btn" onclick="handleGiftInputChange('${c}', '${properGiftAmount}')">적용</button></span>
         </div>
       `;
     }
@@ -1015,6 +1054,7 @@ function renderRecoCards(){
           </div>
           <div class="info-row sub-item-row"><span>상품권</span><span>${(promo.giftCard || 0).toLocaleString()}</span></div>
           <div class="info-row sub-item-row"><span>현금</span><span>${calcCash.toLocaleString()}</span></div>
+          ${properGiftRowHtml}
         </div>
         ${commHtml}
         <button type="button" class="join-btn" onclick="reflectRecoCardToProposal('${c}')">✨ 상품반영</button>
@@ -2339,10 +2379,10 @@ function toggleDetailTagsBody(){
 
 const FUNNEL_STAGES = [
   { stage: 1, label: '1. 상담·계약', items: ['상품안내', '계약진행', '보류확인', '접수불가'] },
-  { stage: 2, label: '2. 설치', items: ['접수완료', '설치대기', '개통대기'] },
-  { stage: 3, label: '3. 사은품 지급', items: ['개통완료', '지급요청', '지급완료', '지급반려'] },
+  { stage: 2, label: '2. 설치', items: ['접수완료', '개통대기', '개통완료'] },
+  { stage: 3, label: '3. 사은품 지급', items: ['지급요청', '지급완료', '지급보류'] },
   { stage: 4, label: '4. 환수', items: ['환수필요', '환수요청', '환수진행'] },
-  { stage: 0, label: '종결', items: ['종결(정상)', '종결(리드소멸)', '이탈', '고객부재_종결'] }
+  { stage: 0, label: '종결 및 이탈', items: ['종결(정상)', '이탈(기존유지)', '이탈(타사가입)', '종결(컨택불가)', '종결(오인입)', '종결(타부서)', '고객부재_종결'] }
 ];
 
 const DEFAULT_FUNNEL_STATUS = '상담대기';
