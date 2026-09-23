@@ -509,6 +509,13 @@ table.cust-wide-table .cs-money-cell input.cs-money-input{ width:auto; flex:1 1 
                 <button data-value="soundbar">사운드바</button>
               </div>
             </div>
+            <div class="control-group" id="reco-extra-tv-group">
+              <div class="group-label-row">
+                <label class="group-label">서브 TV (2대째부터)</label>
+                <button type="button" class="secondary-btn family-line-add-btn" id="reco-extra-tv-add-btn" onclick="addExtraTv()">+ TV 추가</button>
+              </div>
+              <div id="reco-extra-tv-list" class="family-lines-list"></div>
+            </div>
           </div>
 
           <div id="reco-carrier-cards" class="reco-cards">
@@ -811,7 +818,7 @@ let state = { speed:'500', tv:'basic', settopTier:'basic', router:'Y', tcDistMod
 let lastTvTier = 'basic';
 let addedUsimLines = []; 
 let familyLines = [];
-let recoState = { speed:'500', tv:'basic', settopTier:'basic', router:'Y' };
+let recoState = { speed:'500', tv:'basic', settopTier:'basic', router:'Y', extraTVs:[] };
 let lastRecoTvTier = 'basic';
 let recoUsimTier = null;
 let recoUsimPlanPool = [];
@@ -940,7 +947,7 @@ function renderRecoCards(){
     const tvChannels = price.tvInfo ? (price.tvInfo.channels || 200) : 200;
     const settopName = price.settopInfo ? price.settopInfo.name : '기본셋톱';
     const internetSubtotal = (price.internetFee || 0) + (price.routerFee || 0) - (price.bundleDiscount || 0);
-    const tvSubtotal = tvTier !== 'none' ? (price.tvFee || 0) + (price.settopFee || 0) - (price.tvBundleDiscount || 0) : 0;
+    const tvSubtotal = tvTier !== 'none' ? (price.tvFee || 0) + (price.settopFee || 0) - (price.tvBundleDiscount || 0) + (price.extraTvFee || 0) : 0;
 
     const promo = PROMOTION_DATA[c] || { giftCard: 60000, cash: 340000 };
     const userGiftVal = customGiftValues[c] !== undefined ? customGiftValues[c] : (promo.maxLimit || (promo.giftCard + promo.cash));
@@ -978,6 +985,10 @@ function renderRecoCards(){
           <div class="info-row sub-item-row reco-sub-lv2"><span>${tvName}/${tvChannels}채널</span><span>${(price.tvFee || 0).toLocaleString()}</span></div>
           <div class="info-row sub-item-row reco-sub-lv2"><span>셋탑박스<span class="reco-detail-sm">(${settopName})</span></span><span>${(price.settopFee || 0).toLocaleString()}</span></div>
           ${price.tvBundleDiscount ? `<div class="info-row sub-item-row reco-sub-lv2"><span>TV결합할인</span><span>-${price.tvBundleDiscount.toLocaleString()}</span></div>` : ''}
+          ${(price.extraTvDetails || []).map(ex => `
+          <div class="info-row sub-item-row reco-sub-lv2"><span>${ex.tvName}/${ex.tvChannels}채널</span><span>${ex.tvHalfFee.toLocaleString()}</span></div>
+          <div class="info-row sub-item-row reco-sub-lv2"><span>셋탑박스<span class="reco-detail-sm">(${ex.settopName})</span></span><span>${ex.settopFee.toLocaleString()}</span></div>
+          `).join('')}
         </div>` : ''}
         <div class="reco-block">
           <div class="info-row main-label reco-gift-row">
@@ -1035,6 +1046,9 @@ function reflectRecoCardToProposal(carrier){
     settopFee: recoState.tv === 'none' ? 0 : res.settopFee,
     tvBundleDiscount: recoState.tv !== 'none' ? res.tvBundleDiscount : 0,
     totalFee: res.total,
+    extraTVs: recoState.tv !== 'none' ? JSON.parse(JSON.stringify(recoState.extraTVs || [])) : [],
+    extraTvFee: recoState.tv !== 'none' ? (res.extraTvFee || 0) : 0,
+    extraTvDetails: recoState.tv !== 'none' ? (res.extraTvDetails || []) : [],
     benefitTotal: userGiftVal,
     giftCard: promo.giftCard,
     cash: calcCash
@@ -1256,11 +1270,73 @@ function handleUsimFinalGiftChange(id, rawVal){
   updateCsSummaryPanel();
 }
 
+// 서브 TV(2대째부터) 채널등급/셋탑박스 선택 UI
+// 요금 계산(채널요금 50% + 셋탑박스 동일 적용)은 Calculator.js의 computePrice에서 처리
+const EXTRA_TV_TIER_OPTIONS = [
+  { value:'low', label:'저가형' },
+  { value:'basic', label:'기본형' },
+  { value:'premium', label:'고급형' }
+];
+const EXTRA_TV_SETTOP_OPTIONS = [
+  { value:'basic', label:'기본형' },
+  { value:'advanced', label:'고급형/AI' },
+  { value:'soundbar', label:'사운드바' }
+];
+
+function renderExtraTvControls(){
+  const container = document.getElementById('reco-extra-tv-list');
+  if (!container) return;
+  const disabled = recoState.tv === 'none';
+
+  if (!recoState.extraTVs.length) {
+    container.innerHTML = `<div class="phone-empty">추가된 서브 TV가 없습니다. "+ TV 추가"로 2대째부터 설정할 수 있습니다.</div>`;
+  } else {
+    container.innerHTML = recoState.extraTVs.map((ex, idx) => `
+      <div class="phone-line family-line-row">
+        <div class="family-line-group">
+          <span class="family-line-label">${idx + 2}호기</span>
+          <select ${disabled ? 'disabled' : ''} onchange="setExtraTvValue(${idx}, 'tv', this.value)">
+            ${EXTRA_TV_TIER_OPTIONS.map(o => `<option value="${o.value}" ${ex.tv === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}
+          </select>
+          <select ${disabled ? 'disabled' : ''} onchange="setExtraTvValue(${idx}, 'settopTier', this.value)">
+            ${EXTRA_TV_SETTOP_OPTIONS.map(o => `<option value="${o.value}" ${ex.settopTier === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}
+          </select>
+        </div>
+        <button type="button" class="phone-remove-btn" ${disabled ? 'disabled' : ''} onclick="removeExtraTv(${idx})">삭제</button>
+      </div>
+    `).join('');
+  }
+
+  const addBtn = document.getElementById('reco-extra-tv-add-btn');
+  if (addBtn) addBtn.disabled = disabled;
+}
+
+function addExtraTv(){
+  if (recoState.tv === 'none') return;
+  recoState.extraTVs.push({ tv:'basic', settopTier:'basic' });
+  renderExtraTvControls();
+  renderRecoCards();
+}
+
+function removeExtraTv(idx){
+  recoState.extraTVs.splice(idx, 1);
+  renderExtraTvControls();
+  renderRecoCards();
+}
+
+function setExtraTvValue(idx, key, val){
+  if (!recoState.extraTVs[idx]) return;
+  recoState.extraTVs[idx][key] = val;
+  renderExtraTvControls();
+  renderRecoCards();
+}
+
 function syncRecoControlsUI(){
   document.querySelectorAll('#reco-seg-tv button').forEach(b => b.classList.toggle('active', b.dataset.value === recoState.tv));
   document.querySelectorAll('#reco-seg-tv button, #reco-seg-settop button').forEach(b => b.disabled = recoState.tv === 'none');
   const toggle = document.getElementById('reco-tv-onoff-toggle');
   if (toggle) toggle.checked = recoState.tv !== 'none';
+  renderExtraTvControls();
 }
 
 async function toggleRecoTvOnOff(isOn){
@@ -1882,6 +1958,10 @@ function buildFinalHomeCard(item, usimItems){
         <div class="info-row main-label section-start"><span>TV 요금제</span><span>${item.tvName} (${item.tvChannels}채널, ${item.tvFee.toLocaleString()}원)</span></div>
         <div class="info-row sub-item-row"><span>└ 셋톱박스</span><span>${item.settopLabel} (${item.settopFee.toLocaleString()}원)</span></div>
         ${item.tvBundleDiscount ? `<div class="info-row sub-item-row"><span>└ TV 결합할인</span><span>-${item.tvBundleDiscount.toLocaleString()}원</span></div>` : ''}
+        ${(item.extraTvDetails || []).map((ex, i) => `
+        <div class="info-row sub-item-row"><span>└ ${i + 2}호기 ${ex.tvName}/${ex.tvChannels}채널</span><span>${ex.tvHalfFee.toLocaleString()}원</span></div>
+        <div class="info-row sub-item-row"><span>└ ${i + 2}호기 셋톱박스</span><span>${ex.settopName} (${ex.settopFee.toLocaleString()}원)</span></div>
+        `).join('')}
       ` : ''}
       <div class="total-row"><span>월 청구 요금 (할인 포함)</span><span class="amount">${item.totalFee.toLocaleString()}원</span></div>
       ${buildFinalComboBlock(item, usimItems)}
