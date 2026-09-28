@@ -57,7 +57,7 @@
                 <button id="auth-btn" onclick="authClick()" class="text-xs font-semibold text-blue-600 hover:underline shrink-0 ml-2"></button>
             </div>
             <div class="flex items-center justify-between text-[11px] text-slate-400">
-                <span id="sync-state"></span><span class="font-mono">v2.0.0</span>
+                <span id="sync-state"></span><span class="font-mono">v2.0.1</span>
             </div>
             <div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
                 <button onclick="exportData()" class="hover:text-blue-600">내보내기</button>
@@ -100,9 +100,8 @@
                 <div id="attn" class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm"></div>
             </div>
 
-            <!-- 2. 고객 현황 뷰 (신규 추가) -->
+            <!-- 2. 고객 현황 뷰 -->
             <div id="view-customers" class="hidden space-y-6">
-                <!-- 고객 지표 상단 요약 카드 -->
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
                         <div class="flex items-center justify-between">
@@ -130,22 +129,16 @@
                     </div>
                 </div>
 
-                <!-- 상태값별 고객 현황 파이프라인 섹션 -->
                 <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
                     <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
                         <h3 class="font-bold text-slate-800 text-base flex items-center">
-                            <i class="fa-solid fa-chart-pie text-blue-600 mr-2"></i> 각 상태값별 고객 현황 (Supabase 실시간 DB 연동)
+                            <i class="fa-solid fa-chart-pie text-blue-600 mr-2"></i> 각 상태값별 고객 현황 (Supabase 연동)
                         </h3>
                         <button onclick="fetchCustomerData()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-xl transition-all">
                             <i class="fa-solid fa-rotate mr-1"></i> 새로고침
                         </button>
                     </div>
-                    <!-- 상태값 카운트 그리드 -->
-                    <div id="status-counts-grid" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-                        <!-- 동적 생성 -->
-                    </div>
-
-                    <!-- 고객 상세 목록 테이블 -->
+                    <div id="status-counts-grid" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6"></div>
                     <div class="overflow-x-auto">
                         <table class="w-full text-left border-collapse">
                             <thead>
@@ -168,7 +161,6 @@
             <div id="view-goals" class="hidden"><div id="goal-panel" class="space-y-3"></div></div>
             <div id="view-today" class="hidden">
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <!-- 이번 주 목표 -->
                     <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between">
                         <div>
                             <div class="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
@@ -180,7 +172,6 @@
                             <div id="weekly-goals-list" class="space-y-2.5"></div>
                         </div>
                     </div>
-                    <!-- 오늘의 할 일 -->
                     <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between">
                         <div>
                             <div class="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
@@ -422,6 +413,7 @@
         ]
     }
 };
+
  function safeLS(k){ try { return JSON.parse(localStorage.getItem(k)); } catch(e) { return null; } }
  const defaultWeeklyGoals = [
     { text: "통신사 사은품 상한선 변경표 최신화 완료 (마케팅팀)", done: false },
@@ -433,24 +425,34 @@
     { text: "일일 개통 접수 수치 데이터 검증", done: true },
     { text: "고객 클레임 유입 건 확인 및 피드백", done: false }
 ];
-/* ===== 상태 / 화면 전환 ===== */
-let taskData=safeLS('isbs_task_data_clean_v3')||defaultTaskData,weeklyGoals=safeLS('isbs_weekly_goals_v3')||defaultWeeklyGoals,dailyTasks=safeLS('isbs_daily_tasks_v3')||defaultDailyTasks,
- lastUpdateTime=localStorage.getItem('isbs_update_time_clean_v3')||'2026-09-28 12:57',currentCategory='all',currentStatusFilter='all',modalMode='add',editingIndex=null,view='dash';
 
-/* 고객 데이터 저장소 (Supabase 연동용) */
+let taskData = safeLS('isbs_task_data_clean_v3') || defaultTaskData;
+let weeklyGoals = safeLS('isbs_weekly_goals_v3') || defaultWeeklyGoals;
+let dailyTasks = safeLS('isbs_daily_tasks_v3') || defaultDailyTasks;
+let lastUpdateTime = localStorage.getItem('isbs_update_time_clean_v3') || '2026-09-28 12:57';
+let currentCategory = 'all';
+let currentStatusFilter = 'all';
+let modalMode = 'add';
+let editingIndex = null;
+let view = 'dash';
+
 let customerDbData = [];
 
-const SUPABASE_URL='https://jhfhpumhifyhauuoinxc.supabase.co';
-const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpoZmhwdW1oaWZ5aGF1dW9pbnhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0MDE2NTMsImV4cCI6MjEwMzk3NzY1M30.euXk3eXtUVvEQRDGgcLhvX3JhVlpv9D7fZUEDr0i8yA';
-const TABLE='isbs_progress', ROW='main', SEED='v5';
-const CUSTOMER_TABLE = 'customers'; // 고객 데이터 테이블명 (Supabase 환경에 맞게 조정 가능)
-const $=id=>document.getElementById(id);
-const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const safeUrl=x=>{try{const u=new URL(x);return ['http:','https:'].includes(u.protocol)?u.href:''}catch(e){return ''}};
-const ST={todo:{l:'미착수',w:0},doing:{l:'진행중',w:.5},review:{l:'검수·적용',w:.8},done:{l:'완료',w:1},hold:{l:'보류',w:null}};
-const ORDER={doing:0,review:1,todo:2,hold:3,done:4};
-const PW={'높음':3,'중간':2,'낮음':1};
-const ADD={
+const SUPABASE_URL = 'https://jhfhpumhifyhauuoinxc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpoZmhwdW1oaWZ5aGF1dW9pbnhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0MDE2NTMsImV4cCI6MjEwMzk3NzY1M30.euXk3eXtUVvEQRDGgcLhvX3JhVlpv9D7fZUEDr0i8yA';
+const TABLE = 'isbs_progress';
+const ROW = 'main';
+const SEED = 'v5';
+const CUSTOMER_TABLE = 'customers';
+
+const $ = id => document.getElementById(id);
+const esc = x => String(x ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const safeUrl = x => { try { const u = new URL(x); return ['http:','https:'].includes(u.protocol) ? u.href : ''; } catch(e) { return ''; } };
+const ST = {todo:{l:'미착수',w:0}, doing:{l:'진행중',w:.5}, review:{l:'검수·적용',w:.8}, done:{l:'완료',w:1}, hold:{l:'보류',w:null}};
+const ORDER = {doing:0, review:1, todo:2, hold:3, done:4};
+const PW = {'높음':3, '중간':2, '낮음':1};
+
+const ADD = {
  kpi:[['퍼널 단계별 전환율·이탈 사유 통계 화면','todo'],['고객 유형·스크립트별 성공률 분석','todo']],
  process:[['퍼널 가이드에 개편 상태값(5개 그룹) 반영','doing']],
  crm:[['고객 이력 입력 항목 확정','todo'],['3년 총액 비교 기능','todo'],['적정사은품 계산기·경품고시제 항목 반영','todo']],
@@ -458,395 +460,446 @@ const ADD={
  settle:[['사은품 지급·환수 상태(지급요청~환수진행) 담당·기한·금액 관리','doing']],
  script:[['스크립트의 OO 자리를 실제 상품·조건으로 채우기','todo'],['스크립트 컴플라이언스 검수','review']]
 };
-const COMPLY={title:'내부 > 컴플라이언스·고객 보호',sub:'녹취·개인정보, 문구 점검, 청약철회·민원 대응 기준',dept:'경영기획실',icon:'fa-shield-halved',priority:'높음',
- tasks:['녹취·회사 고지 문구 확인','개인정보 보관·파기·접근 권한 기준','문자·재통화 동의 기록 방식','광고·안내 문구 점검 목록','청약철회·민원 처리 절차'].map(t=>({title:t,status:'todo',dept:'경영기획실'}))};
-const REMOVE=['신규 상담원 온보딩 교육 메뉴얼 매핑','고객 상담 인입 -> 접수 -> 개통 파이프라인 단계 정의'];
-let sb=null,user=null,canEdit=false,remoteStamp=null,remoteEmpty=false,meta={},query='',showDone=false,pushTimer=null;
 
-/* ---- Supabase ---- */
-function setSync(t,err){const e=$('sync-state');if(e){e.textContent=t;e.className=err?'text-rose-500':''}}
-function fmt(d){return ymd(d)+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')}
-async function fetchRemote(){
-  if(!sb){setSync('Supabase 미설정 (조회 전용)',true);return}
-  const {data,error}=await sb.from(TABLE).select('data,updated_at').eq('id',ROW).maybeSingle();
-  if(error){setSync('서버 조회 실패 (캐시 표시 중)',true);return}
-  if(data){remoteStamp=data.updated_at;lastUpdateTime=fmt(new Date(data.updated_at));
-    if(data.data&&validTasks(data.data.tasks)){adopt(data.data);remoteEmpty=false}else remoteEmpty=true;
-    cacheLocal();refreshAll();setSync('서버와 동기화됨')}
-  else{remoteEmpty=true;setSync('서버 데이터 없음')}
-  
-  // 고객 현황 데이터 로드
-  await fetchCustomerData();
-}
-
-/* Supabase에서 고객 현황 데이터 가져오기 */
-async function fetchCustomerData() {
-  if(!sb) return;
-  try {
-    const { data, error } = await sb.from(CUSTOMER_TABLE).select('*');
-    if(!error && data) {
-      customerDbData = data;
-    } else {
-      // 테이블이 없거나 연동 데이터가 없을 경우 시뮬레이션 샘플 데이터 적용
-      customerDbData = getSimulatedCustomerData();
-    }
-  } catch(e) {
-    customerDbData = getSimulatedCustomerData();
-  }
-  renderCustomerDashboard();
-}
-
-/* 실제 데이터 없을 시 시뮬레이션용 샘플 데이터 (Supabase 구조와 동일) */
-function getSimulatedCustomerData() {
-  const today = new Date();
-  const getOffsetDate = (offset) => {
-    const d = new Date(today);
-    d.setDate(d.getDate() + offset);
-    return ymd(d);
-  };
-  return [
-    { id: 1, name: '김민준', contact: '010-1234-5678', status: '접수완료', updated_at: getOffsetDate(0) + ' 10:20:00', install_date: getOffsetDate(2) },
-    { id: 2, name: '이서연', contact: '010-2345-6789', status: '설치예정', updated_at: getOffsetDate(0) + ' 11:10:00', install_date: getOffsetDate(1) },
-    { id: 3, name: '박도윤', contact: '010-3456-7890', status: '설치예정', updated_at: getOffsetDate(-1) + ' 15:30:00', install_date: getOffsetDate(0) },
-    { id: 4, name: '정시우', contact: '010-4567-8901', status: '설치완료', updated_at: getOffsetDate(0) + ' 14:00:00', install_date: getOffsetDate(-1), pay_status: '지급완료' },
-    { id: 5, name: '강서윤', contact: '010-5678-9012', status: '지급완료', updated_at: getOffsetDate(0) + ' 09:15:00', install_date: getOffsetDate(-3), pay_status: '지급완료' },
-    { id: 6, name: '조하은', contact: '010-6789-0123', status: '상담진행', updated_at: getOffsetDate(-2) + ' 16:40:00', install_date: getOffsetDate(4) },
-    { id: 7, name: '윤지호', contact: '010-7890-1234', status: '설치완료', updated_at: getOffsetDate(0) + ' 13:20:00', install_date: getOffsetDate(0), pay_status: '지급대기' },
-  ];
-}
-
-function ymd(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
-
-/* 이번 주 월요일~일요일 날짜 범위 구하기 */
-function getThisWeekRange() {
-  const now = new Date();
-  const day = now.getDay();
-  const diffToMon = now.getDate() - day + (day === 0 ? -6 : 1);
-  const mon = new Date(now.setDate(diffToMon));
-  const sun = new Date(mon);
-  sun.setDate(sun.getDate() + 6);
-  return { start: ymd(mon), end: ymd(sun) };
-}
-
-/* 고객 대시보드 렌더링 함수 */
-function renderCustomerDashboard() {
-  if(!customerDbData) return;
-  const week = getThisWeekRange();
-
-  // 1. 이번 주 설치 예정건 (install_date가 이번 주 범위 내에 있고 설치완료가 아닌 건)
-  const schedInstallCount = customerDbData.filter(c => c.install_date >= week.start && c.install_date <= week.end && c.status !== '설치완료' && c.status !== '지급완료').length;
-  
-  // 2. 이번 주 설치 완료건
-  const doneInstallCount = customerDbData.filter(c => c.status === '설치완료' || c.status === '지급완료').length;
-
-  // 3. 이번 주 지급 완료건
-  const donePayCount = customerDbData.filter(c => c.status === '지급완료' || c.pay_status === '지급완료').length;
-
-  $('metric-sched-install').innerText = schedInstallCount + '건';
-  $('metric-done-install').innerText = doneInstallCount + '건';
-  $('metric-done-pay').innerText = donePayCount + '건';
-
-  // 상태값별 카운트 집계
-  const statusGroups = {
-    '접수대기/상담': customerDbData.filter(c => c.status === '접수완료' || c.status === '상담진행').length,
-    '설치예정': customerDbData.filter(c => c.status === '설치예정').length,
-    '설치완료': customerDbData.filter(c => c.status === '설치완료').length,
-    '지급완료': customerDbData.filter(c => c.status === '지급완료' || c.pay_status === '지급완료').length
-  };
-
-  let countHtml = '';
-  Object.entries(statusGroups).forEach(([st, cnt]) => {
-    countHtml += `<div class="bg-slate-50 border border-slate-100 rounded-xl p-3.5">
-      <div class="text-[11px] text-slate-500 font-medium">${esc(st)}</div>
-      <div class="text-xl font-bold text-slate-800 mt-1">${cnt}<span class="text-xs font-normal text-slate-400 ml-1">명</span></div>
-    </div>`;
-  });
-  $('status-counts-grid').innerHTML = countHtml;
-
-  // 고객 상세 테이블 렌더링
-  let tableHtml = '';
-  if(customerDbData.length === 0) {
-    tableHtml = `<tr><td colspan="5" class="text-center py-6 text-slate-400">등록된 고객 데이터가 없습니다.</td></tr>`;
-  } else {
-    customerDbData.forEach(c => {
-      let badgeColor = 'bg-slate-100 text-slate-600';
-      if(c.status === '설치예정') badgeColor = 'bg-blue-50 text-blue-600 border border-blue-200';
-      if(c.status === '설치완료') badgeColor = 'bg-amber-50 text-amber-600 border border-amber-200';
-      if(c.status === '지급완료') badgeColor = 'bg-emerald-50 text-emerald-600 border border-emerald-200';
-
-      tableHtml += `<tr class="hover:bg-slate-50/80 transition-all">
-        <td class="p-3 font-semibold text-slate-700">${esc(c.name)}</td>
-        <td class="p-3 text-slate-500 font-mono">${esc(c.contact)}</td>
-        <td class="p-3"><span class="px-2.5 py-1 rounded-lg text-[11px] font-semibold ${badgeColor}">${esc(c.status)}</span></td>
-        <td class="p-3 text-slate-500 font-mono">${esc(c.install_date || '-')}</td>
-        <td class="p-3 text-slate-400 font-mono text-[11px]">${esc(c.updated_at || '-')}</td>
-      </tr>`;
-    });
-  }
-  $('customer-table-body').innerHTML = tableHtml;
-}
-
-function pushSoon(){clearTimeout(pushTimer);setSync('저장 중…');pushTimer=setTimeout(pushRemote,600)}
-async function pushRemote(){
-  if(!sb||!canEdit)return;
-  let q=sb.from(TABLE).update({data:payload(),updated_at:new Date().toISOString(),updated_by:user.email}).eq('id',ROW);
-  if(remoteStamp)q=q.eq('updated_at',remoteStamp);
-  const {data,error}=await q.select('updated_at');
-  if(error||!data||!data.length){setSync(error?'저장 실패: 권한 또는 네트워크 확인':'다른 곳에서 먼저 수정됨. 새로고침 필요',true);return}
-  remoteStamp=data[0].updated_at;remoteEmpty=false;lastUpdateTime=fmt(new Date(remoteStamp));$('last-update-time').innerText=lastUpdateTime;setSync('저장됨')
-}
-function setSession(s){
-  user=s?s.user:null;canEdit=!!user;
-  $('auth-state').innerHTML=canEdit?'<span class="w-2 h-2 rounded-full bg-emerald-500 mr-2 shrink-0"></span>'+esc(user.email):'<span class="w-2 h-2 rounded-full bg-slate-300 mr-2 shrink-0"></span>조회 전용';
-  $('auth-btn').textContent=canEdit?'로그아웃':'로그인';
-  if(canEdit&&remoteEmpty)pushSoon();
-  refreshAll();
-}
-function openLogin(){if(!sb){alert('Supabase URL/Key 설정 후 사용할 수 있습니다.');return}$('login-err').classList.add('hidden');$('login-modal').classList.remove('hidden');$('login-email').focus()}
-function closeLogin(){$('login-modal').classList.add('hidden')}
-function authClick(){canEdit?sb.auth.signOut():openLogin()}
-async function doLogin(e){
-  e.preventDefault();
-  const {error}=await sb.auth.signInWithPassword({email:$('login-email').value.trim(),password:$('login-pw').value});
-  if(error){const p=$('login-err');p.textContent='로그인 실패: 이메일 또는 비밀번호를 확인하세요.';p.classList.remove('hidden');return}
-  $('login-pw').value='';closeLogin();
-}
-function guard(){if(canEdit)return true;openLogin();return false}
-
-/* ---- 저장/갱신 ---- */
-function saveDataAndRefresh(){
-  if(canEdit)lastUpdateTime=fmt(new Date());
-  cacheLocal();if(canEdit)pushSoon();
-  $('last-update-time').innerText=lastUpdateTime;refreshAll();
-}
-
-/* ---- 진척도 계산 ---- */
-function pct(tasks){const a=tasks.filter(t=>t.status!=='hold');if(!a.length)return 0;return Math.round(a.reduce((n,t)=>n+(ST[t.status]?ST[t.status].w:0),0)/a.length*100)}
-function late(t){return t.due&&t.status!=='done'&&t.status!=='hold'&&t.due<ymd(new Date())}
-function renderCards(){
-  $('ov-cards').innerHTML=Object.keys(taskData).map(k=>{
-    const c=taskData[k],p=pct(c.tasks),n=s=>c.tasks.filter(t=>t.status===s).length,l=c.tasks.filter(late).length;
-    return `<button onclick="selectCategory('${k}')" class="text-left bg-white border border-slate-200 hover:border-blue-300 rounded-2xl p-4 shadow-sm transition-all">
-      <div class="flex justify-between items-start gap-2"><span class="text-xs font-bold text-slate-800">${esc(c.title.replace(/^.*> /,''))}</span><span class="text-[10px] font-semibold px-1.5 py-0.5 rounded ${c.priority==='높음'?'bg-rose-50 text-rose-600':'bg-slate-100 text-slate-500'}">${esc(c.priority||'')}</span></div>
-      <div class="h-1.5 bg-slate-100 rounded-full my-2.5 overflow-hidden"><div class="h-full bg-emerald-500" style="width:${p}%"></div></div>
-      <div class="text-[11px] text-slate-500">진척 <b class="text-slate-700">${p}%</b> · 완료 ${n('done')}/${c.tasks.length} · 진행 ${n('doing')+n('review')}${n('hold')?' · 보류 '+n('hold'):''}${l?' · <span class="text-rose-600 font-semibold">지연 '+l+'</span>':''}</div></button>`}).join('');
-}
-function renderDiag(){
-  let best=null,bs=-1;
-  Object.keys(taskData).forEach(k=>{const c=taskData[k],p=pct(c.tasks),l=c.tasks.filter(late).length;if(p>=100&&!l)return;const sc=(100-p)*(PW[c.priority]||1)+l*30;if(sc>bs){bs=sc;best=[k,c,p,l]}});
-  if(!best){$('diag-msg').textContent='모든 영역이 완료되었고 지연 과제가 없습니다.';$('diag-btn').classList.add('hidden');return}
-  const [k,c,p,l]=best,open=c.tasks.filter(t=>t.status!=='done'&&t.status!=='hold').length;
-  $('diag-msg').innerHTML=`<strong class="font-bold">[${esc(c.title)}] 영역이 가장 시급합니다. (진척도 ${p}%, 우선순위 ${esc(c.priority||'-')}${l?', 기한 지연 '+l+'건':''})</strong><br>미완료 ${open}건 · 담당 부서 [${esc(c.dept)}]의 진행중·미착수 과제를 먼저 점검하세요.`;
-  $('diag-btn').classList.remove('hidden');$('diag-btn').onclick=()=>selectCategory(k);
-}
-
-/* ---- 필터/검색 ---- */
-function renderChips(){
-  $('status-chips').innerHTML=[['all','전체'],['todo','미착수'],['doing','진행중'],['review','검수·적용'],['hold','보류'],['done','완료']].map(a=>`<button onclick="filterStatus('${a[0]}')" class="px-3 py-1.5 rounded-lg transition-all ${currentStatusFilter===a[0]?'bg-blue-600 text-white font-semibold shadow-sm':'text-slate-600 hover:bg-white'}">${a[1]}</button>`).join('');
-}
-
-/* ---- 과제 목록 ---- */
-function renderTasks(tasks,isAllView){
-  const box=$('detail-list');
-  let list=tasks.filter(t=>(currentStatusFilter==='all'||t.status===currentStatusFilter)&&(!query||(t.title+' '+t.dept).toLowerCase().includes(query)));
-  const doneN=list.filter(t=>t.status==='done').length;
-  if(currentStatusFilter==='all'&&!showDone&&!query)list=list.filter(t=>t.status!=='done');
-  list.sort((a,b)=>ORDER[a.status]-ORDER[b.status]);
-  let html=list.length?'':'<div class="text-center py-6 text-xs text-slate-400">해당 조건에 부합하는 과제가 없습니다.</div>';
-  const cls={done:'bg-emerald-50 text-emerald-600 border-emerald-200',doing:'bg-amber-50 text-amber-600 border-amber-200',review:'bg-violet-50 text-violet-600 border-violet-200',todo:'bg-slate-100 text-slate-500 border-slate-200',hold:'bg-sky-50 text-sky-600 border-sky-200'};
-  list.forEach(t=>{
-    const catDept=(isAllView?taskData[t.catKey]:taskData[currentCategory]).dept,url=safeUrl(t.link);
-    html+=`<div class="flex flex-wrap items-center justify-between gap-2 p-3.5 bg-slate-50 rounded-xl border border-slate-100 hover:border-slate-200 transition-all">
-      <span class="text-sm font-medium text-slate-700 flex items-center mr-2 min-w-0"><i class="fa-regular fa-circle-dot text-slate-400 mr-2.5 shrink-0"></i><span>${esc(t.title)}</span></span>
-      <div class="flex flex-wrap items-center gap-2 shrink-0">
-        ${t.dept!==catDept||isAllView?`<span class="bg-slate-100 text-slate-600 text-[11px] font-medium px-2 py-0.5 rounded">${esc(t.dept)}</span>`:''}
-        ${t.due?`<span class="text-[11px] font-mono ${late(t)?'text-rose-600 font-bold':'text-slate-400'}">${late(t)?'지연 ':'~'}${esc(t.due)}</span>`:''}
-        ${url?`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100"><i class="fa-solid fa-arrow-up-right-from-square mr-1"></i> ${esc(t.linkText||'바로가기')}</a>`:''}
-        <span class="border text-[11px] px-2 py-0.5 rounded-md font-semibold ${cls[t.status]}">${ST[t.status].l}</span>
-        ${canEdit&&!isAllView?`<span class="flex items-center pl-2 border-l border-slate-200"><button onclick="openTaskModal('edit',${t.originalIndex})" class="p-1.5 text-slate-400 hover:text-blue-600 text-xs" title="수정"><i class="fa-solid fa-pen"></i></button><button onclick="deleteTask(${t.originalIndex})" class="p-1.5 text-slate-400 hover:text-rose-600 text-xs" title="삭제"><i class="fa-solid fa-trash"></i></button></span>`:''}
-      </div></div>`;
-  });
-  if(currentStatusFilter==='all'&&!query&&doneN)html+=`<button onclick="showDone=!showDone;render()" class="text-xs text-slate-500 hover:text-blue-600 py-1">${showDone?'완료 항목 접기':'완료 '+doneN+'건 보기'}</button>`;
-  box.innerHTML=html;
-  $('add-task-btn').classList.toggle('hidden',isAllView||!canEdit);
-}
-
-/* ---- 과제 모달 ---- */
-function openTaskModal(mode,index=null){
-  if(!guard())return;
-  modalMode=mode;editingIndex=index;
-  const t=mode==='edit'?taskData[currentCategory].tasks[index]:{};
-  $('modal-title').innerText=mode==='add'?'새로운 과제 등록':'과제 정보 수정';
-  $('modal-task-title').value=t.title||'';$('modal-task-status').value=t.status\vert{}\vert{}'todo';$('modal-task-dept').value=t.dept||taskData[currentCategory].dept;
-  $('modal-link-text').value=t.linkText\vert{}\vert{}'';$('modal-link-url').value=t.link||'';$('modal-task-due').value=t.due\vert{}\vert{}'';$('task-modal').classList.remove('hidden');
-}
-function handleTaskFormSubmit(e){
-  e.preventDefault();if(!guard())return;
-  const n={title:$('modal-task-title').value.trim(),status:$('modal-task-status').value,dept:$('modal-task-dept').value};
-  const url=safeUrl($('modal-link-url').value);if(url){n.link=url;n.linkText=$('modal-link-text').value.trim()||'바로가기'}
-  if($('modal-task-due').value)n.due=$('modal-task-due').value;
-  if(modalMode==='add')taskData[currentCategory].tasks.push(n);else taskData[currentCategory].tasks[editingIndex]=n;
-  closeTaskModal();saveDataAndRefresh();
-}
-function deleteTask(i){if(!guard())return;if(confirm('정말 이 과제를 삭제하시겠습니까?')){taskData[currentCategory].tasks.splice(i,1);saveDataAndRefresh()}}
-
-/* ---- 주간 목표 / 오늘의 할 일 ---- */
-function renderWidgets(){
-  const row=(g,i,fn,del,color)=>`<div class="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-100 text-sm"><label class="flex items-center space-x-2 ${canEdit?'cursor-pointer':''}"><input type="checkbox" ${g.done?'checked':''} ${canEdit?'':'disabled'} onchange="${fn}(${i})" class="rounded ${color} focus:ring-0 w-4 h-4"><span class="${g.done?'line-through text-slate-400':'text-slate-700 font-medium'}">${esc(g.text)}</span>${g.carry&&!g.done?'<span class="text-[10px] text-amber-600 bg-amber-50 px-1.5 rounded">이월</span>':''}</label>${canEdit?`<button onclick="${del}(${i})" class="text-slate-300 hover:text-rose-500" aria-label="삭제"><i class="fa-solid fa-xmark"></i></button>`:''}</div>`;
-  $('weekly-goals-list').innerHTML=weeklyGoals.map((g,i)=>row(g,i,'toggleWeekly','deleteWeekly','text-blue-600')).join('');$('daily-tasks-list').innerHTML=dailyTasks.map((g,i)=>row(g,i,'toggleDaily','deleteDaily','text-emerald-600')).join('');
-}
-function toggleWeekly(i){if(!guard()){renderWidgets();return}weeklyGoals[i].done=!weeklyGoals[i].done;saveDataAndRefresh()}
-function deleteWeekly(i){if(!guard())return;weeklyGoals.splice(i,1);saveDataAndRefresh()}
-function toggleDaily(i){if(!guard()){renderWidgets();return}dailyTasks[i].done=!dailyTasks[i].done;saveDataAndRefresh()}
-function deleteDaily(i){if(!guard())return;dailyTasks.splice(i,1);saveDataAndRefresh()}
-function openWeeklyModal(){if(guard())$('weekly-modal').classList.remove('hidden')}
-function openDailyModal(){if(guard())$('daily-modal').classList.remove('hidden')}
-
-/* ---- 백업 / 복원 ---- */
-function exportData(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(payload(),null,2)],{type:'application/json'}));a.download='isbs-progress-'+ymd(new Date())+'.json';a.click();URL.revokeObjectURL(a.href)}
-function importClick(){if(guard())$('import-file').click()}
-function importData(e){
-  const f=e.target.files[0];if(!f)return;const r=new FileReader();
-  r.onload=()=>{try{const p=JSON.parse(r.result);if(!p||!validTasks(p.tasks))throw 0;if(!confirm('현재 데이터를 가져온 파일로 교체할까요?'))return;adopt(p);saveDataAndRefresh()}catch(x){alert('올바른 백업 파일이 아닙니다.')}};
-  r.readAsText(f);e.target.value='';
-}
-
-/* ---- 시작 ---- */
-window.onload=function(){
-  const c=readLS('isbs_cache_v4');
-  adopt(c&&validTasks(c.tasks)?c:{tasks:validTasks(taskData)?taskData:JSON.parse(JSON.stringify(defaultTaskData)),weekly:weeklyGoals,daily:dailyTasks,meta:{}});
-  lastUpdateTime=localStorage.getItem('isbs_cache_time')||lastUpdateTime;
-  if(SUPABASE_URL&&SUPABASE_ANON_KEY&&window.supabase){
-    sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
-    sb.auth.onAuthStateChange((_e,s)=>setSession(s));
-    sb.auth.getSession().then(r=>setSession(r.data.session));
-  }else setSession(null);
-  render();fetchRemote();
+const COMPLY = {
+ title: '내부 > 컴플라이언스·고객 보호', 
+ sub: '녹취·개인정보, 문구 점검, 청약철회·민원 대응 기준', 
+ dept: '경영기획실', 
+ icon: 'fa-shield-halved', 
+ priority: '높음',
+ tasks: ['녹취·회사 고지 문구 확인','개인정보 보관·파기·접근 권한 기준','문자·재통화 동의 기록 방식','광고·안내 문구 점검 목록','청약철회·민원 처리 절차'].map(t=>({title:t, status:'todo', dept:'경영기획실'}))
 };
 
-const K=(t,unit,dir,tar)=>({t,unit,dir,cur:'',tar:tar==null?'':String(tar)});
-const defaultGoals=()=>({period:'2026년 4분기',depts:[
- {n:'경영기획실',obj:'숫자로 판단하고 리스크를 통제한다',cats:['kpi','comply'],krs:[K('월간 지표 리포트 자동 생성 준수율','%','up'),K('이탈 사유 입력률','%','up'),K('컴플라이언스 점검 항목 문서화율','%','up',100)]},
- {n:'운영혁신팀',obj:'인입부터 사후관리까지 표준대로 돌아가게 한다',cats:['process'],krs:[K('상태값(5개 그룹) 시스템·가이드 일치율','%','up',100),K('종결·이탈 사유 입력 누락','건','down',0),K('예외 사례 표준 가이드 작성','건','up')]},
- {n:'CS실',obj:'상담 품질과 전환율을 높인다',cats:['staff','crm'],krs:[K('스크립트 흐름 준수율 (녹취 점검 기준)','%','up'),K('고객 이력 입력 완료율','%','up'),K('클레임 평균 처리 기간','일','down')]},
- {n:'마케팅/상품팀',obj:'정확한 정책 데이터로 맞는 상품을 제안한다',cats:['policy','script'],krs:[K('정책 데이터 갱신 주기 준수율','%','up'),K('공용 정책 데이터 기준 통합 진행률','%','up',100),K('스크립트·고객 유형별 성과 태깅 적용률','%','up')]},
- {n:'경영지원(재무)',obj:'정산은 정확하게, 사은품은 한도 안에서 통제한다',cats:['settle'],krs:[K('월 정산 미정산·오차 건수','건','down'),K('사은품 지급 대비 실 집행 대조율','%','up',100),K('경품고시제 한도 위반','건','down',0),K('환수 회수 기한 준수율','%','up')]}
-]});
-let goals=defaultGoals();
-const validGoals=g=>g&&typeof g==='object'&&Array.isArray(g.depts)&&g.depts.every(d=>d&&Array.isArray(d.krs));
-function payload(){return{v:5,tasks:taskData,weekly:weeklyGoals,daily:dailyTasks,meta,goals}}
-function resetData(){if(!guard())return;if(!confirm('모든 수정 내용(과제·목표 포함)을 지우고 기본 데이터로 복원할까요?'))return;goals=defaultGoals();taskData=JSON.parse(JSON.stringify(defaultTaskData));weeklyGoals=JSON.parse(JSON.stringify(defaultWeeklyGoals));dailyTasks=JSON.parse(JSON.stringify(defaultDailyTasks));meta={};mergeSeed();rollover();saveDataAndRefresh()}
+const REMOVE = ['신규 상담원 온보딩 교육 메뉴얼 매핑','고객 상담 인입 -> 접수 -> 개통 파이프라인 단계 정의'];
+let sb = null, user = null, canEdit = false, remoteStamp = null, remoteEmpty = false, meta = {}, query = '', showDone = false, pushTimer = null;
 
-function gp(k){
-  if(k.tar===''||k.cur===''||isNaN(k.tar)||isNaN(k.cur))return null;
-  const c=+k.cur,t=+k.tar;
-  if(k.dir==='down')return c<=t?100:(t<=0?0:Math.round(t/c*100));
-  return t<=0?null:Math.min(100,Math.round(c/t*100));
+function setSync(t, err) {
+    const e = $('sync-state');
+    if(e) { e.textContent = t; e.className = err ? 'text-rose-500' : ''; }
 }
-function renderGoals(){
-  const box=$('goal-panel');if(!box)return;
-  const inp='px-2 py-1 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500';
-  let h=`<div class="flex flex-wrap items-center justify-between gap-2"><h3 class="font-bold text-slate-800 text-sm flex items-center"><i class="fa-solid fa-flag text-blue-600 mr-2"></i> 부서별 목표 (OKR)
-   ${canEdit?`<input value="${esc(goals.period)}" onchange="gPeriod(this.value)" aria-label="목표 기간" class="ml-3 w-36 ${inp}">`:`<span class="ml-2 text-xs font-medium text-slate-500">${esc(goals.period)}</span>`}</h3>
-   <span class="text-[11px] text-slate-400">현재값·목표값을 입력하면 달성률이 계산됩니다${canEdit?'':' (수정은 로그인 필요)'}</span></div>
-   <div class="grid grid-cols-1 xl:grid-cols-2 gap-3">`;
-  goals.depts.forEach((d,di)=>{
-    const ps=d.krs.map(gp).filter(x=>x!==null),ach=ps.length?Math.round(ps.reduce((a,b)=>a+b,0)/ps.length):null;
-    h+=`<div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-     <div class="flex justify-between items-start gap-2"><div class="min-w-0"><div class="text-[11px] font-bold text-blue-600">${esc(d.n)}</div>
-      ${canEdit?`<input value="${esc(d.obj)}" onchange="gObj(${di},this.value)" aria-label="부서 목표" class="w-full mt-1 text-sm font-bold ${inp}">`:`<div class="text-sm font-bold text-slate-800 mt-0.5">${esc(d.obj)}</div>`}</div>
-     <div class="text-right shrink-0"><div class="text-lg font-bold ${ach===null?'text-slate-300':'text-slate-800'}">${ach===null?'-':ach+'%'}</div><div class="text-[10px] text-slate-400">KR 달성</div></div></div>
-     <div class="flex flex-wrap gap-1.5 mt-1.5">${(d.cats||[]).filter(k=>taskData[k]).map(k=>`<button onclick="selectCategory('${k}')" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-blue-600">${esc(taskData[k].title.replace(/^.*> /,''))} 과제 →</button>`).join('')}</div>
-     <div class="mt-3 space-y-2.5">`;
-    d.krs.forEach((k,ki)=>{
-      const p=gp(k);
-      h+=`<div class="rounded-xl bg-slate-50 border border-slate-100 p-2.5">
-       ${canEdit?`<div class="flex gap-1.5"><input value="${esc(k.t)}" onchange="gSet(${di},${ki},'t',this.value)" aria-label="핵심 결과" class="flex-1 min-w-0 ${inp}"><button onclick="gDel(${di},${ki})" class="text-slate-300 hover:text-rose-500 px-1" aria-label="KR 삭제"><i class="fa-solid fa-xmark"></i></button></div>
-        <div class="flex flex-wrap items-center gap-1.5 mt-1.5 text-[11px] text-slate-500">현재 <input value="${esc(k.cur)}" inputmode="decimal" onchange="gSet(${di},${ki},'cur',this.value)" class="w-16 ${inp}"> 목표 <input value="${esc(k.tar)}" inputmode="decimal" onchange="gSet(${di},${ki},'tar',this.value)" class="w-16 ${inp}"> 단위 <input value="${esc(k.unit)}" onchange="gSet(${di},${ki},'unit',this.value)" class="w-12 ${inp}">
-         <select onchange="gSet(${di},${ki},'dir',this.value)" class="${inp}"><option value="up" ${k.dir==='up'?'selected':''}>높을수록 좋음</option><option value="down" ${k.dir==='down'?'selected':''}>낮을수록 좋음</option></select></div>`
-       :`<div class="flex justify-between gap-2 text-xs"><span class="text-slate-700 font-medium">${esc(k.t)}</span><span class="text-slate-500 shrink-0">${k.cur===''?'-':esc(k.cur)} /${k.tar===''?'미설정':esc(k.tar)}${esc(k.unit)}${k.dir==='down'?' 이하':''}</span></div>`}
-       <div class="h-1.5 bg-slate-200 rounded-full mt-2 overflow-hidden"><div class="h-full ${p===100?'bg-emerald-500':'bg-blue-500'}" style="width:${p||0}%"></div></div></div>`;
+
+function fmt(d) { 
+    return ymd(d) + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0'); 
+}
+
+async function fetchRemote() {
+    if(!sb) { 
+        setSync('Supabase 미설정', true); 
+        customerDbData = getSimulatedCustomerData();
+        renderCustomerDashboard();
+        return; 
+    }
+    try {
+        const {data, error} = await sb.from(TABLE).select('data,updated_at').eq('id',ROW).maybeSingle();
+        if(error) { 
+            setSync('서버 조회 실패', true); 
+        } else if(data) {
+            remoteStamp = data.updated_at;
+            lastUpdateTime = fmt(new Date(data.updated_at));
+            if(data.data && data.data.tasks) { adopt(data.data); remoteEmpty = false; } else { remoteEmpty = true; }
+            cacheLocal(); refreshAll(); setSync('서버와 동기화됨');
+        } else {
+            remoteEmpty = true; setSync('서버 데이터 없음');
+        }
+    } catch(e) {
+        setSync('통신 오류', true);
+    }
+    await fetchCustomerData();
+}
+
+async function fetchCustomerData() {
+    if(!sb) {
+        customerDbData = getSimulatedCustomerData();
+        renderCustomerDashboard();
+        return;
+    }
+    try {
+        const { data, error } = await sb.from(CUSTOMER_TABLE).select('*');
+        if(!error && data && data.length > 0) {
+            customerDbData = data;
+        } else {
+            customerDbData = getSimulatedCustomerData();
+        }
+    } catch(e) {
+        customerDbData = getSimulatedCustomerData();
+    }
+    renderCustomerDashboard();
+}
+
+function getSimulatedCustomerData() {
+    const today = new Date();
+    const getOffsetDate = (offset) => {
+        const d = new Date(today);
+        d.setDate(d.getDate() + offset);
+        return ymd(d);
+    };
+    return [
+        { id: 1, name: '김민준', contact: '010-1234-5678', status: '접수완료', updated_at: getOffsetDate(0) + ' 10:20:00', install_date: getOffsetDate(2) },
+        { id: 2, name: '이서연', contact: '010-2345-6789', status: '설치예정', updated_at: getOffsetDate(0) + ' 11:10:00', install_date: getOffsetDate(1) },
+        { id: 3, name: '박도윤', contact: '010-3456-7890', status: '설치예정', updated_at: getOffsetDate(-1) + ' 15:30:00', install_date: getOffsetDate(0) },
+        { id: 4, name: '정시우', contact: '010-4567-8901', status: '설치완료', updated_at: getOffsetDate(0) + ' 14:00:00', install_date: getOffsetDate(-1), pay_status: '지급완료' },
+        { id: 5, name: '강서윤', contact: '010-5678-9012', status: '지급완료', updated_at: getOffsetDate(0) + ' 09:15:00', install_date: getOffsetDate(-3), pay_status: '지급완료' },
+        { id: 6, name: '조하은', contact: '010-6789-0123', status: '상담진행', updated_at: getOffsetDate(-2) + ' 16:40:00', install_date: getOffsetDate(4) },
+        { id: 7, name: '윤지호', contact: '010-7890-1234', status: '설치완료', updated_at: getOffsetDate(0) + ' 13:20:00', install_date: getOffsetDate(0), pay_status: '지급대기' },
+    ];
+}
+
+function ymd(d) { 
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); 
+}
+
+function getThisWeekRange() {
+    const now = new Date();
+    const day = now.getDay();
+    const diffToMon = now.getDate() - day + (day === 0 ? -6 : 1);
+    const mon = new Date(now.setDate(diffToMon));
+    const sun = new Date(mon);
+    sun.setDate(sun.getDate() + 6);
+    return { start: ymd(mon), end: ymd(sun) };
+}
+
+function renderCustomerDashboard() {
+    if(!customerDbData) return;
+    const week = getThisWeekRange();
+
+    const schedInstallCount = customerDbData.filter(c => c.install_date >= week.start && c.install_date <= week.end && c.status !== '설치완료' && c.status !== '지급완료').length;
+    const doneInstallCount = customerDbData.filter(c => c.status === '설치완료' || c.status === '지급완료').length;
+    const donePayCount = customerDbData.filter(c => c.status === '지급완료' || c.pay_status === '지급완료').length;
+
+    if($('metric-sched-install')) $('metric-sched-install').innerText = schedInstallCount + '건';
+    if($('metric-done-install')) $('metric-done-install').innerText = doneInstallCount + '건';
+    if($('metric-done-pay')) $('metric-done-pay').innerText = donePayCount + '건';
+
+    const statusGroups = {
+        '접수대기/상담': customerDbData.filter(c => c.status === '접수완료' || c.status === '상담진행').length,
+        '설치예정': customerDbData.filter(c => c.status === '설치예정').length,
+        '설치완료': customerDbData.filter(c => c.status === '설치완료').length,
+        '지급완료': customerDbData.filter(c => c.status === '지급완료' || c.pay_status === '지급완료').length
+    };
+
+    let countHtml = '';
+    Object.entries(statusGroups).forEach(([st, cnt]) => {
+        countHtml += `<div class="bg-slate-50 border border-slate-100 rounded-xl p-3.5">
+          <div class="text-[11px] text-slate-500 font-medium">${esc(st)}</div>
+          <div class="text-xl font-bold text-slate-800 mt-1">${cnt}<span class="text-xs font-normal text-slate-400 ml-1">명</span></div>
+        </div>`;
     });
-    h+=`</div>${canEdit?`<button onclick="gAdd(${di})" class="mt-2.5 text-xs text-blue-600 hover:underline font-semibold"><i class="fa-solid fa-plus mr-1"></i>KR 추가</button>`:''}</div>`;
-  });
-  box.innerHTML=h+'</div>';
-}
-function gSet(di,ki,f,v){if(!guard())return;goals.depts[di].krs[ki][f]=String(v).trim();saveDataAndRefresh()}
-function gObj(di,v){if(!guard())return;goals.depts[di].obj=v.trim();saveDataAndRefresh()}
-function gPeriod(v){if(!guard())return;goals.period=v.trim();saveDataAndRefresh()}
-function gAdd(di){if(!guard())return;goals.depts[di].krs.push(K('새 핵심 결과','%','up'));saveDataAndRefresh()}
-function gDel(di,ki){if(!guard())return;if(confirm('이 핵심 결과를 삭제할까요?')){goals.depts[di].krs.splice(ki,1);saveDataAndRefresh()}}
+    if($('status-counts-grid'))$('status-counts-grid').innerHTML = countHtml;
 
-const EXTERNAL=['policy','settle','script'];
-const VIEWS={dash:['대시보드','사업 전체 진행 상황을 한눈에 확인합니다'],customers:['고객 현황 대시보드','각 상태값별 고객 현황 및 주간 설치/지급 지표를 확인합니다'],goals:['부서별 목표','분기 목표(OKR)와 달성률을 관리합니다'],today:['오늘·이번 주','이번 주 핵심 목표와 오늘의 할 일'],tasks:['과제 관리','']};
-const shortT=c=>c.title.replace(/^.*> /,'');
-const openN=k=>taskData[k].tasks.filter(t=>t.status!=='done'&&t.status!=='hold').length;
-function adopt(p){
-  if(p&&validTasks(p.tasks)){taskData=p.tasks;weeklyGoals=Array.isArray(p.weekly)?p.weekly:weeklyGoals;dailyTasks=Array.isArray(p.daily)?p.daily:dailyTasks;meta=p.meta||{}}
-  if(p&&validGoals(p.goals))goals=p.goals;
-  mergeSeed();rollover();
-}
-function payload(){return{v:5,tasks:taskData,weekly:weeklyGoals,daily:dailyTasks,meta,goals}}
-function refreshAll(){render()}
-function filterStatus(s){currentStatusFilter=s;render()}
-function setQuery(v){query=v.trim().toLowerCase();render()}
-function go(v,k){view=v;if(v==='tasks')currentCategory=k||'all';render();$('main-scroll').scrollTop=0}
-function selectCategory(k){go('tasks',k)}
-function closeTaskModal(){$('task-modal').classList.add('hidden')}
-function closeWeeklyModal(){$('weekly-modal').classList.add('hidden')}
-function closeDailyModal(){$('daily-modal').classList.add('hidden')}
-function handleWeeklySubmit(e){e.preventDefault();if(!guard())return;const v=$('weekly-input').value.trim();if(v){weeklyGoals.push({text:v,done:false});$('weekly-input').value='';closeWeeklyModal();saveDataAndRefresh()}}
-function handleDailySubmit(e){e.preventDefault();if(!guard())return;const v=$('daily-input').value.trim();if(v){dailyTasks.push({text:v,done:false});$('daily-input').value='';closeDailyModal();saveDataAndRefresh()}}
+    let tableHtml = '';
+    if(customerDbData.length === 0) {
+        tableHtml = `<tr><td colspan="5" class="text-center py-6 text-slate-400">등록된 고객 데이터가 없습니다.</td></tr>`;
+    } else {
+        customerDbData.forEach(c => {
+            let badgeColor = 'bg-slate-100 text-slate-600';
+            if(c.status === '설치예정') badgeColor = 'bg-blue-50 text-blue-600 border border-blue-200';
+            if(c.status === '설치완료') badgeColor = 'bg-amber-50 text-amber-600 border border-amber-200';
+            if(c.status === '지급완료') badgeColor = 'bg-emerald-50 text-emerald-600 border border-emerald-200';
 
-function render(){
-  if(view==='tasks'&&currentCategory!=='all'&&!taskData[currentCategory])currentCategory='all';
-  Object.keys(VIEWS).forEach(v=>$('view-'+v).classList.toggle('hidden',v!==view));$('task-tools').classList.toggle('hidden',view!=='tasks');
-  const c=view==='tasks'&&currentCategory!=='all'?taskData[currentCategory]:null,t=VIEWS[view];
-  $('header-title').innerText=c?c.title:(view==='tasks'?'전체 과제':t[0]);
-  $('header-desc').innerText=c?`${c.sub} [담당 R&R: ${c.dept}]`:(view==='tasks'?'모든 영역의 과제를 한 목록으로 봅니다':t[1]);
-  $('last-update-time').innerText=lastUpdateTime;
-  renderNav();
-  if(view==='dash'){renderSummary();renderCards();renderDiag();renderAttn()}
-  else if(view==='customers'){renderCustomerDashboard()}
-  else if(view==='goals')renderGoals();
-  else if(view==='today')renderWidgets();
-  else renderTaskView();
+            tableHtml += `<tr class="hover:bg-slate-50/80 transition-all">
+              <td class="p-3 font-semibold text-slate-700">${esc(c.name)}</td>
+              <td class="p-3 text-slate-500 font-mono">${esc(c.contact)}</td>
+              <td class="p-3"><span class="px-2.5 py-1 rounded-lg text-[11px] font-semibold ${badgeColor}">${esc(c.status)}</span></td>
+              <td class="p-3 text-slate-500 font-mono">${esc(c.install_date || '-')}</td>
+              <td class="p-3 text-slate-400 font-mono text-[11px]">${esc(c.updated_at || '-')}</td>
+            </tr>`;
+        });
+    }
+    if($('customer-table-body'))$('customer-table-body').innerHTML = tableHtml;
 }
-function renderNav(){
-  const on=(v,k)=>view===v&&(v!=='tasks'||currentCategory===k);
-  const B=(v,k,ic,label,badge)=>`<button onclick="go('${v}'${k?`,'${k}'`:''})" class="nav-btn w-full flex items-center justify-between px-3.5 py-2 rounded-lg text-xs transition-all ${on(v,k)?'font-semibold bg-blue-50 text-blue-600 border border-blue-100':'font-medium text-slate-600 hover:bg-slate-100'}"><span class="flex items-center min-w-0"><i class="fa-solid ${esc(ic)} mr-2.5 w-4 text-center"></i><span class="truncate">${esc(label)}</span></span>${badge===''?'':`<span class="text-[11px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">${badge}</span>`}</button>`;
-  const H=x=>`<div class="px-3 mt-4 mb-1.5 text-[11px] font-extrabold text-slate-400 tracking-wider">${x}</div>`;
-  const keys=Object.keys(taskData),area=k=>B('tasks',k,taskData[k].icon||'fa-folder',shortT(taskData[k]),openN(k));
-  const remain=dailyTasks.filter(x=>!x.done).length+weeklyGoals.filter(x=>!x.done).length;
-  $('nav').innerHTML=B('dash','','fa-gauge-high','대시보드','')
-   +B('customers','','fa-users','고객 현황','실시간')
-   +B('goals','','fa-flag','부서별 목표','')
-   +B('today','','fa-calendar-check','오늘·이번 주',remain)
-   +H('과제 관리 (남은 과제 수)')+B('tasks','all','fa-border-all','전체 과제',keys.reduce((n,k)=>n+openN(k),0))
-   +H('내부 업무')+keys.filter(k=>!EXTERNAL.includes(k)).map(area).join('')+H('외부 업무')+keys.filter(k=>EXTERNAL.includes(k)).map(area).join('');
+
+function pushSoon() { clearTimeout(pushTimer); setSync('저장 중…'); pushTimer = setTimeout(pushRemote, 600); }
+async function pushRemote() {
+    if(!sb || !canEdit) return;
+    let q = sb.from(TABLE).update({data: payload(), updated_at: new Date().toISOString(), updated_by: user.email}).eq('id', ROW);
+    if(remoteStamp) q = q.eq('updated_at', remoteStamp);
+    const {data, error} = await q.select('updated_at');
+    if(error || !data || !data.length) { setSync('저장 실패', true); return; }
+    remoteStamp = data[0].updated_at; remoteEmpty = false; lastUpdateTime = fmt(new Date(remoteStamp));
+    if($('last-update-time'))$('last-update-time').innerText = lastUpdateTime;
+    setSync('저장됨');
 }
-function renderSummary(){
-  let all=[];Object.values(taskData).forEach(c=>all=all.concat(c.tasks));
-  const n=s=>all.filter(x=>x.status===s).length,l=all.filter(late).length,r=dailyTasks.filter(x=>!x.done).length+weeklyGoals.filter(x=>!x.done).length;
-  const C=(a,b,c,cls,fn)=>`<button onclick="${fn}" class="text-left bg-white border border-slate-200 hover:border-blue-300 rounded-2xl p-4 shadow-sm"><div class="text-[11px] text-slate-500">${a}</div><div class="text-2xl font-bold ${cls} mt-1">${b}</div><div class="text-[11px] text-slate-400 mt-0.5">${c}</div></button>`;
-  $('summary').innerHTML=C('전체 진척',pct(all)+'%',`완료 ${n('done')}/${all.length}건`,'text-emerald-600',"currentStatusFilter='all';go('tasks','all')")
-   +C('진행중·검수',n('doing')+n('review'),`미착수 ${n('todo')}건`,'text-blue-600',"currentStatusFilter='doing';go('tasks','all')")
-   +C('기한 지연',l,'마감일 지난 미완료 과제',l?'text-rose-600':'text-slate-700',"currentStatusFilter='all';go('tasks','all')")
-   +C('오늘·이번 주 남은 일',r,'할 일 + 주간 목표','text-amber-600',"go('today')");
+
+function setSession(s) {
+    user = s ? s.user : null; canEdit = !!user;
+    if($('auth-state'))$('auth-state').innerHTML = canEdit ? '<span class="w-2 h-2 rounded-full bg-emerald-500 mr-2 shrink-0"></span>' + esc(user.email) : '<span class="w-2 h-2 rounded-full bg-slate-300 mr-2 shrink-0"></span>조회 전용';
+    if($('auth-btn'))$('auth-btn').textContent = canEdit ? '로그아웃' : '로그인';
+    if(canEdit && remoteEmpty) pushSoon();
+    refreshAll();
 }
-function renderAttn(){
-  const rows=[];Object.keys(taskData).forEach(k=>taskData[k].tasks.forEach(t=>{if(late(t)||t.status==='doing'||t.status==='review')rows.push({k,t})}));
-  rows.sort((a,b)=>(late(b.t)?1:0)-(late(a.t)?1:0)||ORDER[a.t.status]-ORDER[b.t.status]);
-  $('attn').innerHTML=`<div class="flex justify-between items-center mb-2"><h3 class="font-bold text-slate-800 text-sm">지금 챙길 과제</h3><span class="text-[11px] text-slate-400">지연·진행중·검수 ${rows.length}건 (상위 8건)</span></div>`
-   +(rows.length?rows.slice(0,8).map(({k,t})=>`<button onclick="go('tasks','${k}')" class="w-full flex items-center justify-between gap-2 text-left p-2.5 mb-1.5 bg-slate-50 rounded-xl border border-slate-100 hover:border-slate-200 text-xs"><span class="min-w-0 truncate"><span class="text-[10px] text-blue-600 font-semibold mr-2">${esc(shortT(taskData[k]))}</span>${esc(t.title)}</span><span class="shrink-0 ${late(t)?'text-rose-600 font-bold':'text-slate-500'}">${late(t)?'지연 '+esc(t.due):ST[t.status].l}</span></button>`).join(''):'<div class="text-xs text-slate-400 py-2">지연되거나 진행 중인 과제가 없습니다.</div>');
+
+function openLogin() { if(!sb){alert('Supabase 미설정');return} $('login-err').classList.add('hidden'); $('login-modal').classList.remove('hidden');$('login-email').focus(); }
+function closeLogin() { $('login-modal').classList.add('hidden'); }
+function authClick() { canEdit ? sb.auth.signOut() : openLogin(); }
+
+async function doLogin(e) {
+    e.preventDefault();
+    const {error} = await sb.auth.signInWithPassword({email: $('login-email').value.trim(), password:$('login-pw').value});
+    if(error){ const p = $('login-err'); p.textContent = '로그인 실패'; p.classList.remove('hidden'); return; }
+    $('login-pw').value = ''; closeLogin();
 }
-function renderTaskView(){
-  const all=currentCategory==='all',list=[];
-  if(all)Object.keys(taskData).forEach(k=>taskData[k].tasks.forEach((t,i)=>list.push({...t,catKey:k,originalIndex:i,dept:t.dept||taskData[k].dept})));
-  else taskData[currentCategory].tasks.forEach((t,i)=>list.push({...t,originalIndex:i,dept:t.dept||taskData[currentCategory].dept}));
-  $('detail-title').innerText='과제 목록';
-  $('detail-sub').innerText=`총 ${list.length}건 · 미완료 ${list.filter(t=>t.status!=='done'&&t.status!=='hold').length}건${all?' · 추가·수정은 각 영역에서 합니다':''}`;
-  renderChips();renderTasks(list,all);
+function guard() { if(canEdit) return true; openLogin(); return false; }
+
+function saveDataAndRefresh() {
+    if(canEdit) lastUpdateTime = fmt(new Date());
+    cacheLocal(); if(canEdit) pushSoon();
+    if($('last-update-time'))$('last-update-time').innerText = lastUpdateTime;
+    refreshAll();
+}
+
+function pct(tasks) { const a = tasks.filter(t => t.status !== 'hold'); if(!a.length) return 0; return Math.round(a.reduce((n,t) => n + (ST[t.status] ? ST[t.status].w : 0), 0) / a.length * 100); }
+function late(t) { return t.due && t.status !== 'done' && t.status !== 'hold' && t.due < ymd(new Date()); }
+
+function renderCards() {
+    if(!$('ov-cards')) return;
+    $('ov-cards').innerHTML = Object.keys(taskData).map(k => {
+        const c = taskData[k], p = pct(c.tasks), n = s => c.tasks.filter(t => t.status === s).length, l = c.tasks.filter(late).length;
+        return `<button onclick="selectCategory('${k}')" class="text-left bg-white border border-slate-200 hover:border-blue-300 rounded-2xl p-4 shadow-sm transition-all">
+          <div class="flex justify-between items-start gap-2"><span class="text-xs font-bold text-slate-800">${esc(c.title.replace(/^.*> /,''))}</span><span class="text-[10px] font-semibold px-1.5 py-0.5 rounded ${c.priority==='높음'?'bg-rose-50 text-rose-600':'bg-slate-100 text-slate-500'}">${esc(c.priority||'')}</span></div>
+          <div class="h-1.5 bg-slate-100 rounded-full my-2.5 overflow-hidden"><div class="h-full bg-emerald-500" style="width:${p}%"></div></div>
+          <div class="text-[11px] text-slate-500">진척 <b class="text-slate-700">${p}%</b> · 완료 ${n('done')}/${c.tasks.length} · 진행 ${n('doing')+n('review')}${n('hold')?' · 보류 '+n('hold'):''}${l?' · <span class="text-rose-600 font-semibold">지연 '+l+'</span>':''}</div></button>`;
+    }).join('');
+}
+
+function renderDiag() {
+    if(!$('diag-msg')) return;
+    let best = null, bs = -1;
+    Object.keys(taskData).forEach(k => {
+        const c = taskData[k], p = pct(c.tasks), l = c.tasks.filter(late).length;
+        if(p >= 100 && !l) return;
+        const sc = (100 - p) * (PW[c.priority] || 1) + l * 30;
+        if(sc > bs) { bs = sc; best = [k, c, p, l]; }
+    });
+    if(!best) { $('diag-msg').textContent = '모든 영역 완료'; $('diag-btn').classList.add('hidden'); return; }
+    const [k, c, p, l] = best, open = c.tasks.filter(t => t.status !== 'done' && t.status !== 'hold').length;
+    $('diag-msg').innerHTML = `<strong class="font-bold">[${esc(c.title)}] 영역이 가장 시급합니다. (진척도 ${p}%)</strong><br>미완료 ${open}건`;
+    $('diag-btn').classList.remove('hidden');$('diag-btn').onclick = () => selectCategory(k);
+}
+
+function renderChips() {
+    if(!$('status-chips')) return;
+    $('status-chips').innerHTML = [['all','전체'],['todo','미착수'],['doing','진행중'],['review','검수·적용'],['hold','보류'],['done','완료']].map(a => `<button onclick="filterStatus('${a[0]}')" class="px-3 py-1.5 rounded-lg transition-all ${currentStatusFilter===a[0]?'bg-blue-600 text-white font-semibold shadow-sm':'text-slate-600 hover:bg-white'}">${a[1]}</button>`).join('');
+}
+
+function renderTasks(tasks, isAllView) {
+    const box = $('detail-list');
+    if(!box) return;
+    let list = tasks.filter(t => (currentStatusFilter === 'all' || t.status === currentStatusFilter) && (!query || (t.title + ' ' + t.dept).toLowerCase().includes(query)));
+    const doneN = list.filter(t => t.status === 'done').length;
+    if(currentStatusFilter === 'all' && !showDone && !query) list = list.filter(t => t.status !== 'done');
+    list.sort((a,b) => ORDER[a.status] - ORDER[b.status]);
+    let html = list.length ? '' : '<div class="text-center py-6 text-xs text-slate-400">과제가 없습니다.</div>';
+    const cls = {done:'bg-emerald-50 text-emerald-600 border-emerald-200', doing:'bg-amber-50 text-amber-600 border-amber-200', review:'bg-violet-50 text-violet-600 border-violet-200', todo:'bg-slate-100 text-slate-500 border-slate-200', hold:'bg-sky-50 text-sky-600 border-sky-200'};
+    
+    list.forEach(t => {
+        const catDept = (isAllView ? taskData[t.catKey] : taskData[currentCategory]).dept, url = safeUrl(t.link);
+        html += `<div class="flex flex-wrap items-center justify-between gap-2 p-3.5 bg-slate-50 rounded-xl border border-slate-100 hover:border-slate-200 transition-all">
+          <span class="text-sm font-medium text-slate-700 flex items-center mr-2 min-w-0"><i class="fa-regular fa-circle-dot text-slate-400 mr-2.5 shrink-0"></i><span>${esc(t.title)}</span></span>
+          <div class="flex flex-wrap items-center gap-2 shrink-0">
+            ${t.dept !== catDept || isAllView ? `<span class="bg-slate-100 text-slate-600 text-[11px] font-medium px-2 py-0.5 rounded">${esc(t.dept)}</span>` : ''}
+            ${t.due ? `<span class="text-[11px] font-mono ${late(t)?'text-rose-600 font-bold':'text-slate-400'}">${late(t)?'지연 ':'~'}${esc(t.due)}</span>` : ''}
+            ${url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100"><i class="fa-solid fa-arrow-up-right-from-square mr-1"></i> ${esc(t.linkText||'바로가기')}</a>` : ''}
+            <span class="border text-[11px] px-2 py-0.5 rounded-md font-semibold ${cls[t.status]}">${ST[t.status].l}</span>
+            ${canEdit && !isAllView ? `<span class="flex items-center pl-2 border-l border-slate-200"><button onclick="openTaskModal('edit',${t.originalIndex})" class="p-1.5 text-slate-400 hover:text-blue-600 text-xs" title="수정"><i class="fa-solid fa-pen"></i></button><button onclick="deleteTask(${t.originalIndex})" class="p-1.5 text-slate-400 hover:text-rose-600 text-xs" title="삭제"><i class="fa-solid fa-trash"></i></button></span>` : ''}
+          </div></div>`;
+    });
+    if(currentStatusFilter === 'all' && !query && doneN) html += `<button onclick="showDone=!showDone;render()" class="text-xs text-slate-500 hover:text-blue-600 py-1">완료 항목 ${showDone?'접기':doneN+'건 보기'}</button>`;
+    box.innerHTML = html;
+    if($('add-task-btn'))$('add-task-btn').classList.toggle('hidden', isAllView || !canEdit);
+}
+
+function openTaskModal(mode, index = null) {
+    if(!guard()) return;
+    modalMode = mode; editingIndex = index;
+    const t = mode === 'edit' ? taskData[currentCategory].tasks[index] : {};
+    if($('modal-title'))$('modal-title').innerText = mode === 'add' ? '새로운 과제 등록' : '과제 정보 수정';
+    if($('modal-task-title'))$('modal-task-title').value = t.title || '';
+    if($('modal-task-status'))$('modal-task-status').value = t.status || 'todo';
+    if($('modal-task-dept'))$('modal-task-dept').value = t.dept || taskData[currentCategory].dept;
+    if($('modal-link-text'))$('modal-link-text').value = t.linkText || '';
+    if($('modal-link-url'))$('modal-link-url').value = t.link || '';
+    if($('modal-task-due'))$('modal-task-due').value = t.due || '';
+    if($('task-modal'))$('task-modal').classList.remove('hidden');
+}
+
+function handleTaskFormSubmit(e) {
+    e.preventDefault(); if(!guard()) return;
+    const n = {title: $('modal-task-title').value.trim(), status: $('modal-task-status').value, dept:$('modal-task-dept').value};
+    const url = safeUrl($('modal-link-url').value);
+    if(url) { n.link = url; n.linkText = $('modal-link-text').value.trim() || '바로가기'; }
+    if($('modal-task-due').value) n.due =$('modal-task-due').value;
+    if(modalMode === 'add') taskData[currentCategory].tasks.push(n); else taskData[currentCategory].tasks[editingIndex] = n;
+    closeTaskModal(); saveDataAndRefresh();
+}
+
+function deleteTask(i) { if(!guard()) return; if(confirm('삭제하시겠습니까?')) { taskData[currentCategory].tasks.splice(i, 1); saveDataAndRefresh(); } }
+
+function renderWidgets() {
+    const row = (g, i, fn, del, color) => `<div class="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-100 text-sm"><label class="flex items-center space-x-2 ${canEdit?'cursor-pointer':''}"><input type="checkbox" ${g.done?'checked':''} ${canEdit?'':'disabled'} onchange="${fn}(${i})" class="rounded ${color} focus:ring-0 w-4 h-4"><span class="${g.done?'line-through text-slate-400':'text-slate-700 font-medium'}">${esc(g.text)}</span></label>${canEdit?`<button onclick="${del}(${i})" class="text-slate-300 hover:text-rose-500"><i class="fa-solid fa-xmark"></i></button>`:''}</div>`;
+    if($('weekly-goals-list'))$('weekly-goals-list').innerHTML = weeklyGoals.map((g,i) => row(g,i,'toggleWeekly','deleteWeekly','text-blue-600')).join('');
+    if($('daily-tasks-list'))$('daily-tasks-list').innerHTML = dailyTasks.map((g,i) => row(g,i,'toggleDaily','deleteDaily','text-emerald-600')).join('');
+}
+
+function toggleWeekly(i) { if(!guard()){renderWidgets();return} weeklyGoals[i].done = !weeklyGoals[i].done; saveDataAndRefresh(); }
+function deleteWeekly(i) { if(!guard()) return; weeklyGoals.splice(i,1); saveDataAndRefresh(); }
+function toggleDaily(i) { if(!guard()){renderWidgets();return} dailyTasks[i].done = !dailyTasks[i].done; saveDataAndRefresh(); }
+function deleteDaily(i) { if(!guard()) return; dailyTasks.splice(i,1); saveDataAndRefresh(); }
+
+function openWeeklyModal() { if(guard())$('weekly-modal').classList.remove('hidden'); }
+function openDailyModal() { if(guard())$('daily-modal').classList.remove('hidden'); }
+function closeTaskModal() { $('task-modal').classList.add('hidden'); }
+function closeWeeklyModal() { $('weekly-modal').classList.add('hidden'); }
+function closeDailyModal() { $('daily-modal').classList.add('hidden'); }
+
+function handleWeeklySubmit(e) { e.preventDefault(); if(!guard()) return; const v = $('weekly-input').value.trim(); if(v){ weeklyGoals.push({text:v, done:false});$('weekly-input').value=''; closeWeeklyModal(); saveDataAndRefresh(); } }
+function handleDailySubmit(e) { e.preventDefault(); if(!guard()) return; const v = $('daily-input').value.trim(); if(v){ dailyTasks.push({text:v, done:false});$('daily-input').value=''; closeDailyModal(); saveDataAndRefresh(); } }
+
+function exportData() { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(payload(),null,2)], {type:'application/json'})); a.download = 'isbs-progress-'+ymd(new Date())+'.json'; a.click(); URL.revokeObjectURL(a.href); }
+function importClick() { if(guard()) $('import-file').click(); }
+function importData(e) {
+    const f = e.target.files[0]; if(!f) return; const r = new FileReader();
+    r.onload = () => { try { const p = JSON.parse(r.result); if(!p || !p.tasks) throw 0; adopt(p); saveDataAndRefresh(); } catch(x) { alert('올바른 백업 파일이 아닙니다.'); } };
+    r.readAsText(f); e.target.value = '';
+}
+
+window.onload = function() {
+    const c = safeLS('isbs_cache_v4');
+    adopt(c && c.tasks ? c : {tasks: taskData, weekly: weeklyGoals, daily: dailyTasks, meta: {}});
+    lastUpdateTime = localStorage.getItem('isbs_cache_time') || lastUpdateTime;
+    if(SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase) {
+        sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        sb.auth.onAuthStateChange((_e,s) => setSession(s));
+        sb.auth.getSession().then(r => setSession(r.data.session));
+    } else {
+        setSession(null);
+    }
+    render();
+    fetchRemote();
+};
+
+const K = (t,unit,dir,tar) => ({t,unit,dir,cur:'',tar:tar==null?'':String(tar)});
+const defaultGoals = () => ({period:'2026년 4분기', depts:[
+ {n:'경영기획실', obj:'숫자로 판단하고 리스크를 통제한다', cats:['kpi','comply'], krs:[K('월간 지표 리포트 자동 생성 준수율','%','up'),K('이탈 사유 입력률','%','up'),K('컴플라이언스 점검 항목 문서화율','%','up',100)]},
+ {n:'운영혁신팀', obj:'인입부터 사후관리까지 표준대로 돌아가게 한다', cats:['process'], krs:[K('상태값 시스템·가이드 일치율','%','up',100),K('종결·이탈 사유 입력 누락','건','down',0),K('예외 사례 표준 가이드 작성','건','up')]},
+ {n:'CS실', obj:'상담 품질과 전환율을 높인다', cats:['staff','crm'], krs:[K('스크립트 흐름 준수율','%','up'),K('고객 이력 입력 완료율','%','up'),K('클레임 평균 처리 기간','일','down')]},
+ {n:'마케팅/상품팀', obj:'정확한 정책 데이터로 맞는 상품을 제안한다', cats:['policy','script'], krs:[K('정책 데이터 갱신 주기 준수율','%','up'),K('공용 정책 데이터 기준 통합 진행률','%','up',100),K('스크립트 성과 태깅 적용률','%','up')]},
+ {n:'경영지원(재무)', obj:'정산은 정확하게, 사은품은 한도 안에서 통제한다', cats:['settle'], krs:[K('월 정산 미정산·오차 건수','건','down'),K('사은품 지급 대조율','%','up',100),K('경품고시제 한도 위반','건','down',0),K('환수 회수 기한 준수율','%','up')]}
+]});
+
+let goals = defaultGoals();
+function validGoals(g) { return g && typeof g === 'object' && Array.isArray(g.depts); }
+function payload() { return {v:5, tasks:taskData, weekly:weeklyGoals, daily:dailyTasks, meta, goals}; }
+function resetData() { if(!guard()) return; if(!confirm('기본값으로 복원할까요?')) return; goals = defaultGoals(); taskData = JSON.parse(JSON.stringify(defaultTaskData)); weeklyGoals = JSON.parse(JSON.stringify(defaultWeeklyGoals)); dailyTasks = JSON.parse(JSON.stringify(defaultDailyTasks)); meta = {}; saveDataAndRefresh(); }
+
+function gp(k) {
+    if(k.tar === '' || k.cur === '' || isNaN(k.tar) || isNaN(k.cur)) return null;
+    const c = +k.cur, t = +k.tar;
+    if(k.dir === 'down') return c <= t ? 100 : (t <= 0 ? 0 : Math.round(t / c * 100));
+    return t <= 0 ? null : Math.min(100, Math.round(c / t * 100));
+}
+
+function renderGoals() {
+    const box = $('goal-panel'); if(!box) return;
+    const inp = 'px-2 py-1 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500';
+    let h = `<div class="flex flex-wrap items-center justify-between gap-2"><h3 class="font-bold text-slate-800 text-sm flex items-center"><i class="fa-solid fa-flag text-blue-600 mr-2"></i> 부서별 목표 (OKR)</h3></div><div class="grid grid-cols-1 xl:grid-cols-2 gap-3">`;
+    goals.depts.forEach((d,di) => {
+        const ps = d.krs.map(gp).filter(x => x !== null), ach = ps.length ? Math.round(ps.reduce((a,b)=>a+b,0)/ps.length) : null;
+        h += `<div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+         <div class="flex justify-between items-start gap-2"><div class="min-w-0"><div class="text-[11px] font-bold text-blue-600">${esc(d.n)}</div><div class="text-sm font-bold text-slate-800 mt-0.5">${esc(d.obj)}</div></div>
+         <div class="text-right shrink-0"><div class="text-lg font-bold ${ach===null?'text-slate-300':'text-slate-800'}">${ach===null?'-':ach+'%'}</div><div class="text-[10px] text-slate-400">KR 달성</div></div></div>
+         <div class="mt-3 space-y-2.5">`;
+        d.krs.forEach((k) => {
+            const p = gp(k);
+            h += `<div class="rounded-xl bg-slate-50 border border-slate-100 p-2.5"><div class="flex justify-between gap-2 text-xs"><span class="text-slate-700 font-medium">${esc(k.t)}</span><span class="text-slate-500 shrink-0">${k.cur===''?'-':esc(k.cur)} / ${k.tar===''?'미설정':esc(k.tar)}${esc(k.unit)}</span></div><div class="h-1.5 bg-slate-200 rounded-full mt-2 overflow-hidden"><div class="h-full bg-blue-500" style="width:${p||0}%"></div></div></div>`;
+        });
+        h += `</div></div>`;
+    });
+    box.innerHTML = h + '</div>';
+}
+
+const EXTERNAL = ['policy','settle','script'];
+const VIEWS = {
+    dash: ['대시보드', '사업 전체 진행 상황을 한눈에 확인합니다'],
+    customers: ['고객 현황 대시보드', '각 상태값별 고객 현황 및 주간 설치/지급 지표를 확인합니다'],
+    goals: ['부서별 목표', '분기 목표(OKR)와 달성률을 관리합니다'],
+    today: ['오늘·이번 주', '이번 주 핵심 목표와 오늘의 할 일'],
+    tasks: ['과제 관리', '']
+};
+const shortT = c => c.title.replace(/^.*> /,'');
+const openN = k => taskData[k].tasks.filter(t => t.status !== 'done' && t.status !== 'hold').length;
+
+function adopt(p) {
+    if(p && p.tasks) { taskData = p.tasks; weeklyGoals = Array.isArray(p.weekly)?p.weekly:weeklyGoals; dailyTasks = Array.isArray(p.daily)?p.daily:dailyTasks; meta = p.meta||{}; }
+    if(p && validGoals(p.goals)) goals = p.goals;
+}
+function cacheLocal() { try { localStorage.setItem('isbs_cache_v4', JSON.stringify(payload())); localStorage.setItem('isbs_cache_time', lastUpdateTime); } catch(e) {} }
+function refreshAll() { render(); }
+function filterStatus(s) { currentStatusFilter = s; render(); }
+function setQuery(v) { query = v.trim().toLowerCase(); render(); }
+function go(v,k) { view = v; if(v === 'tasks') currentCategory = k || 'all'; render(); if($('main-scroll'))$('main-scroll').scrollTop = 0; }
+function selectCategory(k) { go('tasks', k); }
+
+function render() {
+    if(view === 'tasks' && currentCategory !== 'all' && !taskData[currentCategory]) currentCategory = 'all';
+    Object.keys(VIEWS).forEach(v => {
+        if($('view-'+v))$('view-'+v).classList.toggle('hidden', v !== view);
+    });
+    if($('task-tools'))$('task-tools').classList.toggle('hidden', view !== 'tasks');
+    const c = view === 'tasks' && currentCategory !== 'all' ? taskData[currentCategory] : null, t = VIEWS[view];
+    if($('header-title'))$('header-title').innerText = c ? c.title : (view === 'tasks' ? '전체 과제' : t[0]);
+    if($('header-desc'))$('header-desc').innerText = c ? `${c.sub} [담당 R&R: ${c.dept}]` : (view === 'tasks' ? '모든 영역의 과제를 봅니다' : t[1]);
+    if($('last-update-time'))$('last-update-time').innerText = lastUpdateTime;
+    renderNav();
+    if(view === 'dash') { renderSummary(); renderCards(); renderDiag(); renderAttn(); }
+    else if(view === 'customers') { renderCustomerDashboard(); }
+    else if(view === 'goals') { renderGoals(); }
+    else if(view === 'today') { renderWidgets(); }
+    else { renderTaskView(); }
+}
+
+function renderNav() {
+    const on = (v,k) => view === v && (v !== 'tasks' || currentCategory === k);
+    const B = (v,k,ic,label,badge) => `<button onclick="go('${v}'${k?`,'${k}'`:''})" class="nav-btn w-full flex items-center justify-between px-3.5 py-2 rounded-lg text-xs transition-all ${on(v,k)?'font-semibold bg-blue-50 text-blue-600 border border-blue-100':'font-medium text-slate-600 hover:bg-slate-100'}"><span class="flex items-center min-w-0"><i class="fa-solid ${esc(ic)} mr-2.5 w-4 text-center"></i><span class="truncate">${esc(label)}</span></span>${badge===''?'':`<span class="text-[11px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">${badge}</span>`}</button>`;
+    const H = x => `<div class="px-3 mt-4 mb-1.5 text-[11px] font-extrabold text-slate-400 tracking-wider">${x}</div>`;
+    const keys = Object.keys(taskData), area = k => B('tasks', k, taskData[k].icon || 'fa-folder', shortT(taskData[k]), openN(k));
+    const remain = dailyTasks.filter(x => !x.done).length + weeklyGoals.filter(x => !x.done).length;
+    
+    if($('nav')) {$('nav').innerHTML = B('dash','','fa-gauge-high','대시보드','')
+         + B('customers','','fa-users','고객 현황','실시간')
+         + B('goals','','fa-flag','부서별 목표','')
+         + B('today','','fa-calendar-check','오늘·이번 주',remain)
+         + H('과제 관리') + B('tasks','all','fa-border-all','전체 과제',keys.reduce((n,k)=>n+openN(k),0))
+         + H('내부 업무') + keys.filter(k => !EXTERNAL.includes(k)).map(area).join('')
+         + H('외부 업무') + keys.filter(k => EXTERNAL.includes(k)).map(area).join('');
+    }
+}
+
+function renderSummary() {
+    let all = []; Object.values(taskData).forEach(c => all = all.concat(c.tasks));
+    const n = s => all.filter(x => x.status === s).length, l = all.filter(late).length, r = dailyTasks.filter(x => !x.done).length + weeklyGoals.filter(x => !x.done).length;
+    const C = (a,b,c,cls,fn) => `<button onclick="${fn}" class="text-left bg-white border border-slate-200 hover:border-blue-300 rounded-2xl p-4 shadow-sm"><div class="text-[11px] text-slate-500">${a}</div><div class="text-2xl font-bold ${cls} mt-1">${b}</div><div class="text-[11px] text-slate-400 mt-0.5">${c}</div></button>`;
+    if($('summary')) {$('summary').innerHTML = C('전체 진척', pct(all)+'%', `완료 ${n('done')}/${all.length}건`, 'text-emerald-600', "currentStatusFilter='all';go('tasks','all')")
+         + C('진행중·검수', n('doing')+n('review'), `미착수 ${n('todo')}건`, 'text-blue-600', "currentStatusFilter='doing';go('tasks','all')")
+         + C('기한 지연', l, '마감일 지난 과제', l?'text-rose-600':'text-slate-700', "currentStatusFilter='all';go('tasks','all')")
+         + C('오늘·이번 주 남은 일', r, '할 일 + 주간 목표', 'text-amber-600', "go('today')");
+    }
+}
+
+function renderAttn() {
+    if(!$('attn')) return;
+    const rows = []; Object.keys(taskData).forEach(k => taskData[k].tasks.forEach(t => { if(late(t)||t.status==='doing'||t.status==='review') rows.push({k,t}); }));
+    rows.sort((a,b)=>(late(b.t)?1:0)-(late(a.t)?1:0));
+    $('attn').innerHTML = `<div class="flex justify-between items-center mb-2"><h3 class="font-bold text-slate-800 text-sm">지금 챙길 과제</h3><span class="text-[11px] text-slate-400">${rows.length}건</span></div>`
+     + (rows.length ? rows.slice(0,8).map(({k,t}) => `<button onclick="go('tasks','${k}')" class="w-full flex items-center justify-between gap-2 text-left p-2.5 mb-1.5 bg-slate-50 rounded-xl border border-slate-100 hover:border-slate-200 text-xs"><span class="min-w-0 truncate"><span class="text-[10px] text-blue-600 font-semibold mr-2">${esc(shortT(taskData[k]))}</span>${esc(t.title)}</span><span class="shrink-0 ${late(t)?'text-rose-600 font-bold':'text-slate-500'}">${late(t)?'지연':ST[t.status].l}</span></button>`).join('') : '<div class="text-xs text-slate-400 py-2">과제가 없습니다.</div>');
+}
+
+function renderTaskView() {
+    const all = currentCategory === 'all', list = [];
+    if(all) Object.keys(taskData).forEach(k => taskData[k].tasks.forEach((t,i) => list.push({...t, catKey:k, originalIndex:i, dept:t.dept||taskData[k].dept})));
+    else taskData[currentCategory].tasks.forEach((t,i) => list.push({...t, originalIndex:i, dept:t.dept||taskData[currentCategory].dept}));
+    if($('detail-title'))$('detail-title').innerText = '과제 목록';
+    if($('detail-sub'))$('detail-sub').innerText = `총 ${list.length}건`;
+    renderChips(); renderTasks(list, all);
 }
     </script>
 </body>
