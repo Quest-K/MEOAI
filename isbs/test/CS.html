@@ -1,0 +1,3015 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>통합 고객 상담 및 상품 설계 관리 시스템</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<link rel="stylesheet" href="Styles.css?v=20260928a">
+</head>
+<body>
+<div class="wrap">
+
+  <!-- 탭 네비게이션 -->
+  <div class="tab-nav">
+    <button class="tab-btn active" data-tab="cs" onclick="switchTab('cs')">고객상담</button>
+    <button class="tab-btn" data-tab="customers" onclick="switchTab('customers')">고객조회</button>
+    <div id="auth-box" class="auth-box">
+      <button class="login-trigger-btn" onclick="openLoginModal()">🔐 관리자 로그인</button>
+    </div>
+  </div>
+
+  <!-- VIEW 1: CS.html (고객 상담 및 정보 탐색) -->
+  <div id="view-cs" class="view-container active">
+    <div class="top-grid">
+      <header>
+        <div class="eyebrow">CONSULTATION RECORD MANAGEMENT</div>
+        <h1>상담 정보 탐색</h1>
+        <p>고객의 휴대폰 정보 및 기존 사용 중인 홈상품을 등록하고, 상품조회 화면에서 반영한 제안상품과 최종상품·결합할인 내역을 한 화면에서 확인합니다.</p>
+      </header>
+
+      <div id="status-banner">
+        <div class="banner-header">
+          <div class="title">🔍 시스템 연동 및 데이터 상태</div>
+          <div class="last-modified" id="cs-last-updated">최종 수정: -</div>
+        </div>
+        <div id="cs-banner-logs">데이터 연동을 대기 중입니다...</div>
+      </div>
+    </div>
+
+    <div class="cs-layout">
+      <div class="cs-main-col">
+
+        <div class="cs-wiz-nav" id="cs-wiz-nav">
+          <div class="cs-wiz-step"><button type="button" class="cs-wiz-btn active" data-step="1" onclick="goCsStep(1)">고객정보</button></div>
+          <div class="cs-wiz-arrow">→</div>
+          <div class="cs-wiz-step"><button type="button" class="cs-wiz-btn" data-step="2" onclick="goCsStep(2)">추천상품</button></div>
+          <div class="cs-wiz-arrow">→</div>
+          <div class="cs-wiz-step"><button type="button" class="cs-wiz-btn" data-step="3" onclick="goCsStep(3)">제안상품</button></div>
+          <div class="cs-wiz-arrow">→</div>
+          <div class="cs-wiz-step"><button type="button" class="cs-wiz-btn" data-step="4" onclick="goCsStep(4)">최종상품</button></div>
+        </div>
+
+        <div class="cs-wiz-panel active" id="cs-wiz-panel-1">
+        <div class="cs-card" id="cs-customer-info-card">
+          <h3>고객정보</h3>
+          <div class="cs-inline-form-row">
+            <div class="cs-inline-form-group">
+              <label>이름</label>
+              <input class="cs-w-name" type="text" id="cust-name" value="(인생비서)" placeholder="(인생비서)홍길동" oninput="updateCsSummaryPanel()">
+            </div>
+            <div class="cs-inline-form-group">
+              <label>연락처 <span class="req-mark">*</span></label>
+              <input class="cs-w-contact" type="text" id="cust-contact" placeholder="010-0000-0000" inputmode="numeric" value="010"
+                     oninput="formatContactInput(this)" onblur="updateCsSummaryPanel()">
+            </div>
+            <div class="cs-inline-form-group">
+              <label>휴대폰 통신사</label>
+              <select class="cs-w-carrier" id="cust-mobile-carrier" onchange="syncToDesignPhones()">
+                <option value="확인안됨">확인안됨</option>
+                <option value="KT">KT</option>
+                <option value="LG">LG</option>
+                <option value="SK">SK</option>
+                <option value="KT알뜰">KT알뜰</option>
+                <option value="LG알뜰">LG알뜰</option>
+                <option value="SK알뜰">SK알뜰</option>
+              </select>
+            </div>
+            <div class="cs-inline-form-group">
+              <label>요금 구간</label>
+              <select class="cs-w-fee" id="cust-mobile-fee" onchange="syncToDesignPhones()">
+                <option value="">확인안됨</option>
+                <option value="25000">3만원 이하</option>
+                <option value="30000">3만원대</option>
+                <option value="40000">4만원대</option>
+                <option value="50000">5만원대</option>
+                <option value="60000">6만원대</option>
+                <option value="70000">7만원대</option>
+                <option value="80000">8만원대</option>
+                <option value="90000">9만원대</option>
+                <option value="100000">10만원 이상</option>
+              </select>
+            </div>
+          </div>
+          <div class="info-subsection" id="old-internet-subsection">
+            <div class="info-subsection-title">
+              <span>기존 인터넷</span>
+              <label class="switch" title="기존 인터넷 보유 여부">
+                <input type="checkbox" id="old-internet-toggle" onchange="toggleOldInternetSection(this.checked)">
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+            <div class="info-subsection-body" id="old-internet-body" style="display:none;">
+              <div class="form-row">
+                <div class="form-group">
+                  <label>기존 홈상품 통신사</label>
+                  <select id="old-isp">
+                    <option value="KT">KT</option>
+                    <option value="LG">LG</option>
+                    <option value="SK">SK</option>
+                    <option value="기타">기타 / 타사</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>기존 TV 대수</label>
+                  <select id="old-tv-count">
+                    <option value="0">TV 없음</option>
+                    <option value="1" selected>1대</option>
+                    <option value="2">2대</option>
+                    <option value="3">3대 이상</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>기존 월요금 구간</label>
+                  <select id="old-internet-fee">
+                    <option value="2만원대 미만">2만원대 미만</option>
+                    <option value="2만원대">2만원대</option>
+                    <option value="3만원대" selected>3만원대</option>
+                    <option value="4만원대">4만원대</option>
+                    <option value="5만원대 이상">5만원대 이상</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>기존 약정 만료일</label>
+                  <input type="text" id="old-contract-end" placeholder="예: 2027 / 2027-03 / 2027-03-15 (대략 가능)">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="info-subsection" id="customer-tags-subsection">
+            <div class="info-subsection-title cust-tag-accordion-header" onclick="toggleCustomerTagsBody()">
+              <span>🏷️ 고객 태그</span>
+              <span class="accordion-chevron" id="customer-tags-chevron">▾</span>
+            </div>
+            <div class="info-subsection-body" id="customer-tags-body" style="display:none;"></div>
+          </div>
+          <div class="cust-tag-strategy-box" id="customer-tags-strategy" style="display:none;"></div>
+
+          <div class="info-subsection" id="consult-manage-subsection">
+            <div class="info-subsection-title"><span>상담 관리</span></div>
+            <div class="info-subsection-body">
+              <div class="form-row">
+                <div class="form-group">
+                  <label>상태값 (퍼널)</label>
+                  <select id="cust-funnel-status"></select>
+                </div>
+                <div class="form-group">
+                  <label>추가컨택일시</label>
+                  <input type="datetime-local" id="cust-next-contact">
+                </div>
+              </div>
+              <div class="form-group">
+                <label>특이사항</label>
+                <textarea id="cust-notes" rows="4" placeholder="상담 중 특이사항을 입력하세요."></textarea>
+              </div>
+            </div>
+          </div>
+
+          <div class="info-subsection" id="family-line-subsection">
+            <div class="info-subsection-title">
+              <span>가족 회선</span>
+              <label class="switch" title="가족 회선 보유 여부">
+                <input type="checkbox" id="family-line-toggle" onchange="toggleFamilyLineSection(this.checked)">
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+            <div class="info-subsection-body" id="family-line-body" style="display:none;">
+              <div id="family-lines-list" class="family-lines-list"></div>
+              <div class="family-line-add-row">
+                <button type="button" class="secondary-btn family-line-add-btn" onclick="addFamilyLine('mobile')">+ 휴대폰 회선 추가</button>
+                <button type="button" class="secondary-btn family-line-add-btn" onclick="addFamilyLine('internet')">+ 인터넷 회선 추가</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        </div>
+
+        <div class="cs-wiz-panel" id="cs-wiz-panel-2">
+        <div class="cs-card" id="cs-reco-card">
+          <div class="cs-reco-head">
+            <h3>추천상품</h3>
+            <div class="reco-preset-row">
+              <button type="button" class="reco-preset-btn preset-save" id="reco-preset-save" onclick="applyRecoPreset('100','low', this)">요금절약<span class="preset-sub">100M · TV 저가형</span></button>
+              <button type="button" class="reco-preset-btn preset-value" id="reco-preset-value" onclick="applyRecoPreset('500','basic', this)">가성비<span class="preset-sub">500M · TV 기본형</span></button>
+              <button type="button" class="reco-preset-btn preset-best" id="reco-preset-best" onclick="applyRecoPreset('1000','premium', this)">최고사은품<span class="preset-sub">1기가 · TV 고급형</span></button>
+            </div>
+          </div>
+          <div class="reco-section-title">1. 인터넷 + TV</div>
+          <div class="reco-controls">
+            <div class="control-group">
+              <label class="group-label">속도</label>
+              <div class="seg" id="reco-seg-speed">
+                <button data-value="100">100M</button>
+                <button data-value="500" class="active">500M</button>
+                <button data-value="1000">1기가</button>
+              </div>
+            </div>
+            <div class="control-group">
+              <label class="group-label">공유기 (Wi-Fi)</label>
+              <div class="seg" id="reco-seg-router">
+                <button data-value="N">미포함</button>
+                <button data-value="Y" class="active">포함</button>
+              </div>
+            </div>
+            <div class="control-group">
+              <div class="group-label-row">
+                <label class="group-label">TV채널</label>
+                <label class="switch" title="TV 상품 포함 여부">
+                  <input type="checkbox" id="reco-tv-onoff-toggle" checked onchange="toggleRecoTvOnOff(this.checked)">
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+              <div class="seg" id="reco-seg-tv">
+                <button data-value="low">저가형</button>
+                <button data-value="basic" class="active">기본형</button>
+                <button data-value="premium">고급형</button>
+              </div>
+            </div>
+            <div class="control-group">
+              <div class="group-label-row">
+                <label class="group-label">셋탑</label>
+                <button type="button" class="mini-add-tv-btn" id="reco-extra-tv-add-btn" onclick="addExtraTv()" title="서브 TV 추가">+ TV</button>
+              </div>
+              <div class="seg" id="reco-seg-settop">
+                <button data-value="basic" class="active">기본형</button>
+                <button data-value="advanced">고급형/AI</button>
+                <button data-value="soundbar">사운드바</button>
+              </div>
+            </div>
+            <div id="reco-extra-tv-list" class="extra-tv-col"></div>
+          </div>
+
+          <div id="reco-carrier-cards" class="reco-cards">
+            <div class="reflected-empty">상품 데이터 로딩 중입니다.</div>
+          </div>
+
+          <div class="reco-usim-block">
+            <div class="reco-section-title">2. 유심</div>
+            <div class="usim-tier-buttons" id="reco-usim-tier-buttons">
+              <button type="button" class="usim-tier-btn" data-tier="low">저가형</button>
+              <button type="button" class="usim-tier-btn" data-tier="mid">중가형</button>
+              <button type="button" class="usim-tier-btn" data-tier="high">고가형</button>
+              <button type="button" class="usim-tier-btn" data-tier="premium">프리미엄</button>
+            </div>
+            <div id="reco-usim-cards" class="reco-usim-cards">
+              <div class="reflected-empty">요금 구간을 선택하면 해당 유심 요금제가 표시됩니다.</div>
+            </div>
+          </div>
+        </div>
+        </div>
+
+        <div class="cs-wiz-panel" id="cs-wiz-panel-3">
+      <div class="cs-card">
+        <h3>제안상품</h3>
+        <div class="cs-stack-2">
+          <div class="cs-stack-block">
+            <h4 class="cs-split-label">인터넷 · TV</h4>
+            <div id="proposal-home-list">
+              <div class="reflected-empty">아직 반영된 인터넷/TV 제안상품이 없습니다. [상품조회] 화면에서 [상품반영]을 눌러주세요.</div>
+            </div>
+          </div>
+          <div class="cs-stack-block">
+            <h4 class="cs-split-label">유심</h4>
+            <div id="proposal-usim-list">
+              <div class="reflected-empty">아직 반영된 유심 제안상품이 없습니다. [상품설계] 화면에서 요금제를 반영해주세요.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cs-wiz-subsection">
+      <div class="cs-card">
+        <h3>결합할인</h3>
+        <div id="final-combo-discount" style="overflow-x:auto;"></div>
+      </div>
+      </div>
+        </div>
+
+        <div class="cs-wiz-panel" id="cs-wiz-panel-4">
+      <div class="cs-card">
+        <h3>최종상품</h3>
+        <div class="cs-split-2">
+          <div class="cs-split-col">
+            <h4 class="cs-split-label">인터넷 · TV</h4>
+            <div id="final-products-home" class="cs-card-scroll">
+              <div class="reflected-empty">제안상품에서 [최종반영]을 눌러 확정할 인터넷/TV 상품을 추가하세요.</div>
+            </div>
+          </div>
+          <div class="cs-split-col">
+            <h4 class="cs-split-label">유심</h4>
+            <div id="final-products-usim" class="cs-card-scroll">
+              <div class="reflected-empty">제안상품에서 [최종반영]을 눌러 확정할 유심 상품을 추가하세요.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cs-card">
+        <h3>수수료</h3>
+        <div class="cs-split-2">
+          <div class="cs-split-col">
+            <h4 class="cs-split-label">인터넷·TV 수수료</h4>
+            <div id="commission-home-panel" class="cs-card-scroll">
+              <div class="reflected-empty">최종상품이 반영되면 수수료 정보가 표시됩니다.</div>
+            </div>
+          </div>
+          <div class="cs-split-col">
+            <h4 class="cs-split-label">유심 수수료</h4>
+            <div id="commission-usim-panel" class="cs-card-scroll">
+              <div class="reflected-empty">최종상품이 반영되면 수수료 정보가 표시됩니다.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+        </div>
+      </div>
+
+      <!-- 상담요약 -->
+      <div class="cs-summary-panel">
+        <div class="consult-save-row consult-save-row-top">
+          <span class="consult-save-state" id="consult-save-state">신규 상담</span>
+          <button type="button" class="secondary-btn" onclick="resetConsultation()">🆕 신규상담</button>
+          <button type="button" class="primary-btn" onclick="saveConsultation(this)">💾 상담저장</button>
+        </div>
+        <div class="js-header-row">
+          <h3>상담요약</h3>
+          <button type="button" class="js-copy-btn" onclick="copyCsSummary()">📋 복사</button>
+        </div>
+        <p class="js-desc">고객 정보와 제안 상품 내역이 변경될 때마다 자동으로 반영됩니다.</p>
+
+        <div class="cs-card-scroll">
+          <div class="js-section">
+            <div class="js-section-title">고객 상담 정보</div>
+            <div id="cs-live-customer-info"></div>
+          </div>
+
+          <div class="js-section">
+            <div class="js-section-title">제안 상품</div>
+            <div id="cs-live-products-info"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIEW 2: 고객조회 -->
+  <div id="view-customers" class="view-container">
+    <div class="top-grid">
+      <header>
+        <div class="eyebrow">CUSTOMER DATABASE</div>
+        <h1>고객 조회</h1>
+        <p>연락처를 기준으로 고객을 조회하고, 상담 내용·안내 상품·퍼널 상태값을 관리합니다.</p>
+      </header>
+      <div id="status-banner">
+        <div class="banner-header">
+          <div class="title">🗂 고객 DB 상태</div>
+          <div class="last-modified" id="cust-db-state">-</div>
+        </div>
+        <div id="cust-banner-logs">연락처를 입력하고 [조회]를 눌러주세요.</div>
+      </div>
+    </div>
+
+    <div class="cs-card funnel-dashboard" id="funnel-dashboard">
+      <div class="wide-table-empty">대시보드를 불러오는 중...</div>
+    </div>
+
+    <div class="cs-layout">
+      <div class="cs-main-col">
+        <div class="cs-card">
+          <h3>고객 검색</h3>
+          <div class="cust-search-row">
+            <input type="text" id="cust-search-contact" placeholder="연락처 (숫자만 입력해도 검색)"
+                   inputmode="numeric" onkeydown="if(event.key==='Enter') searchCustomers()">
+            <button type="button" class="cust-search-copy-btn" title="입력된 연락처 복사" onclick="copySearchContact()">📋</button>
+            <select id="cust-search-status"></select>
+            <button type="button" id="cust-search-btn" class="primary-btn" onclick="searchCustomers(this)">🔍 조회</button>
+            <button type="button" class="secondary-btn" onclick="loadRecentCustomers(this)">최근 등록</button>
+            <button type="button" class="secondary-btn" onclick="openReservationModal()">+ 상담예약 빠르게 등록</button>
+          </div>
+          <div class="cust-list-wrap">
+            <table class="cust-list-table">
+              <thead>
+                <tr>
+                  <th onclick="sortCustomerList('name')">이름<span class="sort-arrow" id="sort-arrow-name"></span></th>
+                  <th class="no-sort">연락처</th>
+                  <th class="no-sort">상품(인터넷/TV)</th>
+                  <th onclick="sortCustomerList('next_contact_at')">상담예약일시<span class="sort-arrow" id="sort-arrow-next_contact_at"></span></th>
+                  <th onclick="sortCustomerList('updated_at')">최종수정<span class="sort-arrow" id="sort-arrow-updated_at"></span></th>
+                  <th class="no-sort">상태값</th>
+                </tr>
+              </thead>
+              <tbody id="cust-list">
+                <tr><td colspan="6"><div class="reflected-empty">조회 결과가 여기에 표시됩니다.</div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="cs-card">
+          <h3>고객 상세 / 수정</h3>
+          <div id="cust-detail">
+            <div class="reflected-empty">목록에서 고객을 선택하면 상세 정보가 표시됩니다.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cs-summary-panel">
+        <div class="js-header-row"><h3>제안 상품 이력</h3></div>
+        <p class="js-desc">선택한 고객에게 제안·확정된 상품 목록입니다.</p>
+        <div class="cs-card-scroll">
+          <div id="cust-products"><div class="js-empty">선택된 고객이 없습니다.</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div id="login-modal" class="modal-overlay">
+  <div class="modal-box" style="max-width:360px;">
+    <h3>관리자 로그인</h3>
+    <p class="modal-desc">수수료 · 마진 정보는 로그인한 관리자/상담원만 확인할 수 있습니다.</p>
+    <label class="login-label">Email</label>
+    <input type="email" id="login-email" class="login-input" autocomplete="username">
+    <label class="login-label">Password</label>
+    <input type="password" id="login-password" class="login-input" autocomplete="current-password">
+    <div class="login-error" id="login-error"></div>
+    <div class="modal-actions">
+      <button class="secondary-btn" onclick="closeLoginModal()">취소</button>
+      <button class="primary-btn" onclick="handleLogin()">로그인</button>
+    </div>
+  </div>
+</div>
+
+<div id="reservation-modal" class="modal-overlay">
+  <div class="modal-box" style="max-width:400px;">
+    <h3>상담예약 빠르게 등록</h3>
+    <p class="modal-desc">연락처와 대략적인 예상 시점만 남겨두면, 나중에 고객조회에서 상태값을 바꿔 실제 상담으로 이어갈 수 있습니다.</p>
+    <label class="login-label">연락처 *</label>
+    <input type="text" id="resv-contact" class="login-input" placeholder="010-0000-0000" inputmode="numeric">
+    <label class="login-label">예상 시점</label>
+    <input type="text" id="resv-timing" class="login-input" placeholder="예: 11월 중순, 27년 12월">
+    <label class="login-label">메모</label>
+    <input type="text" id="resv-memo" class="login-input" placeholder="예: KT 69이상, 만료 예정">
+    <div class="login-error" id="resv-error"></div>
+    <div class="modal-actions">
+      <button class="secondary-btn" onclick="closeReservationModal()">취소</button>
+      <button class="primary-btn" id="resv-submit-btn" onclick="submitReservation(this)">등록</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+<script src="config.js?v=20260928a"></script>
+<script src="Calculator.js?v=20260928a"></script>
+<script src="Supabaseservice.js?v=20260928a"></script>
+<script>
+// 외부 파일 로드 점검: 파일 누락/내용 뒤바뀜(예: JS 자리에 CSS가 들어간 경우) 시 화면 상단에 경고 표시
+(function checkModules(){
+  var missing = [];
+  if (typeof supabase === 'undefined') missing.push('supabase-js (CDN)');
+  if (typeof CARRIERS === 'undefined') missing.push('config.js');
+  if (typeof computePrice !== 'function') missing.push('Calculator.js');
+  if (typeof loadData !== 'function') missing.push('Supabaseservice.js');
+  if (!missing.length) return;
+  console.error('[모듈 로드 실패]', missing);
+  var bar = document.createElement('div');
+  bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#B3261E;color:#fff;padding:10px 14px;font-size:13px;font-weight:600;text-align:center;';
+  bar.textContent = '파일 로드 실패: ' + missing.join(', ') + ' - 파일 내용/경로/캐시를 확인하세요.';
+  document.body.appendChild(bar);
+})();
+</script>
+<script>
+
+let DATA = null;
+let COMMISSION_DATA = {};
+let RAW_COMMISSION_DATA = [];
+let PROMOTION_DATA = {};
+let customGiftValues = {};
+let customUsimGiftValues = {}; // key: `${carrier}|${planName}` (추천상품 단계에서 상담원이 직접 고친 유심 사은품)
+
+function showToast(message){
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = message;
+  container.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('toast-visible'));
+  setTimeout(() => {
+    toast.classList.remove('toast-visible');
+    setTimeout(() => toast.remove(), 250);
+  }, 2200);
+}
+
+// 저장/삭제/조회 등 비동기 버튼의 중복 클릭 방지 + 진행 상태 표시 공용 헬퍼
+function setBtnLoading(btn, loadingLabel){
+  if (!btn || btn.disabled) return;
+  btn.dataset.originalLabel = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = loadingLabel;
+}
+function clearBtnLoading(btn){
+  if (!btn) return;
+  btn.disabled = false;
+  if (btn.dataset.originalLabel !== undefined) {
+    btn.innerHTML = btn.dataset.originalLabel;
+    delete btn.dataset.originalLabel;
+  }
+}
+
+let openDiscountItems = new Set();
+let state = { speed:'500', tv:'basic', settopTier:'basic', router:'Y', tcDistMode:'equal' };
+let lastTvTier = 'basic';
+let addedUsimLines = []; 
+let familyLines = [];
+let recoState = { speed:'500', tv:'basic', settopTier:'basic', router:'Y', extraTVs:[] };
+let lastRecoTvTier = 'basic';
+let recoUsimTier = null;
+let recoUsimPlanPool = [];
+
+let logs = {}; // 테이블/RPC명을 key로 사용 - 같은 소스의 로그는 누적되지 않고 최신 상태로 덮어씀
+let reflectedProducts = []; 
+let finalProducts = []; 
+let isLoggedIn = false;
+
+function switchTab(tabId) {
+  document.querySelectorAll('.view-container').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+
+  const btn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
+  if (btn) btn.classList.add('active');
+
+  try {
+    if (tabId === 'cs') {
+      document.getElementById('view-cs').classList.add('active');
+      updateCsSummaryPanel();
+      renderProposalLists();
+      renderFinalProducts();
+      renderFamilyDiscountAccordion();
+    } else if (tabId === 'customers') {
+      document.getElementById('view-customers').classList.add('active');
+      initCustomerView();
+    }
+  } catch (err) {
+    console.error('switchTab render error:', tabId, err);
+  }
+}
+
+// [고객상담] 단계형 서브탭 : 고객정보 → 추천상품 → 제안상품 → 최종상품
+function goCsStep(n) {
+  document.querySelectorAll('#cs-wiz-nav .cs-wiz-btn').forEach(b => {
+    b.classList.toggle('active', Number(b.dataset.step) === n);
+  });
+  document.querySelectorAll('.cs-wiz-panel').forEach(p => {
+    p.classList.toggle('active', p.id === 'cs-wiz-panel-' + n);
+  });
+}
+
+function displayLastModified() {
+  const modDate = new Date(document.lastModified);
+  if (!isNaN(modDate.getTime())) {
+    const pad = n => String(n).padStart(2, '0');
+    const text = `최종 수정: ${modDate.getFullYear()}-${pad(modDate.getMonth() + 1)}-${pad(modDate.getDate())} ${pad(modDate.getHours())}:${pad(modDate.getMinutes())}`;
+    document.getElementById('cs-last-updated').textContent = text;
+  }
+}
+
+function addLog(tableName, isSuccess, message) {
+  const statusClass = isSuccess ? 'success' : 'error';
+  logs[tableName] = `<div class="log-item ${statusClass}">${isSuccess ? '✅' : '❌'} [${tableName}] : ${message}</div>`;
+  const bannerLogs = document.getElementById('cs-banner-logs');
+  if (bannerLogs) bannerLogs.innerHTML = Object.values(logs).join('');
+}
+
+function setupRecoSeg(id, key){
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.querySelectorAll('button').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      recoState[key] = btn.dataset.value;
+      if (key === 'tv') {
+        lastRecoTvTier = btn.dataset.value;
+      }
+      el.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+      if (key === 'speed' || key === 'tv') {
+        customGiftValues = {};
+        document.querySelectorAll('.reco-preset-btn').forEach(b => b.classList.remove('active'));
+        await loadFinanceData();
+      }
+      renderRecoCards();
+    });
+  });
+}
+
+
+function computeProperGiftPercent(speedNum, tvTier){
+  const speedBonus = PROPER_GIFT_SPEED_BONUS[speedNum] || 0;
+  const tvBonus = PROPER_GIFT_TV_BONUS[tvTier] || 0;
+  return PROPER_GIFT_BASE_PERCENT + speedBonus + tvBonus;
+}
+
+function computeProperGiftAmount(commTotal, speedNum, tvTier){
+  const percent = computeProperGiftPercent(speedNum, tvTier);
+  const raw = (Number(commTotal) || 0) * percent / 100;
+  return Math.floor(raw / 10000) * 10000;
+}
+
+function renderRecoCards(){
+  const container = document.getElementById('reco-carrier-cards');
+  if (!container) return;
+  if (!DATA) {
+    container.innerHTML = '<div class="reflected-empty">상품 데이터 로딩 중입니다.</div>';
+    return;
+  }
+
+  const oldOn = document.getElementById('old-internet-toggle')?.checked;
+  const oldIsp = document.getElementById('old-isp')?.value || '';
+  const excluded = oldOn ? (ISP_HOME_CARRIER_MAP[oldIsp] || []) : [];
+
+  const mobileCarrierRaw = document.getElementById('cust-mobile-carrier')?.value || '';
+  const isMvno = mobileCarrierRaw.includes('알뜰');
+  const mobileGroup = mobileCarrierRaw.replace('알뜰', '');
+
+  const speedNum = Number(recoState.speed);
+  const tvTier = recoState.tv;
+
+  container.innerHTML = CARRIERS.map(c => {
+    if (excluded.includes(c)) {
+      return `
+        <div class="reco-product-card reco-product-card-disabled">
+          <div class="reco-product-card-title carrier-${c}">
+            <span>${CARRIER_LABEL[c]}</span>
+          </div>
+          <div class="reco-unavailable">가입불가</div>
+        </div>
+      `;
+    }
+
+    const price = computePrice(c, recoState);
+    if (!price.available) {
+      return `<div class="reco-product-card"><div class="reco-product-card-title carrier-${c}"><span>${CARRIER_LABEL[c]}</span></div><div class="reflected-empty">해당 스펙의 상품 정보가 없습니다.</div></div>`;
+    }
+
+    const needsUsim = isMvno || MOBILE_GROUP_MAP[c] !== mobileGroup;
+
+    const tvName = price.tvInfo ? price.tvInfo.name : '기본형';
+    const tvChannels = price.tvInfo ? (price.tvInfo.channels || 200) : 200;
+    const settopName = price.settopInfo ? price.settopInfo.name : '기본셋톱';
+    const internetSubtotal = (price.internetFee || 0) + (price.routerFee || 0) - (price.bundleDiscount || 0);
+    const tvSubtotal = tvTier !== 'none' ? (price.tvFee || 0) + (price.settopFee || 0) - (price.tvBundleDiscount || 0) + (price.extraTvFee || 0) : 0;
+
+    const promo = PROMOTION_DATA[c] || { giftCard: 60000, cash: 340000 };
+    const userGiftVal = customGiftValues[c] !== undefined ? customGiftValues[c] : (promo.maxLimit || (promo.giftCard + promo.cash));
+    const calcCash = Math.max(0, userGiftVal - (promo.giftCard || 0));
+
+    // 경품고시제 : 지급사은품 기본값과 동일한 방식으로 산출(프로모션 기본 한도), 수정 불가(읽기 전용)
+    const noticeGiftCard = promo.giftCard || 0;
+    const noticeTotal = promo.maxLimit || (noticeGiftCard + (promo.cash || 0));
+    const noticeCash = Math.max(0, noticeTotal - noticeGiftCard);
+
+    let commHtml = '';
+    let properGiftRowHtml = '';
+    if (isLoggedIn) {
+      const comm = lookupCommission(c, speedNum, tvTier);
+      const margin = comm.totalComm - userGiftVal;
+      commHtml = `
+        <div class="reco-block">
+          <div class="info-row main-label"><span>대리점 판매 수수료</span><span>${comm.totalComm.toLocaleString()}</span></div>
+          <div class="info-row sub-item-row"><span>인터넷 수수료</span><span>${comm.internetComm.toLocaleString()}</span></div>
+          ${tvTier !== 'none' ? `<div class="info-row sub-item-row"><span>TV 수수료</span><span>${comm.tvComm.toLocaleString()}</span></div>` : ''}
+          <div class="total-row reco-margin-row"><span>최종마진</span><span class="amount" style="color:${margin >= 0 ? '#1E7E34' : '#D9534F'};">${margin.toLocaleString()}</span></div>
+        </div>
+      `;
+
+      const properGiftPercent = computeProperGiftPercent(speedNum, tvTier);
+      const properGiftAmount = computeProperGiftAmount(comm.totalComm, speedNum, tvTier);
+      properGiftRowHtml = `
+        <div class="info-row sub-item-row proper-gift-row">
+          <span>적정사은품</span><span>${properGiftAmount.toLocaleString()}</span>
+        </div>
+        <div class="proper-gift-detail-row">
+          <span class="reco-detail-sm">수수료 ${comm.totalComm.toLocaleString()} × ${properGiftPercent}%</span>
+          <button type="button" class="proper-gift-apply-btn" onclick="handleGiftInputChange('${c}', '${properGiftAmount}')">적용</button>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="reco-product-card">
+        <div class="reco-product-card-title carrier-${c}">
+          <span>${CARRIER_LABEL[c]}</span>
+          <span class="reco-product-total">${(price.total || 0).toLocaleString()}</span>
+        </div>
+        <div class="reco-block first">
+          <div class="info-row main-label reco-subtotal-row"><span>인터넷</span><span>${internetSubtotal.toLocaleString()}</span></div>
+          <div class="info-row sub-item-row reco-sub-lv2"><span>${SPEED_LABEL[recoState.speed] || ''}</span><span>${(price.internetFee || 0).toLocaleString()}</span></div>
+          <div class="info-row sub-item-row reco-sub-lv2"><span>공유기<span class="reco-detail-sm">(${ROUTER_LABEL[recoState.router] || ''})</span></span><span>${(price.routerFee || 0).toLocaleString()}</span></div>
+          <div class="info-row sub-item-row reco-sub-lv2"><span>인터넷결합할인</span><span>${price.bundleDiscount ? '-' + price.bundleDiscount.toLocaleString() : '0'}</span></div>
+        </div>
+        ${tvTier !== 'none' ? `
+        <div class="reco-block">
+          <div class="info-row main-label reco-subtotal-row"><span>TV</span><span>${tvSubtotal.toLocaleString()}</span></div>
+          <div class="info-row sub-item-row reco-sub-lv2"><span>${tvName}/${tvChannels}채널</span><span>${(price.tvFee || 0).toLocaleString()}</span></div>
+          <div class="info-row sub-item-row reco-sub-lv2"><span>셋탑박스<span class="reco-detail-sm">(${settopName})</span></span><span>${(price.settopFee || 0).toLocaleString()}</span></div>
+          ${price.tvBundleDiscount ? `<div class="info-row sub-item-row reco-sub-lv2"><span>TV결합할인</span><span>-${price.tvBundleDiscount.toLocaleString()}</span></div>` : ''}
+          ${(price.extraTvDetails || []).map(ex => `
+          <div class="info-row sub-item-row reco-sub-lv2"><span>${ex.tvName}/${ex.tvChannels}채널</span><span>${ex.tvHalfFee.toLocaleString()}</span></div>
+          <div class="info-row sub-item-row reco-sub-lv2"><span>셋탑박스<span class="reco-detail-sm">(${ex.settopName})</span></span><span>${ex.settopFee.toLocaleString()}</span></div>
+          `).join('')}
+        </div>` : ''}
+        <div class="reco-block">
+          <div class="info-row main-label reco-gift-row">
+            <span>지급 사은품</span>
+            <span>
+              <input type="text" inputmode="numeric" pattern="[0-9]*" class="gift-input" value="${userGiftVal.toLocaleString()}"
+                     onchange="handleGiftInputChange('${c}', this.value)" onfocus="this.select()">
+            </span>
+          </div>
+          <div class="info-row sub-item-row"><span>상품권</span><span>${(promo.giftCard || 0).toLocaleString()}</span></div>
+          <div class="info-row sub-item-row"><span>현금</span><span>${calcCash.toLocaleString()}</span></div>
+          ${properGiftRowHtml}
+        </div>
+        <div class="reco-block reco-notice-block">
+          <div class="info-row main-label"><span>경품고시제</span><span>${noticeTotal.toLocaleString()}</span></div>
+          <div class="info-row sub-item-row"><span>상품권</span><span>${noticeGiftCard.toLocaleString()}</span></div>
+          <div class="info-row sub-item-row"><span>현금</span><span>${noticeCash.toLocaleString()}</span></div>
+        </div>
+        ${commHtml}
+        <button type="button" class="join-btn" onclick="reflectRecoCardToProposal('${c}')">✨ 상품반영</button>
+      </div>
+    `;
+  }).join('');
+}
+
+function reflectRecoCardToProposal(carrier){
+  const res = computePrice(carrier, recoState);
+  if (!res.available) { alert('선택하신 조합으로는 가입 가능한 상품 정보가 없습니다.'); return; }
+
+  const speedNum = Number(recoState.speed);
+  const tvTier = recoState.tv;
+  const isDuplicate = reflectedProducts.some(p => p.type === 'home' && p.carrierKey === carrier && p.speedNum === speedNum && p.tvTier === tvTier);
+  if (isDuplicate) {
+    alert('이미 동일한 조건의 인터넷/TV 제안상품이 반영되어 있습니다.');
+    return;
+  }
+
+  const promo = PROMOTION_DATA[carrier] || { maxLimit: 450000, giftCard: 60000, cash: 390000 };
+  const userGiftVal = customGiftValues[carrier] !== undefined ? customGiftValues[carrier] : (promo.maxLimit || (promo.giftCard + promo.cash));
+  const calcCash = Math.max(0, userGiftVal - (promo.giftCard || 0));
+  const tvLabel = recoState.tv === 'none' ? '인터넷 단독' : (res.tvInfo ? `${res.tvInfo.name} (${res.tvInfo.channels || 200}채널)` : 'TV기본');
+  const settopName = res.settopInfo ? res.settopInfo.name : '기본셋톱';
+
+  reflectedProducts.push({
+    id: `home-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    type: 'home',
+    carrierName: BRAND_LABEL[carrier],
+    carrierKey: carrier,
+    speedNum: speedNum,
+    tvTier: tvTier,
+    internetLabel: SPEED_LABEL[recoState.speed],
+    internetFee: res.internetFee,
+    routerLabel: ROUTER_LABEL[recoState.router],
+    routerFee: res.routerFee,
+    bundleDiscount: recoState.tv !== 'none' ? res.bundleDiscount : 0,
+    tvLabel: recoState.tv === 'none' ? '미포함' : tvLabel,
+    tvName: recoState.tv === 'none' ? '' : (res.tvInfo ? res.tvInfo.name : '기본형'),
+    tvChannels: recoState.tv === 'none' ? '' : (res.tvInfo ? (res.tvInfo.channels || 200) : 200),
+    tvFee: recoState.tv === 'none' ? 0 : res.tvFee,
+    settopLabel: recoState.tv === 'none' ? '-' : settopName,
+    settopFee: recoState.tv === 'none' ? 0 : res.settopFee,
+    tvBundleDiscount: recoState.tv !== 'none' ? res.tvBundleDiscount : 0,
+    totalFee: res.total,
+    extraTVs: recoState.tv !== 'none' ? JSON.parse(JSON.stringify(recoState.extraTVs || [])) : [],
+    extraTvFee: recoState.tv !== 'none' ? (res.extraTvFee || 0) : 0,
+    extraTvDetails: recoState.tv !== 'none' ? (res.extraTvDetails || []) : [],
+    benefitTotal: userGiftVal,
+    giftCard: promo.giftCard,
+    cash: calcCash
+  });
+
+  renderProposalLists();
+  updateCsSummaryPanel();
+  showToast(`✓ ${BRAND_LABEL[carrier]} 상품이 반영되었습니다 · [고객상담] 제안상품에서 확인하세요`);
+}
+
+function getUsimTierForFee(fee){
+  const f = Number(fee) || 0;
+  if (f < 30000) return 'low';
+  if (f < 50000) return 'mid';
+  if (f < 80000) return 'high';
+  return 'premium';
+}
+
+function setupRecoUsimTierButtons(){
+  const el = document.getElementById('reco-usim-tier-buttons');
+  if (!el) return;
+  el.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      recoUsimTier = btn.dataset.tier;
+      el.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+      fetchRecoUsimPlans(recoUsimTier);
+    });
+  });
+}
+
+function initRecoUsimTierDefault(){
+  const mobileFee = document.getElementById('cust-mobile-fee')?.value;
+  recoUsimTier = getUsimTierForFee(mobileFee);
+  const el = document.getElementById('reco-usim-tier-buttons');
+  if (el) {
+    el.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.tier === recoUsimTier));
+  }
+  fetchRecoUsimPlans(recoUsimTier);
+}
+
+
+async function fetchRecoUsimPlans(tier){
+  const container = document.getElementById('reco-usim-cards');
+  if (!container) return;
+  container.innerHTML = '<div class="reflected-empty">요금제 조회 중...</div>';
+
+  const [min, max] = USIM_TIER_RANGE[tier] || [0, Infinity];
+  let query = sb.from('usim_plans').select('*').eq('is_active', true).gte('monthly_fee', min);
+  if (max !== Infinity) query = query.lte('monthly_fee', max);
+  const { data, error } = await query;
+
+  if (error) {
+    container.innerHTML = `<div class="reflected-empty">조회 실패: ${error.message}</div>`;
+    return;
+  }
+  if (!data || !data.length) {
+    container.innerHTML = `<div class="reflected-empty">${USIM_TIER_LABEL[tier] || ''} 구간의 유심 요금제가 없습니다.</div>`;
+    return;
+  }
+
+  recoUsimPlanPool = data;
+  data.forEach((p, i) => { p.__poolIdx = i; });
+
+  const byNetwork = {};
+  data.forEach(p => {
+    const net = String(p.carrier || '').toUpperCase();
+    if (!byNetwork[net]) byNetwork[net] = [];
+    byNetwork[net].push(p);
+  });
+  Object.keys(byNetwork).forEach(net => byNetwork[net].sort((a, b) => (Number(a.monthly_fee) || 0) - (Number(b.monthly_fee) || 0)));
+
+  container.innerHTML = RECO_USIM_COLUMNS.map(col => {
+    const plans = byNetwork[col.net] || [];
+    const body = plans.length
+      ? plans.map(p => {
+          const fee = Number(p.monthly_fee) || 0;
+          const commission = getUsimCommission(col.net, fee);
+          const defaultGift = Math.max(0, commission - 150000);
+          const giftKey = `${col.net}|${p.plan_name}`;
+          const gift = customUsimGiftValues[giftKey] !== undefined ? customUsimGiftValues[giftKey] : defaultGift;
+          return `
+        <div class="phone-line usim-reco-line">
+          <div class="info-row"><span>${p.plan_name}</span><span>${fee.toLocaleString()}원</span></div>
+          <div class="info-row"><span>데이터</span><span>${p.data_allowance || '-'}</span></div>
+          ${isLoggedIn ? `
+          <div class="info-row">
+            <span>사은품</span>
+            <span>
+              <input type="text" inputmode="numeric" pattern="[0-9]*" class="gift-input" value="${gift.toLocaleString()}"
+                     onchange="handleUsimRecoGiftChange(${p.__poolIdx}, this.value)" onfocus="this.select()">
+            </span>
+          </div>` : ''}
+          ${isLoggedIn ? `<div class="info-row"><span>수수료</span><span>${commission.toLocaleString()}원</span></div>` : ''}
+          <button type="button" class="join-btn usim-reflect-btn" onclick="reflectRecoUsimPlan(${p.__poolIdx})">✨ 상품반영</button>
+        </div>
+      `;
+        }).join('')
+      : `<div class="reflected-empty">해당 구간 요금제 없음</div>`;
+
+    const overflowCount = Math.max(0, plans.length - USIM_VISIBLE_COUNT);
+    return `
+      <div class="reco-product-card">
+        <div class="reco-product-card-title carrier-${col.key}"><span>${col.label}</span></div>
+        <div class="usim-plan-scroll">${body}</div>
+        ${overflowCount ? `<div class="usim-scroll-hint">▾ 스크롤하면 ${overflowCount}개 요금제를 더 볼 수 있습니다</div>` : ''}
+      </div>
+    `;
+  }).join('');
+
+  applyUsimScrollLimit();
+}
+
+
+// 유심 카드는 기본 5개까지만 보이고 나머지는 스크롤로 확인
+function applyUsimScrollLimit(){
+  requestAnimationFrame(() => {
+    document.querySelectorAll('#reco-usim-cards .usim-plan-scroll').forEach(box => {
+      const items = box.querySelectorAll('.usim-reco-line');
+      if (items.length > USIM_VISIBLE_COUNT) {
+        const first = items[0];
+        const last = items[USIM_VISIBLE_COUNT - 1];
+        const h = (last.offsetTop - first.offsetTop) + last.offsetHeight;
+        box.style.maxHeight = h + 'px';
+        box.classList.add('is-scrollable');
+      } else {
+        box.style.maxHeight = '';
+        box.classList.remove('is-scrollable');
+      }
+    });
+  });
+}
+
+function reflectRecoUsimPlan(poolIdx){
+  const plan = recoUsimPlanPool[poolIdx];
+  if (!plan) return;
+
+  const net = String(plan.carrier || '').toUpperCase();
+  const baseFee = Number(plan.monthly_fee) || 0;
+  const contractFee = plan.contract_discount_fee != null ? Number(plan.contract_discount_fee) : Math.round(baseFee * 0.75 / 10) * 10;
+
+  const commission = isLoggedIn ? getUsimCommission(net, baseFee) : null;
+  const defaultGift = commission != null ? Math.max(0, commission - 150000) : 0;
+  const giftKey = `${net}|${plan.plan_name}`;
+  const gift = customUsimGiftValues[giftKey] !== undefined ? customUsimGiftValues[giftKey] : defaultGift;
+
+  const sharedUsimId = `usim-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+  addedUsimLines.push({
+    id: sharedUsimId,
+    carrier: net,
+    planName: plan.plan_name || '-',
+    fee: baseFee,
+    teen: false,
+    gift: gift
+  });
+  renderAddedUsimLines();
+  renderFamilyDiscountAccordion();
+
+  reflectedProducts.push({
+    id: sharedUsimId,
+    type: 'usim',
+    carrier: net,
+    planName: plan.plan_name || '-',
+    fee: baseFee,
+    contractFee: contractFee,
+    dataAllowance: plan.data_allowance || '-',
+    voiceAllowance: plan.voice_allowance || '-',
+    smsAllowance: plan.sms_allowance || '-',
+    tethering: plan.tethering_allowance || '-',
+    membership: plan.membership_benefit || '-',
+    targetAge: plan.target_age || '제한 없음',
+    gift: gift
+  });
+  renderProposalLists();
+  updateCsSummaryPanel();
+  showToast(`✓ ${net} · ${plan.plan_name || '요금제'} 반영되었습니다 · [고객상담] 제안상품에서 확인하세요`);
+}
+
+// 추천상품 유심 카드에서 사은품을 직접 고쳤을 때 (반영 전 임시 저장)
+function handleUsimRecoGiftChange(poolIdx, rawVal){
+  const plan = recoUsimPlanPool[poolIdx];
+  if (!plan) return;
+  const net = String(plan.carrier || '').toUpperCase();
+  const numVal = parseInt(String(rawVal).replace(/[^0-9]/g, ''), 10);
+  const giftKey = `${net}|${plan.plan_name}`;
+  customUsimGiftValues[giftKey] = !isNaN(numVal) ? Math.max(0, numVal) : 0;
+}
+
+// 제안상품 유심 카드에서 사은품을 직접 고쳤을 때
+// - addedUsimLines(제안상품 화면 표시용)와 reflectedProducts(최종반영·결합할인·저장에 쓰이는 원본) 둘 다 갱신
+// - reflectedProducts 항목은 최종반영 시 finalProducts에 그대로(동일 참조) 들어가므로, 아직 최종반영 전이면 최종상품에는 영향 없음
+function handleUsimProposalGiftChange(id, rawVal){
+  const numVal = parseInt(String(rawVal).replace(/[^0-9]/g, ''), 10);
+  const gift = !isNaN(numVal) ? Math.max(0, numVal) : 0;
+  const line = addedUsimLines.find(l => l.id === id);
+  if (line) line.gift = gift;
+  const linked = reflectedProducts.find(p => p.id === id);
+  if (linked) linked.gift = gift;
+  renderAddedUsimLines();
+  updateCsSummaryPanel();
+}
+
+// 최종상품 유심 카드에서 사은품을 직접 고쳤을 때
+// - finalProducts 항목은 reflectedProducts와 동일한 객체를 참조하므로 저장 데이터에도 바로 반영됨
+// - 제안상품 화면(addedUsimLines)의 표시값은 그대로 두어, "제안했던 금액"과 "최종 확정 금액"을 구분해서 볼 수 있게 함
+function handleUsimFinalGiftChange(id, rawVal){
+  const numVal = parseInt(String(rawVal).replace(/[^0-9]/g, ''), 10);
+  const gift = !isNaN(numVal) ? Math.max(0, numVal) : 0;
+  const item = finalProducts.find(p => p.id === id);
+  if (item) item.gift = gift;
+  renderFinalProducts();
+  updateCsSummaryPanel();
+}
+
+
+function renderExtraTvControls(){
+  const container = document.getElementById('reco-extra-tv-list');
+  if (!container) return;
+  const disabled = recoState.tv === 'none';
+
+  container.innerHTML = recoState.extraTVs.map((ex, idx) => `
+    <div class="extra-tv-block">
+      <div class="extra-tv-cols">
+        <div class="control-group">
+          <div class="group-label-row">
+            <label class="group-label">TV${idx + 2}</label>
+            <button type="button" class="extra-tv-remove-btn" ${disabled ? 'disabled' : ''} onclick="removeExtraTv(${idx})">삭제</button>
+          </div>
+          <div class="seg">
+            ${EXTRA_TV_TIER_OPTIONS.map(o => `<button type="button" data-value="${o.value}" class="${ex.tv === o.value ? 'active' : ''}" ${disabled ? 'disabled' : ''} onclick="setExtraTvValue(${idx}, 'tv', '${o.value}')">${o.label}</button>`).join('')}
+          </div>
+        </div>
+        <div class="control-group">
+          <div class="group-label-row"><label class="group-label">&nbsp;</label></div>
+          <div class="seg">
+            ${EXTRA_TV_SETTOP_OPTIONS.map(o => `<button type="button" data-value="${o.value}" class="${ex.settopTier === o.value ? 'active' : ''}" ${disabled ? 'disabled' : ''} onclick="setExtraTvValue(${idx}, 'settopTier', '${o.value}')">${o.label}</button>`).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  const addBtn = document.getElementById('reco-extra-tv-add-btn');
+  if (addBtn) addBtn.disabled = disabled;
+}
+
+function addExtraTv(){
+  if (recoState.tv === 'none') return;
+  recoState.extraTVs.push({ tv:'basic', settopTier:'basic' });
+  renderExtraTvControls();
+  renderRecoCards();
+}
+
+function removeExtraTv(idx){
+  recoState.extraTVs.splice(idx, 1);
+  renderExtraTvControls();
+  renderRecoCards();
+}
+
+function setExtraTvValue(idx, key, val){
+  if (!recoState.extraTVs[idx]) return;
+  recoState.extraTVs[idx][key] = val;
+  renderExtraTvControls();
+  renderRecoCards();
+}
+
+async function applyRecoPreset(speed, tv, btnEl){
+  recoState.speed = speed;
+  recoState.tv = tv;
+  lastRecoTvTier = tv;
+  customGiftValues = {};
+
+  document.querySelectorAll('#reco-seg-speed button').forEach(b => b.classList.toggle('active', b.dataset.value === speed));
+  syncRecoControlsUI();
+
+  document.querySelectorAll('.reco-preset-btn').forEach(b => b.classList.toggle('active', b === btnEl));
+
+  await loadFinanceData();
+  renderRecoCards();
+}
+
+function syncRecoControlsUI(){
+  document.querySelectorAll('#reco-seg-tv button').forEach(b => b.classList.toggle('active', b.dataset.value === recoState.tv));
+  document.querySelectorAll('#reco-seg-tv button, #reco-seg-settop button').forEach(b => b.disabled = recoState.tv === 'none');
+  const toggle = document.getElementById('reco-tv-onoff-toggle');
+  if (toggle) toggle.checked = recoState.tv !== 'none';
+  renderExtraTvControls();
+}
+
+async function toggleRecoTvOnOff(isOn){
+  if (isOn) {
+    recoState.tv = lastRecoTvTier || 'basic';
+  } else {
+    if (recoState.tv !== 'none') lastRecoTvTier = recoState.tv;
+    recoState.tv = 'none';
+  }
+  customGiftValues = {};
+  document.querySelectorAll('.reco-preset-btn').forEach(b => b.classList.remove('active'));
+  syncRecoControlsUI();
+  await loadFinanceData();
+  renderRecoCards();
+}
+
+function toggleOldInternetSection(isOn){
+  const body = document.getElementById('old-internet-body');
+  if (body) body.style.display = isOn ? '' : 'none';
+  updateCsSummaryPanel();
+  renderRecoCards();
+}
+
+function toggleFamilyLineSection(isOn){
+  const body = document.getElementById('family-line-body');
+  if (body) body.style.display = isOn ? '' : 'none';
+  updateCsSummaryPanel();
+}
+
+function addFamilyLine(type){
+  const line = { id: 'fam-' + Date.now() + '-' + Math.floor(Math.random()*1000), type };
+  if (type === 'internet') {
+    line.carrier = 'KT';
+    line.feeLabel = OLD_INTERNET_FEE_RANGES[0];
+  } else {
+    line.type = 'mobile';
+    line.carrier = 'KT';
+    line.feeValue = FEE_RANGES[0].value;
+  }
+  familyLines.push(line);
+  renderFamilyLines();
+  updateCsSummaryPanel();
+}
+
+function updateFamilyLine(idx, field, value){
+  if (!familyLines[idx]) return;
+  familyLines[idx][field] = (field === 'feeValue') ? Number(value) : value;
+  updateCsSummaryPanel();
+}
+
+function removeFamilyLine(idx){
+  if (!confirm('해당 가족회선을 삭제할까요?')) return;
+  familyLines.splice(idx, 1);
+  renderFamilyLines();
+  updateCsSummaryPanel();
+}
+
+function renderFamilyLines(){
+  const container = document.getElementById('family-lines-list');
+  if (!container) return;
+  if (!familyLines.length) {
+    container.innerHTML = `<div class="phone-empty">등록된 가족 회선이 없습니다. 아래 버튼으로 휴대폰 또는 인터넷 회선을 추가해주세요.</div>`;
+    return;
+  }
+  container.innerHTML = familyLines.map((f, idx) => {
+    if (f.type === 'internet') {
+      return `
+      <div class="phone-line family-line-row">
+        <div class="family-line-group">
+          <span class="family-line-label">인터넷</span>
+          <select onchange="updateFamilyLine(${idx}, 'carrier', this.value)">
+            ${HOME_CARRIER_OPTIONS.map(c => `<option value="${c}" ${f.carrier===c?'selected':''}>${c}</option>`).join('')}
+          </select>
+          <select onchange="updateFamilyLine(${idx}, 'feeLabel', this.value)">
+            ${OLD_INTERNET_FEE_RANGES.map(l => `<option value="${l}" ${f.feeLabel===l?'selected':''}>${l}</option>`).join('')}
+          </select>
+        </div>
+        <button type="button" class="phone-remove-btn" onclick="removeFamilyLine(${idx})">삭제</button>
+      </div>
+    `;
+    }
+    return `
+      <div class="phone-line family-line-row">
+        <div class="family-line-group">
+          <span class="family-line-label">휴대폰</span>
+          <select onchange="updateFamilyLine(${idx}, 'carrier', this.value)">
+            ${MOBILE_CARRIER_OPTIONS.map(c => `<option value="${c}" ${f.carrier===c?'selected':''}>${c}</option>`).join('')}
+          </select>
+          <select onchange="updateFamilyLine(${idx}, 'feeValue', this.value)">
+            ${FEE_RANGES.map(r => `<option value="${r.value}" ${f.feeValue===r.value?'selected':''}>${r.label}</option>`).join('')}
+          </select>
+        </div>
+        <button type="button" class="phone-remove-btn" onclick="removeFamilyLine(${idx})">삭제</button>
+      </div>
+    `;
+  }).join('');
+}
+
+function syncToDesignPhones() {
+  const mCarrier = document.getElementById('cust-mobile-carrier').value;
+  const mFee = Number(document.getElementById('cust-mobile-fee').value) || FEE_RANGES[0].value;
+
+  const syncedIdx = addedUsimLines.findIndex(l => l.synced);
+  const syncedLine = {
+    id: 'synced-cs-line',
+    carrier: mCarrier,
+    planName: '고객 본인 회선 (상담정보 연동)',
+    fee: mFee,
+    teen: syncedIdx >= 0 ? addedUsimLines[syncedIdx].teen : false,
+    synced: true
+  };
+  if (syncedIdx >= 0) addedUsimLines[syncedIdx] = syncedLine;
+  else addedUsimLines.unshift(syncedLine);
+
+  renderAddedUsimLines();
+  renderFamilyDiscountAccordion();
+  renderRecoCards();
+}
+
+
+function buildProposalUsimCard(p){
+  const linked = reflectedProducts.find(r => r.id === p.id);
+  const commission = getUsimCommission(p.carrier, Number(p.fee) || 0);
+  const gift = p.gift != null ? p.gift : Math.max(0, commission - 150000);
+  const canFinalize = !p.synced && !!linked;
+  return `
+    <div class="phone-line usim-added-line">
+      <div class="usim-added-row">
+        <span class="usim-added-carrier carrier-${String(p.carrier).toLowerCase()}">${p.carrier}</span>
+        <span class="usim-added-name">${p.planName}${p.synced ? ' <span class="usim-synced-badge">연동</span>' : ''}</span>
+        <button type="button" class="phone-remove-btn" onclick="removeAddedUsimLine('${p.id}')">삭제</button>
+      </div>
+      <div class="info-row"><span>월요금</span><span>${(Number(p.fee) || 0).toLocaleString()}원</span></div>
+      ${isLoggedIn ? `
+      <div class="info-row">
+        <span>사은품</span>
+        <span>
+          <input type="text" inputmode="numeric" pattern="[0-9]*" class="gift-input" value="${gift.toLocaleString()}"
+                 ${p.synced ? 'disabled' : ''}
+                 onchange="handleUsimProposalGiftChange('${p.id}', this.value)" onfocus="this.select()">
+        </span>
+      </div>` : ''}
+      ${isLoggedIn ? `<div class="info-row"><span>수수료</span><span>${commission.toLocaleString()}원</span></div>` : ''}
+      <div class="usim-line-actions">
+        <label class="phone-teen-toggle">
+          <input type="checkbox" ${p.teen ? 'checked' : ''} onchange="updateAddedUsimLine('${p.id}', 'teen', this.checked)">
+          청소년
+        </label>
+        ${canFinalize ? `<button type="button" class="mini-btn mini-btn-primary" onclick="moveProposalToFinal('${p.id}')">➕ 최종반영</button>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderAddedUsimLines(){
+  const container = document.getElementById('proposal-usim-list');
+  if (!container) return;
+  if (!addedUsimLines.length) {
+    container.innerHTML = `<div class="reflected-empty">아직 반영된 유심 제안상품이 없습니다. [상품설계] 화면에서 요금제를 반영해주세요.</div>`;
+    return;
+  }
+  container.innerHTML = `<div class="proposal-carrier-grid">${PROPOSAL_USIM_COLUMNS.map(col => {
+    const items = addedUsimLines.filter(p => col.test(String(p.carrier || '')));
+    return `
+      <div class="reco-product-card">
+        <div class="reco-product-card-title carrier-${col.key}"><span>${col.label}</span></div>
+        ${items.length ? items.map(buildProposalUsimCard).join('') : `<div class="proposal-col-empty">반영된 상품 없음</div>`}
+      </div>
+    `;
+  }).join('')}</div>`;
+}
+
+function updateAddedUsimLine(id, field, value){
+  const line = addedUsimLines.find(l => l.id === id);
+  if (!line) return;
+  line[field] = value;
+  renderAddedUsimLines();
+  renderFamilyDiscountAccordion();
+}
+
+function removeAddedUsimLine(id){
+  addedUsimLines = addedUsimLines.filter(l => l.id !== id);
+  reflectedProducts = reflectedProducts.filter(p => p.id !== id);
+  renderAddedUsimLines();
+  renderFamilyDiscountAccordion();
+  updateCsSummaryPanel();
+}
+
+function toggleDiscountItem(key){
+  if (openDiscountItems.has(key)) openDiscountItems.delete(key);
+  else openDiscountItems.add(key);
+  renderFamilyDiscountAccordion();
+}
+
+function updateTcDistMode(mode){
+  state.tcDistMode = mode;
+  renderFamilyDiscountAccordion();
+}
+
+function renderAccordionItem(opt, lines, isMax, keyPrefix){
+  const itemKey = (keyPrefix || '') + opt.key;
+  const isOpen = openDiscountItems.has(itemKey);
+  const badgeClass = opt.avail ? 'badge-avail' : 'badge-unavail';
+  const totalDisplay = opt.avail ? `${opt.total.toLocaleString()}원` : '-';
+
+  let detailHtml = '';
+  if (isOpen) {
+    const lineRows = lines.length ? lines.map((p, i) => `
+        <div class="fam-detail-line-row">
+          <span class="discount-info">회선 ${p.idx + 1}${p.teen ? ' (청소년)' : ''} · ${p.fee.toLocaleString()}원</span>
+          <span class="discount-amount">${(opt.lineShares[i] || 0).toLocaleString()}원</span>
+        </div>
+      `).join('') : `<div class="fam-detail-line-row"><span class="discount-info">매칭되는 회선이 없습니다</span><span class="discount-amount">-</span></div>`;
+
+    const distModeSelect = opt.hasDistMode ? `
+      <div class="fam-detail-distmode">
+        <label>모바일 할인 배분 방식</label>
+        <select onchange="updateTcDistMode(this.value)">
+          <option value="equal" ${state.tcDistMode==='equal'?'selected':''}>1/N 균등 배분</option>
+          <option value="contribution" ${state.tcDistMode==='contribution'?'selected':''}>기여도별 배분 (요금 비율)</option>
+          <option value="concentrate" ${state.tcDistMode==='concentrate'?'selected':''}>대표 회선에 몰아주기</option>
+        </select>
+      </div>
+    ` : '';
+
+    detailHtml = `
+      <div class="fam-detail-panel">
+        <div class="fam-detail-desc">${opt.desc}</div>
+        ${distModeSelect}
+        <div class="fam-detail-line-row fam-detail-header">
+          <span class="discount-info">인터넷 할인</span><span class="discount-amount">${opt.internetDiscount.toLocaleString()}원</span>
+        </div>
+        ${lineRows}
+      </div>
+    `;
+  }
+
+  return `
+    <div class="fam-accordion-item${opt.disabled ? ' disabled' : ''}${isMax ? ' max-discount' : ''}">
+      <div class="fam-accordion-header" ${opt.disabled ? '' : `onclick="toggleDiscountItem('${itemKey}')"`}>
+        <div class="fam-accordion-row1">
+          <span class="fam-accordion-name">${opt.name}</span>
+          <span class="fam-badge ${badgeClass}">${opt.availText}</span>
+          <span class="fam-accordion-total">${totalDisplay}</span>
+          ${opt.disabled ? '' : `<span class="fam-accordion-chevron">${isOpen ? '▾' : '▸'}</span>`}
+        </div>
+        ${opt.reason ? `<div class="fam-accordion-row2">${opt.reason}</div>` : ''}
+      </div>
+      ${detailHtml}
+    </div>
+  `;
+}
+
+function computeComboOptionsFor(carrierKey, lines, speedNum){
+  if (carrierKey === 'kt') return computeKTOptions(lines, speedNum, state.tcDistMode);
+  if (carrierKey === 'lg') return computeLGOptions(lines, speedNum);
+  return computeSKOptions(lines, speedNum, carrierKey);
+}
+
+// 제안상품(유심)에 담긴 회선 중 해당 통신사 그룹과 매칭되는 회선만 추출
+function getProposalComboLines(carrierKey){
+  const matchLabel = MOBILE_GROUP_MAP[carrierKey];
+  return addedUsimLines
+    .map((p, idx) => ({ carrier: p.carrier, fee: Number(p.fee) || 0, teen: !!p.teen, idx, planName: p.planName }))
+    .filter(p => p.carrier === matchLabel);
+}
+
+// 결합할인 : 통신사 4분할 + 제안상품에 담긴 인터넷/TV 상품 기준으로 계산
+function buildComboCardForProposal(item){
+  const lines = getProposalComboLines(item.carrierKey);
+  const options = computeComboOptionsFor(item.carrierKey, lines, item.speedNum);
+  const availOptions = options.filter(o => o.avail);
+  const maxTotal = availOptions.length ? Math.max(...availOptions.map(o => o.total)) : null;
+  const maxKey = maxTotal !== null ? (availOptions.find(o => o.total === maxTotal) || {}).key : null;
+  const specText = `${item.internetLabel}${item.tvTier !== 'none' ? ' + TV' : ' 단독'}`;
+
+  const body = lines.length
+    ? options.map(opt => renderAccordionItem(opt, lines, opt.key === maxKey, item.id + '-')).join('')
+    : `<div class="proposal-col-empty">제안상품에 담긴 ${MOBILE_GROUP_MAP[item.carrierKey]} 유심 회선이 없습니다.</div>`;
+
+  return `
+    <div class="fam-accordion-card">
+      <div class="fam-accordion-card-header carrier-${item.carrierKey}">
+        ${CARRIER_LABEL[item.carrierKey]}<span class="fam-card-spec">${specText}</span>
+      </div>
+      <div class="fam-accordion-items">${body}</div>
+    </div>
+  `;
+}
+
+function renderFamilyDiscountAccordion(){
+  const primaryContainer = document.getElementById('family-discount-table');
+  const secondaryContainer = document.getElementById('final-combo-discount');
+  if (!primaryContainer && !secondaryContainer) return;
+
+  const homeItems = reflectedProducts.filter(p => p.type === 'home');
+
+  let html;
+  if (!homeItems.length) {
+    html = `<div class="reflected-empty">제안상품에 인터넷/TV 상품이 담기면 해당 상품 기준으로 결합할인이 계산됩니다.</div>`;
+  } else {
+    const colsHtml = CARRIERS.map(c => {
+      const items = homeItems.filter(p => p.carrierKey === c);
+      return `
+        <div class="fam-col-stack">
+          ${items.length
+            ? items.map(buildComboCardForProposal).join('')
+            : `<div class="fam-accordion-card">
+                 <div class="fam-accordion-card-header carrier-${c}">${CARRIER_LABEL[c]}</div>
+                 <div class="fam-accordion-items"><div class="proposal-col-empty">제안상품 없음</div></div>
+               </div>`}
+        </div>
+      `;
+    }).join('');
+
+    html = `
+      <div class="fam-accordion-grid">${colsHtml}</div>
+      <div class="fam-table-note">
+        · [제안상품]에 담긴 인터넷/TV 상품과 유심 회선을 기준으로 통신사별로 계산됩니다.
+        <br>· 인터넷 속도는 각 제안상품에 반영된 속도를 그대로 사용합니다.
+        <br>· SK브로드밴드/SK텔레콤은 동일한 SK 모바일 회선을 기준으로 계산됩니다(실제로는 인터넷을 SK브로드밴드로 가입할 때만 적용).
+      </div>
+    `;
+  }
+
+  if (primaryContainer) primaryContainer.innerHTML = html;
+  if (secondaryContainer) secondaryContainer.innerHTML = html;
+}
+
+function handleGiftInputChange(carrier, rawVal) {
+  const numVal = parseInt(rawVal.replace(/[^0-9]/g, ''), 10);
+  customGiftValues[carrier] = !isNaN(numVal) ? numVal : 0;
+  renderRecoCards();
+}
+
+function buildProductSummaryLines(p){
+  if (p.type === 'usim') {
+    const commission = isLoggedIn ? getUsimCommission(p.carrier, Number(p.fee) || 0) : null;
+    const gift = p.gift != null ? p.gift : (commission != null ? Math.max(0, commission - 150000) : null);
+    const lines = [p.planName];
+    lines.push(`월요금: ${p.fee.toLocaleString()}원`);
+    if (p.contractFee != null) lines.push(`약정후: ${p.contractFee.toLocaleString()}원`);
+    lines.push(`데이터: ${p.dataAllowance}`);
+    if (isLoggedIn) {
+      lines.push(`사은품: ${gift.toLocaleString()}원`);
+      lines.push(`수수료: ${commission.toLocaleString()}원`);
+    }
+    return lines;
+  }
+  const lines = [];
+  lines.push(`인터넷(${p.internetLabel})+공유기(${p.routerLabel})`);
+  if (p.tvTier !== 'none') {
+    lines.push(`TV(${p.tvName}/${p.tvChannels}채널)+셋탑(${p.settopLabel})`);
+  }
+  lines.push(`월요금 ${p.totalFee.toLocaleString()}원`);
+  lines.push(`사은품 ${p.benefitTotal.toLocaleString()}원 (상 ${p.giftCard.toLocaleString()}원,현 ${p.cash.toLocaleString()}원)`);
+  if (isLoggedIn) {
+    const comm = lookupCommission(p.carrierKey, p.speedNum, p.tvTier);
+    lines.push(`수수료 ${comm.totalComm.toLocaleString()}원`);
+  }
+  return lines;
+}
+
+function productTitle(p){
+  return p.type === 'usim' ? `${p.carrier} 유심` : p.carrierName;
+}
+
+function getFeeRangeLabel(value){
+  const found = FEE_RANGES.find(r => r.value === Number(value));
+  return found ? found.label : `${Number(value || 0).toLocaleString()}원`;
+}
+
+function getOldInternetSummaryValue(){
+  const isOn = document.getElementById('old-internet-toggle')?.checked;
+  if (!isOn) return '없음';
+  const oldIsp = document.getElementById('old-isp')?.value || '';
+  const oldFee = document.getElementById('old-internet-fee')?.value || '';
+  const tvCount = document.getElementById('old-tv-count')?.value || '0';
+  const contractEnd = (document.getElementById('old-contract-end')?.value || '').trim();
+  const tvText = tvCount === '0' ? 'TV 없음' : `TV ${tvCount}대`;
+  return `${oldIsp} / 월 ${oldFee} / ${tvText}${contractEnd ? ` / 약정만료 ${contractEnd}` : ''}`;
+}
+
+function getFamilyLineSummaryItems(){
+  const isOn = document.getElementById('family-line-toggle')?.checked;
+  if (!isOn) return [{ label: '가족회선', value: '없음' }];
+
+  const items = [];
+
+  if (!familyLines.length) {
+    items.push({ label: '가족회선', value: '등록된 회선 없음' });
+  } else {
+    let mobileCount = 0, internetCount = 0;
+    familyLines.forEach(f => {
+      if (f.type === 'internet') {
+        internetCount += 1;
+        items.push({ label: `가족회선(인터넷) ${internetCount}`, value: `${f.carrier} ${f.feeLabel}` });
+      } else {
+        mobileCount += 1;
+        const feeLabel = FEE_RANGES.find(r => r.value === f.feeValue)?.label || '';
+        items.push({ label: `가족회선(휴대폰) ${mobileCount}`, value: `${f.carrier} ${feeLabel}` });
+      }
+    });
+  }
+  return items;
+}
+
+function buildConsultSummary(){
+  const mobileCarrier = document.getElementById('cust-mobile-carrier')?.value || '';
+  const mobileFee = document.getElementById('cust-mobile-fee')?.value || '';
+
+  const lines = [];
+  lines.push('[고객 상담 요약]');
+  lines.push(`휴대폰: ${mobileCarrier} / ${getFeeRangeLabel(mobileFee)}`);
+  lines.push(`기존 인터넷: ${getOldInternetSummaryValue()}`);
+  getFamilyLineSummaryItems().forEach(item => lines.push(`${item.label}: ${item.value}`));
+  lines.push('');
+  lines.push('[제안 상품]');
+
+  if (reflectedProducts.length === 0) {
+    lines.push('- 반영된 제안 상품 없음');
+  } else {
+    reflectedProducts.forEach((p, idx) => {
+      lines.push(`${idx + 1}. ${productTitle(p)}`);
+      lines.push(...buildProductSummaryLines(p));
+      lines.push('');
+    });
+  }
+
+  return lines.join('\n');
+}
+
+function updateCsSummaryPanel(){
+  const customerEl = document.getElementById('cs-live-customer-info');
+  const productsEl = document.getElementById('cs-live-products-info');
+  if (!customerEl || !productsEl) return;
+
+  const mobileCarrier = document.getElementById('cust-mobile-carrier')?.value || '';
+  const mobileFee = document.getElementById('cust-mobile-fee')?.value || '';
+
+  let custHtml = '';
+  custHtml += jsRow('휴대폰', mobileCarrier ? `${mobileCarrier} / ${getFeeRangeLabel(mobileFee)}` : '');
+  custHtml += jsRow('기존 인터넷', getOldInternetSummaryValue());
+  getFamilyLineSummaryItems().forEach(item => {
+    custHtml += jsRow(item.label, item.value);
+  });
+  customerEl.innerHTML = custHtml || '<div class="js-empty">아직 입력된 정보가 없습니다.</div>';
+
+  let prodHtml = '';
+  if (reflectedProducts.length === 0) {
+    prodHtml = '<div class="js-empty">아직 반영된 제안 상품이 없습니다.</div>';
+  } else {
+    reflectedProducts.forEach((p, idx) => {
+      prodHtml += `<div class="js-product-block js-product-${p.type === 'usim' ? 'usim' : 'home'}">`;
+      prodHtml += `<div class="js-product-title">${idx + 1}. ${productTitle(p)}</div>`;
+      buildProductSummaryLines(p).forEach(line => {
+        prodHtml += `<div class="js-compact-line">${line}</div>`;
+      });
+      prodHtml += `</div>`;
+    });
+  }
+  productsEl.innerHTML = prodHtml;
+}
+
+function copyCsSummary(){
+  const summary = buildConsultSummary();
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(summary)
+      .then(() => alert('상담 내용 요약이 클립보드에 복사되었습니다.'))
+      .catch(() => alert('복사에 실패했습니다. 브라우저 권한을 확인해주세요.'));
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = summary;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); alert('상담 내용 요약이 클립보드에 복사되었습니다.'); }
+    catch (e) { alert('복사에 실패했습니다.'); }
+    document.body.removeChild(ta);
+  }
+}
+
+
+function buildProposalHomeRow(item){
+  const comm = isLoggedIn ? lookupCommission(item.carrierKey, item.speedNum, item.tvTier) : null;
+  return `
+    <div class="phone-line usim-added-line">
+      <div class="usim-added-row">
+        <span class="usim-added-carrier carrier-${item.carrierKey}">${item.carrierName}</span>
+        <span class="usim-added-name">${item.internetLabel} · ${item.tvLabel}</span>
+        <button type="button" class="phone-remove-btn" onclick="removeProposal('${item.id}')">삭제</button>
+      </div>
+      <div class="info-row"><span>월요금</span><span>${item.totalFee.toLocaleString()}원</span></div>
+      <div class="info-row"><span>사은품</span><span>${item.benefitTotal.toLocaleString()}원</span></div>
+      ${isLoggedIn ? `<div class="info-row"><span>수수료</span><span>${comm.totalComm.toLocaleString()}원</span></div>` : ''}
+      <div class="usim-line-actions">
+        <button type="button" class="mini-btn mini-btn-primary" onclick="moveProposalToFinal('${item.id}')">➕ 최종반영</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderProposalLists(){
+  const homeContainer = document.getElementById('proposal-home-list');
+  if (!homeContainer) return;
+
+  const homeItems = reflectedProducts.filter(p => p.type === 'home');
+
+  homeContainer.innerHTML = homeItems.length
+    ? `<div class="proposal-carrier-grid">${CARRIERS.map(c => {
+        const items = homeItems.filter(p => p.carrierKey === c);
+        return `
+          <div class="reco-product-card">
+            <div class="reco-product-card-title carrier-${c}"><span>${CARRIER_LABEL[c]}</span></div>
+            ${items.length ? items.map(buildProposalHomeRow).join('') : `<div class="proposal-col-empty">반영된 상품 없음</div>`}
+          </div>
+        `;
+      }).join('')}</div>`
+    : `<div class="reflected-empty">아직 반영된 인터넷/TV 제안상품이 없습니다. [상품조회] 화면에서 [상품반영]을 눌러주세요.</div>`;
+
+  renderAddedUsimLines();
+  renderFamilyDiscountAccordion();
+}
+
+function removeProposal(id){
+  reflectedProducts = reflectedProducts.filter(p => p.id !== id);
+  renderProposalLists();
+  updateCsSummaryPanel();
+}
+
+function moveProposalToFinal(id){
+  const item = reflectedProducts.find(p => p.id === id);
+  if (!item) return;
+
+  if (item.type === 'home') {
+    finalProducts = finalProducts.filter(p => p.type !== 'home');
+    finalProducts.push(item);
+  } else {
+    if (finalProducts.some(p => p.id === id)) {
+      alert('이미 최종상품에 반영된 항목입니다.');
+      return;
+    }
+    finalProducts.push(item);
+  }
+  renderFinalProducts();
+}
+
+function removeFinalProduct(id){
+  finalProducts = finalProducts.filter(p => p.id !== id);
+  renderFinalProducts();
+}
+
+// 최종상품 기준 최적 가족 결합할인 계산
+function computeFinalCombo(homeItem, usimItems){
+  if (!homeItem) return null;
+  const matchLabel = MOBILE_GROUP_MAP[homeItem.carrierKey];
+  const lines = (usimItems || [])
+    .filter(p => p.carrier === matchLabel)
+    .map((p, idx) => ({ carrier: p.carrier, fee: Number(p.fee) || 0, teen: !!p.teen, idx, planName: p.planName }));
+  if (!lines.length) return null;
+
+  const options = computeComboOptionsFor(homeItem.carrierKey, lines, homeItem.speedNum);
+  const availOptions = options.filter(o => o.avail);
+  if (!availOptions.length) return null;
+
+  const best = availOptions.reduce((a, b) => (b.total > a.total ? b : a));
+  return { best, lines };
+}
+
+function buildFinalComboBlock(homeItem, usimItems){
+  const combo = computeFinalCombo(homeItem, usimItems);
+  if (!combo) {
+    return `
+      <div class="final-combo-block">
+        <div class="final-combo-title">가족 결합할인</div>
+        <div class="final-combo-none">최종상품에 매칭되는 ${MOBILE_GROUP_MAP[homeItem.carrierKey]} 유심 회선이 없어 결합할인이 적용되지 않습니다.</div>
+      </div>
+    `;
+  }
+
+  const { best, lines } = combo;
+  const lineRows = lines
+    .map((line, i) => ({ line, share: best.lineShares[i] || 0 }))
+    .filter(r => r.share > 0)
+    .map(r => `<div class="info-row sub-item-row"><span>└ ${r.line.carrier} ${r.line.planName || '휴대폰'} (${r.line.fee.toLocaleString()}원)</span><span>-${r.share.toLocaleString()}원</span></div>`)
+    .join('');
+
+  const homeAfter = Math.max(0, homeItem.totalFee - (best.internetDiscount || 0));
+
+  return `
+    <div class="final-combo-block">
+      <div class="final-combo-title">가족 결합할인</div>
+      <div class="info-row main-label"><span>${best.name}</span><span class="final-combo-total">-${best.total.toLocaleString()}원</span></div>
+      ${best.internetDiscount ? `<div class="info-row sub-item-row"><span>└ 인터넷 할인</span><span>-${best.internetDiscount.toLocaleString()}원</span></div>` : ''}
+      ${lineRows}
+      <div class="total-row"><span>결합 적용 후 인터넷·TV 월요금</span><span class="amount">${homeAfter.toLocaleString()}원</span></div>
+    </div>
+  `;
+}
+
+function buildFinalHomeCard(item, usimItems){
+  return `
+    <div class="final-card">
+      <div class="final-card-head">
+        <span class="final-type-badge badge-home">인터넷/TV</span>
+        <span class="final-card-title">${item.carrierName} / ${item.tvLabel}</span>
+        <button type="button" class="remove-ref" onclick="removeFinalProduct('${item.id}')">삭제</button>
+      </div>
+      <div class="info-row main-label"><span>인터넷</span><span>${item.internetLabel} (${item.internetFee.toLocaleString()}원)</span></div>
+      <div class="info-row sub-item-row"><span>└ 공유기</span><span>${item.routerLabel} (${item.routerFee.toLocaleString()}원)</span></div>
+      ${item.bundleDiscount ? `<div class="info-row sub-item-row"><span>└ 인터넷 결합할인</span><span>-${item.bundleDiscount.toLocaleString()}원</span></div>` : ''}
+      ${item.tvTier !== 'none' ? `
+        <div class="info-row main-label section-start"><span>TV 요금제</span><span>${item.tvName} (${item.tvChannels}채널, ${item.tvFee.toLocaleString()}원)</span></div>
+        <div class="info-row sub-item-row"><span>└ 셋톱박스</span><span>${item.settopLabel} (${item.settopFee.toLocaleString()}원)</span></div>
+        ${item.tvBundleDiscount ? `<div class="info-row sub-item-row"><span>└ TV 결합할인</span><span>-${item.tvBundleDiscount.toLocaleString()}원</span></div>` : ''}
+        ${(item.extraTvDetails || []).map((ex, i) => `
+        <div class="info-row sub-item-row"><span>└ ${i + 2}호기 ${ex.tvName}/${ex.tvChannels}채널</span><span>${ex.tvHalfFee.toLocaleString()}원</span></div>
+        <div class="info-row sub-item-row"><span>└ ${i + 2}호기 셋톱박스</span><span>${ex.settopName} (${ex.settopFee.toLocaleString()}원)</span></div>
+        `).join('')}
+      ` : ''}
+      <div class="total-row"><span>월 청구 요금 (할인 포함)</span><span class="amount">${item.totalFee.toLocaleString()}원</span></div>
+      ${buildFinalComboBlock(item, usimItems)}
+      <div class="info-row main-label section-start"><span>지급 사은품</span><span style="color:var(--gold); font-weight:700;">${item.benefitTotal.toLocaleString()}원</span></div>
+      <div class="info-row sub-item-row"><span>└ 상품권</span><span>${item.giftCard.toLocaleString()}원</span></div>
+      <div class="info-row sub-item-row"><span>└ 현금</span><span>${item.cash.toLocaleString()}원</span></div>
+    </div>
+  `;
+}
+
+function buildFinalUsimCard(item){
+  const contractDiscount = item.contractFee != null ? (item.fee - item.contractFee) : null;
+  const commission = getUsimCommission(item.carrier, item.fee);
+  const gift = item.gift != null ? item.gift : Math.max(0, commission - 150000);
+  return `
+    <div class="final-card">
+      <div class="final-card-head">
+        <span class="final-type-badge badge-usim">유심</span>
+        <span class="final-card-title">${item.carrier} / ${item.planName}</span>
+        <button type="button" class="remove-ref" onclick="removeFinalProduct('${item.id}')">삭제</button>
+      </div>
+      <div class="info-row main-label"><span>월요금</span><span>${item.fee.toLocaleString()}원</span></div>
+      ${contractDiscount != null
+        ? `<div class="info-row sub-item-row"><span>└ 선택약정할인</span><span>-${contractDiscount.toLocaleString()}원 (월요금의 25%)</span></div>`
+        : `<div class="info-row sub-item-row"><span>└ 선택약정할인</span><span>미입력</span></div>`}
+      <div class="info-row"><span>데이터</span><span>${item.dataAllowance}</span></div>
+      <div class="info-row"><span>통화</span><span>${item.voiceAllowance}</span></div>
+      <div class="info-row"><span>문자</span><span>${item.smsAllowance}</span></div>
+      <div class="info-row"><span>테더링/공유</span><span>${item.tethering}</span></div>
+      <div class="info-row"><span>멤버십</span><span>${item.membership}</span></div>
+      <div class="info-row"><span>가입대상</span><span>${item.targetAge}</span></div>
+      ${isLoggedIn ? `
+        <div class="info-row main-label section-start">
+          <span>사은품</span>
+          <span>
+            <input type="text" inputmode="numeric" pattern="[0-9]*" class="gift-input" value="${gift.toLocaleString()}"
+                   onchange="handleUsimFinalGiftChange('${item.id}', this.value)" onfocus="this.select()">
+          </span>
+        </div>
+        <div class="info-row sub-item-row"><span>└ 결합수수료</span><span>${commission.toLocaleString()}원</span></div>
+      ` : ''}
+    </div>
+  `;
+}
+
+function renderFinalProducts(){
+  const homeContainer = document.getElementById('final-products-home');
+  const usimContainer = document.getElementById('final-products-usim');
+  if (!homeContainer || !usimContainer) return;
+
+  const homeItem = finalProducts.find(p => p.type === 'home');
+  const usimItems = finalProducts.filter(p => p.type === 'usim');
+
+  homeContainer.innerHTML = homeItem
+    ? buildFinalHomeCard(homeItem, usimItems)
+    : `<div class="reflected-empty">제안상품에서 [최종반영]을 눌러 확정할 인터넷/TV 상품을 추가하세요.</div>`;
+
+  usimContainer.innerHTML = usimItems.length
+    ? usimItems.map(buildFinalUsimCard).join('')
+    : `<div class="reflected-empty">제안상품에서 [최종반영]을 눌러 확정할 유심 상품을 추가하세요.</div>`;
+
+  renderCommissionPanels(homeItem, usimItems);
+}
+
+function renderCommissionPanels(homeItem, usimItems){
+  const homePanel = document.getElementById('commission-home-panel');
+  const usimPanel = document.getElementById('commission-usim-panel');
+  if (!homePanel || !usimPanel) return;
+
+  if (!isLoggedIn) {
+    homePanel.innerHTML = `<div class="reflected-empty">수수료 정보는 로그인 후 확인할 수 있습니다.</div>`;
+    usimPanel.innerHTML = `<div class="reflected-empty">수수료 정보는 로그인 후 확인할 수 있습니다.</div>`;
+    return;
+  }
+
+  if (!homeItem) {
+    homePanel.innerHTML = `<div class="reflected-empty">최종상품이 반영되면 수수료 정보가 표시됩니다.</div>`;
+  } else {
+    const comm = lookupCommission(homeItem.carrierKey, homeItem.speedNum, homeItem.tvTier);
+    const margin = comm.totalComm - homeItem.benefitTotal;
+    homePanel.innerHTML = `
+      <div class="final-card">
+        <div class="info-row main-label"><span>총 수수료</span><span>${comm.totalComm.toLocaleString()}원</span></div>
+        <div class="info-row sub-item-row"><span>└ 인터넷 수수료</span><span>${comm.internetComm.toLocaleString()}원</span></div>
+        ${homeItem.tvTier !== 'none' ? `<div class="info-row sub-item-row"><span>└ TV 수수료</span><span>${comm.tvComm.toLocaleString()}원</span></div>` : ''}
+        <div class="info-row sub-item-row"><span>└ 지급 사은품(상품권+현금)</span><span>-${homeItem.benefitTotal.toLocaleString()}원</span></div>
+        <div class="total-row"><span>마진</span><span class="amount" style="color:${margin >= 0 ? '#1E7E34' : '#D9534F'};">${margin.toLocaleString()}원</span></div>
+      </div>
+    `;
+  }
+
+  if (!usimItems.length) {
+    usimPanel.innerHTML = `<div class="reflected-empty">최종상품이 반영되면 수수료 정보가 표시됩니다.</div>`;
+  } else {
+    const usimTotalComm = usimItems.reduce((sum, item) => sum + getUsimCommission(item.carrier, item.fee), 0);
+    usimPanel.innerHTML = `
+      <div class="final-card">
+        <div class="total-row"><span>총 수수료</span><span class="amount">${usimTotalComm.toLocaleString()}원</span></div>
+        ${usimItems.map(item => `<div class="info-row sub-item-row"><span>└ ${item.carrier} / ${item.planName}</span><span>${getUsimCommission(item.carrier, item.fee).toLocaleString()}원</span></div>`).join('')}
+      </div>
+    `;
+  }
+}
+
+function openLoginModal(){
+  document.getElementById('login-error').textContent = '';
+  document.getElementById('login-modal').style.display = 'flex';
+}
+
+function closeLoginModal(){
+  document.getElementById('login-modal').style.display = 'none';
+}
+
+function openReservationModal(){
+  document.getElementById('resv-error').textContent = '';
+  setVal('resv-contact', '');
+  setVal('resv-timing', '');
+  setVal('resv-memo', '');
+  document.getElementById('reservation-modal').style.display = 'flex';
+}
+
+function closeReservationModal(){
+  document.getElementById('reservation-modal').style.display = 'none';
+}
+
+// "11월 중순", "27년 12월", "12월 5일" 같은 대략적 표현을 실제 날짜(YYYY-MM-DDT09:00)로 변환.
+// 초순=5일, 중순=15일, 말/하순=25일, 일자 언급 없으면 1일. 연도 미기재 시 이미 지난 날짜면 내년으로 이동.
+function parseRoughDateText(text){
+  const t = String(text || '').trim();
+  if (!t) return null;
+
+  const monthMatch = t.match(/(\d{1,2})\s*월/);
+  if (!monthMatch) return null;
+  const month = parseInt(monthMatch[1], 10);
+  if (month < 1 || month > 12) return null;
+
+  const yearMatch = t.match(/(\d{2,4})\s*년/);
+  let year = new Date().getFullYear();
+  if (yearMatch) {
+    let y = parseInt(yearMatch[1], 10);
+    if (y < 100) y += 2000;
+    year = y;
+  }
+
+  let day = 1;
+  if (t.includes('초순')) day = 5;
+  else if (t.includes('중순')) day = 15;
+  else if (t.includes('하순') || t.includes('말')) day = 25;
+  const dayMatch = t.match(/(\d{1,2})\s*일/);
+  if (dayMatch) day = parseInt(dayMatch[1], 10);
+
+  if (!yearMatch) {
+    const candidate = new Date(year, month - 1, day);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    if (candidate < today) year += 1;
+  }
+
+  const pad = n => String(n).padStart(2, '0');
+  return `${year}-${pad(month)}-${pad(day)}T09:00`;
+}
+
+async function submitReservation(btn){
+  const errEl = document.getElementById('resv-error');
+  errEl.textContent = '';
+
+  const contact = (elVal('resv-contact') || '').trim();
+  if (!contact) { errEl.textContent = '연락처는 필수 입력값입니다.'; return; }
+
+  const timingRaw = (elVal('resv-timing') || '').trim();
+  const memoRaw = (elVal('resv-memo') || '').trim();
+  const parsedDate = parseRoughDateText(timingRaw);
+
+  const noteParts = [];
+  if (timingRaw) noteParts.push(`예상 시점: ${timingRaw}`);
+  if (memoRaw) noteParts.push(memoRaw);
+
+  setBtnLoading(btn, '등록 중...');
+  try {
+    const { data: exist } = await sb.from('customers').select('customer_id').eq('contact', contact).limit(1);
+    const payload = {
+      contact,
+      funnel_status: RESERVATION_STATUS,
+      next_contact_at: parsedDate ? new Date(parsedDate).toISOString() : null,
+      notes: noteParts.join(' / ') || null
+    };
+
+    let error;
+    if (exist && exist.length) {
+      if (!confirm(`동일한 연락처(${contact})의 고객이 이미 등록되어 있습니다.\n기존 정보를 상담예약 상태로 업데이트할까요?`)) return;
+      ({ error } = await sb.from('customers').update(payload).eq('customer_id', exist[0].customer_id));
+    } else {
+      ({ error } = await sb.from('customers').insert(payload));
+    }
+
+    if (error) { errEl.textContent = '등록 실패: ' + error.message; return; }
+
+    showToast('✓ 상담예약이 등록되었습니다');
+    closeReservationModal();
+    await searchOrRefresh();
+    if (document.getElementById('funnel-dashboard')) loadFunnelDashboard();
+  } finally {
+    clearBtnLoading(btn);
+  }
+}
+
+function updateAuthUI(email){
+  const box = document.getElementById('auth-box');
+  if (isLoggedIn) {
+    box.innerHTML = `<span class="whoami">${email || ''}</span><button class="logout-btn" onclick="handleLogout()">로그아웃</button>`;
+  } else {
+    box.innerHTML = `<button class="login-trigger-btn" onclick="openLoginModal()">🔐 관리자 로그인</button>`;
+  }
+}
+
+function jsRow(label, value) {
+  if (!value) return '';
+  return `<div class="js-row"><span>${label}</span><span>${value}</span></div>`;
+}
+
+/* =========================================================================
+   고객 DB 모듈 (상담저장 / 고객조회)
+   - 테이블: customers (cust.sql 기준) + customer_products (추가 권장 테이블)
+   - customer_products / proposal_snapshot 은 없을 경우 자동으로 건너뜁니다.
+   ========================================================================= */
+
+
+let selectedCustomerTags = new Set();   // 고객상담 화면용
+let detailCustomerTags = new Set();     // 고객조회 화면용 (서로 독립적인 선택 상태)
+
+// 태그 칩 목록을 그려주는 공용 함수 (containerId 자리에 렌더링, toggleFnName을 각 칩의 onclick에 연결)
+function renderTagChips(containerId, tagSet, toggleFnName){
+  const body = document.getElementById(containerId);
+  if (!body) return;
+  body.innerHTML = CUSTOMER_TAG_GROUPS.map(group => `
+    <div class="cust-tag-group">
+      <div class="cust-tag-group-label">${group.label}</div>
+      <div class="cust-tag-chip-row">
+        ${group.tags.map(t => `
+          <span class="cust-tag-chip ${tagSet.has(t.key) ? 'active' : ''}"
+                title="${escAttr(t.desc)}"
+                onclick="${toggleFnName}('${t.key.replace(/'/g, "\\'")}')">#${t.key}</span>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+// 설명(desc) 중 "참고:" 이후 문구만 추출 (툴팁과 동일한 내용을 재사용)
+function tagStrategyText(desc){
+  const parts = String(desc || '').split('참고:');
+  return (parts.length > 1 ? parts[1] : desc).trim();
+}
+
+// 선택된 태그 기반 상담 전략 박스를 그려주는 공용 함수
+function renderTagStrategyBox(boxId, tagSet){
+  const box = document.getElementById(boxId);
+  if (!box) return;
+
+  const allTags = CUSTOMER_TAG_GROUPS.flatMap(g => g.tags);
+  const selected = allTags.filter(t => tagSet.has(t.key));
+
+  if (!selected.length) {
+    box.style.display = 'none';
+    box.innerHTML = '';
+    return;
+  }
+
+  box.style.display = '';
+  box.innerHTML = `
+    <div class="cust-tag-strategy-title">📌 선택된 태그 기반 상담 전략</div>
+    <ul class="cust-tag-strategy-list">
+      ${selected.map(t => `<li><b>#${t.key}</b> — ${tagStrategyText(t.desc)}</li>`).join('')}
+    </ul>
+  `;
+}
+
+// 태그 선택/해제 로직 (단일선택 그룹은 같은 그룹 내 기존 선택을 자동 해제)
+function toggleTagInSet(tagSet, tagKey){
+  const group = CUSTOMER_TAG_GROUPS.find(g => g.tags.some(t => t.key === tagKey));
+  if (group && group.single) {
+    if (tagSet.has(tagKey)) tagSet.delete(tagKey);
+    else { group.tags.forEach(t => tagSet.delete(t.key)); tagSet.add(tagKey); }
+  } else {
+    if (tagSet.has(tagKey)) tagSet.delete(tagKey);
+    else tagSet.add(tagKey);
+  }
+}
+
+/* ---- 고객상담 화면용 ---- */
+function renderCustomerTags(){
+  renderTagChips('customer-tags-body', selectedCustomerTags, 'toggleCustomerTag');
+  renderTagStrategyBox('customer-tags-strategy', selectedCustomerTags);
+}
+function toggleCustomerTag(tagKey){
+  toggleTagInSet(selectedCustomerTags, tagKey);
+  renderCustomerTags();
+}
+function toggleCustomerTagsBody(){
+  const body = document.getElementById('customer-tags-body');
+  const chevron = document.getElementById('customer-tags-chevron');
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : '';
+  if (chevron) chevron.textContent = isOpen ? '▾' : '▴';
+}
+
+/* ---- 고객조회 화면용 ---- */
+function renderDetailCustomerTags(){
+  renderTagChips('detail-tags-body', detailCustomerTags, 'toggleDetailCustomerTag');
+  renderTagStrategyBox('detail-tags-strategy', detailCustomerTags);
+}
+function toggleDetailCustomerTag(tagKey){
+  toggleTagInSet(detailCustomerTags, tagKey);
+  renderDetailCustomerTags();
+}
+function toggleDetailTagsBody(){
+  const body = document.getElementById('detail-tags-body');
+  const chevron = document.getElementById('detail-tags-chevron');
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : '';
+  if (chevron) chevron.textContent = isOpen ? '▾' : '▴';
+}
+
+
+let CUSTOMER_SCHEMA = { hasProductsTable: false, hasSnapshot: false, hasTags: false, checked: false };
+let currentCustomerId = null;
+let customerListCache = [];
+let customerViewInited = false;
+
+function getFunnelStage(status){
+  if (PRE_STAGE_STATUSES.includes(status)) return 'wait';
+  const found = FUNNEL_STAGES.find(g => g.items.includes(status));
+  return found ? found.stage : 0;
+}
+
+function funnelStatusOptionsHtml(selected, includeAll){
+  let html = includeAll ? `<option value="">상태값 전체</option>` : '';
+  html += `
+    <optgroup label="상담대기">
+      ${PRE_STAGE_STATUSES.map(v => `<option value="${v}" ${v === selected ? 'selected' : ''}>${v}</option>`).join('')}
+    </optgroup>
+  `;
+  html += FUNNEL_STAGES.map(g => `
+    <optgroup label="${g.label}">
+      ${g.items.map(v => `<option value="${v}" ${v === selected ? 'selected' : ''}>${v}</option>`).join('')}
+    </optgroup>
+  `).join('');
+  return html;
+}
+
+function initFunnelSelects(){
+  const a = document.getElementById('cust-funnel-status');
+  if (a) a.innerHTML = funnelStatusOptionsHtml(DEFAULT_FUNNEL_STATUS, false);
+  const b = document.getElementById('cust-search-status');
+  if (b) b.innerHTML = funnelStatusOptionsHtml('', true);
+}
+
+// 연락처 자동 하이픈
+function formatContactInput(el){
+  const digits = (el.value || '').replace(/[^0-9]/g, '').slice(0, 11);
+  let out = digits;
+  if (digits.length > 3 && digits.length <= 7) out = `${digits.slice(0,3)}-${digits.slice(3)}`;
+  else if (digits.length > 7) out = `${digits.slice(0,3)}-${digits.slice(3,7)}-${digits.slice(7)}`;
+  el.value = out;
+}
+
+// 연락처 기본값(010)만 남아있는 등 미입력 상태를 걸러내기 위한 검증 (숫자 10자리 이상)
+function hasValidContact(){
+  const digits = (elVal('cust-contact') || '').replace(/[^0-9]/g, '');
+  return digits.length >= 10;
+}
+
+function elVal(id){ const el = document.getElementById(id); return el ? el.value : ''; }
+function setVal(id, v){ const el = document.getElementById(id); if (el) el.value = (v === null || v === undefined) ? '' : v; }
+
+// 저장 대상 상품 : 최종상품 우선, 없으면 제안상품 첫 건
+function pickSaveTargets(){
+  const homeFinal = finalProducts.find(p => p.type === 'home');
+  const homeProp = reflectedProducts.find(p => p.type === 'home');
+  const usimFinal = finalProducts.filter(p => p.type === 'usim');
+  const usimProp = reflectedProducts.filter(p => p.type === 'usim');
+  return {
+    home: homeFinal || homeProp || null,
+    usim: (usimFinal.length ? usimFinal : usimProp)[0] || null
+  };
+}
+
+function homeCommissionOf(item){
+  if (!item || !isLoggedIn) return null;
+  try { return lookupCommission(item.carrierKey, item.speedNum, item.tvTier).totalComm; }
+  catch (e) { return null; }
+}
+
+function buildCustomerPayload(){
+  const { home, usim } = pickSaveTargets();
+  const oldOn = document.getElementById('old-internet-toggle')?.checked;
+  const nextContact = elVal('cust-next-contact');
+
+  const payload = {
+    name: (elVal('cust-name') || '').trim() || null,
+    contact: (elVal('cust-contact') || '').trim(),
+    telecom: elVal('cust-mobile-carrier') || null,
+    old_isp: oldOn ? (elVal('old-isp') || null) : null,
+    old_tv_count: oldOn ? Number(elVal('old-tv-count') || 0) : 0,
+    desired_product: home ? (home.tvTier !== 'none' ? '인터넷,TV' : '인터넷') : null,
+    guided_carrier: home ? home.carrierName : null,
+    guided_internet_speed: home ? home.internetLabel : null,
+    guided_router: home ? home.routerLabel : null,
+    guided_tv_channel: home ? home.tvLabel : null,
+    guided_settop: home ? home.settopLabel : null,
+    guided_home_fee: home ? home.totalFee : null,
+    guided_home_gift: home ? home.benefitTotal : null,
+    guided_home_commission: homeCommissionOf(home),
+    usim_telecom: usim ? usim.carrier : null,
+    usim_plan: usim ? usim.planName : null,
+    usim_fee: usim ? Number(usim.fee) || 0 : null,
+    usim_gift: usim ? (usim.gift != null ? usim.gift : (isLoggedIn ? Math.max(0, getUsimCommission(usim.carrier, Number(usim.fee) || 0) - 150000) : null)) : null,
+    usim_commission: usim && isLoggedIn ? getUsimCommission(usim.carrier, Number(usim.fee) || 0) : null,
+    notes: elVal('cust-notes') || null,
+    funnel_status: elVal('cust-funnel-status') || DEFAULT_FUNNEL_STATUS,
+    next_contact_at: nextContact ? new Date(nextContact).toISOString() : null
+  };
+
+  if (CUSTOMER_SCHEMA.hasTags) {
+    payload.customer_tags = Array.from(selectedCustomerTags);
+  }
+
+  if (CUSTOMER_SCHEMA.hasSnapshot) {
+    payload.proposal_snapshot = {
+      savedAt: new Date().toISOString(),
+      customerInfo: {
+        mobileCarrier: elVal('cust-mobile-carrier'),
+        mobileFee: Number(elVal('cust-mobile-fee')) || null,
+        oldInternet: getOldInternetSummaryValue(),
+        familyLines: familyLines
+      },
+      proposals: reflectedProducts,
+      finals: finalProducts,
+      comboDiscount: buildComboSnapshot()
+    };
+  }
+  return payload;
+}
+
+// 최종상품 기준 결합할인 요약 (스냅샷용)
+function buildComboSnapshot(){
+  const homeItem = finalProducts.find(p => p.type === 'home');
+  const usimItems = finalProducts.filter(p => p.type === 'usim');
+  const combo = computeFinalCombo(homeItem, usimItems);
+  if (!combo) return null;
+  return { name: combo.best.name, total: combo.best.total, internetDiscount: combo.best.internetDiscount };
+}
+
+function buildProductRows(customerId){
+  const finalIds = new Set(finalProducts.map(p => p.id));
+  const rows = [];
+
+  reflectedProducts.filter(p => p.type === 'home').forEach(p => {
+    rows.push({
+      customer_id: customerId,
+      product_type: 'home',
+      is_final: finalIds.has(p.id),
+      carrier: p.carrierName,
+      product_name: `${p.internetLabel} · ${p.tvLabel}`,
+      monthly_fee: p.totalFee,
+      gift_amount: p.benefitTotal,
+      commission: homeCommissionOf(p),
+      detail: p
+    });
+  });
+
+  addedUsimLines.forEach(p => {
+    const linked = reflectedProducts.find(r => r.id === p.id);
+    const fee = Number(p.fee) || 0;
+    const commission = isLoggedIn ? getUsimCommission(p.carrier, fee) : null;
+    const giftAmount = linked && linked.gift != null ? linked.gift : (commission != null ? Math.max(0, commission - 150000) : null);
+    rows.push({
+      customer_id: customerId,
+      product_type: 'usim',
+      is_final: finalIds.has(p.id),
+      carrier: p.carrier,
+      product_name: p.planName,
+      monthly_fee: fee,
+      gift_amount: giftAmount,
+      commission: commission,
+      detail: linked || p
+    });
+  });
+
+  return rows;
+}
+
+async function probeCustomerSchema(){
+  if (CUSTOMER_SCHEMA.checked) return CUSTOMER_SCHEMA;
+  const snap = await sb.from('customers').select('proposal_snapshot').limit(1);
+  CUSTOMER_SCHEMA.hasSnapshot = !snap.error;
+  const prod = await sb.from('customer_products').select('customer_id').limit(1);
+  CUSTOMER_SCHEMA.hasProductsTable = !prod.error;
+  const tags = await sb.from('customers').select('customer_tags').limit(1);
+  CUSTOMER_SCHEMA.hasTags = !tags.error;
+  CUSTOMER_SCHEMA.checked = true;
+  return CUSTOMER_SCHEMA;
+}
+
+async function saveConsultation(btn){
+  const contact = (elVal('cust-contact') || '').trim();
+  if (!hasValidContact()) { alert('연락처를 정확히 입력해주세요.'); document.getElementById('cust-contact')?.focus(); return; }
+  if (!reflectedProducts.length && !confirm('제안상품이 없습니다. 고객 정보만 저장할까요?')) return;
+
+  setBtnLoading(btn, '저장 중...');
+  try {
+    await probeCustomerSchema();
+    const payload = buildCustomerPayload();
+
+    let customerId = currentCustomerId;
+    if (!customerId) {
+      const { data: exist } = await sb.from('customers').select('customer_id').eq('contact', contact).limit(1);
+      if (exist && exist.length) {
+        if (!confirm(`동일한 연락처(${contact})의 고객이 이미 등록되어 있습니다.\n기존 고객 정보를 업데이트할까요?`)) return;
+        customerId = exist[0].customer_id;
+      }
+    }
+
+    const res = customerId
+      ? await sb.from('customers').update(payload).eq('customer_id', customerId).select()
+      : await sb.from('customers').insert(payload).select();
+
+    if (res.error) { alert('저장 실패: ' + res.error.message); return; }
+
+    customerId = (res.data && res.data[0]) ? res.data[0].customer_id : customerId;
+    currentCustomerId = customerId;
+
+    let prodMsg = '';
+    if (CUSTOMER_SCHEMA.hasProductsTable) {
+      await sb.from('customer_products').delete().eq('customer_id', customerId);
+      const rows = buildProductRows(customerId);
+      if (rows.length) {
+        const pr = await sb.from('customer_products').insert(rows);
+        if (pr.error) prodMsg = ' (상품 이력 저장 실패: ' + pr.error.message + ')';
+      }
+    } else {
+      prodMsg = ' · customer_products 테이블 미생성으로 상품 이력은 저장되지 않았습니다';
+    }
+
+    setConsultSaveState(`저장됨 · 고객ID ${customerId}`, true);
+    showToast('✓ 상담 내용이 저장되었습니다' + prodMsg);
+    if (document.getElementById('funnel-dashboard')) loadFunnelDashboard();
+  } finally {
+    clearBtnLoading(btn);
+  }
+}
+
+function setConsultSaveState(text, saved){
+  const el = document.getElementById('consult-save-state');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle('saved', !!saved);
+}
+
+function resetConsultation(){
+  if (!confirm('현재 상담 내용을 비우고 신규 상담을 시작할까요?')) return;
+  currentCustomerId = null;
+  setVal('cust-name', NAME_PREFIX);
+  setVal('cust-contact', '010');
+  setVal('cust-notes', '');
+  setVal('cust-next-contact', getDefaultNextContactValue());
+  setVal('cust-funnel-status', DEFAULT_FUNNEL_STATUS);
+  const oldToggleReset = document.getElementById('old-internet-toggle');
+  if (oldToggleReset) { oldToggleReset.checked = false; toggleOldInternetSection(false); }
+  selectedCustomerTags = new Set();
+  renderCustomerTags();
+  reflectedProducts = [];
+  finalProducts = [];
+  addedUsimLines = [];
+  syncToDesignPhones();
+  renderProposalLists();
+  renderFinalProducts();
+  updateCsSummaryPanel();
+  setConsultSaveState('신규 상담', false);
+  goCsStep(1);
+}
+
+/* ---------------- 고객조회 ---------------- */
+
+
+let funnelDashboardExpanded = {};
+let funnelDashboardCounts = {};
+let funnelDashboardTotal = 0;
+
+async function loadFunnelDashboard(){
+  const box = document.getElementById('funnel-dashboard');
+  if (!box) return;
+
+  const { data, error } = await sb.from('customers').select('funnel_status').limit(10000);
+  if (error) { box.innerHTML = `<div class="wide-table-empty">대시보드 조회 실패: ${error.message}</div>`; return; }
+
+  funnelDashboardCounts = {};
+  (data || []).forEach(r => {
+    const st = r.funnel_status || DEFAULT_FUNNEL_STATUS;
+    funnelDashboardCounts[st] = (funnelDashboardCounts[st] || 0) + 1;
+  });
+  funnelDashboardTotal = (data || []).length;
+  renderFunnelDashboard();
+}
+
+function renderFunnelDashboard(){
+  const box = document.getElementById('funnel-dashboard');
+  if (!box) return;
+
+  const groups = DASHBOARD_GROUPS.map(g => ({
+    ...g,
+    total: g.items.reduce((sum, i) => sum + (funnelDashboardCounts[i] || 0), 0)
+  }));
+
+  box.innerHTML = `
+    <div class="funnel-dash-head">
+      <span class="funnel-dash-title">🧭 퍼널 대시보드</span>
+      <span class="funnel-dash-total">전체 ${funnelDashboardTotal.toLocaleString()}건</span>
+    </div>
+    <div class="funnel-dash-groups">
+      ${groups.map(g => `
+        <div class="funnel-dash-group">
+          <button type="button" class="funnel-dash-chip stage-${g.key}" onclick="toggleFunnelDashGroup('${g.key}')">
+            <span>${g.label}</span>
+            <span class="funnel-dash-count">${g.total.toLocaleString()}</span>
+            <span class="funnel-dash-caret">${funnelDashboardExpanded[g.key] ? '▾' : '▸'}</span>
+          </button>
+          ${funnelDashboardExpanded[g.key] ? `
+            <div class="funnel-dash-detail">
+              ${g.items.map(i => `
+                <button type="button" class="funnel-dash-subchip ${(funnelDashboardCounts[i] || 0) === 0 ? 'zero' : ''}" onclick="applyDashboardStatusFilter('${i}')">
+                  ${i} <span>${(funnelDashboardCounts[i] || 0).toLocaleString()}</span>
+                </button>
+              `).join('')}
+            </div>
+          ` : ''}
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function toggleFunnelDashGroup(key){
+  funnelDashboardExpanded[key] = !funnelDashboardExpanded[key];
+  renderFunnelDashboard();
+}
+
+function applyDashboardStatusFilter(status){
+  const sel = document.getElementById('cust-search-status');
+  if (sel) sel.value = status;
+  searchCustomers();
+}
+
+function initCustomerView(){
+  if (customerViewInited) return;
+  customerViewInited = true;
+  probeCustomerSchema().then(() => {
+    const warn = [];
+    if (!CUSTOMER_SCHEMA.hasProductsTable) warn.push('customer_products 테이블 없음');
+    if (!CUSTOMER_SCHEMA.hasSnapshot) warn.push('customers.proposal_snapshot 칼럼 없음');
+    if (!CUSTOMER_SCHEMA.hasTags) warn.push('customers.customer_tags 칼럼 없음');
+    const el = document.getElementById('cust-db-state');
+    if (el) el.textContent = warn.length ? '⚠ ' + warn.join(' · ') : '스키마 정상';
+  });
+  loadRecentCustomers();
+  loadFunnelDashboard();
+}
+
+function renderCustomerList(rows, emptyText){
+  customerListCache = rows || [];
+  const el = document.getElementById('cust-list');
+  const logs = document.getElementById('cust-banner-logs');
+  if (!el) return;
+  updateSortArrows();
+  if (!customerListCache.length) {
+    el.innerHTML = `<tr><td colspan="6"><div class="reflected-empty">${emptyText || '조회 결과가 없습니다.'}</div></td></tr>`;
+    if (logs) logs.textContent = '조회 결과 0건';
+    return;
+  }
+  if (logs) logs.textContent = `조회 결과 ${customerListCache.length}건`;
+
+  el.innerHTML = customerListCache.map(c => {
+    const product = [c.guided_carrier, c.guided_internet_speed, c.guided_tv_channel].filter(Boolean).join(' ');
+    return `
+    <tr class="${c.customer_id === currentCustomerId ? 'active' : ''}" onclick="openCustomer(${c.customer_id})">
+      <td class="cust-row-name">${c.name || '(이름없음)'}</td>
+      <td>${c.contact || '-'}</td>
+      <td class="cust-row-sub">${product || '-'}</td>
+      <td class="cust-row-sub">${formatDateShort(c.next_contact_at)}</td>
+      <td class="cust-row-sub">${formatDateShort(c.updated_at)}</td>
+      <td>
+        <select class="cust-status-chip stage-${getFunnelStage(c.funnel_status)}"
+                onclick="event.stopPropagation()"
+                onchange="quickUpdateFunnelStatus(this, ${c.customer_id})">${funnelStatusOptionsHtml(c.funnel_status, false)}</select>
+      </td>
+    </tr>
+  `;}).join('');
+}
+
+/* ---- 고객 목록 정렬 ---- */
+let custListSortColumn = 'updated_at';
+let custListSortAscending = false;
+
+function sortCustomerList(column){
+  if (custListSortColumn === column) {
+    custListSortAscending = !custListSortAscending;
+  } else {
+    custListSortColumn = column;
+    custListSortAscending = column === 'name'; // 이름은 오름차순(가나다) 기본, 날짜는 최신순 기본
+  }
+  updateSortArrows();
+  if ((elVal('cust-search-contact') || '').trim() || elVal('cust-search-status')) {
+    searchCustomers();
+  } else {
+    loadRecentCustomers();
+  }
+}
+
+function updateSortArrows(){
+  ['name', 'next_contact_at', 'updated_at'].forEach(col => {
+    const arrow = document.getElementById('sort-arrow-' + col);
+    if (!arrow) return;
+    arrow.textContent = col === custListSortColumn ? (custListSortAscending ? '▲' : '▼') : '';
+  });
+}
+
+// 고객 목록에서 상세화면을 거치지 않고 바로 상태값(퍼널)만 변경
+async function quickUpdateFunnelStatus(selectEl, customerId){
+  const newStatus = selectEl.value;
+  selectEl.disabled = true;
+  const { error } = await sb.from('customers').update({ funnel_status: newStatus }).eq('customer_id', customerId);
+  selectEl.disabled = false;
+  if (error) { alert('상태값 변경 실패: ' + error.message); return; }
+
+  const c = customerListCache.find(x => x.customer_id === customerId);
+  if (c) c.funnel_status = newStatus;
+  selectEl.className = `cust-status-chip stage-${getFunnelStage(newStatus)}`;
+
+  if (currentCustomerId === customerId) {
+    const detailSel = document.getElementById('cf-funnel');
+    if (detailSel) detailSel.value = newStatus;
+  }
+
+  showToast('✓ 상태값이 변경되었습니다');
+  loadFunnelDashboard();
+}
+
+function formatDateShort(iso){
+  if (!iso) return '-';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '-';
+  const pad = n => String(n).padStart(2, '0');
+  return `${String(d.getFullYear()).slice(2)}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// 신규 상담 시작 시 "추가컨택일시" 기본값: 조회 당시 일시에서 날짜만 +1일
+function getDefaultNextContactValue(){
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function toLocalInputValue(iso){
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+async function loadRecentCustomers(btn){
+  setBtnLoading(btn, '조회 중...');
+  try {
+    const { data, error } = await sb.from('customers').select('*')
+      .order(custListSortColumn, { ascending: custListSortAscending }).limit(30);
+    if (error) { renderCustomerList([], '조회 실패: ' + error.message); return; }
+    renderCustomerList(data, '등록된 고객이 없습니다.');
+  } finally {
+    clearBtnLoading(btn);
+  }
+}
+
+// 고객검색창에 입력된 연락처를 클립보드로 복사
+function copySearchContact(){
+  const val = (elVal('cust-search-contact') || '').trim();
+  if (!val) { alert('복사할 연락처를 먼저 입력해주세요.'); return; }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(val).then(() => {
+      showToast('✓ 연락처가 복사되었습니다');
+    }).catch(() => {
+      alert('복사에 실패했습니다. 브라우저 권한을 확인해주세요.');
+    });
+  } else {
+    alert('이 브라우저에서는 복사 기능을 지원하지 않습니다.');
+  }
+}
+
+async function searchCustomers(btn){
+  btn = btn || document.getElementById('cust-search-btn');
+  const raw = (elVal('cust-search-contact') || '').trim();
+  const status = elVal('cust-search-status');
+  let query = sb.from('customers').select('*');
+
+  if (raw) {
+    const digits = raw.replace(/[^0-9]/g, '');
+    query = query.or(`contact.ilike.%${raw}%,contact.ilike.%${digits}%`);
+  }
+  if (status) query = query.eq('funnel_status', status);
+
+  setBtnLoading(btn, '조회 중...');
+  try {
+    const { data, error } = await query.order(custListSortColumn, { ascending: custListSortAscending }).limit(100);
+    if (error) { renderCustomerList([], '조회 실패: ' + error.message); return; }
+    renderCustomerList(data, '해당 연락처로 등록된 고객이 없습니다.');
+  } finally {
+    clearBtnLoading(btn);
+  }
+}
+
+function custField(label, id, value, type, span){
+  return `
+    <div class="form-group ${span || ''}">
+      <label>${label}</label>
+      <input type="${type || 'text'}" id="${id}" value="${value === null || value === undefined ? '' : String(value).replace(/"/g, '&quot;')}">
+    </div>
+  `;
+}
+
+async function openCustomer(id){
+  const c = customerListCache.find(x => x.customer_id === id);
+  if (!c) return;
+  await probeCustomerSchema();
+  currentCustomerId = id;
+  renderCustomerList(customerListCache);
+
+  const el = document.getElementById('cust-detail');
+  el.innerHTML = `
+    <div class="cust-form-section">기본 정보</div>
+    <div class="cust-form-grid">
+      ${custField('이름', 'cf-name', c.name)}
+      ${custField('연락처', 'cf-contact', c.contact)}
+      <div class="form-group">
+        <label>휴대폰 통신사</label>
+        <select id="cf-telecom">${MOBILE_CARRIER_OPTIONS.map(o => `<option ${o === c.telecom ? 'selected' : ''}>${o}</option>`).join('')}</select>
+      </div>
+      <div class="form-group">
+        <label>상태값</label>
+        <select id="cf-funnel">${funnelStatusOptionsHtml(c.funnel_status, false)}</select>
+      </div>
+      <div class="form-group">
+        <label>기존 인터넷</label>
+        <select id="cf-old-isp"><option value=""></option>${HOME_CARRIER_OPTIONS.map(o => `<option ${o === c.old_isp ? 'selected' : ''}>${o}</option>`).join('')}</select>
+      </div>
+      ${custField('기존 TV 대수', 'cf-old-tv', c.old_tv_count, 'number')}
+      ${custField('희망상품', 'cf-desired', c.desired_product)}
+      ${custField('추가컨택일시', 'cf-next-contact', toLocalInputValue(c.next_contact_at), 'datetime-local')}
+    </div>
+
+    <div class="info-subsection" id="detail-tags-subsection">
+      <div class="info-subsection-title cust-tag-accordion-header" onclick="toggleDetailTagsBody()">
+        <span>🏷️ 고객 태그</span>
+        <span class="accordion-chevron" id="detail-tags-chevron">▾</span>
+      </div>
+      <div class="info-subsection-body" id="detail-tags-body" style="display:none;"></div>
+    </div>
+    <div class="cust-tag-strategy-box" id="detail-tags-strategy" style="display:none;"></div>
+
+    <div class="cust-form-section">
+      안내상품 · 인터넷/TV
+      <button type="button" class="mini-btn mini-btn-primary" onclick="addGuidedProductRow(${c.customer_id}, 'home')">+ 상품 추가</button>
+    </div>
+    <div id="guided-home-table"><div class="wide-table-empty">불러오는 중...</div></div>
+
+    <div class="cust-form-section">
+      안내상품 · 유심
+      <button type="button" class="mini-btn mini-btn-primary" onclick="addGuidedProductRow(${c.customer_id}, 'usim')">+ 상품 추가</button>
+    </div>
+    <div id="guided-usim-table"><div class="wide-table-empty">불러오는 중...</div></div>
+
+    <div class="cust-form-section">특이사항</div>
+    <div class="cust-form-grid">
+      <div class="form-group span-4">
+        <textarea id="cf-notes" rows="3">${c.notes || ''}</textarea>
+      </div>
+    </div>
+
+    <div class="cust-meta">고객ID ${c.customer_id} · 최초저장 ${formatDateShort(c.created_at)} · 최종수정 ${formatDateShort(c.updated_at)}</div>
+    <div class="cust-detail-actions">
+      <button type="button" class="danger-btn" onclick="deleteCustomer(${c.customer_id}, this)">삭제</button>
+      <button type="button" class="secondary-btn" onclick="loadCustomerToConsult(${c.customer_id})">📥 상담화면으로 불러오기</button>
+      <button type="button" class="primary-btn" onclick="updateCustomer(${c.customer_id}, this)">💾 수정 저장</button>
+    </div>
+  `;
+
+  renderCustomerProducts(c);
+  renderGuidedProductTables(c);
+  detailCustomerTags = new Set(Array.isArray(c.customer_tags) ? c.customer_tags : []);
+  renderDetailCustomerTags();
+}
+
+// 안내상품 · 인터넷/TV, 유심 : 가로로 긴 표 형식 렌더링
+// customer_products 테이블이 있으면 여러 건을 모두 표시/편집 가능,
+// 없으면 customers 테이블의 단일 안내상품 값을 레거시 표 형식으로 보여줍니다.
+async function renderGuidedProductTables(c){
+  const homeBox = document.getElementById('guided-home-table');
+  const usimBox = document.getElementById('guided-usim-table');
+  if (!homeBox || !usimBox) return;
+
+  if (!CUSTOMER_SCHEMA.hasProductsTable) {
+    homeBox.innerHTML = buildLegacyHomeTable(c);
+    usimBox.innerHTML = buildLegacyUsimTable(c);
+    return;
+  }
+
+  const { data, error } = await sb.from('customer_products').select('*').eq('customer_id', c.customer_id).order('id', { ascending: true });
+  if (error) {
+    homeBox.innerHTML = `<div class="wide-table-empty">조회 실패: ${error.message}</div>`;
+    usimBox.innerHTML = `<div class="wide-table-empty">조회 실패: ${error.message}</div>`;
+    return;
+  }
+
+  const rows = data || [];
+  homeBox.innerHTML = buildMultiHomeTable(rows.filter(r => r.product_type === 'home'));
+  usimBox.innerHTML = buildMultiUsimTable(rows.filter(r => r.product_type === 'usim'));
+}
+
+function detailOf(r){ return (r && r.detail && typeof r.detail === 'object') ? r.detail : {}; }
+
+function buildMultiHomeTable(rows){
+  if (!rows.length) return `<div class="cust-wide-table-wrap"><div class="wide-table-empty">저장된 인터넷/TV 안내상품이 없습니다. [+ 상품 추가]를 눌러 입력하세요.</div></div>`;
+  return `
+    <div class="cust-wide-table-wrap">
+      <table class="cust-wide-table">
+        <thead><tr>
+          <th>통신사</th><th>인터넷속도</th><th>공유기</th><th>TV채널</th><th>셋탑박스</th>
+          <th>요금</th><th>사은품</th><th>수수료</th><th>최종</th><th>관리</th>
+        </tr></thead>
+        <tbody>
+          ${rows.map(r => {
+            const d = detailOf(r);
+            return `
+            <tr class="${r.is_final ? 'is-final' : ''}" data-row-id="${r.id}">
+              ${textCell(`pr-${r.id}-carrier`, r.carrier)}
+              ${textCell(`pr-${r.id}-internetLabel`, d.internetLabel)}
+              ${textCell(`pr-${r.id}-routerLabel`, d.routerLabel)}
+              ${textCell(`pr-${r.id}-tvLabel`, d.tvLabel)}
+              ${textCell(`pr-${r.id}-settopLabel`, d.settopLabel)}
+              ${moneyCell(`pr-${r.id}-monthly_fee`, r.monthly_fee)}
+              ${moneyCell(`pr-${r.id}-gift_amount`, r.gift_amount)}
+              ${moneyCell(`pr-${r.id}-commission`, r.commission)}
+              <td class="col-final"><input type="checkbox" id="pr-${r.id}-is_final" ${r.is_final ? 'checked' : ''}></td>
+              <td class="col-actions">
+                <span class="mini-btn-row">
+                  <button type="button" class="mini-btn mini-btn-primary" onclick="saveGuidedProductRow(${r.id}, 'home')">저장</button>
+                  <button type="button" class="mini-btn" onclick="deleteGuidedProductRow(${r.id}, ${r.customer_id})">삭제</button>
+                </span>
+              </td>
+            </tr>
+          `;}).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function buildMultiUsimTable(rows){
+  if (!rows.length) return `<div class="cust-wide-table-wrap"><div class="wide-table-empty">저장된 유심 안내상품이 없습니다. [+ 상품 추가]를 눌러 입력하세요.</div></div>`;
+  return `
+    <div class="cust-wide-table-wrap">
+      <table class="cust-wide-table">
+        <thead><tr>
+          <th>유심통신사</th><th>요금제</th><th>요금</th><th>사은품</th><th>수수료</th><th>최종</th><th>관리</th>
+        </tr></thead>
+        <tbody>
+          ${rows.map(r => `
+            <tr class="${r.is_final ? 'is-final' : ''}" data-row-id="${r.id}">
+              ${textCell(`pr-${r.id}-carrier`, r.carrier)}
+              ${textCell(`pr-${r.id}-product_name`, r.product_name)}
+              ${moneyCell(`pr-${r.id}-monthly_fee`, r.monthly_fee)}
+              ${moneyCell(`pr-${r.id}-gift_amount`, r.gift_amount)}
+              ${moneyCell(`pr-${r.id}-commission`, r.commission)}
+              <td class="col-final"><input type="checkbox" id="pr-${r.id}-is_final" ${r.is_final ? 'checked' : ''}></td>
+              <td class="col-actions">
+                <span class="mini-btn-row">
+                  <button type="button" class="mini-btn mini-btn-primary" onclick="saveGuidedProductRow(${r.id}, 'usim')">저장</button>
+                  <button type="button" class="mini-btn" onclick="deleteGuidedProductRow(${r.id}, ${r.customer_id})">삭제</button>
+                </span>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+// customer_products 테이블이 아직 없을 때 : customers 단일 칼럼 값을 같은 표 형식으로 표시 (레거시)
+function buildLegacyHomeTable(c){
+  return `
+    <div class="cust-wide-table-wrap">
+      <table class="cust-wide-table">
+        <thead><tr>
+          <th>통신사</th><th>인터넷속도</th><th>공유기</th><th>TV채널</th><th>셋탑박스</th><th>요금</th><th>사은품</th><th>수수료</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            ${textCell('cf-g-carrier', c.guided_carrier)}
+            ${textCell('cf-g-speed', c.guided_internet_speed)}
+            ${textCell('cf-g-router', c.guided_router)}
+            ${textCell('cf-g-tv', c.guided_tv_channel)}
+            ${textCell('cf-g-settop', c.guided_settop)}
+            ${moneyCell('cf-g-fee', c.guided_home_fee)}
+            ${moneyCell('cf-g-gift', c.guided_home_gift)}
+            ${moneyCell('cf-g-comm', c.guided_home_commission)}
+          </tr>
+        </tbody>
+      </table>
+      <div class="schema-warn">⚠ customer_products 테이블이 없어 안내상품 1건만 저장/조회됩니다. 여러 건을 관리하려면 마이그레이션 SQL을 실행해주세요.</div>
+    </div>
+  `;
+}
+
+function buildLegacyUsimTable(c){
+  return `
+    <div class="cust-wide-table-wrap">
+      <table class="cust-wide-table">
+        <thead><tr><th>유심통신사</th><th>요금제</th><th>요금</th><th>사은품</th><th>수수료</th></tr></thead>
+        <tbody>
+          <tr>
+            ${textCell('cf-u-telecom', c.usim_telecom)}
+            ${textCell('cf-u-plan', c.usim_plan)}
+            ${moneyCell('cf-u-fee', c.usim_fee)}
+            ${moneyCell('cf-u-gift', c.usim_gift)}
+            ${moneyCell('cf-u-comm', c.usim_commission)}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function escAttr(v){
+  if (v === null || v === undefined) return '';
+  return String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
+function numOrEmpty(v){ return (v === null || v === undefined) ? '' : v; }
+
+// 표 안에서 반복되는 <td> 구조 : 일반 텍스트 입력칸 / 금액 입력칸(콤마 표시 + "원" 접미사)
+function textCell(id, value){
+  return `<td><input type="text" id="${id}" value="${escAttr(value)}"></td>`;
+}
+function moneyCell(id, value){
+  return `<td><div class="cs-money-cell"><input type="text" inputmode="numeric" class="cs-money-input" oninput="formatMoneyInput(this)" id="${id}" value="${moneyOrEmpty(value)}"> <span class="cs-money-suffix">원</span></div></td>`;
+}
+
+// 금액 입력칸 콤마 표시용 : 표시는 "48,400"처럼 콤마 포함, 저장 시엔 numOrNull()이
+// 콤마를 다시 제거하고 숫자로 변환하므로 별도 파싱 로직 추가가 필요 없습니다.
+function moneyOrEmpty(v){
+  if (v === null || v === undefined || v === '') return '';
+  const n = Number(v);
+  return isNaN(n) ? '' : n.toLocaleString('ko-KR');
+}
+function formatMoneyInput(el){
+  const digits = el.value.replace(/[^0-9]/g, '');
+  el.value = digits ? Number(digits).toLocaleString('ko-KR') : '';
+}
+
+async function saveGuidedProductRow(rowId, type){
+  const g = (f) => document.getElementById(`pr-${rowId}-${f}`);
+  const payload = {
+    carrier: g('carrier') ? g('carrier').value : null,
+    monthly_fee: numOrNull(g('monthly_fee') ? g('monthly_fee').value : null),
+    gift_amount: numOrNull(g('gift_amount') ? g('gift_amount').value : null),
+    commission: numOrNull(g('commission') ? g('commission').value : null),
+    is_final: g('is_final') ? g('is_final').checked : false
+  };
+
+  if (type === 'home') {
+    payload.detail = {
+      internetLabel: g('internetLabel') ? g('internetLabel').value : '',
+      routerLabel: g('routerLabel') ? g('routerLabel').value : '',
+      tvLabel: g('tvLabel') ? g('tvLabel').value : '',
+      settopLabel: g('settopLabel') ? g('settopLabel').value : ''
+    };
+    payload.product_name = `${payload.detail.internetLabel || ''} · ${payload.detail.tvLabel || ''}`;
+  } else {
+    payload.product_name = g('product_name') ? g('product_name').value : null;
+  }
+
+  const { error } = await sb.from('customer_products').update(payload).eq('id', rowId);
+  if (error) { alert('저장 실패: ' + error.message); return; }
+  showToast('✓ 안내상품이 저장되었습니다');
+}
+
+async function deleteGuidedProductRow(rowId, customerId){
+  if (!confirm('해당 안내상품 행을 삭제할까요?')) return;
+  const { error } = await sb.from('customer_products').delete().eq('id', rowId);
+  if (error) { alert('삭제 실패: ' + error.message); return; }
+  const c = customerListCache.find(x => x.customer_id === customerId);
+  if (c) renderGuidedProductTables(c);
+  renderCustomerProducts({ customer_id: customerId });
+}
+
+async function addGuidedProductRow(customerId, type){
+  const row = {
+    customer_id: customerId,
+    product_type: type,
+    is_final: false,
+    carrier: '',
+    product_name: type === 'home' ? ' · ' : '',
+    monthly_fee: 0,
+    gift_amount: 0,
+    commission: 0,
+    detail: type === 'home' ? { internetLabel:'', routerLabel:'', tvLabel:'', settopLabel:'' } : {}
+  };
+  const { error } = await sb.from('customer_products').insert(row);
+  if (error) { alert('추가 실패: ' + error.message); return; }
+  const c = customerListCache.find(x => x.customer_id === customerId);
+  if (c) renderGuidedProductTables(c);
+  renderCustomerProducts({ customer_id: customerId });
+}
+
+async function renderCustomerProducts(c){
+  const box = document.getElementById('cust-products');
+  if (!box) return;
+
+  if (!CUSTOMER_SCHEMA.hasProductsTable) {
+    box.innerHTML = `<div class="js-empty">customer_products 테이블이 없어 상품 이력을 조회할 수 없습니다.</div>`;
+    return;
+  }
+
+  const { data, error } = await sb.from('customer_products').select('*').eq('customer_id', c.customer_id).order('id', { ascending: true });
+  if (error) { box.innerHTML = `<div class="js-empty">조회 실패: ${error.message}</div>`; return; }
+  if (!data || !data.length) { box.innerHTML = `<div class="js-empty">저장된 제안 상품이 없습니다.</div>`; return; }
+
+  box.innerHTML = data.map(r => `
+    <div class="cust-prod-item cust-prod-${r.product_type === 'usim' ? 'usim' : 'home'}">
+      <div>
+        <span class="tag ${r.is_final ? 'final' : ''}">${r.is_final ? '최종' : '제안'}</span>
+        <strong>${r.carrier || '-'}</strong> · ${r.product_name || '-'}
+      </div>
+      <div class="js-compact-line">월 ${Number(r.monthly_fee || 0).toLocaleString()}원${r.gift_amount != null ? ` · 사은품 ${Number(r.gift_amount).toLocaleString()}원` : ''}${r.commission != null ? ` · 수수료 ${Number(r.commission).toLocaleString()}원` : ''}</div>
+    </div>
+  `).join('');
+}
+
+async function updateCustomer(id, btn){
+  const contact = (elVal('cf-contact') || '').trim();
+  if (!contact) { alert('연락처는 필수 입력값입니다.'); return; }
+  const nextContact = elVal('cf-next-contact');
+
+  const payload = {
+    name: elVal('cf-name') || null,
+    contact: contact,
+    telecom: elVal('cf-telecom') || null,
+    old_isp: elVal('cf-old-isp') || null,
+    old_tv_count: Number(elVal('cf-old-tv') || 0),
+    desired_product: elVal('cf-desired') || null,
+    notes: elVal('cf-notes') || null,
+    funnel_status: elVal('cf-funnel') || DEFAULT_FUNNEL_STATUS,
+    next_contact_at: nextContact ? new Date(nextContact).toISOString() : null
+  };
+
+  if (CUSTOMER_SCHEMA.hasTags) {
+    payload.customer_tags = Array.from(detailCustomerTags);
+  }
+
+  // customer_products 테이블이 없을 때만 레거시 단일 안내상품 칼럼을 함께 수정합니다.
+  // (테이블이 있으면 안내상품은 표의 [저장] 버튼으로 개별 저장되므로 여기서 건드리지 않습니다.)
+  if (!CUSTOMER_SCHEMA.hasProductsTable) {
+    Object.assign(payload, {
+      guided_carrier: elVal('cf-g-carrier') || null,
+      guided_internet_speed: elVal('cf-g-speed') || null,
+      guided_router: elVal('cf-g-router') || null,
+      guided_tv_channel: elVal('cf-g-tv') || null,
+      guided_settop: elVal('cf-g-settop') || null,
+      guided_home_fee: numOrNull(elVal('cf-g-fee')),
+      guided_home_gift: numOrNull(elVal('cf-g-gift')),
+      guided_home_commission: numOrNull(elVal('cf-g-comm')),
+      usim_telecom: elVal('cf-u-telecom') || null,
+      usim_plan: elVal('cf-u-plan') || null,
+      usim_fee: numOrNull(elVal('cf-u-fee')),
+      usim_gift: numOrNull(elVal('cf-u-gift')),
+      usim_commission: numOrNull(elVal('cf-u-comm'))
+    });
+  }
+
+  setBtnLoading(btn, '저장 중...');
+  try {
+    const { error } = await sb.from('customers').update(payload).eq('customer_id', id);
+    if (error) { alert('수정 실패: ' + error.message); return; }
+    showToast('✓ 고객 정보가 수정되었습니다');
+    await searchOrRefresh();
+    loadFunnelDashboard();
+  } finally {
+    clearBtnLoading(btn);
+  }
+}
+
+function numOrNull(v){
+  if (v === '' || v === null || v === undefined) return null;
+  const n = Number(String(v).replace(/[^0-9-]/g, ''));
+  return isNaN(n) ? null : n;
+}
+
+async function searchOrRefresh(){
+  if ((elVal('cust-search-contact') || '').trim() || elVal('cust-search-status')) await searchCustomers();
+  else await loadRecentCustomers();
+}
+
+async function deleteCustomer(id, btn){
+  if (!confirm('해당 고객 정보를 삭제할까요? 되돌릴 수 없습니다.')) return;
+  setBtnLoading(btn, '삭제 중...');
+  try {
+    if (CUSTOMER_SCHEMA.hasProductsTable) await sb.from('customer_products').delete().eq('customer_id', id);
+    const { error } = await sb.from('customers').delete().eq('customer_id', id);
+    if (error) { alert('삭제 실패: ' + error.message); return; }
+    if (currentCustomerId === id) currentCustomerId = null;
+    document.getElementById('cust-detail').innerHTML = `<div class="reflected-empty">목록에서 고객을 선택하면 상세 정보가 표시됩니다.</div>`;
+    document.getElementById('cust-products').innerHTML = `<div class="js-empty">선택된 고객이 없습니다.</div>`;
+    showToast('✓ 삭제되었습니다');
+    await searchOrRefresh();
+    loadFunnelDashboard();
+  } finally {
+    clearBtnLoading(btn);
+  }
+}
+
+// 고객 정보를 [고객상담] 화면으로 불러오기 (상품 스냅샷이 있으면 함께 복원)
+async function loadCustomerToConsult(id){
+  const c = customerListCache.find(x => x.customer_id === id);
+  if (!c) return;
+
+  currentCustomerId = id;
+  setVal('cust-name', c.name || NAME_PREFIX);
+  setVal('cust-contact', c.contact || '');
+  setVal('cust-notes', c.notes || '');
+  setVal('cust-funnel-status', c.funnel_status || DEFAULT_FUNNEL_STATUS);
+  setVal('cust-next-contact', toLocalInputValue(c.next_contact_at));
+  if (c.telecom) setVal('cust-mobile-carrier', c.telecom);
+
+  const oldToggle = document.getElementById('old-internet-toggle');
+  if (oldToggle) {
+    oldToggle.checked = !!c.old_isp;
+    toggleOldInternetSection(oldToggle.checked);
+    if (c.old_isp) setVal('old-isp', c.old_isp);
+    setVal('old-tv-count', String(c.old_tv_count || 0));
+  }
+
+  selectedCustomerTags = new Set(Array.isArray(c.customer_tags) ? c.customer_tags : []);
+  renderCustomerTags();
+
+  const snap = c.proposal_snapshot;
+  if (snap && typeof snap === 'object') {
+    reflectedProducts = Array.isArray(snap.proposals) ? snap.proposals : [];
+    finalProducts = Array.isArray(snap.finals) ? snap.finals : [];
+    addedUsimLines = reflectedProducts.filter(p => p.type === 'usim')
+      .map(p => ({ id: p.id, carrier: p.carrier, planName: p.planName, fee: p.fee, teen: false }));
+    if (Array.isArray(snap.customerInfo?.familyLines)) familyLines = snap.customerInfo.familyLines;
+  }
+
+  syncToDesignPhones();
+  renderProposalLists();
+  renderFinalProducts();
+  updateCsSummaryPanel();
+  setConsultSaveState(`불러옴 · 고객ID ${id}`, true);
+  switchTab('cs');
+  goCsStep(1);
+  showToast('✓ 고객 정보를 상담화면으로 불러왔습니다');
+}
+
+(async function init(){
+  displayLastModified();
+  initFunnelSelects();
+  setVal('cust-next-contact', getDefaultNextContactValue());
+  setupRecoSeg('reco-seg-speed','speed');
+  setupRecoSeg('reco-seg-router','router');
+  setupRecoSeg('reco-seg-tv','tv');
+  setupRecoSeg('reco-seg-settop','settopTier');
+  setupRecoUsimTierButtons();
+  syncRecoControlsUI();
+  syncToDesignPhones();
+  renderFamilyLines();
+  renderCustomerTags();
+  initRecoUsimTierDefault();
+  updateCsSummaryPanel();
+  renderProposalLists();
+  renderFinalProducts();
+
+  const customerInfoCard = document.getElementById('cs-customer-info-card');
+  if (customerInfoCard) {
+    customerInfoCard.addEventListener('input', updateCsSummaryPanel);
+    customerInfoCard.addEventListener('change', updateCsSummaryPanel);
+    customerInfoCard.addEventListener('change', renderRecoCards);
+  }
+
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) {
+    isLoggedIn = true;
+    updateAuthUI(session.user.email);
+  } else {
+    updateAuthUI();
+  }
+
+  probeCustomerSchema();
+
+  if (await loadData()) {
+    await loadFinanceData();
+    renderRecoCards();
+  }
+  renderFinalProducts();
+})();
+</script>
+</body>
+</html>
