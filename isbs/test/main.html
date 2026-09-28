@@ -116,7 +116,7 @@
                 <button id="auth-btn" onclick="authClick()" class="text-xs font-semibold text-blue-600 hover:underline shrink-0 ml-2"></button>
             </div>
             <div class="flex items-center justify-between text-[11px] text-slate-400">
-                <span id="sync-state"></span><span class="font-mono">v1.7.0</span>
+                <span id="sync-state"></span><span class="font-mono">v1.8.0</span>
             </div>
             <div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
                 <button onclick="exportData()" class="hover:text-blue-600">내보내기</button>
@@ -153,6 +153,7 @@
                 </div>
                 <button id="diag-btn" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-all shrink-0">해당 영역 관리하기 <i class="fa-solid fa-arrow-right ml-1"></i></button>
             </div>
+            <div id="goal-panel" class="space-y-3"></div>
             <div id="ov-cards" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3"></div>
 
             <!-- 이번 주 목표 및 오늘의 할 일 (투두 위젯 섹션) -->
@@ -960,6 +961,69 @@ window.onload=function(){
   }else setSession(null);
   refreshAll();selectCategory('all');fetchRemote();
 };
+</script>
+
+<script>
+/* ===== v1.8: 부서별 목표(OKR) ===== */
+const K=(t,unit,dir,tar)=>({t,unit,dir,cur:'',tar:tar==null?'':String(tar)});
+const defaultGoals=()=>({period:'2026년 4분기',depts:[
+ {n:'경영기획실',obj:'숫자로 판단하고 리스크를 통제한다',cats:['kpi','comply'],krs:[K('월간 지표 리포트 자동 생성 준수율','%','up'),K('이탈 사유 입력률','%','up'),K('컴플라이언스 점검 항목 문서화율','%','up',100)]},
+ {n:'운영혁신팀',obj:'인입부터 사후관리까지 표준대로 돌아가게 한다',cats:['process'],krs:[K('상태값(5개 그룹) 시스템·가이드 일치율','%','up',100),K('종결·이탈 사유 입력 누락','건','down',0),K('예외 사례 표준 가이드 작성','건','up')]},
+ {n:'CS실',obj:'상담 품질과 전환율을 높인다',cats:['staff','crm'],krs:[K('스크립트 흐름 준수율 (녹취 점검 기준)','%','up'),K('고객 이력 입력 완료율','%','up'),K('클레임 평균 처리 기간','일','down')]},
+ {n:'마케팅/상품팀',obj:'정확한 정책 데이터로 맞는 상품을 제안한다',cats:['policy','script'],krs:[K('정책 데이터 갱신 주기 준수율','%','up'),K('공용 정책 데이터 기준 통합 진행률','%','up',100),K('스크립트·고객 유형별 성과 태깅 적용률','%','up')]},
+ {n:'경영지원(재무)',obj:'정산은 정확하게, 사은품은 한도 안에서 통제한다',cats:['settle'],krs:[K('월 정산 미정산·오차 건수','건','down'),K('사은품 지급 대비 실 집행 대조율','%','up',100),K('경품고시제 한도 위반','건','down',0),K('환수 회수 기한 준수율','%','up')]}
+]});
+let goals=defaultGoals();
+const validGoals=g=>g&&typeof g==='object'&&Array.isArray(g.depts)&&g.depts.every(d=>d&&Array.isArray(d.krs));
+function payload(){return{v:5,tasks:taskData,weekly:weeklyGoals,daily:dailyTasks,meta,goals}}
+const _adopt=adopt;
+adopt=function(p){_adopt(p);if(p&&validGoals(p.goals))goals=p.goals};
+const _sel2=selectCategory;
+selectCategory=function(k){_sel2(k);const g=$('goal-panel');if(g)g.classList.toggle('hidden',k!=='all')};
+function refreshAll(){calcBadges();renderWidgets();renderGoals();renderCards();renderDiag();renderChips();currentCategory==='all'?showAllDetailList():selectCategory(currentCategory)}
+const _reset=resetData;
+resetData=function(){if(!guard())return;if(!confirm('모든 수정 내용(과제·목표 포함)을 지우고 기본 데이터로 복원할까요?'))return;goals=defaultGoals();taskData=JSON.parse(JSON.stringify(defaultTaskData));weeklyGoals=JSON.parse(JSON.stringify(defaultWeeklyGoals));dailyTasks=JSON.parse(JSON.stringify(defaultDailyTasks));meta={};mergeSeed();rollover();saveDataAndRefresh()};
+
+function gp(k){
+  if(k.tar===''||k.cur===''||isNaN(k.tar)||isNaN(k.cur))return null;
+  const c=+k.cur,t=+k.tar;
+  if(k.dir==='down')return c<=t?100:(t<=0?0:Math.round(t/c*100));
+  return t<=0?null:Math.min(100,Math.round(c/t*100));
+}
+function areaPct(cats){let a=[];cats.forEach(k=>{if(taskData[k])a=a.concat(taskData[k].tasks)});return a.length?pct(a):null}
+function renderGoals(){
+  const box=$('goal-panel');if(!box)return;
+  const inp='px-2 py-1 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500';
+  let h=`<div class="flex flex-wrap items-center justify-between gap-2"><h3 class="font-bold text-slate-800 text-sm flex items-center"><i class="fa-solid fa-flag text-blue-600 mr-2"></i> 부서별 목표 (OKR)
+   ${canEdit?`<input value="${esc(goals.period)}" onchange="gPeriod(this.value)" aria-label="목표 기간" class="ml-3 w-36 ${inp}">`:`<span class="ml-2 text-xs font-medium text-slate-500">${esc(goals.period)}</span>`}</h3>
+   <span class="text-[11px] text-slate-400">현재값·목표값을 입력하면 달성률이 계산됩니다${canEdit?'':' (수정은 로그인 필요)'}</span></div>
+   <div class="grid grid-cols-1 xl:grid-cols-2 gap-3">`;
+  goals.depts.forEach((d,di)=>{
+    const ps=d.krs.map(gp).filter(x=>x!==null),ach=ps.length?Math.round(ps.reduce((a,b)=>a+b,0)/ps.length):null,ap=areaPct(d.cats||[]);
+    h+=`<div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+     <div class="flex justify-between items-start gap-2"><div class="min-w-0"><div class="text-[11px] font-bold text-blue-600">${esc(d.n)}</div>
+      ${canEdit?`<input value="${esc(d.obj)}" onchange="gObj(${di},this.value)" aria-label="부서 목표" class="w-full mt-1 text-sm font-bold ${inp}">`:`<div class="text-sm font-bold text-slate-800 mt-0.5">${esc(d.obj)}</div>`}</div>
+      <div class="text-right shrink-0"><div class="text-lg font-bold ${ach===null?'text-slate-300':'text-slate-800'}">${ach===null?'-':ach+'%'}</div><div class="text-[10px] text-slate-400">KR 달성</div></div></div>
+     ${ap===null?'':`<div class="text-[11px] text-slate-500 mt-1">연결 영역 과제 진척 <b class="text-slate-700">${ap}%</b></div>`}
+     <div class="mt-3 space-y-2.5">`;
+    d.krs.forEach((k,ki)=>{
+      const p=gp(k);
+      h+=`<div class="rounded-xl bg-slate-50 border border-slate-100 p-2.5">
+       ${canEdit?`<div class="flex gap-1.5"><input value="${esc(k.t)}" onchange="gSet(${di},${ki},'t',this.value)" aria-label="핵심 결과" class="flex-1 min-w-0 ${inp}"><button onclick="gDel(${di},${ki})" class="text-slate-300 hover:text-rose-500 px-1" aria-label="KR 삭제"><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="flex flex-wrap items-center gap-1.5 mt-1.5 text-[11px] text-slate-500">현재 <input value="${esc(k.cur)}" inputmode="decimal" onchange="gSet(${di},${ki},'cur',this.value)" class="w-16 ${inp}"> 목표 <input value="${esc(k.tar)}" inputmode="decimal" onchange="gSet(${di},${ki},'tar',this.value)" class="w-16 ${inp}"> 단위 <input value="${esc(k.unit)}" onchange="gSet(${di},${ki},'unit',this.value)" class="w-12 ${inp}">
+         <select onchange="gSet(${di},${ki},'dir',this.value)" class="${inp}"><option value="up" ${k.dir==='up'?'selected':''}>높을수록 좋음</option><option value="down" ${k.dir==='down'?'selected':''}>낮을수록 좋음</option></select></div>`
+       :`<div class="flex justify-between gap-2 text-xs"><span class="text-slate-700 font-medium">${esc(k.t)}</span><span class="text-slate-500 shrink-0">${k.cur===''?'-':esc(k.cur)} / ${k.tar===''?'미설정':esc(k.tar)}${esc(k.unit)}${k.dir==='down'?' 이하':''}</span></div>`}
+       <div class="h-1.5 bg-slate-200 rounded-full mt-2 overflow-hidden"><div class="h-full ${p===100?'bg-emerald-500':'bg-blue-500'}" style="width:${p||0}%"></div></div></div>`;
+    });
+    h+=`</div>${canEdit?`<button onclick="gAdd(${di})" class="mt-2.5 text-xs text-blue-600 hover:underline font-semibold"><i class="fa-solid fa-plus mr-1"></i>KR 추가</button>`:''}</div>`;
+  });
+  box.innerHTML=h+'</div>';
+}
+function gSet(di,ki,f,v){if(!guard())return;goals.depts[di].krs[ki][f]=String(v).trim();saveDataAndRefresh()}
+function gObj(di,v){if(!guard())return;goals.depts[di].obj=v.trim();saveDataAndRefresh()}
+function gPeriod(v){if(!guard())return;goals.period=v.trim();saveDataAndRefresh()}
+function gAdd(di){if(!guard())return;goals.depts[di].krs.push(K('새 핵심 결과','%','up'));saveDataAndRefresh()}
+function gDel(di,ki){if(!guard())return;if(confirm('이 핵심 결과를 삭제할까요?')){goals.depts[di].krs.splice(ki,1);saveDataAndRefresh()}}
 </script>
 </body>
 </html>
