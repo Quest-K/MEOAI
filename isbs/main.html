@@ -5,8 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>사업 진행 현황</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<!-- Supabase JS SDK 라이브러리 -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
-/* CSS 변수 및 기본 레이아웃 설정 */
 :root{--bg:#F1F4F8;--sf:#fff;--ink:#1A2233;--mute:#5B6579;--ln:#DCE2EC;--ac:#2456E6;--acbg:#E6EDFD;
 --s0:#8792A6;--s1:#2456E6;--s2:#1F8A5B;--s3:#B7791F;--red:#C0362C;
 box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -54,15 +55,17 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 </head>
 <body>
 <main>
-<div class="top"><div><h1>사업 진행 현황</h1><p class="sub">카테고리별 할 일의 상태, 우선순위, 담당, 기한을 관리합니다. 수정하면 자동 저장됩니다.</p></div><span class="st" id="st"></span></div>
+<div class="top"><div><h1>사업 진행 현황</h1><p class="sub">카테고리별 할 일의 상태, 우선순위, 담당, 기한을 관리합니다. 수정하면 Supabase DB로 실시간 저장됩니다.</p></div><span class="st" id="st"></span></div>
 <div id="app"></div>
 </main>
 <script>
-// 상태명 및 우선순위 명칭 정의
+// Supabase 프로젝트 연결 정보 적용
+var SUPABASE_URL = 'https://jhfhpumhifyhauuoinxc.supabase.co';
+var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpoZmhwdW1oaWZ5aGF1dW9pbnhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0MDE2NTMsImV4cCI6MjEwMzk3NzY1M30.euXk3eXtUVvEQRDGgcLhvX3JhVlpv9D7fZUEDr0i8yA';
+var _supabase = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
 var SN=['미착수','진행중','완료','보류'],PN=['높음','중간','낮음'];
 
-// 최신 진행 상황이 업데이트된 카테고리 데이터
-// [카테고리명, 우선순위, 설명, [[할 일, 상태(0:미착수, 1:진행중, 2:완료, 3:보류), 우선순위(0:높음, 1:중간, 2:낮음)], ...]]
 var RAW=[
 ["고객 흐름 (퍼널·상태값)",0,"상태값 정의, 단계 전환 규칙, 이탈 사유",[["퍼널 상태값 5개 그룹으로 개편",2,0],["상태 간 이동 규칙표 작성",2,0],["이탈·종결 사유 분류 확정",2,1],["재접촉 규칙(고객부재 횟수·기한) 정리",2,1],["구/신 상태값 매핑표 작성",2,2]]],
 ["상담 지원 프로그램",0,"상품 추천, 고객 이력 작성, 3년 총액 비교",[["적정사은품 계산기 (기본 60% + 가산, 만원 절사)",2,0],["추천상품 화면 개선 (4분할 그리드, +유심 통합, 버튼 개선)",2,1],["경품고시제 항목(읽기 전용) 반영",2,1],["고객 이력 입력 및 4단계 위저드 구축",2,0],["3년 총액 비교 기능 및 요금 산출",2,1]]],
@@ -74,27 +77,69 @@ var RAW=[
 ["성과 분석·사후관리",1,"전환율, 유형별 성공률, 설치·재접촉 관리",[["퍼널 단계별 전환율 대시보드 구축",2,1],["유형별·스크립트별 성공률 분석",0,2],["설치·사은품 지급 사후 안내 알림",2,1],["약정 만료 재접촉 일정 관리",0,2]]]
 ];
 
-// 초기 데이터 구조화
 var C=RAW.map(function(c){return{n:c[0],p:c[1],d:c[2],t:c[3].map(function(x){return{t:x[0],s:x[1],p:x[2],o:'',u:'',m:''}})}});
-var DEF=JSON.stringify(C),K='progress.v2',PATH='progress/data',db=null,filt=-1,openMap={},tmr=0;
+var DEF=JSON.stringify(C),K='progress.v2',filt=-1,openMap={},tmr=0;
 var app=document.getElementById('app'),stEl=document.getElementById('st');
 var d0=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
 
-// 도우미 함수 정의
 function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
 function ok(d){return Array.isArray(d)&&d.length>0&&d.every(function(c){return c&&typeof c.n==='string'&&Array.isArray(c.t)})}
 function st(t){stEl.textContent=t}
 
-// 로컬 스토리지 불러오기
+// 로컬 스토리지 데이터 임시 복원
 try{var ls=JSON.parse(localStorage.getItem(K));if(ok(ls))C=ls}catch(e){}
 
-// 데이터 저장 로직
-function persist(){clearTimeout(tmr);st('저장 중…');tmr=setTimeout(async function(){
-  var j=JSON.stringify(C);
-  try{localStorage.setItem(K,j)}catch(e){}
-  if(!db){st('이 브라우저에만 저장됨');return}
-  try{await db.doc(PATH).set({json:j});st('저장됨 (공유 DB)')}catch(e){st('이 브라우저에만 저장됨')}
-},700)}
+// Supabase DB 저장 로직
+function persist(){
+  clearTimeout(tmr);
+  st('저장 중…');
+  tmr=setTimeout(async function(){
+    var j=JSON.stringify(C);
+    try{localStorage.setItem(K,j)}catch(e){}
+    
+    if(!_supabase){
+      st('이 브라우저에만 저장됨 (Supabase 미연동)');
+      return;
+    }
+    
+    try{
+      var res = await _supabase
+        .from('pm_progress_status')
+        .upsert({ key: 'main_progress', data: C, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+      
+      if(res.error) throw res.error;
+      st('저장됨 (Supabase 공유)');
+    }catch(e){
+      console.error('Supabase Save Error:', e);
+      st('이 브라우저에만 저장됨 (DB 저장 실패)');
+    }
+  },700);
+}
+
+// Supabase DB 불러오기 로직
+async function loadFromSupabase(){
+  if(!_supabase) return;
+  st('공유 DB 동기화 중…');
+  try{
+    var res = await _supabase
+      .from('pm_progress_status')
+      .select('data')
+      .eq('key', 'main_progress')
+      .maybeSingle();
+    
+    if(res.data && res.data.data && ok(res.data.data)){
+      C = res.data.data;
+      try{localStorage.setItem(K, JSON.stringify(C))}catch(e){}
+      render();
+      st('공유 DB 동기화 완료');
+    } else {
+      st('공유 DB 준비 완료');
+    }
+  }catch(e){
+    console.error('Supabase Load Error:', e);
+    st('로컬 데이터 사용 중');
+  }
+}
 
 function rerender(){var y=window.scrollY;render();window.scrollTo(0,y)}
 function late(t){return t.u&&t.s!==2&&t.s!==3&&t.u<d0}
@@ -104,25 +149,21 @@ function bar(p){var b=el('span','bar'),i=el('i');i.style.width=p+'%';b.appendChi
 function sel(list,v,fn){var s=el('select');list.forEach(function(x,i){var o=el('option','',x);o.value=i;s.appendChild(o)});s.value=v;s.onchange=function(){fn(+s.value)};return s}
 function inp(v,ph,fn,type){var i=el('input');if(type)i.type=type;i.value=v||'';if(ph)i.placeholder=ph;i.oninput=function(){fn(i.value)};return i}
 
-// 화면 렌더링 함수
 function render(){
   app.textContent='';
   var all=[];C.forEach(function(c){all=all.concat(c.t)});
-  var hold=cnt(all,3),lateN=all.filter(late).length,live=all.length-hold;
+  var hold=cnt(all,3),lateN=all.filter(late).length;
   
-  // 상단 오버뷰 요약
   var ov=el('div','ov');ov.appendChild(el('b','',pct(all)+'%'));
   var w=el('div');w.style.flex='1';w.appendChild(bar(pct(all)));
   w.appendChild(el('small','','전체 '+all.length+'건 중 완료 '+cnt(all,2)+' · 진행중 '+cnt(all,1)+' · 미착수 '+cnt(all,0)+' · 보류 '+hold+(lateN?' · 기한 지연 '+lateN+'건':'')));
   ov.appendChild(w);app.appendChild(ov);
   
-  // 상태별 필터 칩
   var ch=el('div','chips');
   [[-1,'전체 '+all.length]].concat(SN.map(function(n,i){return[i,n+' '+cnt(all,i)]})).forEach(function(f){
     var b=el('button','',f[1]);b.type='button';b.setAttribute('aria-pressed',filt===f[0]);b.onclick=function(){filt=f[0];rerender()};ch.appendChild(b)});
   app.appendChild(ch);
   
-  // 카테고리 카드 타일
   var tl=el('div','tiles');
   C.forEach(function(c,i){
     var b=el('button','tile');b.type='button';var n=el('div','n');n.appendChild(el('span','',c.n));n.appendChild(el('span','pr p'+c.p,PN[c.p]));b.appendChild(n);
@@ -130,14 +171,12 @@ function render(){
     b.onclick=function(){openMap[i]=true;rerender();var e=document.getElementById('c'+i);if(e)e.scrollIntoView()};tl.appendChild(b)});
   app.appendChild(tl);
   
-  // 상세 카테고리 Accordion 영역
   C.forEach(function(c,i){
     var dt=el('details');dt.id='c'+i;dt.open=!!openMap[i];dt.ontoggle=function(){openMap[i]=dt.open};
     var sm=el('summary');sm.appendChild(el('span','',c.n));sm.appendChild(el('span','pr p'+c.p,PN[c.p]));sm.appendChild(bar(pct(c.t)));
     sm.appendChild(el('small','','완료 '+cnt(c.t,2)+'/'+c.t.length+' · '+pct(c.t)+'%'));dt.appendChild(sm);
     var bd=el('div','bd');bd.appendChild(el('p','',c.d));
     
-    // 할 일 세부 항목 목록
     c.t.forEach(function(t,j){
       if(filt>=0&&t.s!==filt)return;
       var r=el('div','r s'+t.s),ti=inp(t.t,'할 일',function(v){t.t=v;persist()});ti.className='t';
@@ -151,38 +190,23 @@ function render(){
       bd.appendChild(r);
     });
     
-    // 추가 버튼
     var ad=el('button','add','+ 할 일 추가');ad.type='button';ad.onclick=function(){c.t.push({t:'새 할 일',s:0,p:1,o:'',u:'',m:''});openMap[i]=true;persist();rerender()};bd.appendChild(ad);
     dt.appendChild(bd);app.appendChild(dt);
   });
   
-  // 리셋 버튼
   var rs=el('button','rs','기본값으로 되돌리기');rs.type='button';rs.onclick=async function(){
     if(!confirm('모든 수정 내용을 지우고 처음 상태로 되돌릴까요?'))return;
     C=JSON.parse(DEF);filt=-1;openMap={};try{localStorage.removeItem(K)}catch(e){}
-    if(db){try{await db.doc(PATH).delete()}catch(e){}}
+    if(_supabase){
+      try{ await _supabase.from('pm_progress_status').delete().eq('key', 'main_progress'); }catch(e){}
+    }
     st('기본값으로 되돌림');rerender()};
   app.appendChild(rs);
 }
 
-// 최초 화면 출력 실행
+// 초기 UI 구성 및 DB 동기화
 render();
-
-// 외부 DB 객체 연동 안전 처리
-try{
-  if(window.claude && typeof window.claude.use === 'function'){
-    window.claude.use('db').then(async function(d){
-      if(!d)return;db=d;
-      try{
-        var sn=await db.doc(PATH).get();
-        if(sn && sn.exists){
-          var x=JSON.parse(sn.data().json);
-          if(ok(x)){C=x;rerender()}
-        }
-      }catch(e){}
-    }).catch(function(){});
-  }
-}catch(e){}
+loadFromSupabase();
 </script>
 </body>
 </html>
