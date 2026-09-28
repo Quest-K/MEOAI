@@ -57,7 +57,7 @@
                 <button id="auth-btn" onclick="authClick()" class="text-xs font-semibold text-blue-600 hover:underline shrink-0 ml-2"></button>
             </div>
             <div class="flex items-center justify-between text-[11px] text-slate-400">
-                <span id="sync-state"></span><span class="font-mono">v2.0.1</span>
+                <span id="sync-state"></span><span class="font-mono">v2.0.2</span>
             </div>
             <div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
                 <button onclick="exportData()" class="hover:text-blue-600">내보내기</button>
@@ -562,19 +562,34 @@ function renderCustomerDashboard() {
     if(!customerDbData) return;
     const week = getThisWeekRange();
 
-    const schedInstallCount = customerDbData.filter(c => c.install_date >= week.start && c.install_date <= week.end && c.status !== '설치완료' && c.status !== '지급완료').length;
-    const doneInstallCount = customerDbData.filter(c => c.status === '설치완료' || c.status === '지급완료').length;
-    const donePayCount = customerDbData.filter(c => c.status === '지급완료' || c.pay_status === '지급완료').length;
+    const getStatus = c => c.status || c.state || c.step || c.progress || '접수완료';
+    const getDate = c => c.install_date || c.date || c.schedule_date || c.target_date || '-';
+
+    const schedInstallCount = customerDbData.filter(c => {
+        const st = getStatus(c);
+        const dt = getDate(c);
+        return dt >= week.start && dt <= week.end && st !== '설치완료' && st !== '지급완료';
+    }).length;
+
+    const doneInstallCount = customerDbData.filter(c => {
+        const st = getStatus(c);
+        return st === '설치완료' || st === '지급완료' || st === '개통완료';
+    }).length;
+
+    const donePayCount = customerDbData.filter(c => {
+        const st = getStatus(c);
+        return st === '지급완료' || c.pay_status === '지급완료';
+    }).length;
 
     if($('metric-sched-install')) $('metric-sched-install').innerText = schedInstallCount + '건';
     if($('metric-done-install')) $('metric-done-install').innerText = doneInstallCount + '건';
     if($('metric-done-pay')) $('metric-done-pay').innerText = donePayCount + '건';
 
     const statusGroups = {
-        '접수대기/상담': customerDbData.filter(c => c.status === '접수완료' || c.status === '상담진행').length,
-        '설치예정': customerDbData.filter(c => c.status === '설치예정').length,
-        '설치완료': customerDbData.filter(c => c.status === '설치완료').length,
-        '지급완료': customerDbData.filter(c => c.status === '지급완료' || c.pay_status === '지급완료').length
+        '접수대기/상담': customerDbData.filter(c => { const s = getStatus(c); return s === '접수완료' || s === '상담진행' || s === '접수'; }).length,
+        '설치예정': customerDbData.filter(c => getStatus(c) === '설치예정').length,
+        '설치완료': customerDbData.filter(c => { const s = getStatus(c); return s === '설치완료' || s === '개통완료'; }).length,
+        '지급완료': customerDbData.filter(c => { const s = getStatus(c); return s === '지급완료' || c.pay_status === '지급완료'; }).length
     };
 
     let countHtml = '';
@@ -591,17 +606,19 @@ function renderCustomerDashboard() {
         tableHtml = `<tr><td colspan="5" class="text-center py-6 text-slate-400">등록된 고객 데이터가 없습니다.</td></tr>`;
     } else {
         customerDbData.forEach(c => {
+            const st = getStatus(c);
+            const dt = getDate(c);
             let badgeColor = 'bg-slate-100 text-slate-600';
-            if(c.status === '설치예정') badgeColor = 'bg-blue-50 text-blue-600 border border-blue-200';
-            if(c.status === '설치완료') badgeColor = 'bg-amber-50 text-amber-600 border border-amber-200';
-            if(c.status === '지급완료') badgeColor = 'bg-emerald-50 text-emerald-600 border border-emerald-200';
+            if(st === '설치예정') badgeColor = 'bg-blue-50 text-blue-600 border border-blue-200';
+            if(st === '설치완료' || st === '개통완료') badgeColor = 'bg-amber-50 text-amber-600 border border-amber-200';
+            if(st === '지급완료') badgeColor = 'bg-emerald-50 text-emerald-600 border border-emerald-200';
 
             tableHtml += `<tr class="hover:bg-slate-50/80 transition-all">
-              <td class="p-3 font-semibold text-slate-700">${esc(c.name)}</td>
-              <td class="p-3 text-slate-500 font-mono">${esc(c.contact)}</td>
-              <td class="p-3"><span class="px-2.5 py-1 rounded-lg text-[11px] font-semibold ${badgeColor}">${esc(c.status)}</span></td>
-              <td class="p-3 text-slate-500 font-mono">${esc(c.install_date || '-')}</td>
-              <td class="p-3 text-slate-400 font-mono text-[11px]">${esc(c.updated_at || '-')}</td>
+              <td class="p-3 font-semibold text-slate-700">${esc(c.name || c.customer_name || '-')}</td>
+              <td class="p-3 text-slate-500 font-mono">${esc(c.contact || c.phone || '-')}</td>
+              <td class="p-3"><span class="px-2.5 py-1 rounded-lg text-[11px] font-semibold ${badgeColor}">${esc(st)}</span></td>
+              <td class="p-3 text-slate-500 font-mono">${esc(dt)}</td>
+              <td class="p-3 text-slate-400 font-mono text-[11px]">${esc(c.updated_at || c.created_at || '-')}</td>
             </tr>`;
         });
     }
@@ -800,7 +817,6 @@ function gp(k) {
 
 function renderGoals() {
     const box = $('goal-panel'); if(!box) return;
-    const inp = 'px-2 py-1 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500';
     let h = `<div class="flex flex-wrap items-center justify-between gap-2"><h3 class="font-bold text-slate-800 text-sm flex items-center"><i class="fa-solid fa-flag text-blue-600 mr-2"></i> 부서별 목표 (OKR)</h3></div><div class="grid grid-cols-1 xl:grid-cols-2 gap-3">`;
     goals.depts.forEach((d,di) => {
         const ps = d.krs.map(gp).filter(x => x !== null), ach = ps.length ? Math.round(ps.reduce((a,b)=>a+b,0)/ps.length) : null;
