@@ -47,6 +47,19 @@ nav a.on{border-bottom-color:var(--ac)}section{padding:18px}.say{font-size:16px}
 .ed .dl{justify-self:start;font:inherit;font-size:13px;color:#C0362C;border:1px solid var(--ln);background:transparent;border-radius:6px;padding:4px 12px;cursor:pointer}
 .tag:empty,.tip:empty{display:none}
 @media(max-width:760px){#links,#ctl{display:contents}nav .btn{display:inline-block;margin:0 0 0 6px;padding:5px 10px}.st{display:inline;margin-left:6px}}
+nav{max-height:calc(100vh - 48px);overflow-y:auto}
+.n1{display:flex;align-items:center;gap:8px;width:100%;text-align:left;font:inherit;font-weight:700;font-size:14px;color:var(--ink);background:none;border:0;padding:8px 10px 4px;margin-top:6px;cursor:pointer}
+.g.cur .n1{color:var(--ac)}
+.n1 b{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--acbg);color:var(--ac);font-size:12px;flex:none}
+nav a.n2{padding:4px 10px 4px 38px;font-size:14px;line-height:1.5}
+.l3{display:none;padding:2px 0 6px 50px}.n2.on+.l3{display:block}
+.n3{display:block;width:100%;text-align:left;font:inherit;font-size:12.5px;line-height:1.5;color:var(--mute);background:none;border:0;padding:2px 0;cursor:pointer}
+.n3:hover{color:var(--ac)}.n3.cur{color:var(--ac);font-weight:700}
+.ph{display:flex;align-items:baseline;gap:12px;margin:0 0 16px}.ph b{font-size:30px;color:var(--ac);line-height:1}
+.ph h1{margin:0;font-size:24px}.ph p{margin:0;color:var(--mute);font-size:14px}
+.pg{display:flex;justify-content:space-between;gap:8px}.pg .btn{display:inline-block;margin:0}
+@media(max-width:760px){nav{max-height:none;overflow-x:auto}.g{display:contents}.l2{display:none}.g.cur .l2{display:contents}.l3{display:none!important}
+.n1{display:inline-flex;width:auto;margin:0;padding:6px 8px}nav a.n2{padding:6px 10px;font-size:13px}html{scroll-padding-top:120px}.ph b{font-size:24px}.ph h1{font-size:20px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 </style>
 </head>
@@ -132,40 +145,65 @@ async function reset(){
   if(db){try{await db.doc(P).delete()}catch(e){}}
   st('기본값으로 되돌림');rerender();
 }
-function mark(id){Array.prototype.forEach.call(links.querySelectorAll('a'),function(l){l.classList.toggle('on',l.dataset.id===id)})}
-function render(){
-  links.textContent='';main.textContent='';ctl.textContent='';
-  D.forEach(function(s,i){
-    var a=el('a');a.href='#'+s[0];a.dataset.id=s[0];a.appendChild(el('b','',i+1));a.appendChild(el('span','',s[1]));links.appendChild(a);
-    var sec=el('section');sec.id=s[0];sec.appendChild(el('h2','',s[1]));sec.appendChild(el('p','goal',s[2]));
-    var tabs=el('div','tabs'),body=el('div');sec.appendChild(tabs);sec.appendChild(body);main.appendChild(sec);
-    var k=Math.min(sel[s[0]]||0,s[3].length-1);
-    function show(){
-      sel[s[0]]=k;var v=s[3][k];body.textContent='';
-      Array.prototype.forEach.call(tabs.querySelectorAll('.t'),function(b,j){b.setAttribute('aria-pressed',j===k)});
-      if(!edit){
-        var say=el('p','say',v[2]),m=el('div','meta'),cp=el('button','cp','복사');cp.type='button';
-        cp.onclick=function(){try{navigator.clipboard.writeText(say.textContent).then(function(){cp.textContent='복사됨';setTimeout(function(){cp.textContent='복사'},1200)})}catch(e){cp.textContent='복사 불가'}};
-        m.appendChild(el('span','tag',v[1]));m.appendChild(el('span','tip',v[3]));m.appendChild(cp);body.appendChild(say);body.appendChild(m);return;
-      }
-      var f=el('div','ed');
-      [['버튼 이름',0],['적용 기법',1],['스크립트',2,4],['사용 팁',3,2]].forEach(function(d){
-        var l=el('label');l.appendChild(el('span','',d[0]));var x=el(d[2]?'textarea':'input');x.value=v[d[1]];if(d[2])x.rows=d[2];
-        x.oninput=function(){v[d[1]]=x.value;if(d[1]===0)tabs.querySelectorAll('.t')[k].textContent=x.value||'(이름 없음)';persist()};
-        l.appendChild(x);f.appendChild(l);
-      });
-      if(s[3].length>1){var dl=el('button','dl','이 스크립트 삭제');dl.type='button';dl.onclick=function(){if(!confirm('이 스크립트를 삭제할까요?'))return;s[3].splice(k,1);sel[s[0]]=Math.max(0,k-1);persist();rerender()};f.appendChild(dl)}
-      body.appendChild(f);
+var P=[['도입','오프닝과 질문 예고',['open','preview']],['진단','고객 기준 파악',['q1','q2','q3','confirm']],['제안','기준에 맞는 상품 제시',['offer']],['설득·대응','고객 반응별 대응',['type','gift','price','reject']],['마무리','클로징과 확인',['close','notice']]];
+var ph=0,fns={};
+function byId(id){for(var i=0;i<D.length;i++)if(D[i][0]===id)return D[i]}
+function secList(p){return P[p][2].map(byId).filter(Boolean)}
+function mark(id){Array.prototype.forEach.call(links.querySelectorAll('.n2'),function(l){l.classList.toggle('on',l.dataset.id===id)})}
+function markVar(id,k){var a=links.querySelector('.n2[data-id="'+id+'"]');if(a&&a.nextSibling)Array.prototype.forEach.call(a.nextSibling.children,function(b,j){b.classList.toggle('cur',j===k)})}
+function go(p,id,k){
+  if(p!==ph){ph=p;render()}
+  if(id){if(k!=null&&fns[id])fns[id](k);var e=document.getElementById(id);if(e)e.scrollIntoView({block:'start'});mark(id)}
+  else window.scrollTo({top:0})
+}
+function buildSec(s){
+  var sec=el('section');sec.id=s[0];sec.appendChild(el('h2','',s[1]));sec.appendChild(el('p','goal',s[2]));
+  var tabs=el('div','tabs'),body=el('div');sec.appendChild(tabs);sec.appendChild(body);
+  var k=Math.min(sel[s[0]]||0,s[3].length-1);
+  function show(){
+    sel[s[0]]=k;var v=s[3][k];body.textContent='';markVar(s[0],k);
+    Array.prototype.forEach.call(tabs.querySelectorAll('.t'),function(b,j){b.setAttribute('aria-pressed',j===k)});
+    if(!edit){
+      var say=el('p','say',v[2]),m=el('div','meta'),cp=el('button','cp','복사');cp.type='button';
+      cp.onclick=function(){try{navigator.clipboard.writeText(say.textContent).then(function(){cp.textContent='복사됨';setTimeout(function(){cp.textContent='복사'},1200)})}catch(e){cp.textContent='복사 불가'}};
+      m.appendChild(el('span','tag',v[1]));m.appendChild(el('span','tip',v[3]));m.appendChild(cp);body.appendChild(say);body.appendChild(m);return;
     }
-    s[3].forEach(function(v,j){var b=el('button','t',v[0]||'(이름 없음)');b.type='button';b.onclick=function(){k=j;show()};tabs.appendChild(b)});
-    if(edit){var ad=el('button','add','+ 스크립트 추가');ad.type='button';ad.onclick=function(){s[3].push(['새 스크립트','','','']);sel[s[0]]=s[3].length-1;persist();rerender()};tabs.appendChild(ad)}
-    tabs.style.display=(s[3].length<2&&!edit)?'none':'';
-    show();
+    var f=el('div','ed');
+    [['버튼 이름',0],['적용 기법',1],['스크립트',2,4],['사용 팁',3,2]].forEach(function(d){
+      var l=el('label');l.appendChild(el('span','',d[0]));var x=el(d[2]?'textarea':'input');x.value=v[d[1]];if(d[2])x.rows=d[2];
+      x.oninput=function(){v[d[1]]=x.value;if(d[1]===0){tabs.querySelectorAll('.t')[k].textContent=x.value||'(이름 없음)';var a=links.querySelector('.n2[data-id="'+s[0]+'"]');if(a&&a.nextSibling&&a.nextSibling.children[k])a.nextSibling.children[k].textContent=x.value||'(이름 없음)'}persist()};
+      l.appendChild(x);f.appendChild(l);
+    });
+    if(s[3].length>1){var dl=el('button','dl','이 스크립트 삭제');dl.type='button';dl.onclick=function(){if(!confirm('이 스크립트를 삭제할까요?'))return;s[3].splice(k,1);sel[s[0]]=Math.max(0,k-1);persist();rerender()};f.appendChild(dl)}
+    body.appendChild(f);
+  }
+  s[3].forEach(function(v,j){var b=el('button','t',v[0]||'(이름 없음)');b.type='button';b.onclick=function(){k=j;show()};tabs.appendChild(b)});
+  if(edit){var ad=el('button','add','+ 스크립트 추가');ad.type='button';ad.onclick=function(){s[3].push(['새 스크립트','','','']);sel[s[0]]=s[3].length-1;persist();rerender()};tabs.appendChild(ad)}
+  tabs.style.display=(s[3].length<2&&!edit)?'none':'';
+  fns[s[0]]=function(k2){k=k2;show()};
+  show();return sec;
+}
+function render(){
+  links.textContent='';main.textContent='';ctl.textContent='';fns={};
+  P.forEach(function(g,pi){
+    var box=el('div','g'+(pi===ph?' cur':'')),h=el('button','n1');h.type='button';h.appendChild(el('b','',pi+1));h.appendChild(el('span','',g[0]));h.onclick=function(){go(pi)};box.appendChild(h);
+    var ul=el('div','l2');
+    secList(pi).forEach(function(s){
+      var a=el('a','n2',s[1]);a.href='#'+s[0];a.dataset.id=s[0];a.onclick=function(e){e.preventDefault();go(pi,s[0])};ul.appendChild(a);
+      var sub=el('div','l3');s[3].forEach(function(v,k){var b=el('button','n3',v[0]||'(이름 없음)');b.type='button';b.onclick=function(){go(pi,s[0],k)};sub.appendChild(b)});ul.appendChild(sub);
+    });
+    box.appendChild(ul);links.appendChild(box);
   });
+  var g=P[ph],hd=el('div','ph');hd.appendChild(el('b','',ph+1));var hw=el('div');hw.appendChild(el('h1','',g[0]));hw.appendChild(el('p','',g[1]));hd.appendChild(hw);main.appendChild(hd);
+  var list=secList(ph);list.forEach(function(s){main.appendChild(buildSec(s))});
+  var pg=el('div','pg');
+  if(ph>0){var pv=el('button','btn g','← '+P[ph-1][0]);pv.type='button';pv.onclick=function(){go(ph-1)};pg.appendChild(pv)}else pg.appendChild(el('span'));
+  if(ph<P.length-1){var nx=el('button','btn',P[ph+1][0]+' →');nx.type='button';nx.onclick=function(){go(ph+1)};pg.appendChild(nx)}
+  main.appendChild(pg);
   var t=el('button','btn',edit?'편집 끝내기':'스크립트 편집');t.type='button';t.onclick=function(){edit=!edit;rerender()};ctl.appendChild(t);
   if(edit){var r=el('button','btn g','기본값으로 되돌리기');r.type='button';r.onclick=reset;ctl.appendChild(r)}
   ctl.appendChild(stEl);
-  mark(D[0][0]);
+  if(list[0]){mark(list[0][0]);list.forEach(function(s){markVar(s[0],sel[s[0]]||0)})}
   try{if(io)io.disconnect();io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting)mark(e.target.id)})},{rootMargin:'-20% 0px -70% 0px'});
     document.querySelectorAll('section').forEach(function(x){io.observe(x)})}catch(e){}
 }
