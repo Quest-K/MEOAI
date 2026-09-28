@@ -172,6 +172,7 @@ async function handleLogin(){
   renderProposalLists();
   renderFinalProducts();
   if (typeof fetchRecoUsimPlans === 'function' && recoUsimTier) fetchRecoUsimPlans(recoUsimTier);
+  if (typeof refreshCustomerListView === 'function') refreshCustomerListView(); // 고객조회 목록의 수수료 컬럼 표시
 }
 
 async function handleLogout(){
@@ -184,4 +185,5 @@ async function handleLogout(){
   renderProposalLists();
   renderFinalProducts();
   if (typeof fetchRecoUsimPlans === 'function' && recoUsimTier) fetchRecoUsimPlans(recoUsimTier);
+  if (typeof refreshCustomerListView === 'function') refreshCustomerListView(); // 고객조회 목록의 수수료 컬럼 숨김
 }
