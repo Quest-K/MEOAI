@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<link rel="stylesheet" href="Styles.css?v=20260930a">
+<link rel="stylesheet" href="Styles.css?v=20260930b">
 </head>
 <body>
 <div class="wrap">
@@ -17,6 +17,7 @@
   <div class="tab-nav">
     <button class="tab-btn active" data-tab="cs" onclick="switchTab('cs')">고객상담</button>
     <button class="tab-btn" data-tab="customers" onclick="switchTab('customers')">고객조회</button>
+    <button class="tab-btn" data-tab="performance" onclick="switchTab('performance')">실적조회</button>
     <div class="quick-search-box">
       <input type="text" id="top-quick-contact" placeholder="연락처로 빠른 조회"
              onkeydown="if(event.key==='Enter'){event.preventDefault(); quickTopSearch(this.value, this);}">
@@ -395,6 +396,7 @@
             <select id="cust-search-status"></select>
             <button type="button" id="cust-search-btn" class="primary-btn" onclick="searchCustomers(this)">🔍 조회</button>
             <button type="button" class="secondary-btn" onclick="loadRecentCustomers(this)">최근 등록</button>
+            <button type="button" class="secondary-btn" onclick="exportCustomerListCsv()" title="현재 조회된 목록을 엑셀에서 열 수 있는 파일로 저장합니다">📥 엑셀 다운로드</button>
           </div>
           <div class="cust-list-wrap">
             <table class="cust-list-table hide-comm" id="cust-list-table">
@@ -441,6 +443,28 @@
     </div>
   </div>
 
+  <!-- VIEW 3: 실적조회 -->
+  <div id="view-performance" class="view-container">
+    <div class="cs-card">
+      <h3>실적조회</h3>
+      <div class="cust-search-row perf-filter">
+        <span>최초저장일</span>
+        <input type="date" id="perf-from"> ~ <input type="date" id="perf-to">
+        <button type="button" class="primary-btn" onclick="loadPerformance(this)">🔍 조회</button>
+        <button type="button" class="secondary-btn" onclick="resetPerfFilter(this)">전체 기간</button>
+      </div>
+      <div id="perf-summary"></div>
+    </div>
+    <div class="cs-card">
+      <h3>퍼널별 건수 · 전체 대비 비율</h3>
+      <div id="perf-funnel" class="perf-scroll"></div>
+    </div>
+    <div class="cs-card">
+      <h3 id="perf-list-title">접수완료 리스트</h3>
+      <div id="perf-list" class="perf-scroll"></div>
+    </div>
+  </div>
+
 </div>
 
 <div id="login-modal" class="modal-overlay">
@@ -479,9 +503,9 @@
 
 <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
-<script src="config.js?v=20260930a"></script>
-<script src="Calculator.js?v=20260930a"></script>
-<script src="Supabaseservice.js?v=20260930a"></script>
+<script src="config.js?v=20260930b"></script>
+<script src="Calculator.js?v=20260930b"></script>
+<script src="Supabaseservice.js?v=20260930b"></script>
 <script>
 // 외부 파일 로드 점검: 파일 누락/내용 뒤바뀜(예: JS 자리에 CSS가 들어간 경우) 시 화면 상단에 경고 표시
 (function checkModules(){
@@ -569,6 +593,9 @@ function switchTab(tabId) {
     } else if (tabId === 'customers') {
       document.getElementById('view-customers').classList.add('active');
       initCustomerView();
+    } else if (tabId === 'performance') {
+      document.getElementById('view-performance').classList.add('active');
+      loadPerformance();
     }
   } catch (err) {
     console.error('switchTab render error:', tabId, err);
@@ -2586,6 +2613,191 @@ async function refreshListRowExtras(customerId){
   }
   await Promise.all(tasks);
   renderCustomerList(customerListCache);
+}
+
+/* ---- 고객 목록 엑셀(CSV) 다운로드 ----
+   - 현재 화면에 조회된 목록(customerListCache)을 그대로 내려받습니다. (정렬 순서 동일)
+   - 안내상품이 여러 건이면 상품 1건당 1행으로 나누고, 고객 정보는 각 행에 반복합니다.
+   - 수수료 열은 로그인(관리자)했을 때만 포함합니다. 금액은 쉼표 없는 숫자로 저장해 엑셀에서 합계를 낼 수 있습니다.
+   - UTF-8 BOM을 붙여 엑셀에서 한글이 깨지지 않게 합니다. */
+function exportCustomerListCsv(){
+  if (!customerListCache.length) { showToast('내려받을 목록이 없습니다. 먼저 조회해주세요.'); return; }
+  const dt = iso => { const v = formatDateShort(iso); return v === '-' ? '' : v; };
+  const num = v => (v === null || v === undefined || v === '' || isNaN(Number(v))) ? '' : Number(v);
+  const head = ['이름', '연락처', '상품(인터넷/TV)', '최종상품', '요금', '사은품'];
+  if (isLoggedIn) head.push('수수료');
+  head.push('상담예약일시', '최종수정', '상태값');
+
+  const rows = [head];
+  customerListCache.forEach(c => {
+    const lines = customerHomeLines(c);
+    const tail = [dt(c.next_contact_at), dt(c.updated_at), c.funnel_status || ''];
+    const base = [c.name || '', c.contact || ''];
+    if (!lines.length) {
+      const r = base.concat(['', '', '', '']);
+      if (isLoggedIn) r.push('');
+      rows.push(r.concat(tail));
+      return;
+    }
+    lines.forEach(l => {
+      const r = base.concat([l.text || '', l.final ? '★' : '', num(l.fee), num(l.gift)]);
+      if (isLoggedIn) r.push(num(l.comm));
+      rows.push(r.concat(tail));
+    });
+  });
+
+  const esc = v => { const t = String(v ?? ''); return /[",\r\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+  const csv = '\uFEFF' + rows.map(r => r.map(esc).join(',')).join('\r\n');
+  const d = new Date(), pad = n => String(n).padStart(2, '0');
+  const fname = `고객목록_${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}.csv`;
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = fname;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast(`✓ ${customerListCache.length}명 (${rows.length - 1}행) 다운로드`);
+}
+
+/* =========================================================================
+   실적조회
+   - 퍼널별 건수 · 전체 대비 비율 : customers.funnel_status 집계 (기간 = 최초저장일 created_at 기준)
+   - 유치율 = PERFORMANCE_WON_STATUSES(config.js) 건수 ÷ 전체 건수
+   - 접수완료 리스트 : 상품 1건당 1행. 최종상품(is_final)이 있으면 그것만, 없으면 안내상품 전체
+   - 마진 = 수수료 − 사은품 합계, 마진율 = 마진 ÷ 수수료 (수수료·마진·마진율은 로그인 시에만 표시)
+   - 수수료는 로그인 상태에서 저장된 상품에만 값이 있습니다. 없으면 '-'로 표시하고 합계에서 제외합니다.
+   ========================================================================= */
+let perfCustomers = null, perfProdMap = {};
+
+function resetPerfFilter(btn){
+  document.getElementById('perf-from').value = '';
+  document.getElementById('perf-to').value = '';
+  loadPerformance(btn);
+}
+
+async function loadPerformance(btn){
+  const summary = document.getElementById('perf-summary');
+  if (!summary) return;
+  const from = elVal('perf-from'), to = elVal('perf-to');
+  if (btn) setBtnLoading(btn, '조회 중...');
+  try {
+    // Supabase는 한 번에 최대 1000행 → 나눠서 전부 가져옵니다.
+    const rows = [];
+    for (let i = 0; ; i += 1000) {
+      let q = sb.from('customers').select('customer_id,name,contact,funnel_status,created_at,updated_at').order('customer_id').range(i, i + 999);
+      if (from) q = q.gte('created_at', new Date(from + 'T00:00:00').toISOString());
+      if (to) q = q.lte('created_at', new Date(to + 'T23:59:59').toISOString());
+      const { data, error } = await q;
+      if (error) { summary.innerHTML = `<div class="wide-table-empty">조회 실패: ${escHtml(error.message)}</div>`; return; }
+      rows.push(...(data || []));
+      if (!data || data.length < 1000) break;
+    }
+    perfCustomers = rows;
+
+    perfProdMap = {};
+    const ids = rows.filter(r => r.funnel_status === PERFORMANCE_LIST_STATUS).map(r => r.customer_id);
+    await probeCustomerSchema();
+    if (ids.length && CUSTOMER_SCHEMA.hasProductsTable) {
+      for (let i = 0; i < ids.length; i += 150) {
+        const { data, error } = await sb.from('customer_products')
+          .select('customer_id,product_type,is_final,carrier,product_name,monthly_fee,gift_amount,commission,detail')
+          .in('customer_id', ids.slice(i, i + 150)).order('id', { ascending: true });
+        if (error) { console.warn('실적 상품 조회 실패', error.message); break; }
+        (data || []).forEach(r => { (perfProdMap[r.customer_id] = perfProdMap[r.customer_id] || []).push(r); });
+      }
+    }
+    renderPerformance();
+  } finally {
+    if (btn) clearBtnLoading(btn);
+  }
+}
+
+function refreshPerformanceView(){
+  if (perfCustomers && document.getElementById('view-performance')?.classList.contains('active')) renderPerformance();
+}
+
+function renderPerformance(){
+  const rows = perfCustomers || [];
+  const total = rows.length;
+  const counts = {};
+  rows.forEach(r => { const st = r.funnel_status || DEFAULT_FUNNEL_STATUS; counts[st] = (counts[st] || 0) + 1; });
+  const pct = n => total ? (n / total * 100).toFixed(1) + '%' : '-';
+  const sum = items => items.reduce((a, i) => a + (counts[i] || 0), 0);
+
+  const won = sum(PERFORMANCE_WON_STATUSES);
+  const listCnt = counts[PERFORMANCE_LIST_STATUS] || 0;
+  document.getElementById('perf-summary').innerHTML = `
+    <div class="perf-cards">
+      <div class="perf-card"><small>전체 건수</small><b>${total.toLocaleString()}</b></div>
+      <div class="perf-card" title="${escAttr(PERFORMANCE_WON_STATUSES.join(', '))}"><small>유치 건수 (접수완료 이후)</small><b>${won.toLocaleString()}</b></div>
+      <div class="perf-card"><small>유치율</small><b>${pct(won)}</b></div>
+      <div class="perf-card"><small>${escHtml(PERFORMANCE_LIST_STATUS)}</small><b>${listCnt.toLocaleString()}</b></div>
+    </div>
+    <p class="perf-note">유치 = ${escHtml(PERFORMANCE_WON_STATUSES.join(' · '))} · 유치율 = 유치 건수 ÷ 전체 건수 (기준은 config.js의 PERFORMANCE_WON_STATUSES)</p>`;
+
+  const body = DASHBOARD_GROUPS.map(g => {
+    const gt = sum(g.items);
+    return `<tr class="perf-group"><td colspan="2">${escHtml(g.label)}</td><td class="num">${gt.toLocaleString()}</td><td class="num">${pct(gt)}</td></tr>` +
+      g.items.map(i => `<tr><td></td><td><span class="cust-status-chip stage-${getFunnelStage(i)}">${escHtml(i)}</span></td><td class="num">${(counts[i] || 0).toLocaleString()}</td><td class="num">${pct(counts[i] || 0)}</td></tr>`).join('');
+  }).join('');
+  const known = new Set(DASHBOARD_GROUPS.flatMap(g => g.items));
+  const others = Object.keys(counts).filter(k => !known.has(k));
+  const otherRows = others.map(k => `<tr><td></td><td>${escHtml(k)}</td><td class="num">${counts[k].toLocaleString()}</td><td class="num">${pct(counts[k])}</td></tr>`).join('');
+  document.getElementById('perf-funnel').innerHTML = `
+    <table class="perf-table"><thead><tr><th colspan="2">단계 / 상태값</th><th class="num">건수</th><th class="num">전체 대비</th></tr></thead>
+    <tbody>${body}${otherRows}<tr class="perf-sum"><td colspan="2">전체</td><td class="num">${total.toLocaleString()}</td><td class="num">${total ? '100%' : '-'}</td></tr></tbody></table>`;
+
+  renderPerformanceList();
+}
+
+function renderPerformanceList(){
+  const box = document.getElementById('perf-list');
+  const title = document.getElementById('perf-list-title');
+  const custs = (perfCustomers || []).filter(r => r.funnel_status === PERFORMANCE_LIST_STATUS)
+    .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+  if (title) title.textContent = `${PERFORMANCE_LIST_STATUS} 리스트 (${custs.length}명)`;
+  if (!custs.length) { box.innerHTML = `<div class="wide-table-empty">${escHtml(PERFORMANCE_LIST_STATUS)} 건이 없습니다.</div>`; return; }
+
+  const n = v => (v === null || v === undefined || v === '' || isNaN(Number(v))) ? null : Number(v);
+  const lines = [];
+  custs.forEach(c => {
+    const prods = perfProdMap[c.customer_id] || [];
+    const finals = prods.filter(p => p.is_final);
+    const use = finals.length ? finals : prods;
+    if (!use.length) { lines.push({ c, carrier: '-', product: '-', giftCard: null, cash: null, gift: null, comm: null }); return; }
+    use.forEach(p => {
+      const d = detailOf(p);
+      lines.push({
+        c, carrier: p.carrier || '-', product: (p.product_type === 'usim' ? '[유심] ' : '') + (p.product_name || '-'),
+        giftCard: n(d.giftCard), cash: n(d.cash), gift: n(p.gift_amount), comm: n(p.commission)
+      });
+    });
+  });
+  lines.forEach(l => {
+    l.margin = (l.comm !== null && l.gift !== null) ? l.comm - l.gift : null;
+    l.rate = (l.margin !== null && l.comm > 0) ? l.margin / l.comm * 100 : null;
+  });
+
+  const w = v => v === null ? '-' : v.toLocaleString('ko-KR');
+  const mc = v => v === null ? '-' : `<span style="color:${v >= 0 ? '#1E7E34' : '#D9534F'}">${v.toLocaleString('ko-KR')}</span>`;
+  const add = key => lines.reduce((a, l) => a + (l[key] || 0), 0);
+  const withComm = lines.filter(l => l.margin !== null);
+  const sComm = withComm.reduce((a, l) => a + l.comm, 0), sMargin = withComm.reduce((a, l) => a + l.margin, 0);
+  const admin = isLoggedIn;
+
+  box.innerHTML = `<table class="perf-table"><thead><tr>
+      <th>고객</th><th>통신사</th><th>상품</th><th class="num">상품권</th><th class="num">현금</th><th class="num">사은품 합계</th>
+      ${admin ? '<th class="num">수수료</th><th class="num">마진</th><th class="num">마진율</th>' : ''}<th>최종수정</th></tr></thead><tbody>
+    ${lines.map(l => `<tr>
+      <td>${escHtml(l.c.name) || '(이름없음)'}<br><small style="color:#888">${escHtml(l.c.contact || '')}</small></td>
+      <td>${escHtml(l.carrier)}</td><td>${escHtml(l.product)}</td>
+      <td class="num">${w(l.giftCard)}</td><td class="num">${w(l.cash)}</td><td class="num">${w(l.gift)}</td>
+      ${admin ? `<td class="num">${w(l.comm)}</td><td class="num">${mc(l.margin)}</td><td class="num">${l.rate === null ? '-' : l.rate.toFixed(1) + '%'}</td>` : ''}
+      <td>${formatDateShort(l.c.updated_at)}</td></tr>`).join('')}
+    <tr class="perf-sum"><td colspan="3">합계 (${lines.length}건)</td>
+      <td class="num">${add('giftCard').toLocaleString('ko-KR')}</td><td class="num">${add('cash').toLocaleString('ko-KR')}</td><td class="num">${add('gift').toLocaleString('ko-KR')}</td>
+      ${admin ? `<td class="num">${sComm.toLocaleString('ko-KR')}</td><td class="num">${mc(sMargin)}</td><td class="num">${sComm > 0 ? (sMargin / sComm * 100).toFixed(1) + '%' : '-'}</td>` : ''}
+      <td></td></tr></tbody></table>
+    <p class="perf-note">마진 = 수수료 − 사은품 합계 · 마진율 = 마진 ÷ 수수료 · 최종상품이 있으면 최종상품만, 없으면 안내상품 전체를 표시합니다.${admin ? ' 수수료가 저장되지 않은 상품(비로그인 저장분)은 \'-\'이며 마진 합계에서 제외됩니다.' : ' 수수료·마진은 관리자 로그인 시 표시됩니다.'}</p>`;
 }
 
 /* ---- 고객 목록 정렬 ---- */
