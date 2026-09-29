@@ -38,9 +38,9 @@
 
 | 파일 | 줄 수(약) | 역할 | 넣는 것 / 넣지 않는 것 |
 |---|---|---|---|
-| `CS.html` | 3,000 | 화면 마크업 + 상담·고객관리 로직(인라인 스크립트) | 화면 상태값(`let`)과 렌더/이벤트 함수 |
-| `Styles.css` | 1,670 | 전체 스타일 (기존 CSS + 인라인에서 이동한 CS 화면 CSS) | 스타일만 |
-| `config.js` | 190 | **고정 상수** (라벨, 요금 구간, 사은품 비율, 퍼널 단계, 태그, **재안내 규칙·공휴일**) | `const` 상수만. 상태값·함수 금지 |
+| `CS.html` | 3,900 | 화면 마크업 + 상담·고객관리 로직(인라인 스크립트) | 화면 상태값(`let`)과 렌더/이벤트 함수 |
+| `Styles.css` | 1,780 | 전체 스타일 (기존 CSS + 인라인에서 이동한 CS 화면 CSS) | 스타일만 |
+| `config.js` | 195 | **고정 상수** (라벨, 요금 구간, 사은품 비율, 퍼널 단계, 태그, **재안내 규칙·공휴일**, **실적조회 기준**) | `const` 상수만. 상태값·함수 금지 |
 | `Calculator.js` | 460 | 요금 계산, 통신사별 결합할인, 유심 수수료 구간표, **고객부재 재안내 일정 계산** | 계산 함수 |
 | `Supabaseservice.js` | 190 | Supabase 연결, 상품·수수료·프로모션 조회, 로그인/로그아웃 | DB·인증 함수 |
 
@@ -59,7 +59,7 @@ supabase-js (CDN)
 ```
 
 - 모두 **일반 `<script>`** 입니다. `type="module"`을 쓰면 HTML의 `onclick="..."`(약 46곳)이 함수를 찾지 못해 동작하지 않습니다.
-- `?v=20260928b`는 캐시 방지용입니다. **파일을 고쳐 배포할 때마다 올리세요.**
+- `?v=20260930c`는 캐시 방지용입니다. **파일을 고쳐 배포할 때마다 올리세요.**
 - 로드 점검 스크립트는 `supabase`, `CARRIERS`(config.js), `computePrice`(Calculator.js), `loadData`(Supabaseservice.js)가 있는지 확인합니다. **새 파일을 추가하면 이 점검에도 항목을 추가하세요.**
 
 ---
@@ -74,7 +74,7 @@ supabase-js (CDN)
 | Calculator.js | `DATA`, `state` | CS.html 인라인 |
 | Supabaseservice.js | `CARRIERS` | config.js |
 | Supabaseservice.js | `DATA`, `logs`, `isLoggedIn`, `recoState`, `recoUsimTier`, `COMMISSION_DATA`, `RAW_COMMISSION_DATA`, `PROMOTION_DATA` | CS.html 인라인 |
-| Supabaseservice.js | `addLog`, `renderRecoCards`, `renderProposalLists`, `renderFinalProducts`, `updateAuthUI`, `closeLoginModal`, `fetchRecoUsimPlans` | CS.html 인라인 |
+| Supabaseservice.js | `addLog`, `renderRecoCards`, `renderProposalLists`, `renderFinalProducts`, `updateAuthUI`, `closeLoginModal`, `fetchRecoUsimPlans`, `refreshCustomerListView`, `refreshPerformanceView` (뒤 두 개는 `typeof` 확인 후 호출) | CS.html 인라인 |
 | CS.html 인라인 | `computePrice`, `computeKTOptions`, `computeLGOptions`, `computeSKOptions`, `getUsimCommission` | Calculator.js |
 | CS.html 인라인 | `sb`, `loadData`, `loadFinanceData`, `lookupCommission`, `handleLogin`, `handleLogout` | Supabaseservice.js |
 
@@ -84,7 +84,7 @@ supabase-js (CDN)
 
 ## 5. 화면 구조
 
-탭 2개(`switchTab`), 상담 탭 안에 4단계 마법사(`goCsStep`)가 있습니다.
+탭 3개(`switchTab`: 고객상담 / 고객조회 / 실적조회), 상담 탭 안에 4단계 마법사(`goCsStep`)가 있습니다.
 
 | 영역 | 주요 `id` | 설명 |
 |---|---|---|
@@ -94,7 +94,8 @@ supabase-js (CDN)
 | 2단계 추천상품 `cs-wiz-panel-2` | `reco-seg-speed/-router/-tv/-settop`, `reco-tv-onoff-toggle`, `reco-extra-tv-list`, `reco-carrier-cards`, `reco-usim-tier-buttons`, `reco-usim-cards`, `reco-preset-*` | 속도·TV 선택, 통신사 4분할 카드, 유심 추천 |
 | 3단계 제안상품 `cs-wiz-panel-3` | `proposal-home-list`, `proposal-usim-list`, `final-combo-discount` | 반영된 상품 목록, 결합할인 |
 | 4단계 최종상품 `cs-wiz-panel-4` | `final-products-home`, `final-products-usim`, `commission-home-panel`, `commission-usim-panel`, `consult-save-state`, `cs-live-customer-info`, `cs-live-products-info` | 최종 확정, 수수료(로그인 시), 저장, 상담요약 |
-| **탭2 `view-customers` 고객조회** | `funnel-dashboard`, `cust-search-contact`, `cust-search-status`, `cust-list-table`, `cust-list`, `cust-detail`, `cust-products`, `contact-section`, `cf-notes`, `cf-note-input` | 퍼널 대시보드(오늘 컨택 예정·지연 칩 포함), 검색, 목록(안내상품 여러 건 + 요금·사은품·수수료), 상세(컨택 이력 1~3차, 특이사항 누적, 안내상품 표) |
+| **탭2 `view-customers` 고객조회** | `funnel-dashboard`, `cust-search-contact`, `cust-search-status`, `cust-list-table`, `cust-list`, `cust-detail`, `cust-products`, `contact-section`, `cf-notes`, `cf-note-input`, `status-log-section` | 퍼널 대시보드(오늘 컨택 예정·지연 칩 포함), 검색, **[📥 엑셀 다운로드]**, 목록(안내상품 여러 건 + 요금·사은품·수수료), 상세(**상태값 변경 이력**, 컨택 이력 1~3차, 특이사항 누적, 안내상품 표) |
+| **탭3 `view-performance` 실적조회** | `perf-from`, `perf-to`, `perf-summary`, `perf-funnel`, `perf-list-title`, `perf-list` | 기간 필터, 유치율 카드, 퍼널별 건수·전체 대비 비율(단계별 접기/펼치기), 접수완료 리스트(사은품·수수료·마진·마진율) |
 | 모달 | `login-modal`, `reservation-modal`, `toast-container` | 로그인, 상담 예약, 토스트 알림 |
 
 ---
@@ -125,6 +126,13 @@ supabase-js (CDN)
 
 [고객조회 탭] loadFunnelDashboard / searchCustomers → openCustomer → 상세 수정 updateCustomer
       └ [상담으로 불러오기] loadCustomerToConsult() → proposal_snapshot으로 위 배열들을 복원
+      └ [📥 엑셀 다운로드] exportCustomerListCsv() → customerListCache를 CSV로 저장
+
+[상태값이 바뀌는 모든 지점] → logStatusChange() → customer_status_logs insert → 상세의 '상태값 변경 이력'
+
+[실적조회 탭] switchTab('performance') → loadPerformance()
+      customers(기간 필터, 1000행씩 페이징) → 퍼널 집계·유치율 renderPerformance()
+      상태값 '접수완료' 고객 → customer_products → 접수완료 리스트 renderPerformanceList()
 ```
 
 핵심: **`reflectedProducts`(제안)와 `finalProducts`(최종)는 같은 객체를 공유**합니다(`moveProposalToFinal`은 복사가 아니라 같은 객체를 push). 한쪽에서 수정하면 다른 쪽에도 반영됩니다.
@@ -151,11 +159,13 @@ supabase-js (CDN)
 | `customUsimGiftValues` | 상담원이 직접 고친 유심 사은품 | `{'NET\|요금제명': 금액}` |
 | `isLoggedIn` | 관리자 로그인 여부 | 수수료 노출 여부를 결정 |
 | `recoUsimTier`, `recoUsimPlanPool` | 유심 추천 구간 / 조회된 요금제 목록 | |
-| `CUSTOMER_SCHEMA` | DB에 어떤 컬럼/테이블이 있는지 점검한 결과 | `{hasProductsTable, hasSnapshot, hasTags, checked}` |
+| `CUSTOMER_SCHEMA` | DB에 어떤 컬럼/테이블이 있는지 점검한 결과 | `{hasProductsTable, hasSnapshot, hasTags, hasContactsTable, hasStatusLogsTable, checked}` |
 | `currentCustomerId` | 지금 상담 중인 고객 ID | 있으면 저장 시 update |
 | `customerListCache` | 고객조회 목록 캐시 | |
 | `selectedCustomerTags` / `detailCustomerTags` | 태그 선택 (상담 화면 / 조회 화면, 서로 독립) | `Set` |
 | `logs` | 데이터 로드 로그 | 테이블명이 key |
+| `perfCustomers`, `perfProdMap` | 실적조회 조회 결과(고객 행 / 접수완료 고객의 상품 행) | 로그인·로그아웃 시 재조회 없이 다시 그리는 용도 |
+| `perfOpenGroups` | 실적조회 퍼널 표에서 펼쳐 둔 단계 key | `Set`, 기본은 모두 접힘 |
 
 ### 7-2. `DATA` 형태 (`loadData()`가 만듦)
 
@@ -201,8 +211,9 @@ TV 요금제 등급(low/basic/premium)은 DB의 `plan_name` 문자열에 특정 
 | `customers` | 읽기/쓰기 | customer_id, name, contact, telecom, old_isp, old_tv_count, desired_product, guided_carrier, guided_internet_speed, guided_router, guided_tv_channel, guided_settop, guided_home_fee, guided_home_gift, guided_home_commission, usim_telecom, usim_plan, usim_fee, usim_gift, usim_commission, notes, funnel_status, next_contact_at, customer_tags, proposal_snapshot, updated_at |
 | `customer_products` | 읽기/쓰기 | id, customer_id, product_type(`home`/`usim`), is_final, carrier, product_name, monthly_fee, gift_amount, commission, detail(JSON) |
 | `customer_contacts` | 읽기/쓰기 | id, customer_id, attempt_no(1~3), scheduled_at(예정), contacted_at(실제·비어 있으면 예약 상태), method, result(`부재`/`연결`), content, created_by. `customer_contacts.sql`로 생성 |
+| `customer_status_logs` | 읽기/쓰기(insert만) | id, customer_id, from_status(신규는 null), to_status, changed_by(로그인 이메일, 없으면 null), changed_at(기본값 `now()` 필요). `customer_status_logs.sql`로 생성. **RLS를 켰다면 INSERT·SELECT 정책이 모두 있어야 합니다** |
 
-**스키마 점검 방식:** `probeCustomerSchema()`가 `proposal_snapshot`, `customer_products`, `customer_tags`, `customer_contacts`가 있는지 조회해 보고(`CUSTOMER_SCHEMA`), 없으면 해당 저장을 건너뜁니다. 컬럼을 새로 만들지 않고도 앱이 동작하는 이유입니다.
+**스키마 점검 방식:** `probeCustomerSchema()`가 `proposal_snapshot`, `customer_products`, `customer_tags`, `customer_contacts`, `customer_status_logs`가 있는지 조회해 보고(`CUSTOMER_SCHEMA`), 없으면 해당 저장을 건너뜁니다. 컬럼을 새로 만들지 않고도 앱이 동작하는 이유입니다.
 
 **정확한 컬럼 타입과 제약은 코드에 없습니다.** 정확한 스키마는 Supabase 테이블 정의를 별도로 확인하세요.
 
@@ -241,11 +252,29 @@ TV 요금제 등급(low/basic/premium)은 DB의 `plan_name` 문자열에 특정 
 - 상태값이 `고객부재`가 되는 순간(상담저장 / 상세 수정저장 / 목록 상태변경) 컨택 이력이 **없으면** `autoStartContactCycle`이 1차를 자동 반영합니다(근무시간 안: 지금을 1차 부재로 기록 + 2차 예약, 밖: 다음 영업일 10:00를 1차 예약).
 - 회차는 상태값을 늘리지 않고 `customer_contacts`로 관리하며, 목록에는 `1/3` 배지로 표시합니다. "자동"은 기록 시점에 계산·저장한다는 뜻이며 시간이 지나면 저절로 알림이 뜨거나 종결되지는 않습니다(대시보드의 오늘 예정·지연 건수로 확인).
 
+**상태값 변경 이력**
+- 상태값이 바뀌는 모든 지점(목록 빠른 변경, 상세 저장 `updateCustomer`, 상담 저장 `saveConsultation`, 상담예약 `submitReservation`, 컨택 자동 전환·자동 종결 `setCustomerPatch`)에서 `logStatusChange(customerId, 이전값, 새값)`이 한 줄씩 기록합니다. 값이 같으면 기록하지 않습니다.
+- 상세 화면의 '상태값 변경 이력'(`renderStatusLogSection`)이 최근 50건을 최신순으로 보여줍니다.
+- **기록 실패는 화면에 알리지 않고 콘솔 경고(`상태값 변경 로그 저장 실패`)만 남깁니다.** 이력이 안 쌓이면 콘솔의 메시지를 먼저 보세요. `row-level security policy` 오류(403)라면 `customer_status_logs`에 INSERT 정책이 없는 것입니다.
+
 **특이사항 누적**
 - 별도 칼럼 없이 `customers.notes` 한 칼럼에 `[YY-MM-DD HH:mm] 내용` 줄을 최신순(맨 위)으로 쌓습니다(`prependNoteLine`). 컨택을 처음 기록할 때도 한 줄이 자동으로 쌓입니다. 예전에 날짜 없이 적은 내용은 아래에 그대로 남습니다.
 
 **고객조회 목록**
 - 상품(인터넷/TV)·요금·사은품·수수료는 `customer_products`의 `home` 행을 **모두** 줄 단위로 표시합니다(`customerHomeLines`). 해당 고객 행이 하나도 없을 때만 `customers.guided_*` 단일 값을 대신 보여줍니다. **수수료 컬럼은 로그인했을 때만** 보입니다(`refreshCustomerListView`, `hide-comm`).
+
+**엑셀(CSV) 다운로드 (`exportCustomerListCsv`)**
+- 고객조회의 [📥 엑셀 다운로드]는 **현재 화면에 조회된 목록(`customerListCache`)** 을 화면과 같은 정렬 순서로 내려받습니다. 라이브러리 없이 CSV(UTF-8 BOM)로 만들며 엑셀에서 바로 열립니다.
+- 안내상품이 여러 건이면 **상품 1건당 1행**으로 나누고 고객 정보는 각 행에 반복합니다. 금액은 쉼표 없는 숫자입니다.
+- **수수료 열은 로그인했을 때만 포함**합니다. 파일에는 고객 연락처가 그대로 들어가므로, 내려받기 권한을 제한하려면 이 함수 앞에 `isLoggedIn` 조건을 거세요.
+
+**실적조회 (`loadPerformance` / `renderPerformance`)**
+- 기간 필터는 `customers.created_at`(최초저장일) 기준이고, 비우면 전체 기간입니다. Supabase의 1회 최대 1,000행 제한 때문에 `range()`로 나눠서 전부 가져옵니다.
+- **유치율 = 유치 건수 ÷ 전체 건수.** 유치 상태값 범위는 `config.js`의 `PERFORMANCE_WON_STATUSES`(기본: 설치·사은품 지급·환수 단계 = 접수완료 이후 전부)입니다. 퍼널 표에는 모든 상태값의 건수와 전체 대비 %가 단계별로 접었다 펼 수 있게 나옵니다. 어떤 단계에도 없는 상태값(예: 신규접수)은 '기타(분류 외)'로 묶입니다.
+- **접수완료 리스트**는 `PERFORMANCE_LIST_STATUS`(기본 '접수완료') 고객의 `customer_products`를 상품 1건당 1행으로 보여줍니다. 최종상품(`is_final`)이 있으면 그것만, 없으면 안내상품 전체입니다.
+- **마진 = 수수료 − 사은품 합계, 마진율 = 마진 ÷ 수수료.** 수수료·마진·마진율 열은 로그인했을 때만 보이며, 로그인·로그아웃 시 `refreshPerformanceView()`가 다시 그립니다.
+- 수수료(`customer_products.commission`)는 **로그인 상태에서 저장된 상품에만** 값이 있습니다. 없는 상품은 '-'로 표시하고 마진 합계에서 제외합니다.
+- 상품권/현금은 `customer_products.detail`의 `giftCard`, `cash`에서 읽습니다. **유심은 이 구분이 저장되지 않아** 사은품 합계만 표시됩니다.
 
 **저장 (`saveConsultation`)**
 - 연락처 필수(숫자 형식 검증). 같은 연락처의 고객이 있으면 확인 후 **업데이트**, 없으면 신규 insert.
@@ -264,26 +293,28 @@ TV 요금제 등급(low/basic/premium)은 DB의 `plan_name` 문자열에 특정 
 
 6. 고객부재 재안내: `CONTACT_RULES`, `CONTACT_METHODS`, `CONTACT_RESULT_ABSENT`, `CONTACT_RESULT_CONNECTED`, `CONTACT_CYCLE_STATUS`, `CONTACT_CLOSED_STATUS`, `CONTACT_CONNECTED_STATUS`, `KOREAN_HOLIDAYS`, `KOREAN_HOLIDAYS_LAST_YEAR`
 7. 안내상품 표 열 폭: `GUIDED_HOME_COLS`, `GUIDED_USIM_COLS` (좌우 스크롤이 생기지 않도록 요금·사은품·수수료를 좁게 고정)
+8. 실적조회: `PERFORMANCE_WON_STATUSES`(유치로 볼 상태값), `PERFORMANCE_LIST_STATUS`(리스트에 보여줄 상태값). `FUNNEL_STAGES` 뒤에 선언되어야 합니다.
 
 `USIM_COMMISSION_BANDS`는 계산 로직과 밀접해 Calculator.js에 남겨 두었습니다.
 
 ---
 
-## 11. CS.html 인라인 스크립트 지도 (약 2,500줄)
+## 11. CS.html 인라인 스크립트 지도 (약 3,350줄)
+
+줄 번호는 근사치입니다. 함수명으로 검색하세요.
 
 | 구간(약) | 내용 | 대표 함수 |
 |---|---|---|
-| 489~620 | 상태값, 공용 유틸, 탭 전환 | `showToast`, `setBtnLoading`, `switchTab`, `goCsStep`, `addLog` |
-| 620~1000 | **추천상품**: 통신사 카드, 사은품 계산, 유심 추천 | `renderRecoCards`, `reflectRecoCardToProposal`, `fetchRecoUsimPlans`, `reflectRecoUsimPlan` |
-| 1000~1180 | 서브 TV, 프리셋, 기존 인터넷·가족 회선 | `renderExtraTvControls`, `applyRecoPreset`, `toggleOldInternetSection`, `renderFamilyLines` |
-| 1180~1370 | **제안상품**: 유심 라인 | `syncToDesignPhones`, `renderAddedUsimLines` |
-| 1370~1580 | 결합할인 아코디언, 상담요약 | `renderFamilyDiscountAccordion`, `buildConsultSummary`, `updateCsSummaryPanel` |
-| 1580~1800 | 제안·최종상품 목록, 수수료 패널 | `renderProposalLists`, `renderFinalProducts`, `renderCommissionPanels` |
-| 1800~1930 | 로그인 모달, 상담 예약, 인증 UI | `openLoginModal`, `submitReservation`, `updateAuthUI` |
-| 1930~2030 | 고객 태그 | `renderTagChips`, `toggleCustomerTag` |
-| 2030~2280 | 퍼널, 상담 저장/초기화 | `buildCustomerPayload`, `saveConsultation`, `resetConsultation` |
-| 2280~3300 | **고객조회**: 대시보드, 검색, 목록, 상세, 상품표, 특이사항 누적, **컨택 이력**, 수정/삭제 | `loadFunnelDashboard`, `searchCustomers`, `renderCustomerList`, `openCustomer`, `prependNoteLine`, `renderContactSection`, `saveContactAttempt`, `applyContactCycle`, `autoStartContactCycle`, `updateCustomer`, `loadCustomerToConsult` |
-| 2970~3010 | 초기화 | `init()` |
+| 526~660 | 상태값, 공용 유틸, 탭 전환 | `showToast`, `setBtnLoading`, `switchTab`, `goCsStep`, `addLog` |
+| 660~1050 | **추천상품**: 통신사 카드, 사은품 계산, 유심 추천 | `renderRecoCards`, `reflectRecoCardToProposal`, `fetchRecoUsimPlans`, `reflectRecoUsimPlan` |
+| 1050~1280 | 서브 TV, 프리셋, 기존 인터넷·가족 회선, **제안상품** 유심 라인 | `renderExtraTvControls`, `applyRecoPreset`, `renderFamilyLines`, `syncToDesignPhones`, `renderAddedUsimLines` |
+| 1280~1620 | 결합할인 아코디언, 상담요약 | `renderFamilyDiscountAccordion`, `buildConsultSummary`, `updateCsSummaryPanel` |
+| 1620~1950 | 제안·최종상품 목록, 수수료 패널, 로그인 모달, 상담 예약 | `renderProposalLists`, `renderFinalProducts`, `renderCommissionPanels`, `openLoginModal`, `submitReservation`, `updateAuthUI` |
+| 1950~2370 | 고객 태그, 퍼널, 상담 저장/초기화 | `renderTagChips`, `toggleCustomerTag`, `buildCustomerPayload`, `saveConsultation`, `resetConsultation` |
+| 2370~2670 | **고객조회**: 대시보드, 검색, 목록, 정렬, **엑셀 다운로드** | `loadFunnelDashboard`, `searchCustomers`, `renderCustomerList`, `exportCustomerListCsv` |
+| 2670~2930 | **실적조회**: 조회·집계, 단계별 접기/펼치기, 접수완료 리스트 | `loadPerformance`, `renderPerformance`, `togglePerfGroup`, `renderPerformanceList`, `refreshPerformanceView` |
+| 2930~3790 | 고객조회 상세: 상품표, 특이사항 누적, **컨택 이력**, **상태값 변경 이력**, 수정/삭제 | `openCustomer`, `prependNoteLine`, `renderContactSection`, `saveContactAttempt`, `applyContactCycle`, `autoStartContactCycle`, `logStatusChange`, `renderStatusLogSection`, `updateCustomer`, `loadCustomerToConsult` |
+| 3830~3880 | 초기화 | `init()` |
 
 **앱 시작 순서 (`init`)**: 화면 컨트롤 준비 → 로그인 세션 확인(`isLoggedIn`) → `probeCustomerSchema()` → `loadData()` → `loadFinanceData()` → `renderRecoCards()`.
 
@@ -298,6 +329,8 @@ TV 요금제 등급(low/basic/premium)은 DB의 `plan_name` 문자열에 특정 
 | 결합할인·요금 계산 규칙, 유심 수수료 구간 | `Calculator.js` |
 | DB 조회, 로그인, 프로모션·수수료 조회 | `Supabaseservice.js` |
 | 고객 저장/조회 테이블·컬럼 | `CS.html` (`buildCustomerPayload`, `buildProductRows`, `updateCustomer`) |
+| 실적조회의 유치 범위·리스트 대상 상태값 | `config.js` (`PERFORMANCE_WON_STATUSES`, `PERFORMANCE_LIST_STATUS`) |
+| 실적조회 집계·마진 계산·열 구성, 엑셀 내보내기 열 | `CS.html` (`renderPerformance`, `renderPerformanceList`, `exportCustomerListCsv`) |
 | 화면 구성(입력칸, 버튼), 상담 흐름 | `CS.html` |
 
 ---
@@ -319,10 +352,13 @@ TV 요금제 등급(low/basic/premium)은 DB의 `plan_name` 문자열에 특정 
 1. 함께 바뀐 파일을 **모두** 올렸는지 확인 (5개)
 2. `?v=` 값을 올렸는지 확인
 2-1. 컨택 이력을 쓰려면 Supabase에서 `customer_contacts.sql`을 먼저 실행 (실행 전에는 컨택 기능만 꺼진 상태로 동작)
+2-2. 상태값 변경 이력을 쓰려면 `customer_status_logs.sql`을 실행하고, RLS를 켰다면 **INSERT·SELECT 정책**을 추가 (없으면 이력이 조용히 안 쌓임 → 콘솔 확인)
 3. 새로고침 후 **빨간 "파일 로드 실패" 배너**가 없는지 확인
 4. 추천상품 카드 → 제안상품 반영 → 최종상품 → 상담 저장 → 고객조회 순으로 한 번씩 클릭
 5. 로그인 / 비로그인 각각에서 수수료 노출 여부 확인
 6. 저장한 고객을 조회 탭에서 열고 [상담으로 불러오기]가 정상 복원되는지 확인
+7. 상태값을 바꿔 저장한 뒤 상세의 '상태값 변경 이력'에 한 줄이 생기는지 확인
+8. 고객조회에서 [📥 엑셀 다운로드], 실적조회 탭 조회(로그인 시 수수료·마진 열 노출)를 한 번씩 확인
 
 ---
 
@@ -342,6 +378,7 @@ TV 요금제 등급(low/basic/premium)은 DB의 `plan_name` 문자열에 특정 
 ## 16. 알아둘 점
 
 - 과거에 Calculator.js 자리에 CSS 파일이 들어가 계산이 깨진 적이 있습니다. 로드 점검 스크립트가 이런 사고를 화면에서 알려줍니다.
+- `loadFunnelDashboard`(고객조회 상단 대시보드)는 `limit(10000)`으로 한 번에 조회하는데, Supabase 기본 설정은 1회 1,000행에서 잘립니다. 고객이 1,000명을 넘으면 건수가 적게 나올 수 있어 실적조회처럼 `range()` 페이징으로 바꾸는 것을 검토하세요.
 - 유심 수수료 구간표를 비공개로 하려면 인터넷·TV 수수료처럼 서버(RPC) 조회로 옮기는 방안을 검토하세요.
 
 ## 변경 이력
@@ -349,3 +386,5 @@ TV 요금제 등급(low/basic/premium)은 DB의 `plan_name` 문자열에 특정 
 - 2026-09-28: 인라인 CSS를 `Styles.css`로 이동, 상수를 `config.js`로 분리, 로드 점검·버전 쿼리 추가 (로직 변경 없음)
 - 2026-09-28: 데이터 흐름, 상태 변수·객체 형태, Supabase 컬럼, 업무 규칙, 화면 `id` 표 추가
 - 2026-09-28: 고객조회 개선 — [상담예약 빠르게 등록] 버튼 삭제(모달·`submitReservation` 코드는 남겨 둠), 목록에 안내상품 여러 건 + 요금·사은품·수수료 컬럼, 안내상품 표 좌우 스크롤 제거, 특이사항 날짜별 누적, 고객부재 재안내 1~3차 컨택 이력(`customer_contacts`) + 자동 예약, 대시보드 오늘 컨택 예정·지연 칩. `?v=20260928b`
+- 2026-09-29: 상태값 변경 이력(`customer_status_logs`) 기록이 RLS INSERT 정책 부재(403)로 실패하던 원인 확인 — 정책 추가로 해결. 문서에 이력 기능·테이블·점검 방법 반영
+- 2026-09-30: 고객조회에 [📥 엑셀 다운로드](CSV) 추가. 상단 탭에 **실적조회** 추가(퍼널별 건수·전체 대비 비율·유치율, 접수완료 리스트의 사은품·수수료·마진·마진율), 퍼널 표 단계별 접기/펼치기. `config.js`에 실적조회 상수(8번), `Supabaseservice.js`의 로그인/로그아웃에 `refreshPerformanceView` 호출, `Styles.css`에 `.perf-*` 추가. `?v=20260930c`
