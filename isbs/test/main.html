@@ -57,7 +57,7 @@
                 <button id="auth-btn" onclick="authClick()" class="text-xs font-semibold text-blue-600 hover:underline shrink-0 ml-2"></button>
             </div>
             <div class="flex items-center justify-between text-[11px] text-slate-400">
-                <span id="sync-state"></span><span class="font-mono">v2.4.0</span>
+                <span id="sync-state"></span><span class="font-mono">v2.5.0</span>
             </div>
             <div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
                 <button onclick="exportData()" class="hover:text-blue-600">내보내기</button>
@@ -184,7 +184,10 @@
                         <h3 class="font-bold text-slate-800 text-sm flex items-center">
                             <i class="fa-solid fa-rotate text-indigo-600 mr-2"></i> 루틴 업무
                         </h3>
-                        <span class="text-[11px] text-slate-400">매일·매주 자동으로 리셋되는 반복 업무</span>
+                        <div class="flex items-center gap-3">
+                            <span class="text-[11px] text-slate-400">매일·매주 자동으로 리셋되는 반복 업무</span>
+                            <button onclick="openHistoryModal()" class="text-[11px] text-blue-600 hover:underline font-semibold"><i class="fa-solid fa-clock-rotate-left mr-1"></i>업무 이력 보기</button>
+                        </div>
                     </div>
                     <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
                         <div>
@@ -401,6 +404,31 @@
                     <button type="submit" class="px-3 py-1.5 bg-emerald-600 text-white text-xs rounded-xl font-semibold">추가</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- 업무 이력 모달 -->
+    <div id="history-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100">
+            <div class="flex justify-between items-center pb-4 mb-4 border-b border-slate-100">
+                <h3 class="font-bold text-slate-800 text-base flex items-center"><i class="fa-solid fa-clock-rotate-left text-indigo-600 mr-2"></i>업무 이력</h3>
+                <button onclick="closeHistoryModal()" class="text-slate-400 hover:text-slate-600 text-lg"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <button onclick="historyMonthShift(-1)" class="p-1.5 text-slate-400 hover:text-blue-600" aria-label="이전 달"><i class="fa-solid fa-chevron-left"></i></button>
+                        <span id="history-month-label" class="text-sm font-bold text-slate-700"></span>
+                        <button onclick="historyMonthShift(1)" class="p-1.5 text-slate-400 hover:text-blue-600" aria-label="다음 달"><i class="fa-solid fa-chevron-right"></i></button>
+                    </div>
+                    <div id="history-calendar"></div>
+                    <p class="text-[11px] text-slate-400 mt-2">점이 있는 날짜에 완료 기록이 있습니다.</p>
+                </div>
+                <div>
+                    <div id="history-day-label" class="text-sm font-bold text-slate-700 mb-2"></div>
+                    <div id="history-day-list" class="max-h-64 overflow-y-auto"></div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -929,9 +957,9 @@ function renderWidgets() {
     if($('daily-tasks-list'))$('daily-tasks-list').innerHTML = dailyTasks.map((g,i) => row(g,i,'toggleDaily','deleteDaily','text-emerald-600')).join('');
 }
 
-function toggleWeekly(i) { if(!guard()){renderWidgets();return} weeklyGoals[i].done = !weeklyGoals[i].done; saveDataAndRefresh(); }
+function toggleWeekly(i) { if(!guard()){renderWidgets();return} weeklyGoals[i].done = !weeklyGoals[i].done; const k='weekly:'+weeklyGoals[i].text; if(weeklyGoals[i].done) logHistory('이번 주 목표', k, weeklyGoals[i].text); else unlogHistory(k); saveDataAndRefresh(); }
 function deleteWeekly(i) { if(!guard()) return; weeklyGoals.splice(i,1); saveDataAndRefresh(); }
-function toggleDaily(i) { if(!guard()){renderWidgets();return} dailyTasks[i].done = !dailyTasks[i].done; saveDataAndRefresh(); }
+function toggleDaily(i) { if(!guard()){renderWidgets();return} dailyTasks[i].done = !dailyTasks[i].done; const k='daily:'+dailyTasks[i].text; if(dailyTasks[i].done) logHistory('오늘의 할 일', k, dailyTasks[i].text); else unlogHistory(k); saveDataAndRefresh(); }
 function deleteDaily(i) { if(!guard()) return; dailyTasks.splice(i,1); saveDataAndRefresh(); }
 
 function openWeeklyModal() { if(guard())$('weekly-modal').classList.remove('hidden'); }
@@ -1001,13 +1029,65 @@ function toggleRoutineSub(rid, idx) {
     if(!guard()) { renderRoutines(); return; }
     const r = routines.find(x => x.id === rid); if(!r) return;
     const st = routineStateFor(r); st.subDone = {...st.subDone, [idx]: !st.subDone[idx]};
+    const k = 'routine:'+r.id+':'+idx, grp = r.type==='daily' ? '매일 루틴' : '매주 루틴';
+    if(st.subDone[idx]) logHistory(grp, k, r.title+' · '+r.subitems[idx]); else unlogHistory(k);
     setRoutineState(r, st);
 }
 function toggleRoutineDone(rid) {
     if(!guard()) { renderRoutines(); return; }
     const r = routines.find(x => x.id === rid); if(!r) return;
     const st = routineStateFor(r); st.done = !st.done;
+    const k = 'routine:'+r.id, grp = r.type==='daily' ? '매일 루틴' : '매주 루틴';
+    if(st.done) logHistory(grp, k, r.title); else unlogHistory(k);
     setRoutineState(r, st);
+}
+let historyLog = {};
+function logHistory(group, itemKey, label) {
+    const d = ymd(new Date());
+    if(!historyLog[d]) historyLog[d] = [];
+    if(!historyLog[d].some(e => e.itemKey === itemKey)) historyLog[d].push({itemKey, group, label});
+}
+function unlogHistory(itemKey) {
+    const d = ymd(new Date());
+    if(historyLog[d]) historyLog[d] = historyLog[d].filter(e => e.itemKey !== itemKey);
+}
+let historyMonth = new Date(), historySelectedDate = '';
+function openHistoryModal() {
+    historyMonth = new Date(); historySelectedDate = ymd(new Date());
+    renderHistoryCalendar(); renderHistoryDay();
+    $('history-modal').classList.remove('hidden');
+}
+function closeHistoryModal() { $('history-modal').classList.add('hidden'); }
+function historyMonthShift(delta) { historyMonth = new Date(historyMonth.getFullYear(), historyMonth.getMonth()+delta, 1); renderHistoryCalendar(); }
+function selectHistoryDate(key) { historySelectedDate = key; renderHistoryCalendar(); renderHistoryDay(); }
+function renderHistoryCalendar() {
+    const y = historyMonth.getFullYear(), m = historyMonth.getMonth();
+    if($('history-month-label')) $('history-month-label').innerText = y + '년 ' + (m+1) + '월';
+    const first = new Date(y,m,1), startWd = first.getDay(), daysInMonth = new Date(y,m+1,0).getDate(), todayKey = ymd(new Date());
+    const wd = ['일','월','화','수','목','금','토'];
+    let head = wd.map(w => `<div class="text-center text-[10px] font-bold text-slate-400 py-1">${w}</div>`).join('');
+    let cells = '';
+    for(let i = 0; i < startWd; i++) cells += '<div></div>';
+    for(let d = 1; d <= daysInMonth; d++) {
+        const key = y + '-' + String(m+1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+        const has = historyLog[key] && historyLog[key].length > 0;
+        const isToday = key === todayKey, isSel = key === historySelectedDate;
+        cells += `<button onclick="selectHistoryDate('${key}')" class="relative text-xs rounded-lg py-1.5 ${isSel?'bg-blue-600 text-white font-bold':(isToday?'bg-blue-50 text-blue-600 font-semibold':'text-slate-600 hover:bg-slate-100')}">${d}${has?`<span class="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full ${isSel?'bg-white':'bg-blue-500'}"></span>`:''}</button>`;
+    }
+    if($('history-calendar')) $('history-calendar').innerHTML = `<div class="grid grid-cols-7 gap-1 mb-1">${head}</div><div class="grid grid-cols-7 gap-1">${cells}</div>`;
+}
+function renderHistoryDay() {
+    const entries = historyLog[historySelectedDate] || [];
+    if($('history-day-label')) $('history-day-label').innerText = historySelectedDate;
+    if(!$('history-day-list')) return;
+    if(!entries.length) { $('history-day-list').innerHTML = '<div class="text-xs text-slate-400 py-6 text-center">이 날짜에 완료 기록이 없습니다.</div>'; return; }
+    const groups = {};
+    entries.forEach(e => { (groups[e.group] = groups[e.group] || []).push(e); });
+    $('history-day-list').innerHTML = Object.keys(groups).map(g => `
+      <div class="mb-3">
+        <div class="text-[11px] font-bold text-slate-400 mb-1.5">${esc(g)}</div>
+        ${groups[g].map(e => `<div class="flex items-center gap-2 text-xs text-slate-700 py-1"><i class="fa-solid fa-circle-check text-emerald-500 text-[10px]"></i>${esc(e.label)}</div>`).join('')}
+      </div>`).join('');
 }
 function routineIncomplete() {
     return routines.filter(r => {
@@ -1122,8 +1202,8 @@ function deleteRoutineFromModal() {
     const id = routineEditId; closeRoutineModal();
     quickDeleteRoutine(id);
 }
-function payload() { return {v:7, tasks:taskData, weekly:weeklyGoals, daily:dailyTasks, meta, goals, routineState, routines}; }
-function resetData() { if(!guard()) return; if(!confirm('기본값으로 복원할까요?')) return; goals = defaultGoals(); taskData = JSON.parse(JSON.stringify(defaultTaskData)); weeklyGoals = JSON.parse(JSON.stringify(defaultWeeklyGoals)); dailyTasks = JSON.parse(JSON.stringify(defaultDailyTasks)); meta = {}; routineState = {}; routines = JSON.parse(JSON.stringify(defaultRoutines)); saveDataAndRefresh(); }
+function payload() { return {v:8, tasks:taskData, weekly:weeklyGoals, daily:dailyTasks, meta, goals, routineState, routines, historyLog}; }
+function resetData() { if(!guard()) return; if(!confirm('기본값으로 복원할까요?')) return; goals = defaultGoals(); taskData = JSON.parse(JSON.stringify(defaultTaskData)); weeklyGoals = JSON.parse(JSON.stringify(defaultWeeklyGoals)); dailyTasks = JSON.parse(JSON.stringify(defaultDailyTasks)); meta = {}; routineState = {}; routines = JSON.parse(JSON.stringify(defaultRoutines)); historyLog = {}; saveDataAndRefresh(); }
 
 function gp(k) {
     if(k.tar === '' || k.cur === '' || isNaN(k.tar) || isNaN(k.cur)) return null;
@@ -1166,6 +1246,7 @@ function adopt(p) {
     if(p && validGoals(p.goals)) goals = p.goals;
     if(p && p.routineState && typeof p.routineState === 'object') routineState = p.routineState;
     if(p && validRoutines(p.routines)) routines = p.routines;
+    if(p && p.historyLog && typeof p.historyLog === 'object') historyLog = p.historyLog;
 }
 function cacheLocal() { try { localStorage.setItem('isbs_cache_v4', JSON.stringify(payload())); localStorage.setItem('isbs_cache_time', lastUpdateTime); } catch(e) {} }
 function refreshAll() { render(); }
