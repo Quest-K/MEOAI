@@ -185,3 +185,11 @@ const KOREAN_HOLIDAYS_LAST_YEAR = 2027;  // 공휴일 목록이 커버하는 마
 const GUIDED_HOME_COLS = [58, 76, 58, 0, 0, 72, 82, 88];
 // 유심 : 유심통신사, 요금제, 요금, 사은품, 수수료 (+ 최종, 관리는 코드에서 추가)
 const GUIDED_USIM_COLS = [80, 0, 72, 82, 88];
+
+
+/* ---------- 8. 실적조회 ---------- */
+// 유치 = 접수완료 이후 단계(설치 · 사은품 지급 · 환수)로 넘어간 건. 유치율 = 유치 건수 ÷ 전체 건수
+// 유치로 볼 상태값 범위를 바꾸려면 이 배열만 고치세요. (예: 환수 제외 → stage 2~3만)
+const PERFORMANCE_WON_STATUSES = FUNNEL_STAGES.filter(g => g.stage >= 2 && g.stage <= 4).flatMap(g => g.items);
+// "접수완료 리스트"에 보여줄 상태값
+const PERFORMANCE_LIST_STATUS = '접수완료';
