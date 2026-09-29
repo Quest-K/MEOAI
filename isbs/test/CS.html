@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<link rel="stylesheet" href="Styles.css?v=20260928b">
+<link rel="stylesheet" href="Styles.css?v=20260929a">
 </head>
 <body>
 <div class="wrap">
@@ -473,9 +473,9 @@
 
 <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
-<script src="config.js?v=20260928b"></script>
-<script src="Calculator.js?v=20260928b"></script>
-<script src="Supabaseservice.js?v=20260928b"></script>
+<script src="config.js?v=20260929a"></script>
+<script src="Calculator.js?v=20260929a"></script>
+<script src="Supabaseservice.js?v=20260929a"></script>
 <script>
 // 외부 파일 로드 점검: 파일 누락/내용 뒤바뀜(예: JS 자리에 CSS가 들어간 경우) 시 화면 상단에 경고 표시
 (function checkModules(){
@@ -1881,7 +1881,7 @@ async function submitReservation(btn){
 
   setBtnLoading(btn, '등록 중...');
   try {
-    const { data: exist } = await sb.from('customers').select('customer_id').eq('contact', contact).limit(1);
+    const { data: exist } = await sb.from('customers').select('customer_id,funnel_status').eq('contact', contact).limit(1);
     const payload = {
       contact,
       funnel_status: RESERVATION_STATUS,
@@ -1889,15 +1889,20 @@ async function submitReservation(btn){
       notes: noteParts.join(' / ') || null
     };
 
-    let error;
+    let error, resvCustomerId = null, prevStatus = null;
     if (exist && exist.length) {
       if (!confirm(`동일한 연락처(${contact})의 고객이 이미 등록되어 있습니다.\n기존 정보를 상담예약 상태로 업데이트할까요?`)) return;
-      ({ error } = await sb.from('customers').update(payload).eq('customer_id', exist[0].customer_id));
+      resvCustomerId = exist[0].customer_id;
+      prevStatus = exist[0].funnel_status;
+      ({ error } = await sb.from('customers').update(payload).eq('customer_id', resvCustomerId));
     } else {
-      ({ error } = await sb.from('customers').insert(payload));
+      const ins = await sb.from('customers').insert(payload).select();
+      error = ins.error;
+      resvCustomerId = (ins.data && ins.data[0]) ? ins.data[0].customer_id : null;
     }
 
     if (error) { errEl.textContent = '등록 실패: ' + error.message; return; }
+    if (resvCustomerId) await logStatusChange(resvCustomerId, prevStatus, RESERVATION_STATUS);
 
     showToast('✓ 상담예약이 등록되었습니다');
     closeReservationModal();
@@ -2028,7 +2033,7 @@ function toggleDetailTagsBody(){
 }
 
 
-let CUSTOMER_SCHEMA = { hasProductsTable: false, hasSnapshot: false, hasTags: false, hasContactsTable: false, checked: false };
+let CUSTOMER_SCHEMA = { hasProductsTable: false, hasSnapshot: false, hasTags: false, hasContactsTable: false, hasStatusLogsTable: false, checked: false };
 let currentCustomerId = null;
 let customerListCache = [];
 let customerViewInited = false;
@@ -2209,6 +2214,8 @@ async function probeCustomerSchema(){
   CUSTOMER_SCHEMA.hasTags = !tags.error;
   const contacts = await sb.from('customer_contacts').select('customer_id').limit(1);
   CUSTOMER_SCHEMA.hasContactsTable = !contacts.error;
+  const statusLogs = await sb.from('customer_status_logs').select('customer_id').limit(1);
+  CUSTOMER_SCHEMA.hasStatusLogsTable = !statusLogs.error;
   CUSTOMER_SCHEMA.checked = true;
   return CUSTOMER_SCHEMA;
 }
@@ -2224,12 +2231,17 @@ async function saveConsultation(btn){
     const payload = buildCustomerPayload();
 
     let customerId = currentCustomerId;
+    let prevStatus = null;
     if (!customerId) {
-      const { data: exist } = await sb.from('customers').select('customer_id').eq('contact', contact).limit(1);
+      const { data: exist } = await sb.from('customers').select('customer_id,funnel_status').eq('contact', contact).limit(1);
       if (exist && exist.length) {
         if (!confirm(`동일한 연락처(${contact})의 고객이 이미 등록되어 있습니다.\n기존 고객 정보를 업데이트할까요?`)) return;
         customerId = exist[0].customer_id;
+        prevStatus = exist[0].funnel_status;
       }
+    } else {
+      const { data: cur } = await sb.from('customers').select('funnel_status').eq('customer_id', customerId).limit(1);
+      prevStatus = cur && cur[0] ? cur[0].funnel_status : null;
     }
 
     const res = customerId
@@ -2240,6 +2252,7 @@ async function saveConsultation(btn){
 
     customerId = (res.data && res.data[0]) ? res.data[0].customer_id : customerId;
     currentCustomerId = customerId;
+    await logStatusChange(customerId, prevStatus, payload.funnel_status);
 
     let prodMsg = '';
     if (CUSTOMER_SCHEMA.hasProductsTable) {
@@ -2402,6 +2415,7 @@ function initCustomerView(){
     if (!CUSTOMER_SCHEMA.hasSnapshot) warn.push('customers.proposal_snapshot 칼럼 없음');
     if (!CUSTOMER_SCHEMA.hasTags) warn.push('customers.customer_tags 칼럼 없음');
     if (!CUSTOMER_SCHEMA.hasContactsTable) warn.push('customer_contacts 테이블 없음(컨택 이력 미사용)');
+    if (!CUSTOMER_SCHEMA.hasStatusLogsTable) warn.push('customer_status_logs 테이블 없음(상태값 변경 이력 미사용)');
     const el = document.getElementById('cust-db-state');
     if (el) el.textContent = warn.length ? '⚠ ' + warn.join(' · ') : '스키마 정상';
   });
@@ -2588,6 +2602,8 @@ function updateSortArrows(){
 // 고객 목록에서 상세화면을 거치지 않고 바로 상태값(퍼널)만 변경
 async function quickUpdateFunnelStatus(selectEl, customerId){
   const newStatus = selectEl.value;
+  const c0 = customerListCache.find(x => x.customer_id === customerId);
+  const oldStatus = c0 ? c0.funnel_status : null;
   selectEl.disabled = true;
   const { error } = await sb.from('customers').update({ funnel_status: newStatus }).eq('customer_id', customerId);
   selectEl.disabled = false;
@@ -2604,6 +2620,7 @@ async function quickUpdateFunnelStatus(selectEl, customerId){
 
   showToast('✓ 상태값이 변경되었습니다');
   loadFunnelDashboard();
+  await logStatusChange(customerId, oldStatus, newStatus);
   if (newStatus === CONTACT_CYCLE_STATUS) await autoStartContactCycle(customerId);
 }
 
@@ -2722,6 +2739,11 @@ async function openCustomer(id){
       ${custField('추가컨택일시', 'cf-next-contact', toLocalInputValue(c.next_contact_at), 'datetime-local')}
     </div>
 
+    <div class="cust-form-section">
+      <span>상태값 변경 이력 <span class="cust-note-hint">최근 변경순</span></span>
+    </div>
+    <div id="status-log-section"><div class="wide-table-empty">불러오는 중...</div></div>
+
     <div class="info-subsection" id="detail-tags-subsection">
       <div class="info-subsection-title cust-tag-accordion-header" onclick="toggleDetailTagsBody()">
         <span>🏷️ 고객 태그</span>
@@ -2774,6 +2796,7 @@ async function openCustomer(id){
   renderCustomerProducts(c);
   renderGuidedProductTables(c);
   renderContactSection(c.customer_id);
+  renderStatusLogSection(c.customer_id);
   detailCustomerTags = new Set(Array.isArray(c.customer_tags) ? c.customer_tags : []);
   renderDetailCustomerTags();
 }
@@ -3102,9 +3125,15 @@ async function currentUserEmail(){
 
 // 고객 정보(상태값·다음 컨택일시)를 DB와 화면(목록/상세/상담화면)에 함께 반영
 async function setCustomerPatch(customerId, patch){
+  let prevStatus;
+  if ('funnel_status' in patch) {
+    const { data: cur } = await sb.from('customers').select('funnel_status').eq('customer_id', customerId).limit(1);
+    prevStatus = cur && cur[0] ? cur[0].funnel_status : null;
+  }
   const { error } = await sb.from('customers').update(patch).eq('customer_id', customerId);
   if (error) { alert('고객 정보 갱신 실패: ' + error.message); return false; }
   syncCustomerLocal(customerId, patch);
+  if ('funnel_status' in patch) await logStatusChange(customerId, prevStatus, patch.funnel_status);
   return true;
 }
 
@@ -3333,6 +3362,50 @@ async function resetContactHistory(customerId){
   await refreshListRowExtras(customerId);
 }
 
+/* =========================================================================
+   상태값(퍼널) 변경 이력
+   - 테이블: customer_status_logs (customer_status_logs.sql 참고). 없으면 이 기능만 건너뜁니다.
+   - 상태값이 바뀌는 모든 지점(목록 빠른 변경, 상세 저장, 상담 저장, 상담예약 등록,
+     컨택 자동전환·자동종결)에서 한 줄씩 기록합니다. 값이 같으면(변경이 아니면) 기록하지 않습니다.
+   - 기록 주체(changed_by)는 로그인 이메일이 있으면 기록, 없으면 공란입니다.
+   ========================================================================= */
+async function logStatusChange(customerId, fromStatus, toStatus){
+  if (!toStatus || fromStatus === toStatus) return;   // 변경이 없으면 기록하지 않음
+  await probeCustomerSchema();
+  if (!CUSTOMER_SCHEMA.hasStatusLogsTable) return;
+  const changedBy = await currentUserEmail();
+  const { error } = await sb.from('customer_status_logs').insert({
+    customer_id: customerId, from_status: fromStatus ?? null, to_status: toStatus, changed_by: changedBy || null
+  });
+  if (error) { console.warn('상태값 변경 로그 저장 실패', error.message); return; }
+  if (detailCustomerId === customerId) renderStatusLogSection(customerId);
+}
+
+async function renderStatusLogSection(customerId){
+  const box = document.getElementById('status-log-section');
+  if (!box) return;
+  await probeCustomerSchema();
+  if (!CUSTOMER_SCHEMA.hasStatusLogsTable) {
+    box.innerHTML = `<div class="wide-table-empty">customer_status_logs 테이블이 없어 변경 이력을 사용할 수 없습니다. 안내드린 SQL(customer_status_logs.sql)을 Supabase에서 실행해주세요.</div>`;
+    return;
+  }
+  const { data, error } = await sb.from('customer_status_logs').select('*').eq('customer_id', customerId).order('changed_at', { ascending: false }).order('id', { ascending: false }).limit(50);
+  if (detailCustomerId !== customerId) return;   // 조회하는 동안 다른 고객을 열었으면 중단
+  if (error) { box.innerHTML = `<div class="wide-table-empty">조회 실패: ${escHtml(error.message)}</div>`; return; }
+  const rows = data || [];
+  if (!rows.length) { box.innerHTML = `<div class="wide-table-empty">아직 기록된 변경 이력이 없습니다.</div>`; return; }
+  box.innerHTML = `<div class="status-log-list">${rows.map(r => `
+    <div class="status-log-row">
+      <span class="status-log-time">${formatDateShort(r.changed_at)}</span>
+      <span class="status-log-change">
+        ${r.from_status ? `<span class="cust-status-chip stage-${getFunnelStage(r.from_status)}">${escHtml(r.from_status)}</span><span class="status-log-arrow">→</span>` : `<span class="status-log-new">신규</span>`}
+        <span class="cust-status-chip stage-${getFunnelStage(r.to_status)}">${escHtml(r.to_status)}</span>
+      </span>
+      <span class="status-log-by">${r.changed_by ? escHtml(r.changed_by) : '-'}</span>
+    </div>
+  `).join('')}</div>`;
+}
+
 async function updateCustomer(id, btn){
   const contact = (elVal('cf-contact') || '').trim();
   if (!contact) { alert('연락처는 필수 입력값입니다.'); return; }
@@ -3376,9 +3449,12 @@ async function updateCustomer(id, btn){
 
   setBtnLoading(btn, '저장 중...');
   try {
+    const { data: prevRow } = await sb.from('customers').select('funnel_status').eq('customer_id', id).limit(1);
+    const prevStatus = prevRow && prevRow[0] ? prevRow[0].funnel_status : null;
     const { error } = await sb.from('customers').update(payload).eq('customer_id', id);
     if (error) { alert('수정 실패: ' + error.message); return; }
     showToast('✓ 고객 정보가 수정되었습니다');
+    await logStatusChange(id, prevStatus, payload.funnel_status);
     if (payload.funnel_status === CONTACT_CYCLE_STATUS) await autoStartContactCycle(id);
     await searchOrRefresh();
     loadFunnelDashboard();
