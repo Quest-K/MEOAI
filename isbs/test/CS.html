@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<link rel="stylesheet" href="Styles.css?v=20260929a">
+<link rel="stylesheet" href="Styles.css?v=20260930a">
 </head>
 <body>
 <div class="wrap">
@@ -17,6 +17,12 @@
   <div class="tab-nav">
     <button class="tab-btn active" data-tab="cs" onclick="switchTab('cs')">고객상담</button>
     <button class="tab-btn" data-tab="customers" onclick="switchTab('customers')">고객조회</button>
+    <div class="quick-search-box">
+      <input type="text" id="top-quick-contact" placeholder="연락처로 빠른 조회"
+             onkeydown="if(event.key==='Enter'){event.preventDefault(); quickTopSearch(this.value, this);}">
+      <button type="button" class="mini-btn mini-btn-primary" id="top-quick-search-btn"
+              onclick="quickTopSearch(document.getElementById('top-quick-contact').value, this)">🔍 조회</button>
+    </div>
     <div id="auth-box" class="auth-box">
       <button class="login-trigger-btn" onclick="openLoginModal()">🔐 관리자 로그인</button>
     </div>
@@ -393,9 +399,9 @@
           <div class="cust-list-wrap">
             <table class="cust-list-table hide-comm" id="cust-list-table">
               <colgroup>
-                <col style="width:124px"><col style="width:96px"><col>
-                <col style="width:56px"><col style="width:70px"><col class="col-comm" style="width:76px">
-                <col style="width:68px"><col style="width:68px"><col style="width:84px">
+                <col style="width:11%"><col style="width:11%"><col style="width:22%">
+                <col style="width:7%"><col style="width:8%"><col class="col-comm" style="width:8%">
+                <col style="width:11%"><col style="width:11%"><col style="width:11%">
               </colgroup>
               <thead>
                 <tr>
@@ -473,9 +479,9 @@
 
 <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
-<script src="config.js?v=20260929a"></script>
-<script src="Calculator.js?v=20260929a"></script>
-<script src="Supabaseservice.js?v=20260929a"></script>
+<script src="config.js?v=20260930a"></script>
+<script src="Calculator.js?v=20260930a"></script>
+<script src="Supabaseservice.js?v=20260930a"></script>
 <script>
 // 외부 파일 로드 점검: 파일 누락/내용 뒤바뀜(예: JS 자리에 CSS가 들어간 경우) 시 화면 상단에 경고 표시
 (function checkModules(){
@@ -2284,9 +2290,14 @@ function setConsultSaveState(text, saved){
 
 function resetConsultation(){
   if (!confirm('현재 상담 내용을 비우고 신규 상담을 시작할까요?')) return;
+  startNewConsultWithContact('010');
+}
+
+// 고객상담 화면을 빈 신규 상담으로 초기화 (연락처만 미리 채워둘 수 있음)
+function startNewConsultWithContact(contact){
   currentCustomerId = null;
   setVal('cust-name', NAME_PREFIX);
-  setVal('cust-contact', '010');
+  setVal('cust-contact', contact || '010');
   setVal('cust-notes', '');
   setVal('cust-next-contact', getDefaultNextContactValue());
   setVal('cust-funnel-status', DEFAULT_FUNNEL_STATUS);
@@ -2303,6 +2314,19 @@ function resetConsultation(){
   updateCsSummaryPanel();
   setConsultSaveState('신규 상담', false);
   goCsStep(1);
+}
+
+// 고객상담 화면에 "저장되지 않은 작성 중 내용"이 있는지 대략적으로 판단합니다.
+// (필드별 변경 감지까지는 하지 않고, 저장/불러오기 직후의 '정돈된 상태'인지만 봅니다 — 저장/불러온 뒤 값을 추가로 고친 경우는 감지하지 못할 수 있습니다)
+function consultHasUnsavedWork(){
+  const stateEl = document.getElementById('consult-save-state');
+  if (stateEl && stateEl.classList.contains('saved')) return false;
+  const contact = (elVal('cust-contact') || '').trim();
+  const name = (elVal('cust-name') || '').trim();
+  if (contact && contact !== '010') return true;
+  if (name && name !== NAME_PREFIX) return true;
+  if (reflectedProducts.length || finalProducts.length) return true;
+  return false;
 }
 
 /* ---------------- 고객조회 ---------------- */
@@ -2435,14 +2459,6 @@ function fmtWon(v){
 }
 
 // 목록용 : 날짜(위) / 시간(아래) 두 줄 표시 (컬럼 폭 절약)
-function formatDateTwoLine(iso){
-  if (!iso) return '-';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '-';
-  const pad = n => String(n).padStart(2, '0');
-  return `<div>${String(d.getFullYear()).slice(2)}-${pad(d.getMonth()+1)}-${pad(d.getDate())}</div><div class="cust-date-time">${pad(d.getHours())}:${pad(d.getMinutes())}</div>`;
-}
-
 // 고객 1명의 안내상품(인터넷/TV) 목록 : customer_products의 home 행을 모두, 없으면 customers의 단일 안내상품(레거시)
 function customerHomeLines(c){
   const all = customerProductsMap[c.customer_id] || [];
@@ -2506,14 +2522,14 @@ function renderCustomerList(rows, emptyText){
       && c.next_contact_at && new Date(c.next_contact_at).getTime() < now;
     return `
     <tr class="${c.customer_id === currentCustomerId ? 'active' : ''}" onclick="openCustomer(${c.customer_id})">
-      <td class="cust-row-name">${escHtml(c.name) || '(이름없음)'}</td>
-      <td>${escHtml(c.contact) || '-'}</td>
+      <td class="cust-row-name cust-cell-1line" title="${escAttr(c.name || '')}">${escHtml(c.name) || '(이름없음)'}</td>
+      <td class="cust-cell-1line" title="${escAttr(c.contact || '')}">${escHtml(c.contact) || '-'}</td>
       <td class="cust-row-sub cust-lines-cell">${listLinesHtml(lines, l => l.text, true)}</td>
       <td class="num">${listLinesHtml(lines, l => fmtWon(l.fee), false)}</td>
       <td class="num">${listLinesHtml(lines, l => fmtWon(l.gift), false)}</td>
       <td class="num col-comm">${isLoggedIn ? listLinesHtml(lines, l => fmtWon(l.comm), false) : ''}</td>
-      <td class="cust-row-sub${overdue ? ' is-overdue' : ''}"${overdue ? ' title="예정 시각이 지났습니다"' : ''}>${formatDateTwoLine(c.next_contact_at)}</td>
-      <td class="cust-row-sub">${formatDateTwoLine(c.updated_at)}</td>
+      <td class="cust-cell-1line${overdue ? ' is-overdue' : ''}" title="${overdue ? '예정 시각이 지났습니다 · ' : ''}${escAttr(formatDateShort(c.next_contact_at))}">${formatDateShort(c.next_contact_at)}</td>
+      <td class="cust-cell-1line" title="${escAttr(formatDateShort(c.updated_at))}">${formatDateShort(c.updated_at)}</td>
       <td>
         <select class="cust-status-chip stage-${getFunnelStage(c.funnel_status)}"
                 onclick="event.stopPropagation()"
@@ -3495,12 +3511,9 @@ async function deleteCustomer(id, btn){
   }
 }
 
-// 고객 정보를 [고객상담] 화면으로 불러오기 (상품 스냅샷이 있으면 함께 복원)
-async function loadCustomerToConsult(id){
-  const c = customerListCache.find(x => x.customer_id === id);
-  if (!c) return;
-
-  currentCustomerId = id;
+// 고객 1건의 데이터로 [고객상담] 화면의 입력 필드를 채웁니다 (탭 전환·토스트는 호출부에서 필요할 때만 처리)
+function fillConsultFormFromCustomer(c){
+  currentCustomerId = c.customer_id;
   setVal('cust-name', c.name || NAME_PREFIX);
   setVal('cust-contact', c.contact || '');
   setVal('cust-notes', c.notes || '');
@@ -3526,16 +3539,65 @@ async function loadCustomerToConsult(id){
     addedUsimLines = reflectedProducts.filter(p => p.type === 'usim')
       .map(p => ({ id: p.id, carrier: p.carrier, planName: p.planName, fee: p.fee, teen: false }));
     if (Array.isArray(snap.customerInfo?.familyLines)) familyLines = snap.customerInfo.familyLines;
+  } else {
+    reflectedProducts = [];
+    finalProducts = [];
+    addedUsimLines = [];
   }
 
   syncToDesignPhones();
   renderProposalLists();
   renderFinalProducts();
   updateCsSummaryPanel();
-  setConsultSaveState(`불러옴 · 고객ID ${id}`, true);
-  switchTab('cs');
+  setConsultSaveState(`불러옴 · 고객ID ${c.customer_id}`, true);
   goCsStep(1);
+}
+
+// 고객 정보를 [고객상담] 화면으로 불러오기 (상품 스냅샷이 있으면 함께 복원) — 목록의 [상담화면으로 불러오기] 버튼용
+async function loadCustomerToConsult(id){
+  const c = customerListCache.find(x => x.customer_id === id);
+  if (!c) return;
+  fillConsultFormFromCustomer(c);
+  switchTab('cs');
   showToast('✓ 고객 정보를 상담화면으로 불러왔습니다');
+}
+
+// 상단 고정 [연락처로 빠른 조회] : 탭은 바꾸지 않고 고객상담·고객조회 화면 데이터를 함께 갱신합니다.
+// 기존 고객 → 두 화면 모두 그 고객 정보로 채움 / 신규 번호 → 고객상담을 그 번호로 새 상담 시작.
+async function quickTopSearch(rawContact, btn){
+  const contact = (rawContact || '').trim();
+  if (!contact) { alert('연락처를 입력해주세요.'); document.getElementById('top-quick-contact')?.focus(); return; }
+
+  if (consultHasUnsavedWork() && !confirm('고객상담 화면에 저장하지 않은 작성 중인 내용이 있습니다.\n새로 조회하면 그 내용이 사라집니다. 계속할까요?')) return;
+
+  setBtnLoading(btn, '조회 중...');
+  try {
+    await probeCustomerSchema();
+    const digits = contact.replace(/[^0-9]/g, '');
+    const { data, error } = await sb.from('customers').select('*')
+      .or(`contact.ilike.%${contact}%,contact.ilike.%${digits}%`)
+      .order('updated_at', { ascending: false }).limit(1);
+    if (error) { alert('조회 실패: ' + error.message); return; }
+
+    if (data && data.length) {
+      const c = data[0];
+      // 고객조회 화면 : 이 고객 1건을 방금 검색한 결과처럼 반영해둠 (탭을 실제로 보지 않아도 전환 시 바로 보임)
+      customerListCache = [c];
+      await loadCustomerListExtras(customerListCache);
+      renderCustomerList(customerListCache);
+      setVal('cust-search-contact', c.contact || '');
+      setVal('cust-search-status', '');
+      await openCustomer(c.customer_id);
+      // 고객상담 화면도 함께 채움 (탭 전환 없음)
+      fillConsultFormFromCustomer(c);
+      showToast(`✓ 기존 고객 정보를 불러왔습니다 (${c.name || c.contact})`);
+    } else {
+      startNewConsultWithContact(contact);
+      showToast('신규 고객 — 새 상담으로 시작합니다');
+    }
+  } finally {
+    clearBtnLoading(btn);
+  }
 }
 
 (async function init(){
