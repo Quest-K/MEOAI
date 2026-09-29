@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<link rel="stylesheet" href="Styles.css?v=20260930b">
+<link rel="stylesheet" href="Styles.css?v=20260930c">
 </head>
 <body>
 <div class="wrap">
@@ -503,9 +503,9 @@
 
 <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
-<script src="config.js?v=20260930b"></script>
-<script src="Calculator.js?v=20260930b"></script>
-<script src="Supabaseservice.js?v=20260930b"></script>
+<script src="config.js?v=20260930c"></script>
+<script src="Calculator.js?v=20260930c"></script>
+<script src="Supabaseservice.js?v=20260930c"></script>
 <script>
 // 외부 파일 로드 점검: 파일 누락/내용 뒤바뀜(예: JS 자리에 CSS가 들어간 경우) 시 화면 상단에 경고 표시
 (function checkModules(){
@@ -2711,6 +2711,17 @@ async function loadPerformance(btn){
   }
 }
 
+const perfOpenGroups = new Set();   // 펼쳐 둔 단계 key (기본: 모두 접힘)
+function togglePerfGroup(key){
+  if (perfOpenGroups.has(key)) perfOpenGroups.delete(key); else perfOpenGroups.add(key);
+  renderPerformance();
+}
+function setAllPerfGroups(open){
+  perfOpenGroups.clear();
+  if (open) [...DASHBOARD_GROUPS.map(g => g.key), 'etc'].forEach(k => perfOpenGroups.add(k));
+  renderPerformance();
+}
+
 function refreshPerformanceView(){
   if (perfCustomers && document.getElementById('view-performance')?.classList.contains('active')) renderPerformance();
 }
@@ -2734,15 +2745,26 @@ function renderPerformance(){
     </div>
     <p class="perf-note">유치 = ${escHtml(PERFORMANCE_WON_STATUSES.join(' · '))} · 유치율 = 유치 건수 ÷ 전체 건수 (기준은 config.js의 PERFORMANCE_WON_STATUSES)</p>`;
 
-  const body = DASHBOARD_GROUPS.map(g => {
-    const gt = sum(g.items);
-    return `<tr class="perf-group"><td colspan="2">${escHtml(g.label)}</td><td class="num">${gt.toLocaleString()}</td><td class="num">${pct(gt)}</td></tr>` +
-      g.items.map(i => `<tr><td></td><td><span class="cust-status-chip stage-${getFunnelStage(i)}">${escHtml(i)}</span></td><td class="num">${(counts[i] || 0).toLocaleString()}</td><td class="num">${pct(counts[i] || 0)}</td></tr>`).join('');
-  }).join('');
+  // 단계별 접기/펼치기 : 기본은 접힘. 다시 그려도(로그인 전환 등) 펼친 상태를 유지합니다.
+  const grpRow = (key, label, cnt) => {
+    const open = perfOpenGroups.has(key);
+    return `<tr class="perf-group perf-toggle" onclick="togglePerfGroup('${key}')" title="클릭하여 ${open ? '접기' : '펼치기'}">
+      <td colspan="2"><span class="perf-caret">${open ? '▾' : '▸'}</span> ${escHtml(label)}</td>
+      <td class="num">${cnt.toLocaleString()}</td><td class="num">${pct(cnt)}</td></tr>`;
+  };
+  const itemRow = (key, name, cnt, chip) => `<tr class="perf-item" data-pg="${key}"${perfOpenGroups.has(key) ? '' : ' style="display:none"'}>
+      <td></td><td>${chip ? `<span class="cust-status-chip stage-${getFunnelStage(name)}">${escHtml(name)}</span>` : escHtml(name)}</td>
+      <td class="num">${cnt.toLocaleString()}</td><td class="num">${pct(cnt)}</td></tr>`;
+
+  const body = DASHBOARD_GROUPS.map(g =>
+    grpRow(g.key, g.label, sum(g.items)) + g.items.map(i => itemRow(g.key, i, counts[i] || 0, true)).join('')
+  ).join('');
   const known = new Set(DASHBOARD_GROUPS.flatMap(g => g.items));
   const others = Object.keys(counts).filter(k => !known.has(k));
-  const otherRows = others.map(k => `<tr><td></td><td>${escHtml(k)}</td><td class="num">${counts[k].toLocaleString()}</td><td class="num">${pct(counts[k])}</td></tr>`).join('');
+  const otherRows = others.length
+    ? grpRow('etc', '기타(분류 외)', sum(others)) + others.map(k => itemRow('etc', k, counts[k], false)).join('') : '';
   document.getElementById('perf-funnel').innerHTML = `
+    <div class="perf-toolbar"><button type="button" class="mini-btn" onclick="setAllPerfGroups(true)">모두 펼치기</button> <button type="button" class="mini-btn" onclick="setAllPerfGroups(false)">모두 접기</button></div>
     <table class="perf-table"><thead><tr><th colspan="2">단계 / 상태값</th><th class="num">건수</th><th class="num">전체 대비</th></tr></thead>
     <tbody>${body}${otherRows}<tr class="perf-sum"><td colspan="2">전체</td><td class="num">${total.toLocaleString()}</td><td class="num">${total ? '100%' : '-'}</td></tr></tbody></table>`;
 
