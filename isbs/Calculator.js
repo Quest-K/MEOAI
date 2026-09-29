@@ -1,9 +1,9 @@
 // ============================================================
 // calculator.js
 // 통신사별(KT/LG/SKB/SKT) 결합 할인 및 요금 계산 로직
-// 이 파일은 CS.html 보다 먼저(또는 그 직전에) 로드되어야 합니다.
-// DATA / state / TV_BUNDLE_DISCOUNT / FEE_RANGES 등은 CS.html 쪽 전역
-// 변수를 그대로 참조합니다 (모듈이 아닌 일반 스크립트로 로드).
+// 이 파일은 config.js 다음, CS.html 인라인 스크립트보다 먼저 로드되어야 합니다.
+// TV_BUNDLE_DISCOUNT / FEE_RANGES 등 상수는 config.js, DATA / state 등 상태값은
+// CS.html 인라인 스크립트의 전역 변수를 호출 시점에 참조합니다 (일반 스크립트로 로드).
 // ============================================================
 
 function getSettopByTier(carrier, tier) {
@@ -385,4 +385,74 @@ function computeSKOptions(lines, speedNum, groupKey){
       desc: 'SK 매칭 회선 수와 인터넷 속도 구간에 따라 인터넷 할인이 정해지고, 모바일 할인 총액은 회선 수 기준으로 산정됩니다(회선별 금액은 이해를 돕기 위한 균등 배분 표시입니다).'
     }
   ];
+}
+
+// ============================================================
+// 고객부재 재안내(컨택) 일정 계산
+// 규칙 값(3회 / 3시간 / 09:00~18:00 / 다음 영업일 10:00)과 공휴일 목록은 config.js
+// (CONTACT_RULES, KOREAN_HOLIDAYS)에 있습니다. 브라우저 로컬 시간(한국 시간) 기준입니다.
+// ============================================================
+
+function contactYmd(d){
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// 주말·공휴일이 아니면 영업일
+function isBusinessDay(d){
+  const w = d.getDay();
+  if (w === 0 || w === 6) return false;
+  return !KOREAN_HOLIDAYS.includes(contactYmd(d));
+}
+
+// 영업일이면서 근무시간(09:00 ~ 18:00 정각까지) 안인지
+function isWithinWorkHours(d){
+  if (!isBusinessDay(d)) return false;
+  const sec = d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
+  return sec >= CONTACT_RULES.workStartHour * 3600 && sec <= CONTACT_RULES.workEndHour * 3600;
+}
+
+// 기준일 "다음 날"부터 찾은 첫 영업일의 hour시 정각
+function nextBusinessDayAt(d, hour){
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, hour, 0, 0, 0);
+  while (!isBusinessDay(x)) x.setDate(x.getDate() + 1);
+  return x;
+}
+
+// 근무시간 밖 시각을 만났을 때 이어갈 시각
+//  - 영업일 근무 시작 전(예: 07:00) → 당일 10:00
+//  - 18:00 이후 / 주말 / 공휴일 → 다음 영업일 10:00
+function contactSlotAfterHours(d){
+  if (isBusinessDay(d)) {
+    const sec = d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
+    if (sec < CONTACT_RULES.workStartHour * 3600) {
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate(), CONTACT_RULES.nextDayStartHour, 0, 0, 0);
+    }
+  }
+  return nextBusinessDayAt(d, CONTACT_RULES.nextDayStartHour);
+}
+
+// 1회차(최초 컨택) 시각: 근무시간 안 인입이면 인입 시각 그대로, 밖이면 다음 영업일 10:00
+function computeFirstContactTime(inflow){
+  const t = new Date(inflow.getTime());
+  t.setSeconds(0, 0);
+  return isWithinWorkHours(t) ? t : contactSlotAfterHours(t);
+}
+
+// 재안내 시각: 직전 컨택(실제 시도 시각) + 3시간. 근무시간을 벗어나면 다음 영업일 10:00부터 이어감
+function computeNextContactTime(prevContactedAt){
+  const prev = new Date(prevContactedAt.getTime());
+  const cand = new Date(prev.getTime() + CONTACT_RULES.intervalHours * 3600 * 1000);
+  cand.setSeconds(0, 0);
+  if (isWithinWorkHours(cand)) return cand;
+  // 자정을 넘겨도 "직전 컨택일의 다음 영업일"이 기준이 되도록 prev 기준으로 계산
+  const sameDayBeforeStart = isBusinessDay(cand) && contactYmd(cand) === contactYmd(prev)
+    && cand.getHours() * 3600 + cand.getMinutes() * 60 < CONTACT_RULES.workStartHour * 3600;
+  if (sameDayBeforeStart) return contactSlotAfterHours(cand);
+  return nextBusinessDayAt(prev, CONTACT_RULES.nextDayStartHour);
+}
+
+// 공휴일 목록이 끝난 뒤의 날짜를 계산하면 true (주말만 제외하고 계산되므로 안내용)
+function isBeyondHolidayCoverage(d){
+  return d.getFullYear() > KOREAN_HOLIDAYS_LAST_YEAR;
 }
