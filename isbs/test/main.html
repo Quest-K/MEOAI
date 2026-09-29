@@ -57,7 +57,7 @@
                 <button id="auth-btn" onclick="authClick()" class="text-xs font-semibold text-blue-600 hover:underline shrink-0 ml-2"></button>
             </div>
             <div class="flex items-center justify-between text-[11px] text-slate-400">
-                <span id="sync-state"></span><span class="font-mono">v2.0.2</span>
+                <span id="sync-state"></span><span class="font-mono">v2.1.0</span>
             </div>
             <div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
                 <button onclick="exportData()" class="hover:text-blue-600">내보내기</button>
@@ -102,6 +102,13 @@
 
             <!-- 2. 고객 현황 뷰 -->
             <div id="view-customers" class="hidden space-y-6">
+                <div id="customers-gate" class="hidden bg-white border border-slate-200 rounded-2xl p-10 text-center">
+                    <i class="fa-solid fa-lock text-slate-300 text-3xl mb-3"></i>
+                    <p class="text-sm font-semibold text-slate-600 mb-1">로그인 후 조회할 수 있습니다</p>
+                    <p class="text-xs text-slate-400 mb-4">고객 개인정보 보호를 위해 고객현황은 로그인한 관리자만 볼 수 있습니다.</p>
+                    <button onclick="openLogin()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold">로그인</button>
+                </div>
+                <div id="customers-content" class="hidden space-y-6">
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
                         <div class="flex items-center justify-between">
@@ -126,6 +133,17 @@
                         </div>
                         <div id="metric-done-pay" class="text-2xl font-bold text-indigo-600 mt-2">0건</div>
                         <p class="text-[11px] text-slate-400 mt-1">사은품 및 정산 지급 완료 건</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                        <h3 class="font-bold text-slate-800 text-sm mb-3 flex items-center"><i class="fa-solid fa-chart-column text-slate-500 mr-2"></i> 지난 5일 실적</h3>
+                        <div id="chart-past"></div>
+                    </div>
+                    <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                        <h3 class="font-bold text-slate-800 text-sm mb-3 flex items-center"><i class="fa-solid fa-chart-column text-blue-500 mr-2"></i> 앞으로 5일 예정</h3>
+                        <div id="chart-future"></div>
                     </div>
                 </div>
 
@@ -156,6 +174,7 @@
                         </table>
                     </div>
                 </div>
+                </div>
             </div>
 
             <div id="view-goals" class="hidden"><div id="goal-panel" class="space-y-3"></div></div>
@@ -185,7 +204,10 @@
                     </div>
                 </div>
             </div>
-            <div id="view-tasks" class="hidden">
+            <div id="view-tasks" class="hidden space-y-4">
+                <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                    <div id="cat-nav"></div>
+                </div>
                 <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
                     <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-100 flex-wrap gap-3">
                         <div class="flex items-center space-x-3">
@@ -504,7 +526,7 @@ async function fetchRemote() {
     } catch(e) {
         setSync('통신 오류', true);
     }
-    await fetchCustomerData();
+    if(canEdit) await fetchCustomerData();
 }
 
 async function fetchCustomerData() {
@@ -558,8 +580,16 @@ function getThisWeekRange() {
     return { start: ymd(mon), end: ymd(sun) };
 }
 
+function renderCustomerGate() {
+    const gate = $('customers-gate'), content = $('customers-content');
+    if(!gate || !content) return;
+    if(!canEdit) { gate.classList.remove('hidden'); content.classList.add('hidden'); return; }
+    gate.classList.add('hidden'); content.classList.remove('hidden');
+    renderCustomerDashboard();
+}
+
 function renderCustomerDashboard() {
-    if(!customerDbData) return;
+    if(!canEdit || !customerDbData) return;
     const week = getThisWeekRange();
 
     const getStatus = c => c.status || c.state || c.step || c.progress || '접수완료';
@@ -623,6 +653,60 @@ function renderCustomerDashboard() {
         });
     }
     if($('customer-table-body'))$('customer-table-body').innerHTML = tableHtml;
+    renderCustomerCharts();
+}
+
+function dayRange(startOffset, days) {
+    const arr = [];
+    for(let i = 0; i < days; i++) {
+        const d = new Date(); d.setDate(d.getDate() + startOffset + i);
+        arr.push(ymd(d));
+    }
+    return arr;
+}
+
+function barsSvg(days, seriesArr, names, colors) {
+    const W = 300, H = 140, axisH = 18, topPad = 14;
+    const max = Math.max(1, ...seriesArr.flat());
+    const n = seriesArr.length, groupW = W / days.length, barW = (groupW * 0.6) / n;
+    const wd = ['일','월','화','수','목','금','토'];
+    let bars = '', labels = '';
+    days.forEach((d, di) => {
+        const dt = new Date(d + 'T00:00:00'), lbl = (dt.getMonth()+1) + '/' + dt.getDate() + ' ' + wd[dt.getDay()];
+        const gx = di * groupW + groupW * 0.2;
+        seriesArr.forEach((s, si) => {
+            const v = s[di] || 0, h = Math.round(v / max * (H - axisH - topPad)), x = gx + si * barW, y = H - axisH - h;
+            bars += `<rect x="${x.toFixed(1)}" y="${y}" width="${(barW*0.8).toFixed(1)}" height="${h}" rx="2" fill="${colors[si]}"/>`;
+            if(v > 0) bars += `<text x="${(x + barW*0.4).toFixed(1)}" y="${y - 3}" font-size="9" text-anchor="middle" fill="#475569">${v}</text>`;
+        });
+        labels += `<text x="${(di*groupW + groupW/2).toFixed(1)}" y="${H-4}" font-size="8.5" text-anchor="middle" fill="#94a3b8">${esc(lbl)}</text>`;
+    });
+    const legend = names.map((nm,i) => `<span class="inline-flex items-center text-[10px] text-slate-500 mr-3"><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${colors[i]}"></span>${esc(nm)}</span>`).join('');
+    return `<div class="flex flex-wrap items-center mb-2">${legend}</div><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:${H}px" role="img" aria-label="막대 그래프">${bars}${labels}</svg>`;
+}
+
+function renderCustomerCharts() {
+    const pastBox = $('chart-past'), futBox = $('chart-future');
+    if(!pastBox || !futBox || !customerDbData) return;
+    const getStatus = c => c.status || c.state || c.step || c.progress || '접수완료';
+    const getDate = c => c.install_date || c.date || c.schedule_date || c.target_date || '-';
+
+    const pastDays = dayRange(-4, 5);
+    const installDone = pastDays.map(d => customerDbData.filter(c => {
+        const s = getStatus(c);
+        return (s === '설치완료' || s === '개통완료') && getDate(c) === d;
+    }).length);
+    const payDone = pastDays.map(d => customerDbData.filter(c => {
+        const s = getStatus(c);
+        const okStatus = s === '지급완료' || c.pay_status === '지급완료';
+        return okStatus && String(c.updated_at || '').slice(0,10) === d;
+    }).length);
+    pastBox.innerHTML = barsSvg(pastDays, [installDone, payDone], ['설치완료','지급완료'], ['#3b82f6','#6366f1']);
+
+    const futDays = dayRange(0, 5);
+    const installSched = futDays.map(d => customerDbData.filter(c => getStatus(c) === '설치예정' && getDate(c) === d).length);
+    futBox.innerHTML = barsSvg(futDays, [installSched], ['설치 예정'], ['#0ea5e9'])
+      + '<p class="text-[10px] text-slate-400 mt-2">컨택 예정 지표는 데이터 항목 확정 후 추가될 예정입니다.</p>';
 }
 
 function pushSoon() { clearTimeout(pushTimer); setSync('저장 중…'); pushTimer = setTimeout(pushRemote, 600); }
@@ -642,6 +726,7 @@ function setSession(s) {
     if($('auth-state'))$('auth-state').innerHTML = canEdit ? '<span class="w-2 h-2 rounded-full bg-emerald-500 mr-2 shrink-0"></span>' + esc(user.email) : '<span class="w-2 h-2 rounded-full bg-slate-300 mr-2 shrink-0"></span>조회 전용';
     if($('auth-btn'))$('auth-btn').textContent = canEdit ? '로그아웃' : '로그인';
     if(canEdit && remoteEmpty) pushSoon();
+    if(canEdit) fetchCustomerData(); else { customerDbData = []; }
     refreshAll();
 }
 
@@ -839,7 +924,7 @@ const VIEWS = {
     customers: ['고객 현황 대시보드', '각 상태값별 고객 현황 및 주간 설치/지급 지표를 확인합니다'],
     goals: ['부서별 목표', '분기 목표(OKR)와 달성률을 관리합니다'],
     today: ['오늘·이번 주', '이번 주 핵심 목표와 오늘의 할 일'],
-    tasks: ['과제 관리', '']
+    tasks: ['업무관리', '']
 };
 const shortT = c => c.title.replace(/^.*> /,'');
 const openN = k => taskData[k].tasks.filter(t => t.status !== 'done' && t.status !== 'hold').length;
@@ -862,31 +947,29 @@ function render() {
     });
     if($('task-tools'))$('task-tools').classList.toggle('hidden', view !== 'tasks');
     const c = view === 'tasks' && currentCategory !== 'all' ? taskData[currentCategory] : null, t = VIEWS[view];
-    if($('header-title'))$('header-title').innerText = c ? c.title : (view === 'tasks' ? '전체 과제' : t[0]);
-    if($('header-desc'))$('header-desc').innerText = c ? `${c.sub} [담당 R&R: ${c.dept}]` : (view === 'tasks' ? '모든 영역의 과제를 봅니다' : t[1]);
+    if($('header-title'))$('header-title').innerText = c ? c.title : (view === 'tasks' ? '전체 업무' : t[0]);
+    if($('header-desc'))$('header-desc').innerText = c ? `${c.sub} [담당 R&R: ${c.dept}]` : (view === 'tasks' ? '내부·외부 전체 영역의 업무를 봅니다' : t[1]);
     if($('last-update-time'))$('last-update-time').innerText = lastUpdateTime;
     renderNav();
     if(view === 'dash') { renderSummary(); renderCards(); renderDiag(); renderAttn(); }
-    else if(view === 'customers') { renderCustomerDashboard(); }
+    else if(view === 'customers') { renderCustomerGate(); }
     else if(view === 'goals') { renderGoals(); }
     else if(view === 'today') { renderWidgets(); }
     else { renderTaskView(); }
 }
 
 function renderNav() {
-    const on = (v,k) => view === v && (v !== 'tasks' || currentCategory === k);
+    const on = (v,k) => view === v && (v !== 'tasks' || true);
     const B = (v,k,ic,label,badge) => `<button onclick="go('${v}'${k?`,'${k}'`:''})" class="nav-btn w-full flex items-center justify-between px-3.5 py-2 rounded-lg text-xs transition-all ${on(v,k)?'font-semibold bg-blue-50 text-blue-600 border border-blue-100':'font-medium text-slate-600 hover:bg-slate-100'}"><span class="flex items-center min-w-0"><i class="fa-solid ${esc(ic)} mr-2.5 w-4 text-center"></i><span class="truncate">${esc(label)}</span></span>${badge===''?'':`<span class="text-[11px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">${badge}</span>`}</button>`;
-    const H = x => `<div class="px-3 mt-4 mb-1.5 text-[11px] font-extrabold text-slate-400 tracking-wider">${x}</div>`;
-    const keys = Object.keys(taskData), area = k => B('tasks', k, taskData[k].icon || 'fa-folder', shortT(taskData[k]), openN(k));
+    const keys = Object.keys(taskData);
     const remain = dailyTasks.filter(x => !x.done).length + weeklyGoals.filter(x => !x.done).length;
-    
+    const openAll = keys.reduce((n,k)=>n+openN(k),0);
+
     if($('nav')) {$('nav').innerHTML = B('dash','','fa-gauge-high','대시보드','')
          + B('customers','','fa-users','고객 현황','실시간')
+         + B('tasks','all','fa-border-all','업무관리',openAll)
          + B('goals','','fa-flag','부서별 목표','')
-         + B('today','','fa-calendar-check','오늘·이번 주',remain)
-         + H('과제 관리') + B('tasks','all','fa-border-all','전체 과제',keys.reduce((n,k)=>n+openN(k),0))
-         + H('내부 업무') + keys.filter(k => !EXTERNAL.includes(k)).map(area).join('')
-         + H('외부 업무') + keys.filter(k => EXTERNAL.includes(k)).map(area).join('');
+         + B('today','','fa-calendar-check','오늘·이번 주',remain);
     }
 }
 
@@ -909,11 +992,23 @@ function renderAttn() {
      + (rows.length ? rows.slice(0,8).map(({k,t}) => `<button onclick="go('tasks','${k}')" class="w-full flex items-center justify-between gap-2 text-left p-2.5 mb-1.5 bg-slate-50 rounded-xl border border-slate-100 hover:border-slate-200 text-xs"><span class="min-w-0 truncate"><span class="text-[10px] text-blue-600 font-semibold mr-2">${esc(shortT(taskData[k]))}</span>${esc(t.title)}</span><span class="shrink-0 ${late(t)?'text-rose-600 font-bold':'text-slate-500'}">${late(t)?'지연':ST[t.status].l}</span></button>`).join('') : '<div class="text-xs text-slate-400 py-2">과제가 없습니다.</div>');
 }
 
+function renderCategoryNav() {
+    const box = $('cat-nav'); if(!box) return;
+    const keys = Object.keys(taskData);
+    const chip = (k, label) => `<button onclick="selectCategory('${k}')" class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${currentCategory===k?'bg-blue-600 text-white shadow-sm':'bg-slate-100 text-slate-600 hover:bg-slate-200'}">${esc(label)}${k!=='all'?` <span class="ml-1 text-[10px] ${currentCategory===k?'text-blue-100':'text-slate-400'}">${openN(k)}</span>`:''}</button>`;
+    box.innerHTML = `<div class="flex flex-wrap items-center gap-2 mb-3">${chip('all','전체 업무')}</div>
+      <div class="mb-1.5 text-[11px] font-extrabold text-slate-400 tracking-wider">내부 업무</div>
+      <div class="flex flex-wrap gap-2 mb-3">${keys.filter(k=>!EXTERNAL.includes(k)).map(k=>chip(k, shortT(taskData[k]))).join('')}</div>
+      <div class="mb-1.5 text-[11px] font-extrabold text-slate-400 tracking-wider">외부 업무</div>
+      <div class="flex flex-wrap gap-2">${keys.filter(k=>EXTERNAL.includes(k)).map(k=>chip(k, shortT(taskData[k]))).join('')}</div>`;
+}
+
 function renderTaskView() {
+    renderCategoryNav();
     const all = currentCategory === 'all', list = [];
     if(all) Object.keys(taskData).forEach(k => taskData[k].tasks.forEach((t,i) => list.push({...t, catKey:k, originalIndex:i, dept:t.dept||taskData[k].dept})));
     else taskData[currentCategory].tasks.forEach((t,i) => list.push({...t, originalIndex:i, dept:t.dept||taskData[currentCategory].dept}));
-    if($('detail-title'))$('detail-title').innerText = '과제 목록';
+    if($('detail-title'))$('detail-title').innerText = '업무 목록';
     if($('detail-sub'))$('detail-sub').innerText = `총 ${list.length}건`;
     renderChips(); renderTasks(list, all);
 }
