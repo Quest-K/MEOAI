@@ -1,8 +1,9 @@
 // ============================================================
 // supabaseService.js
 // Supabase 연동(DB 조회, 인증) 전용 로직
-// 이 파일은 CS.html 보다 먼저 로드되어야 하며,
-// 상단 <script src="...supabase-js..."> 이후에 로드되어야 합니다.
+// 로드 순서: supabase-js -> config.js -> Calculator.js -> 이 파일 -> CS.html 인라인 스크립트.
+// CARRIERS 등 상수는 config.js, DATA / logs / isLoggedIn 등 상태값과 addLog/render* 함수는
+// CS.html 인라인 스크립트에 있으며 모두 호출 시점에 참조합니다.
 // ============================================================
 
 const SUPABASE_URL = 'https://jhfhpumhifyhauuoinxc.supabase.co';
@@ -171,6 +172,8 @@ async function handleLogin(){
   renderProposalLists();
   renderFinalProducts();
   if (typeof fetchRecoUsimPlans === 'function' && recoUsimTier) fetchRecoUsimPlans(recoUsimTier);
+  if (typeof refreshCustomerListView === 'function') refreshCustomerListView(); // 고객조회 목록의 수수료 컬럼 표시
+  if (typeof refreshPerformanceView === 'function') refreshPerformanceView(); // 실적조회의 수수료·마진 표시
 }
 
 async function handleLogout(){
@@ -183,4 +186,6 @@ async function handleLogout(){
   renderProposalLists();
   renderFinalProducts();
   if (typeof fetchRecoUsimPlans === 'function' && recoUsimTier) fetchRecoUsimPlans(recoUsimTier);
+  if (typeof refreshCustomerListView === 'function') refreshCustomerListView(); // 고객조회 목록의 수수료 컬럼 숨김
+  if (typeof refreshPerformanceView === 'function') refreshPerformanceView(); // 실적조회의 수수료·마진 숨김
 }
