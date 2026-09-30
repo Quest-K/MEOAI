@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<link rel="stylesheet" href="Styles.css?v=20260930i">
+<link rel="stylesheet" href="Styles.css?v=20260930j">
 </head>
 <body>
 <div class="wrap">
@@ -19,14 +19,19 @@
     <button class="tab-btn active" data-tab="cs" onclick="switchTab('cs')">고객상담</button>
     <button class="tab-btn" data-tab="customers" onclick="switchTab('customers')">고객조회</button>
     <button class="tab-btn" data-tab="performance" onclick="switchTab('performance')">실적조회</button>
-    <div class="quick-search-box">
-      <input type="text" id="top-quick-contact" placeholder="이름 또는 연락처로 빠른 조회"
-             onkeydown="if(event.key==='Enter'){event.preventDefault(); quickTopSearch(this.value, this);}">
-      <button type="button" class="mini-btn mini-btn-primary" id="top-quick-search-btn"
-              onclick="quickTopSearch(document.getElementById('top-quick-contact').value, this)">🔍 조회</button>
-    </div>
     <div id="auth-box" class="auth-box">
       <button class="login-trigger-btn" onclick="openLoginModal()">🔐 관리자 로그인</button>
+    </div>
+
+    <!-- 상단 고정 : 고객 검색 + 고객 탭(최대 5명). 어느 화면에서도 유지됩니다 -->
+    <div class="cust-bar">
+      <div class="quick-search-box">
+        <input type="text" id="top-quick-contact" placeholder="고객 이름 또는 연락처" autocomplete="off"
+               onkeydown="if(event.key==='Enter'){event.preventDefault(); quickTopSearch(this.value, document.getElementById('top-quick-search-btn'));}">
+        <button type="button" class="mini-btn mini-btn-primary" id="top-quick-search-btn"
+                onclick="quickTopSearch(document.getElementById('top-quick-contact').value, this)">🔍 조회</button>
+      </div>
+      <div class="cust-tabs" id="cust-tab-bar"></div>
     </div>
   </div>
 
@@ -2385,6 +2390,7 @@ async function saveConsultation(btn){
     }
 
     setConsultSaveState(`저장됨 · 고객ID ${customerId}`, true);
+    custTabOnConsultSaved(customerId);
     showToast('✓ 상담 내용이 저장되었습니다' + prodMsg);
     if (payload.funnel_status === CONTACT_CYCLE_STATUS) await autoStartContactCycle(customerId, { syncConsult: true });
     if (document.getElementById('funnel-dashboard')) loadFunnelDashboard();
@@ -2647,7 +2653,8 @@ function initCustomerView(){
     const el = document.getElementById('cust-db-state');
     if (el) el.textContent = warn.length ? '⚠ ' + warn.join(' · ') : '스키마 정상';
   });
-  if (!customerViewSkipRecent) loadRecentCustomers();   // 대시보드에서 고객을 열 때는 최근 목록으로 덮어쓰지 않음
+  if (!customerViewSkipRecent) loadRecentCustomers();   // 대시보드·고객 탭에서 고객을 열 때는 최근 목록으로 덮어쓰지 않음
+  customerViewSkipRecent = false;
 }
 
 function escHtml(v){
@@ -3171,6 +3178,7 @@ async function openCustomer(id){
   await probeCustomerSchema();
   currentCustomerId = id;
   detailCustomerId = id;
+  custTabRegister(c);   // 상단 고객 탭에 추가/활성화
   renderCustomerList(customerListCache);
 
   const el = document.getElementById('cust-detail');
@@ -4008,6 +4016,142 @@ async function loadCustomerToConsult(id){
   showToast('✓ 고객 정보를 상담화면으로 불러왔습니다');
 }
 
+/* =========================================================================
+   상단 고객 탭 바 — [검색란] [조회] [고객1] ~ [고객5]
+   - 이름/연락처로 조회하면 탭이 추가됩니다(최대 5명). 고객조회 목록/대시보드에서 고객을 열어도 탭에 추가됩니다.
+   - 탭을 누르면 그 고객의 정보를 고객상담·고객조회 화면에 함께 불러옵니다. × 로 탭을 닫습니다.
+   - 탭 바는 탭 전환과 무관하게 항상 상단에 고정됩니다. (새로고침 후에도 탭 목록은 세션 동안 유지)
+   ========================================================================= */
+const CUST_TAB_MAX = 5;
+const CUST_TAB_STORE_KEY = 'cs_cust_tabs_v1';
+let custTabs = [];        // [{ id, name, contact }]  id === null → 아직 저장 전인 신규 번호
+let custTabActive = -1;
+let custTabBusy = false;
+
+function custTabsLoad(){
+  try {
+    const raw = sessionStorage.getItem(CUST_TAB_STORE_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    if (Array.isArray(arr)) custTabs = arr.filter(t => t && (t.id != null || t.contact)).slice(0, CUST_TAB_MAX);
+  } catch (e) { custTabs = []; }
+}
+function custTabsSave(){ try { sessionStorage.setItem(CUST_TAB_STORE_KEY, JSON.stringify(custTabs)); } catch (e) {} }
+
+function custTabLabel(t){
+  const nm = String(t.name || '').replace(NAME_PREFIX, '').trim() || (t.id == null ? '신규' : '(이름없음)');
+  const d = String(t.contact || '').replace(/\D/g, '');
+  return { name: nm, sub: d ? '…' + d.slice(-4) : '' };
+}
+
+function renderCustTabs(){
+  const box = document.getElementById('cust-tab-bar');
+  if (!box) return;
+  let html = '';
+  for (let i = 0; i < CUST_TAB_MAX; i++) {
+    const t = custTabs[i];
+    if (t) {
+      const l = custTabLabel(t);
+      html += `<div class="cb-tab${i === custTabActive ? ' is-on' : ''}${t.id == null ? ' is-new' : ''}" role="button" tabindex="0"
+          title="${escAttr(l.name + ' ' + (t.contact || ''))}${t.id == null ? ' (저장 전 신규 상담)' : ''}"
+          onclick="activateCustTab(${i})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();activateCustTab(${i});}">
+        <span class="cb-name">${escHtml(l.name)}</span><span class="cb-sub">${escHtml(l.sub)}</span>
+        <button type="button" class="cb-x" title="탭 닫기" onclick="event.stopPropagation();closeCustTab(${i})">×</button>
+      </div>`;
+    } else {
+      html += `<button type="button" class="cb-tab cb-empty" onclick="focusCustSearch()" title="이름 또는 연락처로 조회하면 이 자리에 탭이 추가됩니다">고객${i + 1}</button>`;
+    }
+  }
+  box.innerHTML = html;
+}
+
+function focusCustSearch(){ const el = document.getElementById('top-quick-contact'); if (el) { el.focus(); el.select(); } }
+function custTabFullAlert(){ alert(`고객 탭은 최대 ${CUST_TAB_MAX}명까지 열 수 있습니다.\n사용하지 않는 탭을 × 로 닫은 뒤 다시 조회해주세요.`); }
+
+// 고객조회에서 고객을 열면 탭에 추가(이미 있으면 활성화)
+function custTabRegister(c){
+  if (!c || c.customer_id == null) return false;
+  let i = custTabs.findIndex(t => t.id === c.customer_id);
+  if (i < 0) {   // 저장 전 신규 탭과 같은 연락처면 그 탭에 고객ID를 연결
+    const d = String(c.contact || '').replace(/\D/g, '');
+    i = custTabs.findIndex(t => t.id == null && d && String(t.contact || '').replace(/\D/g, '') === d);
+  }
+  if (i < 0) {
+    if (custTabs.length >= CUST_TAB_MAX) {
+      custTabActive = -1; renderCustTabs();
+      showToast(`고객 탭 ${CUST_TAB_MAX}개가 가득 차 탭에 추가하지 못했습니다. 탭을 닫은 뒤 다시 열어주세요`);
+      return false;
+    }
+    custTabs.push({ id: c.customer_id, name: c.name || '', contact: c.contact || '' });
+    i = custTabs.length - 1;
+  } else {
+    custTabs[i] = { id: c.customer_id, name: c.name || '', contact: c.contact || '' };
+  }
+  custTabActive = i;
+  custTabsSave(); renderCustTabs();
+  return true;
+}
+
+// 상담 저장 후 : 활성 신규 탭에 고객ID 연결 / 기존 탭은 이름·연락처 갱신
+function custTabOnConsultSaved(customerId){
+  const name = (elVal('cust-name') || '').trim(), contact = (elVal('cust-contact') || '').trim();
+  let i = custTabs.findIndex(t => t.id === customerId);
+  if (i < 0 && custTabActive >= 0 && custTabs[custTabActive] && custTabs[custTabActive].id == null) i = custTabActive;
+  if (i < 0) return;
+  custTabs[i] = { id: customerId, name, contact };
+  custTabsSave(); renderCustTabs();
+}
+
+function closeCustTab(i){
+  if (!custTabs[i]) return;
+  custTabs.splice(i, 1);
+  if (custTabActive === i) custTabActive = -1; else if (custTabActive > i) custTabActive--;
+  custTabsSave(); renderCustTabs();
+}
+
+function custTabShowScreen(){
+  const cur = document.querySelector('.view-container.active');
+  const id = cur ? cur.id : '';
+  if (id !== 'view-cs' && id !== 'view-customers') switchTab('cs');   // 고객 정보가 없는 화면(대시보드·실적조회)이면 고객상담으로 이동
+}
+
+async function activateCustTab(i){
+  const t = custTabs[i];
+  if (!t || custTabBusy) return;
+  if (i === custTabActive) { custTabShowScreen(); return; }
+  if (consultHasUnsavedWork() && !confirm('고객상담 화면에 저장하지 않은 작성 중인 내용이 있습니다.\n다른 고객 탭으로 이동하면 그 내용이 사라집니다. 계속할까요?')) return;
+
+  custTabBusy = true;
+  try {
+    if (t.id != null) {
+      await probeCustomerSchema();
+      const { data, error } = await sb.from('customers').select('*').eq('customer_id', t.id).limit(1);
+      if (error) { alert('조회 실패: ' + error.message); return; }
+      if (!data || !data.length) {
+        alert('이 고객은 삭제되었거나 조회할 수 없어 탭을 닫습니다.');
+        closeCustTab(i);
+        return;
+      }
+      const c = data[0];
+      if (!customerViewInited) customerViewSkipRecent = true;
+      customerListCache = [c];
+      await loadCustomerListExtras(customerListCache);
+      renderCustomerList(customerListCache);
+      setVal('cust-search-contact', c.contact || '');
+      setVal('cust-search-name', '');
+      setVal('cust-search-status', '');
+      await openCustomer(c.customer_id);   // 고객조회 상세 + 탭 활성화
+      fillConsultFormFromCustomer(c);      // 고객상담 화면
+    } else {
+      startNewConsultWithContact(t.contact);
+      custTabActive = i;
+      custTabsSave(); renderCustTabs();
+    }
+    custTabShowScreen();
+  } finally {
+    custTabBusy = false;
+  }
+}
+
 // 상단 고정 [연락처로 빠른 조회] : 탭은 바꾸지 않고 고객상담·고객조회 화면 데이터를 함께 갱신합니다.
 // 기존 고객 → 두 화면 모두 그 고객 정보로 채움 / 신규 번호 → 고객상담을 그 번호로 새 상담 시작.
 async function quickTopSearch(rawContact, btn){
@@ -4052,6 +4196,8 @@ async function quickTopSearch(rawContact, btn){
 
     if (data && data.length) {
       const c = data[0];
+      if (!custTabs.some(t => t.id === c.customer_id) && custTabs.length >= CUST_TAB_MAX) { custTabFullAlert(); return; }
+      if (!customerViewInited) customerViewSkipRecent = true;
       // 고객조회 화면 : 이 고객 1건을 방금 검색한 결과처럼 반영해둠 (탭을 실제로 보지 않아도 전환 시 바로 보임)
       customerListCache = [c];
       await loadCustomerListExtras(customerListCache);
@@ -4064,7 +4210,12 @@ async function quickTopSearch(rawContact, btn){
       fillConsultFormFromCustomer(c);
       showToast(`✓ 기존 고객 정보를 불러왔습니다 (${c.name || c.contact})`);
     } else {
+      const digits = contact.replace(/\D/g, '');
+      let ti = custTabs.findIndex(t => String(t.contact || '').replace(/\D/g, '') === digits);
+      if (ti < 0 && custTabs.length >= CUST_TAB_MAX) { custTabFullAlert(); return; }
       startNewConsultWithContact(contact);
+      if (ti < 0) { custTabs.push({ id: null, name: '', contact }); ti = custTabs.length - 1; }
+      custTabActive = ti; custTabsSave(); renderCustTabs();
       showToast('신규 고객 — 새 상담으로 시작합니다');
     }
   } finally {
@@ -4074,6 +4225,8 @@ async function quickTopSearch(rawContact, btn){
 
 (async function init(){
   displayLastModified();
+  custTabsLoad();
+  renderCustTabs();
   initFunnelSelects();
   setVal('cust-next-contact', getDefaultNextContactValue());
   setupRecoSeg('reco-seg-speed','speed');
