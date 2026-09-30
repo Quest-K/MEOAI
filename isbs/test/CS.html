@@ -8,13 +8,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<link rel="stylesheet" href="Styles.css?v=20260930h">
+<link rel="stylesheet" href="Styles.css?v=20260930i">
 </head>
 <body>
 <div class="wrap">
 
   <!-- 탭 네비게이션 -->
   <div class="tab-nav">
+    <button class="tab-btn" data-tab="dashboard" onclick="switchTab('dashboard')">대시보드</button>
     <button class="tab-btn active" data-tab="cs" onclick="switchTab('cs')">고객상담</button>
     <button class="tab-btn" data-tab="customers" onclick="switchTab('customers')">고객조회</button>
     <button class="tab-btn" data-tab="performance" onclick="switchTab('performance')">실적조회</button>
@@ -26,6 +27,23 @@
     </div>
     <div id="auth-box" class="auth-box">
       <button class="login-trigger-btn" onclick="openLoginModal()">🔐 관리자 로그인</button>
+    </div>
+  </div>
+
+  <!-- VIEW 0: 대시보드 (퍼널 대분류 → 소분류 → 고객 리스트) -->
+  <div id="view-dashboard" class="view-container">
+    <div class="top-grid">
+      <header>
+        <div class="eyebrow">FUNNEL DASHBOARD</div>
+        <h1>대시보드</h1>
+        <p>대분류별 건수를 확인하고, 소분류(상태값)를 선택하면 해당 고객 리스트가 표시됩니다.</p>
+      </header>
+    </div>
+    <div class="cs-card funnel-dashboard" id="funnel-dashboard">
+      <div class="wide-table-empty">대시보드를 불러오는 중...</div>
+    </div>
+    <div class="cs-card" id="dash-list-card">
+      <div class="wide-table-empty">소분류를 선택하면 고객 리스트가 표시됩니다.</div>
     </div>
   </div>
 
@@ -389,10 +407,6 @@
       </div>
     </div>
 
-    <div class="cs-card funnel-dashboard" id="funnel-dashboard">
-      <div class="wide-table-empty">대시보드를 불러오는 중...</div>
-    </div>
-
     <div class="cs-layout">
       <div class="cs-main-col">
         <div class="cs-card">
@@ -600,6 +614,9 @@ function switchTab(tabId) {
       renderProposalLists();
       renderFinalProducts();
       renderFamilyDiscountAccordion();
+    } else if (tabId === 'dashboard') {
+      document.getElementById('view-dashboard').classList.add('active');
+      loadFunnelDashboard();
     } else if (tabId === 'customers') {
       document.getElementById('view-customers').classList.add('active');
       initCustomerView();
@@ -2129,6 +2146,7 @@ let CUSTOMER_SCHEMA = { hasProductsTable: false, hasSnapshot: false, hasTags: fa
 let currentCustomerId = null;
 let customerListCache = [];
 let customerViewInited = false;
+let customerViewSkipRecent = false;
 let customerProductsMap = {};  // 고객조회 목록용 : customer_id -> customer_products 행 배열
 let customerContactsMap = {};  // 고객조회 목록용 : customer_id -> customer_contacts 행 배열
 let detailCustomerId = null;   // 고객 상세 화면에 열려 있는 고객 ID
@@ -2427,102 +2445,199 @@ function consultHasUnsavedWork(){
 /* ---------------- 고객조회 ---------------- */
 
 
-let funnelDashboardExpanded = {};
-let funnelDashboardCounts = {};
-let funnelDashboardTotal = 0;
-let funnelDueCounts = { today: 0, overdue: 0 };   // 고객부재·상담예약 중 컨택 예정 시각이 오늘 남은 건 / 이미 지난 건
+/* =========================================================================
+   [대시보드] 탭 — 퍼널 대분류(6) → 소분류(상태값) → 고객 리스트
+   - 대분류 선택 시 소분류가 바뀌고, 소분류 선택 시 해당 상태값의 고객 리스트가 표시됩니다.
+   - 리스트의 고객을 누르면 [고객조회] 탭에서 상세 화면이 열립니다.
+   ========================================================================= */
+const DASH_FUNNEL = [
+  { key:'s1', label:'상담', items:['상담대기','상담예약','고객부재','상품안내'] },
+  { key:'s2', label:'계약', items:['계약진행','보류확인','접수불가','접수완료'] },
+  { key:'s3', label:'지급', items:['개통완료','지급요청','지급보류','지급완료'] },
+  { key:'s4', label:'환수', items:['환수필요','환수요청','환수진행','환수완료'] },
+  { key:'s5', label:'종결', items:['종결(정상)','종결(오인입)','종결(타부서)'] },
+  { key:'s6', label:'이탈', items:['이탈(기존유지)','이탈(타사가입)','이탈(고객부재)'] }
+];
+const DASH_LIST_LIMIT = 200;
+let dashCounts = {};
+let dashTotal = 0;
+let dashDue = { today: 0, overdue: 0 };        // 고객부재·상담예약 중 컨택 예정 시각이 오늘 남은 건 / 이미 지난 건
+let dashSel = { group: 's1', idx: 0 };         // 선택된 대분류 / 소분류 순번
+let dashMode = 'status';                       // 'status' | 'today' | 'overdue'
+let dashRows = [];
+let dashListSeq = 0;
+
+function dashCurGroup(){ return DASH_FUNNEL.find(g => g.key === dashSel.group) || DASH_FUNNEL[0]; }
+function dashCurStatus(){ return dashCurGroup().items[dashSel.idx] || dashCurGroup().items[0]; }
+function dashIsActive(){ const v = document.getElementById('view-dashboard'); return !!(v && v.classList.contains('active')); }
 
 async function loadFunnelDashboard(){
   const box = document.getElementById('funnel-dashboard');
   if (!box) return;
 
   const { data, error } = await sb.from('customers').select('funnel_status,next_contact_at').limit(10000);
-  if (error) { box.innerHTML = `<div class="wide-table-empty">대시보드 조회 실패: ${error.message}</div>`; return; }
+  if (error) { box.innerHTML = `<div class="wide-table-empty">대시보드 조회 실패: ${escHtml(error.message)}</div>`; return; }
 
-  funnelDashboardCounts = {};
-  funnelDueCounts = { today: 0, overdue: 0 };
+  dashCounts = {};
+  dashDue = { today: 0, overdue: 0 };
   const nowMs = Date.now(), todayKey = contactYmd(new Date());
   (data || []).forEach(r => {
-    const st = normalizeFunnelStatus(r.funnel_status || DEFAULT_FUNNEL_STATUS);
-    funnelDashboardCounts[st] = (funnelDashboardCounts[st] || 0) + 1;
+    const st = r.funnel_status || DEFAULT_FUNNEL_STATUS;
+    dashCounts[st] = (dashCounts[st] || 0) + 1;
     if ((st === CONTACT_CYCLE_STATUS || st === RESERVATION_STATUS) && r.next_contact_at) {
       const t = new Date(r.next_contact_at);
       if (isNaN(t.getTime())) return;
-      if (t.getTime() < nowMs) funnelDueCounts.overdue++;
-      else if (contactYmd(t) === todayKey) funnelDueCounts.today++;
+      if (t.getTime() < nowMs) dashDue.overdue++;
+      else if (contactYmd(t) === todayKey) dashDue.today++;
     }
   });
-  funnelDashboardTotal = (data || []).length;
+  dashTotal = (data || []).length;
   renderFunnelDashboard();
+  if (dashIsActive()) loadDashList();
 }
 
 function renderFunnelDashboard(){
   const box = document.getElementById('funnel-dashboard');
   if (!box) return;
 
-  const groups = DASHBOARD_GROUPS.map(g => ({
-    ...g,
-    total: g.items.reduce((sum, i) => sum + (funnelDashboardCounts[i] || 0), 0)
-  }));
+  const groups = DASH_FUNNEL.map(g => ({ ...g, total: g.items.reduce((sum, i) => sum + (dashCounts[i] || 0), 0) }));
+  const cur = dashCurGroup();
+  const known = new Set(DASH_FUNNEL.flatMap(g => g.items));
+  const other = Object.entries(dashCounts).filter(([k]) => !known.has(k));
+  const otherTotal = other.reduce((a, [, n]) => a + n, 0);
 
   box.innerHTML = `
     <div class="funnel-dash-head">
       <span class="funnel-dash-title">🧭 퍼널 대시보드</span>
-      <span class="funnel-dash-total">전체 ${funnelDashboardTotal.toLocaleString()}건</span>
+      <span class="funnel-dash-total">전체 ${dashTotal.toLocaleString()}건 <button type="button" class="mini-btn" onclick="loadFunnelDashboard()">↻ 새로고침</button></span>
     </div>
     <div class="funnel-due-row">
-      <button type="button" class="funnel-due-chip" onclick="loadContactDueList('today')" title="고객부재·상담예약 중 오늘 남은 컨택 예정">⏰ 오늘 컨택 예정 <b>${funnelDueCounts.today.toLocaleString()}</b></button>
-      <button type="button" class="funnel-due-chip is-overdue" onclick="loadContactDueList('overdue')" title="고객부재·상담예약 중 예정 시각이 지난 건">⚠ 컨택 지연 <b>${funnelDueCounts.overdue.toLocaleString()}</b></button>
+      <button type="button" class="funnel-due-chip ${dashMode === 'today' ? 'is-on' : ''}" onclick="loadContactDueList('today')" title="고객부재·상담예약 중 오늘 남은 컨택 예정">⏰ 오늘 컨택 예정 <b>${dashDue.today.toLocaleString()}</b></button>
+      <button type="button" class="funnel-due-chip is-overdue ${dashMode === 'overdue' ? 'is-on' : ''}" onclick="loadContactDueList('overdue')" title="고객부재·상담예약 중 예정 시각이 지난 건">⚠ 컨택 지연 <b>${dashDue.overdue.toLocaleString()}</b></button>
     </div>
-    <div class="funnel-dash-groups">
+    <div class="fd-groups">
       ${groups.map(g => `
-        <div class="funnel-dash-group">
-          <button type="button" class="funnel-dash-chip stage-${g.key}" onclick="toggleFunnelDashGroup('${g.key}')">
-            <span>${g.label}</span>
-            <span class="funnel-dash-count">${g.total.toLocaleString()}</span>
-            <span class="funnel-dash-caret">${funnelDashboardExpanded[g.key] ? '▾' : '▸'}</span>
-          </button>
-          ${funnelDashboardExpanded[g.key] ? `
-            <div class="funnel-dash-detail">
-              ${g.items.map(i => `
-                <button type="button" class="funnel-dash-subchip ${(funnelDashboardCounts[i] || 0) === 0 ? 'zero' : ''}" onclick="applyDashboardStatusFilter('${i}')">
-                  ${i} <span>${(funnelDashboardCounts[i] || 0).toLocaleString()}</span>
-                </button>
-              `).join('')}
-            </div>
-          ` : ''}
-        </div>
-      `).join('')}
+        <button type="button" class="fd-group stage-${g.key} ${g.key === cur.key ? 'is-active' : ''}" onclick="selectDashGroup('${g.key}')">
+          <span class="fd-group-label">${g.label}</span>
+          <b class="fd-group-count">${g.total.toLocaleString()}건</b>
+        </button>`).join('')}
     </div>
+    <div class="fd-subs">
+      ${cur.items.map((i, idx) => `
+        <button type="button" class="fd-sub ${(dashMode === 'status' && idx === dashSel.idx) ? 'is-active' : ''} ${(dashCounts[i] || 0) === 0 ? 'zero' : ''}" onclick="selectDashSub(${idx})">
+          ${escHtml(i)}<span>${(dashCounts[i] || 0).toLocaleString()}</span>
+        </button>`).join('')}
+    </div>
+    ${otherTotal ? `<div class="fd-note">⚠ 새 퍼널에 없는 상태값 ${otherTotal.toLocaleString()}건 (${other.map(([k, n]) => `${escHtml(k)} ${n}`).join(' · ')}) — 상태값을 새 값으로 변경해주세요.</div>` : ''}
   `;
 }
 
-// 대시보드의 [오늘 컨택 예정] / [컨택 지연] 칩 : 해당 고객만 목록에 표시 (예정 시각이 빠른 순)
-async function loadContactDueList(kind){
-  const { data, error } = await sb.from('customers').select('*')
-    .in('funnel_status', [CONTACT_CYCLE_STATUS, RESERVATION_STATUS])
-    .not('next_contact_at', 'is', null)
-    .order('next_contact_at', { ascending: true }).limit(500);
-  if (error) { renderCustomerList([], '조회 실패: ' + error.message); return; }
-  const nowMs = Date.now(), todayKey = contactYmd(new Date());
-  const rows = (data || []).filter(r => {
-    const t = new Date(r.next_contact_at);
-    if (isNaN(t.getTime())) return false;
-    return kind === 'overdue' ? t.getTime() < nowMs : (t.getTime() >= nowMs && contactYmd(t) === todayKey);
-  });
-  await loadCustomerListExtras(rows);
-  renderCustomerList(rows, kind === 'overdue' ? '지연된 컨택이 없습니다.' : '오늘 남은 컨택 예정이 없습니다.');
-}
-
-function toggleFunnelDashGroup(key){
-  funnelDashboardExpanded[key] = !funnelDashboardExpanded[key];
+function selectDashGroup(key){
+  dashSel = { group: key, idx: 0 };   // 대분류를 바꾸면 첫 소분류를 자동 선택
+  dashMode = 'status';
   renderFunnelDashboard();
+  loadDashList();
 }
 
-function applyDashboardStatusFilter(status){
-  const sel = document.getElementById('cust-search-status');
-  if (sel) sel.value = status;
-  searchCustomers();
+function selectDashSub(idx){
+  dashSel.idx = idx;
+  dashMode = 'status';
+  renderFunnelDashboard();
+  loadDashList();
+}
+
+// [오늘 컨택 예정] / [컨택 지연] 칩 : 해당 고객만 리스트에 표시 (예정 시각이 빠른 순)
+function loadContactDueList(kind){
+  dashMode = kind;
+  renderFunnelDashboard();
+  loadDashList();
+}
+
+async function loadDashList(){
+  const box = document.getElementById('dash-list-card');
+  if (!box) return;
+  const seq = ++dashListSeq;
+  const mode = dashMode;
+  const grp = dashCurGroup(), st = dashCurStatus();
+  const title = mode === 'today' ? '⏰ 오늘 컨택 예정' : mode === 'overdue' ? '⚠ 컨택 지연' : `${grp.label} › ${st}`;
+  box.innerHTML = `<div class="dash-list-head"><h3>${escHtml(title)}</h3></div><div class="wide-table-empty">불러오는 중...</div>`;
+
+  let rows = [], error = null, totalCount = null;
+  if (mode === 'status') {
+    let q = sb.from('customers').select('*');
+    if (st === DEFAULT_FUNNEL_STATUS && !/[(),]/.test(st)) q = q.or(`funnel_status.eq.${st},funnel_status.is.null`);
+    else q = q.eq('funnel_status', st);
+    const byContact = (st === CONTACT_CYCLE_STATUS || st === RESERVATION_STATUS);
+    q = byContact ? q.order('next_contact_at', { ascending: true, nullsFirst: false }) : q.order('updated_at', { ascending: false });
+    const res = await q.limit(DASH_LIST_LIMIT);
+    rows = res.data || []; error = res.error;
+    totalCount = dashCounts[st] || 0;
+  } else {
+    const res = await sb.from('customers').select('*')
+      .in('funnel_status', [CONTACT_CYCLE_STATUS, RESERVATION_STATUS])
+      .not('next_contact_at', 'is', null)
+      .order('next_contact_at', { ascending: true }).limit(500);
+    error = res.error;
+    const nowMs = Date.now(), todayKey = contactYmd(new Date());
+    rows = (res.data || []).filter(r => {
+      const t = new Date(r.next_contact_at);
+      if (isNaN(t.getTime())) return false;
+      return mode === 'overdue' ? t.getTime() < nowMs : (t.getTime() >= nowMs && contactYmd(t) === todayKey);
+    });
+  }
+  if (seq !== dashListSeq) return;   // 조회하는 동안 다른 항목을 눌렀으면 중단
+  if (error) { box.innerHTML = `<div class="dash-list-head"><h3>${escHtml(title)}</h3></div><div class="wide-table-empty">조회 실패: ${escHtml(error.message)}</div>`; return; }
+
+  await loadCustomerListExtras(rows);
+  if (seq !== dashListSeq) return;
+  dashRows = rows;
+  renderDashList(title, totalCount);
+}
+
+function renderDashList(title, totalCount){
+  const box = document.getElementById('dash-list-card');
+  if (!box) return;
+  const rows = dashRows, now = Date.now();
+  const countText = rows.length
+    ? (totalCount !== null && totalCount > rows.length ? `전체 ${totalCount.toLocaleString()}건 중 최근 ${rows.length.toLocaleString()}건 표시` : `${rows.length.toLocaleString()}건`)
+    : '0건';
+  const body = rows.length ? rows.map(c => {
+    const lines = customerHomeLines(c);
+    const overdue = (c.funnel_status === CONTACT_CYCLE_STATUS || c.funnel_status === RESERVATION_STATUS)
+      && c.next_contact_at && new Date(c.next_contact_at).getTime() < now;
+    const st = c.funnel_status || DEFAULT_FUNNEL_STATUS;
+    return `
+    <tr onclick="openCustomerFromDash(${c.customer_id})">
+      <td class="cust-row-name cust-cell-1line" title="${escAttr(c.name || '')}">${escHtml(c.name) || '(이름없음)'}</td>
+      <td class="cust-cell-1line" title="${escAttr(c.contact || '')}">${escHtml(c.contact) || '-'}</td>
+      <td class="cust-row-sub cust-lines-cell">${listLinesHtml(lines, l => l.text, true)}</td>
+      <td class="cust-cell-1line${overdue ? ' is-overdue' : ''}" title="${overdue ? '예정 시각이 지났습니다' : ''}">${formatDateShort(c.next_contact_at)}</td>
+      <td class="cust-cell-1line">${formatDateShort(c.updated_at)}</td>
+      <td><span class="cust-status-chip stage-${getFunnelStage(st)}">${escHtml(st)}</span></td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="6"><div class="reflected-empty">해당 상태의 고객이 없습니다.</div></td></tr>`;
+
+  box.innerHTML = `
+    <div class="dash-list-head"><h3>${escHtml(title)}</h3><span class="funnel-dash-total">${countText}</span></div>
+    <div class="cust-list-wrap">
+      <table class="cust-list-table dash-list-table">
+        <colgroup><col style="width:13%"><col style="width:13%"><col style="width:30%"><col style="width:14%"><col style="width:14%"><col style="width:16%"></colgroup>
+        <thead><tr><th class="no-sort">이름</th><th class="no-sort">연락처</th><th class="no-sort">상품(인터넷/TV)</th><th class="no-sort">상담예약<br>일시</th><th class="no-sort">최종수정</th><th class="no-sort">상태값</th></tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>`;
+}
+
+// 대시보드 리스트에서 고객을 누르면 [고객조회] 탭으로 이동해 상세 화면을 엽니다.
+async function openCustomerFromDash(id){
+  customerListCache = dashRows.slice();   // openCustomer가 이 목록에서 고객을 찾습니다
+  customerViewSkipRecent = true;
+  switchTab('customers');
+  customerViewSkipRecent = false;
+  renderCustomerList(customerListCache);
+  await openCustomer(id);
+  const d = document.getElementById('cust-detail');
+  if (d && d.scrollIntoView) d.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function initCustomerView(){
@@ -2538,8 +2653,7 @@ function initCustomerView(){
     const el = document.getElementById('cust-db-state');
     if (el) el.textContent = warn.length ? '⚠ ' + warn.join(' · ') : '스키마 정상';
   });
-  loadRecentCustomers();
-  loadFunnelDashboard();
+  if (!customerViewSkipRecent) loadRecentCustomers();   // 대시보드에서 고객을 열 때는 최근 목록으로 덮어쓰지 않음
 }
 
 function escHtml(v){
