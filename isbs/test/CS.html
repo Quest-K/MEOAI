@@ -2450,14 +2450,7 @@ function consultHasUnsavedWork(){
    - 대분류 선택 시 소분류가 바뀌고, 소분류 선택 시 해당 상태값의 고객 리스트가 표시됩니다.
    - 리스트의 고객을 누르면 [고객조회] 탭에서 상세 화면이 열립니다.
    ========================================================================= */
-const DASH_FUNNEL = [
-  { key:'s1', label:'상담', items:['상담대기','상담예약','고객부재','상품안내'] },
-  { key:'s2', label:'계약', items:['계약진행','보류확인','접수불가','접수완료'] },
-  { key:'s3', label:'지급', items:['개통완료','지급요청','지급보류','지급완료'] },
-  { key:'s4', label:'환수', items:['환수필요','환수요청','환수진행','환수완료'] },
-  { key:'s5', label:'종결', items:['종결(정상)','종결(오인입)','종결(타부서)'] },
-  { key:'s6', label:'이탈', items:['이탈(기존유지)','이탈(타사가입)','이탈(고객부재)'] }
-];
+const DASH_FUNNEL = DASHBOARD_GROUPS;   // config.js의 FUNNEL_STAGES 기준 (key: s1~s6)
 const DASH_LIST_LIMIT = 200;
 let dashCounts = {};
 let dashTotal = 0;
@@ -2482,7 +2475,7 @@ async function loadFunnelDashboard(){
   dashDue = { today: 0, overdue: 0 };
   const nowMs = Date.now(), todayKey = contactYmd(new Date());
   (data || []).forEach(r => {
-    const st = r.funnel_status || DEFAULT_FUNNEL_STATUS;
+    const st = normalizeFunnelStatus(r.funnel_status || DEFAULT_FUNNEL_STATUS);
     dashCounts[st] = (dashCounts[st] || 0) + 1;
     if ((st === CONTACT_CYCLE_STATUS || st === RESERVATION_STATUS) && r.next_contact_at) {
       const t = new Date(r.next_contact_at);
@@ -2565,8 +2558,9 @@ async function loadDashList(){
   let rows = [], error = null, totalCount = null;
   if (mode === 'status') {
     let q = sb.from('customers').select('*');
-    if (st === DEFAULT_FUNNEL_STATUS && !/[(),]/.test(st)) q = q.or(`funnel_status.eq.${st},funnel_status.is.null`);
-    else q = q.eq('funnel_status', st);
+    const legacy = Object.keys(LEGACY_STATUS_MAP).filter(k => LEGACY_STATUS_MAP[k] === st);   // 예전 값도 함께 조회
+    if (st === DEFAULT_FUNNEL_STATUS) q = q.or([st, ...legacy].map(v => `funnel_status.eq.${v}`).concat('funnel_status.is.null').join(','));
+    else q = q.in('funnel_status', [st, ...legacy]);
     const byContact = (st === CONTACT_CYCLE_STATUS || st === RESERVATION_STATUS);
     q = byContact ? q.order('next_contact_at', { ascending: true, nullsFirst: false }) : q.order('updated_at', { ascending: false });
     const res = await q.limit(DASH_LIST_LIMIT);
@@ -2605,7 +2599,7 @@ function renderDashList(title, totalCount){
     const lines = customerHomeLines(c);
     const overdue = (c.funnel_status === CONTACT_CYCLE_STATUS || c.funnel_status === RESERVATION_STATUS)
       && c.next_contact_at && new Date(c.next_contact_at).getTime() < now;
-    const st = c.funnel_status || DEFAULT_FUNNEL_STATUS;
+    const st = normalizeFunnelStatus(c.funnel_status || DEFAULT_FUNNEL_STATUS);
     return `
     <tr onclick="openCustomerFromDash(${c.customer_id})">
       <td class="cust-row-name cust-cell-1line" title="${escAttr(c.name || '')}">${escHtml(c.name) || '(이름없음)'}</td>
