@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<link rel="stylesheet" href="Styles.css?v=20260930d">
+<link rel="stylesheet" href="Styles.css?v=20260930e">
 </head>
 <body>
 <div class="wrap">
@@ -19,7 +19,7 @@
     <button class="tab-btn" data-tab="customers" onclick="switchTab('customers')">고객조회</button>
     <button class="tab-btn" data-tab="performance" onclick="switchTab('performance')">실적조회</button>
     <div class="quick-search-box">
-      <input type="text" id="top-quick-contact" placeholder="연락처로 빠른 조회"
+      <input type="text" id="top-quick-contact" placeholder="이름 또는 연락처로 빠른 조회"
              onkeydown="if(event.key==='Enter'){event.preventDefault(); quickTopSearch(this.value, this);}">
       <button type="button" class="mini-btn mini-btn-primary" id="top-quick-search-btn"
               onclick="quickTopSearch(document.getElementById('top-quick-contact').value, this)">🔍 조회</button>
@@ -505,9 +505,9 @@
 
 <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
-<script src="config.js?v=20260930d"></script>
-<script src="Calculator.js?v=20260930d"></script>
-<script src="Supabaseservice.js?v=20260930d"></script>
+<script src="config.js?v=20260930e"></script>
+<script src="Calculator.js?v=20260930e"></script>
+<script src="Supabaseservice.js?v=20260930e"></script>
 <script>
 // 외부 파일 로드 점검: 파일 누락/내용 뒤바뀜(예: JS 자리에 CSS가 들어간 경우) 시 화면 상단에 경고 표시
 (function checkModules(){
@@ -1155,7 +1155,9 @@ function addFamilyLine(type){
   } else {
     line.type = 'mobile';
     line.carrier = 'KT';
-    line.feeValue = FEE_RANGES[0].value;
+    line.feeValue = null;      // null = 확인안됨
+    line.contact = '';
+    line.relation = '';
   }
   familyLines.push(line);
   renderFamilyLines();
@@ -1164,7 +1166,7 @@ function addFamilyLine(type){
 
 function updateFamilyLine(idx, field, value){
   if (!familyLines[idx]) return;
-  familyLines[idx][field] = (field === 'feeValue') ? Number(value) : value;
+  familyLines[idx][field] = (field === 'feeValue') ? (value === '' ? null : Number(value)) : value;
   updateCsSummaryPanel();
 }
 
@@ -1207,8 +1209,13 @@ function renderFamilyLines(){
             ${MOBILE_CARRIER_OPTIONS.map(c => `<option value="${c}" ${f.carrier===c?'selected':''}>${c}</option>`).join('')}
           </select>
           <select onchange="updateFamilyLine(${idx}, 'feeValue', this.value)">
+            <option value="" ${(f.feeValue === null || f.feeValue === undefined || f.feeValue === '') ? 'selected' : ''}>확인안됨</option>
             ${FEE_RANGES.map(r => `<option value="${r.value}" ${f.feeValue===r.value?'selected':''}>${r.label}</option>`).join('')}
           </select>
+          <input type="text" class="family-line-contact" placeholder="연락처" inputmode="numeric" value="${escAttr(f.contact || '')}"
+                 oninput="formatContactInput(this); updateFamilyLine(${idx}, 'contact', this.value)">
+          <input type="text" class="family-line-relation" placeholder="관계 (예: 배우자, 자녀)" maxlength="20" value="${escAttr(f.relation || '')}"
+                 oninput="updateFamilyLine(${idx}, 'relation', this.value)">
         </div>
         <button type="button" class="phone-remove-btn" onclick="removeFamilyLine(${idx})">삭제</button>
       </div>
@@ -1517,8 +1524,9 @@ function getFamilyLineSummaryItems(){
         items.push({ label: `가족회선(인터넷) ${internetCount}`, value: `${f.carrier} ${f.feeLabel}` });
       } else {
         mobileCount += 1;
-        const feeLabel = FEE_RANGES.find(r => r.value === f.feeValue)?.label || '';
-        items.push({ label: `가족회선(휴대폰) ${mobileCount}`, value: `${f.carrier} ${feeLabel}` });
+        const feeLabel = FEE_RANGES.find(r => r.value === f.feeValue)?.label || '확인안됨';
+        const extra = [f.relation ? `관계 ${f.relation}` : '', f.contact || ''].filter(Boolean).join(' / ');
+        items.push({ label: `가족회선(휴대폰) ${mobileCount}`, value: `${f.carrier} ${feeLabel}${extra ? ' / ' + extra : ''}` });
       }
     });
   }
@@ -3833,19 +3841,43 @@ async function loadCustomerToConsult(id){
 // 기존 고객 → 두 화면 모두 그 고객 정보로 채움 / 신규 번호 → 고객상담을 그 번호로 새 상담 시작.
 async function quickTopSearch(rawContact, btn){
   const contact = (rawContact || '').trim();
-  if (!contact) { alert('연락처를 입력해주세요.'); document.getElementById('top-quick-contact')?.focus(); return; }
+  if (!contact) { alert('이름 또는 연락처를 입력해주세요.'); document.getElementById('top-quick-contact')?.focus(); return; }
 
   if (consultHasUnsavedWork() && !confirm('고객상담 화면에 저장하지 않은 작성 중인 내용이 있습니다.\n새로 조회하면 그 내용이 사라집니다. 계속할까요?')) return;
 
   setBtnLoading(btn, '조회 중...');
   try {
     await probeCustomerSchema();
-    const orFilter = buildContactOrFilter(contact);
-    if (!orFilter) { alert('연락처는 숫자로 입력해주세요.'); return; }
-    const { data, error } = await sb.from('customers').select('*')
-      .or(orFilter)
-      .order('updated_at', { ascending: false }).limit(1);
+    // 숫자·하이픈·공백만 있으면 연락처, 글자가 하나라도 있으면 이름으로 조회
+    const isNameSearch = /[^0-9\-\s]/.test(contact);
+    let data, error;
+    if (isNameSearch) {
+      ({ data, error } = await sb.from('customers').select('*')
+        .ilike('name', `%${contact}%`).order('updated_at', { ascending: false }).limit(100));
+    } else {
+      const orFilter = buildContactOrFilter(contact);
+      if (!orFilter) { alert('연락처는 숫자로 입력해주세요.'); return; }
+      ({ data, error } = await sb.from('customers').select('*')
+        .or(orFilter).order('updated_at', { ascending: false }).limit(1));
+    }
     if (error) { alert('조회 실패: ' + error.message); return; }
+
+    // 이름 조회 결과가 여러 명이면 고객조회 목록에 모두 띄우고 그 탭으로 이동 (한 명을 임의로 고르지 않음)
+    if (isNameSearch && data && data.length > 1) {
+      customerListCache = data;
+      await loadCustomerListExtras(customerListCache);
+      renderCustomerList(customerListCache);
+      setVal('cust-search-contact', '');
+      setVal('cust-search-name', contact);
+      setVal('cust-search-status', '');
+      switchTab('customers');
+      showToast(`✓ "${contact}" 이름으로 ${data.length}명이 조회되었습니다. 목록에서 고객을 선택해주세요`);
+      return;
+    }
+    if (isNameSearch && (!data || !data.length)) {
+      alert(`"${contact}" 이름으로 등록된 고객이 없습니다.`);
+      return;
+    }
 
     if (data && data.length) {
       const c = data[0];
