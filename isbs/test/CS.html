@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<link rel="stylesheet" href="Styles.css?v=20260930f">
+<link rel="stylesheet" href="Styles.css?v=20260930g">
 </head>
 <body>
 <div class="wrap">
@@ -72,6 +72,14 @@
               <label>연락처 <span class="req-mark">*</span></label>
               <input class="cs-w-contact" type="text" id="cust-contact" placeholder="010-0000-0000" inputmode="numeric" value="010"
                      oninput="formatContactInput(this)" onblur="updateCsSummaryPanel()">
+            </div>
+            <div class="cs-inline-form-group">
+              <label>인입경로</label>
+              <select id="cust-inflow" onchange="updateCsSummaryPanel()">
+                <option value="">선택</option>
+                <option value="전화인입">전화인입</option>
+                <option value="상담요청">상담요청</option>
+              </select>
             </div>
             <div class="cs-inline-form-group">
               <label>휴대폰 통신사</label>
@@ -505,9 +513,9 @@
 
 <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
-<script src="config.js?v=20260930f"></script>
-<script src="Calculator.js?v=20260930f"></script>
-<script src="Supabaseservice.js?v=20260930f"></script>
+<script src="config.js?v=20260930g"></script>
+<script src="Calculator.js?v=20260930g"></script>
+<script src="Supabaseservice.js?v=20260930g"></script>
 <script>
 // 외부 파일 로드 점검: 파일 누락/내용 뒤바뀜(예: JS 자리에 CSS가 들어간 경우) 시 화면 상단에 경고 표시
 (function checkModules(){
@@ -1539,6 +1547,7 @@ function buildConsultSummary(){
 
   const lines = [];
   lines.push('[고객 상담 요약]');
+  if (elVal('cust-inflow')) lines.push(`인입경로: ${elVal('cust-inflow')}`);
   lines.push(`휴대폰: ${mobileCarrier} / ${getFeeRangeLabel(mobileFee)}`);
   lines.push(`기존 인터넷: ${getOldInternetSummaryValue()}`);
   getFamilyLineSummaryItems().forEach(item => lines.push(`${item.label}: ${item.value}`));
@@ -1567,6 +1576,7 @@ function updateCsSummaryPanel(){
   const mobileFee = document.getElementById('cust-mobile-fee')?.value || '';
 
   let custHtml = '';
+  custHtml += jsRow('인입경로', elVal('cust-inflow'));
   custHtml += jsRow('휴대폰', mobileCarrier ? `${mobileCarrier} / ${getFeeRangeLabel(mobileFee)}` : '');
   custHtml += jsRow('기존 인터넷', getOldInternetSummaryValue());
   getFamilyLineSummaryItems().forEach(item => {
@@ -2076,7 +2086,7 @@ function toggleDetailTagsBody(){
 }
 
 
-let CUSTOMER_SCHEMA = { hasProductsTable: false, hasSnapshot: false, hasTags: false, hasContactsTable: false, hasStatusLogsTable: false, checked: false };
+let CUSTOMER_SCHEMA = { hasProductsTable: false, hasSnapshot: false, hasTags: false, hasInflow: false, hasContactsTable: false, hasStatusLogsTable: false, checked: false };
 let currentCustomerId = null;
 let customerListCache = [];
 let customerViewInited = false;
@@ -2182,6 +2192,12 @@ function buildCustomerPayload(){
     payload.customer_tags = Array.from(selectedCustomerTags);
   }
 
+  if (CUSTOMER_SCHEMA.hasInflow) {
+    payload.inflow_route = elVal('cust-inflow') || null;
+  } else if (elVal('cust-inflow')) {
+    showToast('⚠ customers 테이블에 inflow_route 칼럼이 없어 인입경로는 저장되지 않습니다');
+  }
+
   if (CUSTOMER_SCHEMA.hasSnapshot) {
     payload.proposal_snapshot = {
       savedAt: new Date().toISOString(),
@@ -2255,6 +2271,8 @@ async function probeCustomerSchema(){
   CUSTOMER_SCHEMA.hasProductsTable = !prod.error;
   const tags = await sb.from('customers').select('customer_tags').limit(1);
   CUSTOMER_SCHEMA.hasTags = !tags.error;
+  const inflow = await sb.from('customers').select('inflow_route').limit(1);
+  CUSTOMER_SCHEMA.hasInflow = !inflow.error;
   const contacts = await sb.from('customer_contacts').select('customer_id').limit(1);
   CUSTOMER_SCHEMA.hasContactsTable = !contacts.error;
   const statusLogs = await sb.from('customer_status_logs').select('customer_id').limit(1);
@@ -2336,6 +2354,7 @@ function startNewConsultWithContact(contact){
   setVal('cust-name', NAME_PREFIX);
   setVal('cust-contact', contact || '010');
   setVal('cust-notes', '');
+  setVal('cust-inflow', '');
   setVal('cust-next-contact', getDefaultNextContactValue());
   setVal('cust-funnel-status', DEFAULT_FUNNEL_STATUS);
   const oldToggleReset = document.getElementById('old-internet-toggle');
@@ -3013,6 +3032,10 @@ async function openCustomer(id){
     <div class="cust-form-grid">
       ${custField('이름', 'cf-name', c.name)}
       ${custField('연락처', 'cf-contact', c.contact)}
+      <div class="form-group">
+        <label>인입경로</label>
+        <select id="cf-inflow"><option value="">선택</option>${INFLOW_ROUTES.map(o => `<option ${o === c.inflow_route ? 'selected' : ''}>${o}</option>`).join('')}</select>
+      </div>
       <div class="form-group">
         <label>휴대폰 통신사</label>
         <select id="cf-telecom">${MOBILE_CARRIER_OPTIONS.map(o => `<option ${o === c.telecom ? 'selected' : ''}>${o}</option>`).join('')}</select>
@@ -3714,6 +3737,10 @@ async function updateCustomer(id, btn){
     payload.customer_tags = Array.from(detailCustomerTags);
   }
 
+  if (CUSTOMER_SCHEMA.hasInflow) {
+    payload.inflow_route = elVal('cf-inflow') || null;
+  }
+
   // customer_products 테이블이 없을 때만 레거시 단일 안내상품 칼럼을 함께 수정합니다.
   // (테이블이 있으면 안내상품은 표의 [저장] 버튼으로 개별 저장되므로 여기서 건드리지 않습니다.)
   if (!CUSTOMER_SCHEMA.hasProductsTable) {
@@ -3788,6 +3815,7 @@ function fillConsultFormFromCustomer(c){
   setVal('cust-name', c.name || NAME_PREFIX);
   setVal('cust-contact', c.contact || '');
   setVal('cust-notes', c.notes || '');
+  setVal('cust-inflow', c.inflow_route || '');
   setVal('cust-funnel-status', c.funnel_status || DEFAULT_FUNNEL_STATUS);
   setVal('cust-next-contact', toLocalInputValue(c.next_contact_at));
   if (c.telecom) setVal('cust-mobile-carrier', c.telecom);
