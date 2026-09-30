@@ -150,6 +150,8 @@ const RESERVATION_STATUS = '상담예약';
 // 아직 본 상담 전 단계로 취급하는 상태값들 (대시보드 "상담" 묶음에 함께 표시)
 const PRE_STAGE_STATUSES = [DEFAULT_FUNNEL_STATUS, RESERVATION_STATUS, '고객부재'];   // 모두 '상담' 그룹 소속
 const NAME_PREFIX = '(인생비서)';
+// 고객정보 인입경로 선택지 (customers.inflow_route 칼럼에 저장). 항목을 늘리려면 여기에 추가하세요.
+const INFLOW_ROUTES = ['전화인입', '상담요청'];
 
 // 퍼널 대시보드 : 상태값별 건수를 6그룹(상담·계약·지급·환수·종결·이탈)으로 묶어 표시, 클릭 시 하위 상태값 건수 토글
 const DASHBOARD_GROUPS = FUNNEL_STAGES.map(g => ({ key: 's' + g.stage, label: g.label, items: g.items }));
