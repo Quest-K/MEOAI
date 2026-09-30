@@ -57,7 +57,7 @@
                 <button id="auth-btn" onclick="authClick()" class="text-xs font-semibold text-blue-600 hover:underline shrink-0 ml-2"></button>
             </div>
             <div class="flex items-center justify-between text-[11px] text-slate-400">
-                <span id="sync-state"></span><span class="font-mono">v2.7.0</span>
+                <span id="sync-state"></span><span class="font-mono">v2.8.0</span>
             </div>
             <div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
                 <button onclick="exportData()" class="hover:text-blue-600">내보내기</button>
@@ -113,19 +113,19 @@
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
                         <div class="flex items-center justify-between">
-                            <span class="text-xs font-bold text-slate-500">이번 주 설치 예정건</span>
+                            <span class="text-xs font-bold text-slate-500">개통 대기건</span>
                             <span class="bg-blue-50 text-blue-600 p-2 rounded-xl text-sm"><i class="fa-solid fa-calendar-days"></i></span>
                         </div>
                         <div id="metric-sched-install" class="text-2xl font-bold text-slate-800 mt-2">0건</div>
-                        <p class="text-[11px] text-slate-400 mt-1">이번 주 내 개통·설치 예정된 고객</p>
+                        <p class="text-[11px] text-slate-400 mt-1">접수완료 상태(개통·설치 대기 중)인 고객</p>
                     </div>
                     <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
                         <div class="flex items-center justify-between">
-                            <span class="text-xs font-bold text-slate-500">이번 주 설치 완료건</span>
+                            <span class="text-xs font-bold text-slate-500">이번 주 개통완료건</span>
                             <span class="bg-emerald-50 text-emerald-600 p-2 rounded-xl text-sm"><i class="fa-solid fa-circle-check"></i></span>
                         </div>
                         <div id="metric-done-install" class="text-2xl font-bold text-emerald-600 mt-2">0건</div>
-                        <p class="text-[11px] text-slate-400 mt-1">이번 주 완료 처리된 고객</p>
+                        <p class="text-[11px] text-slate-400 mt-1">이번 주 개통완료로 변경된 고객 (변경 이력 기준)</p>
                     </div>
                     <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
                         <div class="flex items-center justify-between">
@@ -133,7 +133,7 @@
                             <span class="bg-indigo-50 text-indigo-600 p-2 rounded-xl text-sm"><i class="fa-solid fa-won-sign"></i></span>
                         </div>
                         <div id="metric-done-pay" class="text-2xl font-bold text-indigo-600 mt-2">0건</div>
-                        <p class="text-[11px] text-slate-400 mt-1">사은품 및 정산 지급 완료 건</p>
+                        <p class="text-[11px] text-slate-400 mt-1">이번 주 지급완료로 변경된 고객 (변경 이력 기준)</p>
                     </div>
                 </div>
 
@@ -157,7 +157,7 @@
                             <i class="fa-solid fa-rotate mr-1"></i> 새로고침
                         </button>
                     </div>
-                    <div id="status-counts-grid" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6"></div>
+                    <div id="status-counts-grid" class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-6"></div>
                     <div class="overflow-x-auto">
                         <table class="w-full text-left border-collapse">
                             <thead>
@@ -703,7 +703,7 @@ async function fetchRemote() {
 
 async function fetchCustomerData() {
     if(!sb) {
-        customerDbData = getSimulatedCustomerData();
+        customerDbData = getSimulatedCustomerData(); customerLogs = [];
         renderCustomerDashboard();
         return;
     }
@@ -717,6 +717,11 @@ async function fetchCustomerData() {
     } catch(e) {
         customerDbData = getSimulatedCustomerData();
     }
+    try {
+        const since = new Date(); since.setDate(since.getDate() - 14);
+        const r = await sb.from('customer_status_logs').select('customer_id,to_status,changed_at').gte('changed_at', since.toISOString()).limit(5000);
+        customerLogs = r.error ? [] : (r.data || []);
+    } catch(e) { customerLogs = []; }
     renderCustomerDashboard();
 }
 
@@ -728,13 +733,13 @@ function getSimulatedCustomerData() {
         return ymd(d);
     };
     return [
-        { id: 1, name: '김민준', contact: '010-1234-5678', status: '접수완료', updated_at: getOffsetDate(0) + ' 10:20:00', install_date: getOffsetDate(2) },
-        { id: 2, name: '이서연', contact: '010-2345-6789', status: '설치예정', updated_at: getOffsetDate(0) + ' 11:10:00', install_date: getOffsetDate(1) },
-        { id: 3, name: '박도윤', contact: '010-3456-7890', status: '설치예정', updated_at: getOffsetDate(-1) + ' 15:30:00', install_date: getOffsetDate(0) },
-        { id: 4, name: '정시우', contact: '010-4567-8901', status: '설치완료', updated_at: getOffsetDate(0) + ' 14:00:00', install_date: getOffsetDate(-1), pay_status: '지급완료' },
-        { id: 5, name: '강서윤', contact: '010-5678-9012', status: '지급완료', updated_at: getOffsetDate(0) + ' 09:15:00', install_date: getOffsetDate(-3), pay_status: '지급완료' },
-        { id: 6, name: '조하은', contact: '010-6789-0123', status: '상담진행', updated_at: getOffsetDate(-2) + ' 16:40:00', install_date: getOffsetDate(4) },
-        { id: 7, name: '윤지호', contact: '010-7890-1234', status: '설치완료', updated_at: getOffsetDate(0) + ' 13:20:00', install_date: getOffsetDate(0), pay_status: '지급대기' },
+        { id: 1, name: '김민준', contact: '010-1234-5678', funnel_status: '접수완료', updated_at: getOffsetDate(0) + ' 10:20:00' },
+        { id: 2, name: '이서연', contact: '010-2345-6789', funnel_status: '접수완료', updated_at: getOffsetDate(0) + ' 11:10:00' },
+        { id: 3, name: '박도윤', contact: '010-3456-7890', funnel_status: '상품안내', updated_at: getOffsetDate(-1) + ' 15:30:00' },
+        { id: 4, name: '정시우', contact: '010-4567-8901', funnel_status: '개통완료', updated_at: getOffsetDate(0) + ' 14:00:00' },
+        { id: 5, name: '강서윤', contact: '010-5678-9012', funnel_status: '지급완료', updated_at: getOffsetDate(0) + ' 09:15:00' },
+        { id: 6, name: '조하은', contact: '010-6789-0123', funnel_status: '고객부재', updated_at: getOffsetDate(-2) + ' 16:40:00', next_contact_at: getOffsetDate(1) + 'T10:00:00' },
+        { id: 7, name: '윤지호', contact: '010-7890-1234', funnel_status: '지급요청', updated_at: getOffsetDate(0) + ' 13:20:00' },
     ];
 }
 
@@ -760,47 +765,44 @@ function renderCustomerGate() {
     renderCustomerDashboard();
 }
 
+// ===== 퍼널 v2 (상담/계약/지급/환수/종료/이탈) =====
+let customerLogs = [];
+const FUNNEL_V2 = [
+    {k:'상담', items:['상담대기','상담예약','고객부재','상품안내'], cls:'bg-slate-100 text-slate-600 border border-slate-200'},
+    {k:'계약', items:['계약진행','보류확인','접수불가','접수완료'], cls:'bg-indigo-50 text-indigo-600 border border-indigo-200'},
+    {k:'지급', items:['개통완료','지급요청','지급보류','지급완료'], cls:'bg-emerald-50 text-emerald-600 border border-emerald-200'},
+    {k:'환수', items:['환수필요','환수요청','환수진행','환수완료'], cls:'bg-amber-50 text-amber-600 border border-amber-200'},
+    {k:'종료', items:['종결(정상)','종결(오인입)','종결(타부서)'], cls:'bg-slate-100 text-slate-500 border border-slate-200'},
+    {k:'이탈', items:['이탈(기존유지)','이탈(타사가입)','이탈(고객부재)'], cls:'bg-rose-50 text-rose-600 border border-rose-200'}
+];
+// 개편 전 상태값이 DB에 남아 있을 때 새 값으로 간주 (DB 일괄 변경 전까지의 임시 매핑)
+const FUNNEL_LEGACY = {'개통대기':'접수완료', '종결(컨택불가)':'이탈(고객부재)', '고객부재_종결':'이탈(고객부재)'};
+const custStatus = c => { const raw = c.funnel_status || c.status || c.state || c.step || c.progress || '상담대기'; return FUNNEL_LEGACY[raw] || raw; };
+const funnelGroupOf = st => FUNNEL_V2.find(g => g.items.includes(st));
+const logDay = l => { const d = new Date(l.changed_at); return isNaN(d.getTime()) ? '' : ymd(d); };
+const logCustomers = (to, from, until) => new Set(customerLogs.filter(l => l.to_status === to && logDay(l) >= from && logDay(l) <= until).map(l => l.customer_id)).size;
+
 function renderCustomerDashboard() {
     if(!canEdit || !customerDbData) return;
     const week = getThisWeekRange();
 
-    const getStatus = c => c.status || c.state || c.step || c.progress || '접수완료';
-    const getDate = c => c.install_date || c.date || c.schedule_date || c.target_date || '-';
+    if($('metric-sched-install')) $('metric-sched-install').innerText = customerDbData.filter(c => custStatus(c) === '접수완료').length + '건';
+    if($('metric-done-install')) $('metric-done-install').innerText = logCustomers('개통완료', week.start, week.end) + '건';
+    if($('metric-done-pay')) $('metric-done-pay').innerText = logCustomers('지급완료', week.start, week.end) + '건';
 
-    const schedInstallCount = customerDbData.filter(c => {
-        const st = getStatus(c);
-        const dt = getDate(c);
-        return dt >= week.start && dt <= week.end && st !== '설치완료' && st !== '지급완료';
-    }).length;
-
-    const doneInstallCount = customerDbData.filter(c => {
-        const st = getStatus(c);
-        return st === '설치완료' || st === '지급완료' || st === '개통완료';
-    }).length;
-
-    const donePayCount = customerDbData.filter(c => {
-        const st = getStatus(c);
-        return st === '지급완료' || c.pay_status === '지급완료';
-    }).length;
-
-    if($('metric-sched-install')) $('metric-sched-install').innerText = schedInstallCount + '건';
-    if($('metric-done-install')) $('metric-done-install').innerText = doneInstallCount + '건';
-    if($('metric-done-pay')) $('metric-done-pay').innerText = donePayCount + '건';
-
-    const statusGroups = {
-        '접수대기/상담': customerDbData.filter(c => { const s = getStatus(c); return s === '접수완료' || s === '상담진행' || s === '접수'; }).length,
-        '설치예정': customerDbData.filter(c => getStatus(c) === '설치예정').length,
-        '설치완료': customerDbData.filter(c => { const s = getStatus(c); return s === '설치완료' || s === '개통완료'; }).length,
-        '지급완료': customerDbData.filter(c => { const s = getStatus(c); return s === '지급완료' || c.pay_status === '지급완료'; }).length
-    };
-
-    let countHtml = '';
-    Object.entries(statusGroups).forEach(([st, cnt]) => {
-        countHtml += `<div class="bg-slate-50 border border-slate-100 rounded-xl p-3.5">
-          <div class="text-[11px] text-slate-500 font-medium">${esc(st)}</div>
-          <div class="text-xl font-bold text-slate-800 mt-1">${cnt}<span class="text-xs font-normal text-slate-400 ml-1">명</span></div>
+    const known = new Set(FUNNEL_V2.flatMap(g => g.items));
+    const card = (title, total, sub) => `<div class="bg-slate-50 border border-slate-100 rounded-xl p-3.5">
+          <div class="text-[11px] text-slate-500 font-medium">${esc(title)}</div>
+          <div class="text-xl font-bold text-slate-800 mt-1">${total}<span class="text-xs font-normal text-slate-400 ml-1">명</span></div>
+          <div class="text-[10px] text-slate-400 mt-1 leading-snug">${sub || '-'}</div>
         </div>`;
-    });
+    let countHtml = FUNNEL_V2.map(g => {
+        const per = g.items.map(i => [i, customerDbData.filter(c => custStatus(c) === i).length]);
+        const total = per.reduce((a, x) => a + x[1], 0);
+        return card(g.k, total, per.filter(x => x[1] > 0).map(x => esc(x[0]) + ' ' + x[1]).join(' · '));
+    }).join('');
+    const etc = customerDbData.filter(c => !known.has(custStatus(c)));
+    if(etc.length) countHtml += card('기타(미분류)', etc.length, [...new Set(etc.map(custStatus))].map(esc).join(' · '));
     if($('status-counts-grid'))$('status-counts-grid').innerHTML = countHtml;
 
     let tableHtml = '';
@@ -808,17 +810,13 @@ function renderCustomerDashboard() {
         tableHtml = `<tr><td colspan="5" class="text-center py-6 text-slate-400">등록된 고객 데이터가 없습니다.</td></tr>`;
     } else {
         customerDbData.forEach(c => {
-            const st = getStatus(c);
-            const dt = getDate(c);
-            let badgeColor = 'bg-slate-100 text-slate-600';
-            if(st === '설치예정') badgeColor = 'bg-blue-50 text-blue-600 border border-blue-200';
-            if(st === '설치완료' || st === '개통완료') badgeColor = 'bg-amber-50 text-amber-600 border border-amber-200';
-            if(st === '지급완료') badgeColor = 'bg-emerald-50 text-emerald-600 border border-emerald-200';
-
+            const st = custStatus(c), g = funnelGroupOf(st);
+            const nc = c.next_contact_at ? new Date(c.next_contact_at) : null;
+            const dt = c.install_date || c.date || c.schedule_date || c.target_date || (nc && !isNaN(nc.getTime()) ? '컨택 ' + ymd(nc) : '-');
             tableHtml += `<tr class="hover:bg-slate-50/80 transition-all">
               <td class="p-3 font-semibold text-slate-700">${esc(c.name || c.customer_name || '-')}</td>
               <td class="p-3 text-slate-500 font-mono">${esc(c.contact || c.phone || '-')}</td>
-              <td class="p-3"><span class="px-2.5 py-1 rounded-lg text-[11px] font-semibold ${badgeColor}">${esc(st)}</span></td>
+              <td class="p-3"><span class="px-2.5 py-1 rounded-lg text-[11px] font-semibold ${g ? g.cls : 'bg-slate-100 text-slate-600'}">${esc(st)}</span></td>
               <td class="p-3 text-slate-500 font-mono">${esc(dt)}</td>
               <td class="p-3 text-slate-400 font-mono text-[11px]">${esc(c.updated_at || c.created_at || '-')}</td>
             </tr>`;
@@ -860,25 +858,16 @@ function barsSvg(days, seriesArr, names, colors) {
 function renderCustomerCharts() {
     const pastBox = $('chart-past'), futBox = $('chart-future');
     if(!pastBox || !futBox || !customerDbData) return;
-    const getStatus = c => c.status || c.state || c.step || c.progress || '접수완료';
-    const getDate = c => c.install_date || c.date || c.schedule_date || c.target_date || '-';
 
     const pastDays = dayRange(-4, 5);
-    const installDone = pastDays.map(d => customerDbData.filter(c => {
-        const s = getStatus(c);
-        return (s === '설치완료' || s === '개통완료') && getDate(c) === d;
-    }).length);
-    const payDone = pastDays.map(d => customerDbData.filter(c => {
-        const s = getStatus(c);
-        const okStatus = s === '지급완료' || c.pay_status === '지급완료';
-        return okStatus && String(c.updated_at || '').slice(0,10) === d;
-    }).length);
-    pastBox.innerHTML = barsSvg(pastDays, [installDone, payDone], ['설치완료','지급완료'], ['#3b82f6','#6366f1']);
+    const perDay = (to, d) => new Set(customerLogs.filter(l => l.to_status === to && logDay(l) === d).map(l => l.customer_id)).size;
+    pastBox.innerHTML = barsSvg(pastDays, [pastDays.map(d => perDay('개통완료', d)), pastDays.map(d => perDay('지급완료', d))], ['개통완료','지급완료'], ['#3b82f6','#6366f1']);
 
     const futDays = dayRange(0, 5);
-    const installSched = futDays.map(d => customerDbData.filter(c => getStatus(c) === '설치예정' && getDate(c) === d).length);
-    futBox.innerHTML = barsSvg(futDays, [installSched], ['설치 예정'], ['#0ea5e9'])
-      + '<p class="text-[10px] text-slate-400 mt-2">컨택 예정 지표는 데이터 항목 확정 후 추가될 예정입니다.</p>';
+    const contactDay = c => { if(!c.next_contact_at) return ''; const d = new Date(c.next_contact_at); return isNaN(d.getTime()) ? '' : ymd(d); };
+    const contactCnt = futDays.map(d => customerDbData.filter(c => contactDay(c) === d).length);
+    futBox.innerHTML = barsSvg(futDays, [contactCnt], ['컨택 예정'], ['#0ea5e9'])
+      + '<p class="text-[10px] text-slate-400 mt-2">상담예약·고객부재 건의 다음 컨택 예정일 기준입니다. 설치 예정일 항목이 생기면 설치 예정도 추가할 수 있습니다.</p>';
 }
 
 function pushSoon() { clearTimeout(pushTimer); setSync('저장 중…'); pushTimer = setTimeout(pushRemote, 600); }
