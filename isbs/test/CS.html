@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<link rel="stylesheet" href="Styles.css?v=20260930e">
+<link rel="stylesheet" href="Styles.css?v=20260930f">
 </head>
 <body>
 <div class="wrap">
@@ -505,9 +505,9 @@
 
 <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
-<script src="config.js?v=20260930e"></script>
-<script src="Calculator.js?v=20260930e"></script>
-<script src="Supabaseservice.js?v=20260930e"></script>
+<script src="config.js?v=20260930f"></script>
+<script src="Calculator.js?v=20260930f"></script>
+<script src="Supabaseservice.js?v=20260930f"></script>
 <script>
 // 외부 파일 로드 점검: 파일 누락/내용 뒤바뀜(예: JS 자리에 CSS가 들어간 경우) 시 화면 상단에 경고 표시
 (function checkModules(){
@@ -2084,19 +2084,19 @@ let customerProductsMap = {};  // 고객조회 목록용 : customer_id -> custom
 let customerContactsMap = {};  // 고객조회 목록용 : customer_id -> customer_contacts 행 배열
 let detailCustomerId = null;   // 고객 상세 화면에 열려 있는 고객 ID
 
+// 삭제·통합된 예전 상태값(개통대기 등)을 현재 상태값으로 바꿔 줍니다 (config.js LEGACY_STATUS_MAP)
+function normalizeFunnelStatus(status){
+  return LEGACY_STATUS_MAP[status] || status;
+}
+
 function getFunnelStage(status){
-  if (PRE_STAGE_STATUSES.includes(status)) return 'wait';
-  const found = FUNNEL_STAGES.find(g => g.items.includes(status));
+  const s = normalizeFunnelStatus(status);
+  const found = FUNNEL_STAGES.find(g => g.items.includes(s));
   return found ? found.stage : 0;
 }
 
 function funnelStatusOptionsHtml(selected, includeAll){
   let html = includeAll ? `<option value="">상태값 전체</option>` : '';
-  html += `
-    <optgroup label="상담대기">
-      ${PRE_STAGE_STATUSES.map(v => `<option value="${v}" ${v === selected ? 'selected' : ''}>${v}</option>`).join('')}
-    </optgroup>
-  `;
   html += FUNNEL_STAGES.map(g => `
     <optgroup label="${g.label}">
       ${g.items.map(v => `<option value="${v}" ${v === selected ? 'selected' : ''}>${v}</option>`).join('')}
@@ -2385,7 +2385,7 @@ async function loadFunnelDashboard(){
   funnelDueCounts = { today: 0, overdue: 0 };
   const nowMs = Date.now(), todayKey = contactYmd(new Date());
   (data || []).forEach(r => {
-    const st = r.funnel_status || DEFAULT_FUNNEL_STATUS;
+    const st = normalizeFunnelStatus(r.funnel_status || DEFAULT_FUNNEL_STATUS);
     funnelDashboardCounts[st] = (funnelDashboardCounts[st] || 0) + 1;
     if ((st === CONTACT_CYCLE_STATUS || st === RESERVATION_STATUS) && r.next_contact_at) {
       const t = new Date(r.next_contact_at);
@@ -2704,7 +2704,7 @@ async function loadPerformance(btn){
     perfCustomers = rows;
 
     perfProdMap = {};
-    const ids = rows.filter(r => r.funnel_status === PERFORMANCE_LIST_STATUS).map(r => r.customer_id);
+    const ids = rows.filter(r => normalizeFunnelStatus(r.funnel_status) === PERFORMANCE_LIST_STATUS).map(r => r.customer_id);
     await probeCustomerSchema();
     if (ids.length && CUSTOMER_SCHEMA.hasProductsTable) {
       for (let i = 0; i < ids.length; i += 150) {
@@ -2740,7 +2740,7 @@ function renderPerformance(){
   const rows = perfCustomers || [];
   const total = rows.length;
   const counts = {};
-  rows.forEach(r => { const st = r.funnel_status || DEFAULT_FUNNEL_STATUS; counts[st] = (counts[st] || 0) + 1; });
+  rows.forEach(r => { const st = normalizeFunnelStatus(r.funnel_status || DEFAULT_FUNNEL_STATUS); counts[st] = (counts[st] || 0) + 1; });
   const pct = n => total ? (n / total * 100).toFixed(1) + '%' : '-';
   const sum = items => items.reduce((a, i) => a + (counts[i] || 0), 0);
 
@@ -2784,7 +2784,7 @@ function renderPerformance(){
 function renderPerformanceList(){
   const box = document.getElementById('perf-list');
   const title = document.getElementById('perf-list-title');
-  const custs = (perfCustomers || []).filter(r => r.funnel_status === PERFORMANCE_LIST_STATUS)
+  const custs = (perfCustomers || []).filter(r => normalizeFunnelStatus(r.funnel_status) === PERFORMANCE_LIST_STATUS)
     .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
   if (title) title.textContent = `${PERFORMANCE_LIST_STATUS} 리스트 (${custs.length}명)`;
   if (!custs.length) { box.innerHTML = `<div class="wide-table-empty">${escHtml(PERFORMANCE_LIST_STATUS)} 건이 없습니다.</div>`; return; }
