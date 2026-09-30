@@ -123,27 +123,36 @@ const CUSTOMER_TAG_GROUPS = [
 ];
 
 /* ---------- 5. 퍼널 상태값 · 대시보드 ---------- */
-// 인생비서 퍼널 상태값 (24개 · 5단계)
+// 인생비서 퍼널 상태값 (22개 · 6그룹, 그룹명은 2글자로 통일)
+//  - 상담 : 아직 계약 전 단계 (상담대기·상담예약·고객부재 포함)
+//  - 계약 : 접수완료 = 개통 대기 (설치 예정일 입력)
+//  - 지급 : 개통완료 이후 사은품 지급
+//  - 이탈(고객부재)는 3회 재안내 후에도 부재일 때 담당자가 직접 변경합니다 (자동 전환 없음)
 const FUNNEL_STAGES = [
-  { stage: 1, label: '1. 상담·계약', items: ['상품안내', '계약진행', '보류확인', '접수불가'] },
-  { stage: 2, label: '2. 설치', items: ['접수완료', '개통대기', '개통완료'] },
-  { stage: 3, label: '3. 사은품 지급', items: ['지급요청', '지급완료', '지급보류'] },
-  { stage: 4, label: '4. 환수', items: ['환수필요', '환수요청', '환수진행'] },
-  { stage: 0, label: '종결 및 이탈', items: ['종결(정상)', '이탈(기존유지)', '이탈(타사가입)', '종결(컨택불가)', '종결(오인입)', '종결(타부서)', '고객부재_종결'] }
+  { stage: 1, label: '상담', items: ['상담대기', '상담예약', '고객부재', '상품안내'] },
+  { stage: 2, label: '계약', items: ['계약진행', '보류확인', '접수불가', '접수완료'] },
+  { stage: 3, label: '지급', items: ['개통완료', '지급요청', '지급보류', '지급완료'] },
+  { stage: 4, label: '환수', items: ['환수필요', '환수요청', '환수진행', '환수완료'] },
+  { stage: 5, label: '종결', items: ['종결(정상)', '종결(오인입)', '종결(타부서)'] },
+  { stage: 6, label: '이탈', items: ['이탈(기존유지)', '이탈(타사가입)', '이탈(고객부재)'] }
 ];
+
+// 삭제·통합된 예전 상태값 -> 현재 상태값. DB에 예전 값이 남아 있어도 대시보드·실적·칩 색상이 현재 그룹으로 집계됩니다.
+// (DB 값 자체는 funnel_status_migration.sql 로 한 번 변환해 두는 것을 권장)
+const LEGACY_STATUS_MAP = {
+  '개통대기': '접수완료',
+  '고객부재_종결': '이탈(고객부재)',
+  '종결(컨택불가)': '이탈(고객부재)'
+};
 
 const DEFAULT_FUNNEL_STATUS = '상담대기';
 const RESERVATION_STATUS = '상담예약';
-// 아직 본 상담 전 단계로 취급하는 상태값들 (대시보드 "상담대기" 묶음에 함께 표시)
-const PRE_STAGE_STATUSES = [DEFAULT_FUNNEL_STATUS, RESERVATION_STATUS, '고객부재'];
+// 아직 본 상담 전 단계로 취급하는 상태값들 (대시보드 "상담" 묶음에 함께 표시)
+const PRE_STAGE_STATUSES = [DEFAULT_FUNNEL_STATUS, RESERVATION_STATUS, '고객부재'];   // 모두 '상담' 그룹 소속
 const NAME_PREFIX = '(인생비서)';
 
-// 퍼널 대시보드 : 상태값별 건수를 대분류(5단계+대기+종결)로 묶어 표시, 클릭 시 하위 상태값 건수 토글
-const DASHBOARD_GROUPS = [
-  { key: 'wait', label: '상담대기', items: PRE_STAGE_STATUSES },
-  ...FUNNEL_STAGES.filter(g => g.stage >= 1 && g.stage <= 4).map(g => ({ key: 's' + g.stage, label: g.label, items: g.items })),
-  ...FUNNEL_STAGES.filter(g => g.stage === 0).map(g => ({ key: 'done', label: g.label, items: g.items }))
-];
+// 퍼널 대시보드 : 상태값별 건수를 6그룹(상담·계약·지급·환수·종결·이탈)으로 묶어 표시, 클릭 시 하위 상태값 건수 토글
+const DASHBOARD_GROUPS = FUNNEL_STAGES.map(g => ({ key: 's' + g.stage, label: g.label, items: g.items }));
 
 /* ---------- 6. 고객부재 재안내(컨택) 규칙 ---------- */
 // 인생비서 "3-5 공통 규칙과 예외 처리" 기준. 규칙이 바뀌면 이 값만 고치면 됩니다.
@@ -161,7 +170,7 @@ const CONTACT_METHODS = ['전화', '문자', '카카오톡', '기타'];
 const CONTACT_RESULT_ABSENT = '부재';      // 미연결 · 무응답 → 다음 회차 자동 예약
 const CONTACT_RESULT_CONNECTED = '연결';   // 통화/응답 성공 → 재안내 중단
 const CONTACT_CYCLE_STATUS = '고객부재';           // 재안내 진행 중 상태값
-const CONTACT_CLOSED_STATUS = '고객부재_종결';      // 3회 모두 부재일 때 종결 상태값
+const CONTACT_CLOSED_STATUS = '이탈(고객부재)';     // 3회 모두 부재일 때 담당자가 직접 변경하는 상태값 (자동 전환 없음)
 const CONTACT_CONNECTED_STATUS = DEFAULT_FUNNEL_STATUS; // 연결되면 복귀할 상태값 (기본: 상담대기)
 
 // 영업일 계산용 공휴일 (주말은 코드에서 자동 제외). 형식 'YYYY-MM-DD'
@@ -188,8 +197,8 @@ const GUIDED_USIM_COLS = [80, 0, 72, 82, 88];
 
 
 /* ---------- 8. 실적조회 ---------- */
-// 유치 = 접수완료 이후 단계(설치 · 사은품 지급 · 환수)로 넘어간 건. 유치율 = 유치 건수 ÷ 전체 건수
-// 유치로 볼 상태값 범위를 바꾸려면 이 배열만 고치세요. (예: 환수 제외 → stage 2~3만)
-const PERFORMANCE_WON_STATUSES = FUNNEL_STAGES.filter(g => g.stage >= 2 && g.stage <= 4).flatMap(g => g.items);
+// 유치 = 접수완료 이후 단계(접수완료 · 지급 · 환수)로 넘어간 건. 유치율 = 유치 건수 ÷ 전체 건수
+// 유치로 볼 상태값 범위를 바꾸려면 이 배열만 고치세요. (예: 환수 제외 → stage 3만)
+const PERFORMANCE_WON_STATUSES = ['접수완료', ...FUNNEL_STAGES.filter(g => g.stage >= 3 && g.stage <= 4).flatMap(g => g.items)];
 // "접수완료 리스트"에 보여줄 상태값
 const PERFORMANCE_LIST_STATUS = '접수완료';
