@@ -57,7 +57,7 @@
                 <button id="auth-btn" onclick="authClick()" class="text-xs font-semibold text-blue-600 hover:underline shrink-0 ml-2"></button>
             </div>
             <div class="flex items-center justify-between text-[11px] text-slate-400">
-                <span id="sync-state"></span><span class="font-mono">v2.8.0</span>
+                <span id="sync-state"></span><span class="font-mono">v2.9.0</span>
             </div>
             <div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
                 <button onclick="exportData()" class="hover:text-blue-600">내보내기</button>
@@ -308,6 +308,45 @@
                 <div class="flex justify-end space-x-2 pt-2">
                     <button type="button" onclick="closeCeoTask()" class="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl">취소</button>
                     <button type="submit" class="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl">저장</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+    <!-- 최우선과제 일자별 지표 입력 -->
+    <div id="cd-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100">
+            <div class="flex justify-between items-center pb-4 mb-4 border-b border-slate-100">
+                <h3 id="cd-title" class="font-bold text-slate-800 text-base">일자 데이터 추가</h3>
+                <button onclick="closeCeoDay()" class="text-slate-400 hover:text-slate-600 text-lg"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form onsubmit="submitCeoDay(event)" class="space-y-4">
+                <div><label class="block text-xs font-bold text-slate-600 mb-1">일자</label>
+                    <input type="date" id="cd-date" required class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"></div>
+                <div id="cd-fields" class="grid grid-cols-2 gap-3"></div>
+                <div class="flex justify-end space-x-2 pt-2">
+                    <button type="button" onclick="closeCeoDay()" class="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl">취소</button>
+                    <button type="submit" class="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl">저장</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 최우선과제 엑셀 붙여넣기 -->
+    <div id="cp-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-100">
+            <div class="flex justify-between items-center pb-4 mb-4 border-b border-slate-100">
+                <h3 class="font-bold text-slate-800 text-base">엑셀 데이터 붙여넣기</h3>
+                <button onclick="closeCeoPaste()" class="text-slate-400 hover:text-slate-600 text-lg"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form onsubmit="submitCeoPaste(event)" class="space-y-3">
+                <p id="cp-help" class="text-[11px] text-slate-500 leading-relaxed"></p>
+                <textarea id="cp-text" rows="9" oninput="previewCeoPaste()" placeholder="엑셀에서 복사한 일자별 데이터를 여기에 붙여넣으세요" class="w-full px-3 py-2 text-xs font-mono border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"></textarea>
+                <div id="cp-preview" class="text-[11px] text-blue-600 min-h-[16px]"></div>
+                <div class="flex justify-end space-x-2 pt-1">
+                    <button type="button" onclick="closeCeoPaste()" class="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl">취소</button>
+                    <button type="submit" class="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl">가져오기</button>
                 </div>
             </form>
         </div>
@@ -705,6 +744,7 @@ async function fetchCustomerData() {
     if(!sb) {
         customerDbData = getSimulatedCustomerData(); customerLogs = [];
         renderCustomerDashboard();
+        if(view === 'ceo') renderCeoView();
         return;
     }
     try {
@@ -723,6 +763,7 @@ async function fetchCustomerData() {
         customerLogs = r.error ? [] : (r.data || []);
     } catch(e) { customerLogs = []; }
     renderCustomerDashboard();
+    if(view === 'ceo') renderCeoView();
 }
 
 function getSimulatedCustomerData() {
@@ -1282,7 +1323,7 @@ function renderGoals() {
 const CEO_KEYS = ['ceo-web','ceo-sys','ceo-ad'];
 const CEO_DEFS = {
  'ceo-web': { title:'대표 지시 > 홈페이지 고도화', sub:'AI로 구성·문안을 먼저 고도화한 뒤 웹디자이너가 디자인·세부 작업 진행', dept:'마케팅/상품팀', icon:'fa-globe', priority:'높음', goal:'전환율 개선',
-   metrics:[{t:'고도화 완료 페이지·섹션',unit:'개',dir:'up',cur:'0',tar:''},{t:'홈페이지 전환율 (방문→상담신청)',unit:'%',dir:'up',cur:'',tar:''}],
+   metrics:[{t:'고도화 완료 페이지·섹션',unit:'개',dir:'up',cur:'0',tar:''}], daily:[], mtargets:{},
    tasks:[
     {title:'[사전작업] 현재 홈페이지 전환율 파악 (방문 → 상담 신청)', status:'todo', dept:'마케팅/상품팀'},
     {title:'[사전작업] 경쟁업체 홈페이지 현황 파악', status:'todo', dept:'마케팅/상품팀'},
@@ -1290,7 +1331,7 @@ const CEO_DEFS = {
     {title:'웹디자이너에게 구성·문안 전달 및 디자인·세부 작업 진행', status:'todo', dept:'마케팅/상품팀'},
     {title:'개선 홈페이지 적용 후 전환율 재측정·비교', status:'todo', dept:'마케팅/상품팀'}
    ]},
- 'ceo-sys': { title:'대표 지시 > 프로그램 시스템화', sub:'개발자와 소통하며 운영에 필요한 기능 반영, 최소 인력으로 운영 가능한 구조', dept:'운영혁신팀', icon:'fa-gears', priority:'높음', goal:'최소 인력으로 운영 가능한 구조',
+ 'ceo-sys': { title:'대표 지시 > CRM 고도화', sub:'프로그램 시스템화 · 개발자와 소통하며 운영에 필요한 기능을 반영해, 최소 인력으로 운영 가능한 구조를 만듭니다', dept:'운영혁신팀', icon:'fa-gears', priority:'높음', goal:'최소 인력으로 운영 가능한 구조',
    metrics:[{t:'운영 필수 기능 반영 완료',unit:'개',dir:'up',cur:'0',tar:''}],
    tasks:[
     {title:'[사전작업] 현재 프로그램 현황 파악', status:'todo', dept:'운영혁신팀'},
@@ -1299,7 +1340,7 @@ const CEO_DEFS = {
     {title:'반영된 기능 확인·검수 (최소 인력 운영 기준)', status:'todo', dept:'운영혁신팀'}
    ]},
  'ceo-ad': { title:'대표 지시 > 광고 매출 확대', sub:'일 광고비 10만원 집행, 광고비 대비 매출 2배 이상 목표', dept:'마케팅/상품팀', icon:'fa-bullhorn', priority:'높음', goal:'광고비 대비 매출 2배 이상 (일 20만원 이상)',
-   metrics:[{t:'일 매출 (광고비 10만원 기준)',unit:'만원',dir:'up',cur:'0',tar:'20'},{t:'일 유치 건수 (건당 10만원)',unit:'건',dir:'up',cur:'0',tar:'2'}],
+   metrics:[{t:'일 매출 (광고비 10만원 기준)',unit:'만원',dir:'up',cur:'0',tar:'20'},{t:'일 유치 건수 (건당 10만원)',unit:'건',dir:'up',cur:'0',tar:'2'}], daily:[], mtargets:{},
    tasks:[
     {title:'일 광고비 10만원 집행 시작', status:'todo', dept:'마케팅/상품팀'},
     {title:'광고 유입 고객이 방치되지 않도록 체계적 관리 (인입 → 컨택 기준 마련)', status:'todo', dept:'CS실'},
@@ -1321,6 +1362,15 @@ function ensureCeo() {
         if(!taskData[k]) { taskData[k] = JSON.parse(JSON.stringify(CEO_DEFS[k])); changed = true; }
         else if(!Array.isArray(taskData[k].metrics)) { taskData[k].metrics = JSON.parse(JSON.stringify(CEO_DEFS[k].metrics)); changed = true; }
     });
+    ['ceo-web','ceo-ad'].forEach(k => {
+        if(!Array.isArray(taskData[k].daily)) { taskData[k].daily = []; changed = true; }
+        if(!taskData[k].mtargets || typeof taskData[k].mtargets !== 'object') { taskData[k].mtargets = {}; changed = true; }
+    });
+    if(meta.ceoNames !== '2026-10-01') {   // 탭 이름 확정(CRM 고도화) + 수동 전환율 지표는 실제 지표로 대체
+        taskData['ceo-sys'].title = CEO_DEFS['ceo-sys'].title; taskData['ceo-sys'].sub = CEO_DEFS['ceo-sys'].sub;
+        taskData['ceo-web'].metrics = (taskData['ceo-web'].metrics || []).filter(m => !(/^홈페이지 전환율/.test(m.t) && (m.cur === '' || m.cur == null) && (m.tar === '' || m.tar == null)));
+        meta.ceoNames = '2026-10-01'; changed = true;
+    }
     const keys = Object.keys(taskData);
     if(CEO_KEYS.some((k,i) => keys[i] !== k)) {
         const o = {}; CEO_KEYS.forEach(k => o[k] = taskData[k]);
@@ -1345,6 +1395,7 @@ function renderCeoFocus() {
           <div class="flex items-center justify-between gap-2"><span class="text-[11px] font-extrabold text-rose-600">최우선 ${i+1}</span><span class="text-lg font-bold text-slate-800">${p}%</span></div>
           <div class="text-sm font-bold text-slate-800 mt-1">${esc(shortT(c))}</div>
           <div class="text-[11px] text-slate-500 mt-0.5">목표: ${esc(c.goal||'')}</div>
+          <div class="text-[11px] text-blue-600 font-semibold mt-0.5">${esc(ceoKeyLine(k))}</div>
           <div class="h-1.5 bg-slate-100 rounded-full my-2.5 overflow-hidden"><div class="h-full bg-rose-500" style="width:${p}%"></div></div>
           <div class="text-[11px] text-slate-500">완료 ${n('done')}/${c.tasks.length} · 진행 ${n('doing')+n('review')}${l?` · <span class="text-rose-600 font-semibold">지연 ${l}</span>`:''}</div>
           ${next ? `<div class="text-[11px] text-slate-600 mt-1.5 truncate"><i class="fa-solid fa-arrow-right text-rose-400 mr-1"></i>${esc(next.title)}</div>` : ''}
@@ -1379,7 +1430,7 @@ function cacheLocal() { try { localStorage.setItem('isbs_cache_v4', JSON.stringi
 function refreshAll() { render(); }
 function filterStatus(s) { currentStatusFilter = s; render(); }
 function setQuery(v) { query = v.trim().toLowerCase(); render(); }
-let ceoSel = 'ceo-web', ceoEditIdx = null, cmEditIdx = null;
+let ceoSel = 'all', ceoEditIdx = null, cmEditIdx = null;
 function go(v,k) { view = v; if(v === 'tasks') currentCategory = k || 'all'; if(v === 'ceo' && k) ceoSel = k; render(); if($('main-scroll'))$('main-scroll').scrollTop = 0; }
 function selectCategory(k) { go(CEO_KEYS.includes(k) ? 'ceo' : 'tasks', k); }
 
@@ -1390,8 +1441,9 @@ function render() {
     });
     if($('task-tools'))$('task-tools').classList.toggle('hidden', view !== 'tasks');
     const c = view === 'tasks' && currentCategory !== 'all' ? taskData[currentCategory] : null, t = VIEWS[view];
-    if($('header-title'))$('header-title').innerText = c ? c.title : (view === 'tasks' ? '전체 업무' : t[0]);
-    if($('header-desc'))$('header-desc').innerText = c ? `${c.sub} [담당 R&R: ${c.dept}]` : (view === 'tasks' ? '내부·외부 전체 영역의 업무를 봅니다' : t[1]);
+    const ceoSub = view === 'ceo' && ceoSel !== 'all' && taskData[ceoSel] ? taskData[ceoSel] : null;
+    if($('header-title'))$('header-title').innerText = ceoSub ? '최우선과제 › ' + shortT(ceoSub) : (c ? c.title : (view === 'tasks' ? '전체 업무' : t[0]));
+    if($('header-desc'))$('header-desc').innerText = ceoSub ? `${ceoSub.sub} [담당 R&R: ${ceoSub.dept}]` : (c ? `${c.sub} [담당 R&R: ${c.dept}]` : (view === 'tasks' ? '내부·외부 전체 영역의 업무를 봅니다' : t[1]));
     if($('last-update-time'))$('last-update-time').innerText = lastUpdateTime;
     renderNav();
     if(view === 'dash') { renderCeoFocus(); renderSummary(); renderCards(); renderDiag(); renderAttn(); }
@@ -1403,7 +1455,7 @@ function render() {
 }
 
 function renderNav() {
-    const on = (v,k) => view === v;
+    const on = (v,k) => v === 'ceo' ? (view === 'ceo' && ceoSel === 'all') : view === v;
     const B = (v,k,ic,label,badge) => `<button onclick="go('${v}'${k?`,'${k}'`:''})" class="nav-btn w-full flex items-center justify-between px-3.5 py-2 rounded-lg text-xs transition-all ${on(v,k)?'font-semibold bg-blue-50 text-blue-600 border border-blue-100':'font-medium text-slate-600 hover:bg-slate-100'}"><span class="flex items-center min-w-0"><i class="fa-solid ${esc(ic)} mr-2.5 w-4 text-center"></i><span class="truncate">${esc(label)}</span></span>${badge===''?'':`<span class="text-[11px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">${badge}</span>`}</button>`;
     const keys = Object.keys(taskData);
     const remain = dailyTasks.filter(x => !x.done).length + weeklyGoals.filter(x => !x.done).length + routineIncomplete();
@@ -1411,7 +1463,8 @@ function renderNav() {
 
     if($('nav')) {$('nav').innerHTML = B('dash','','fa-gauge-high','대시보드','')
          + B('customers','','fa-users','고객 현황','실시간')
-         + B('ceo','','fa-star','최우선과제',openN('ceo'))
+         + B('ceo','all','fa-star','최우선과제',openN('ceo'))
+         + `<div class="ml-4 pl-1 border-l border-rose-100 space-y-0.5 mb-1">${CEO_KEYS.filter(k => taskData[k]).map(k => `<button onclick="go('ceo','${k}')" class="nav-btn w-full flex items-center justify-between pl-3 pr-3 py-1.5 rounded-lg text-[11px] transition-all ${view==='ceo'&&ceoSel===k?'font-semibold bg-rose-50 text-rose-600 border border-rose-100':'font-medium text-slate-500 hover:bg-slate-100'}"><span class="flex items-center min-w-0"><i class="fa-solid ${esc(taskData[k].icon||'fa-circle')} mr-2 w-3.5 text-center text-[10px]"></i><span class="truncate">${esc(shortT(taskData[k]))}</span></span><span class="text-[10px] text-slate-400 shrink-0">${openN(k)}</span></button>`).join('')}</div>`
          + B('tasks','all','fa-border-all','업무관리',openAll)
          + B('goals','','fa-flag','부서별 목표','')
          + B('today','','fa-calendar-check','오늘·이번 주',remain);
@@ -1463,7 +1516,7 @@ function ceoBar(p, color) { return `<div class="h-2 bg-slate-100 rounded-full ov
 
 function renderCeoView() {
     const box = $('ceo-panel'); if(!box) return;
-    if(!CEO_KEYS.includes(ceoSel) || !taskData[ceoSel]) ceoSel = CEO_KEYS.find(k => taskData[k]);
+    if(ceoSel === 'all' || !CEO_KEYS.includes(ceoSel) || !taskData[ceoSel]) { ceoSel = 'all'; renderCeoOverview(); return; }
     const c = taskData[ceoSel]; if(!c) { box.innerHTML = ''; return; }
     const tasks = c.tasks, active = tasks.filter(t => t.status !== 'hold'), doneN = tasks.filter(t => t.status === 'done').length;
     const autoP = active.length ? Math.round(doneN / active.length * 100) : 0, p = pct(tasks);
@@ -1508,7 +1561,6 @@ function renderCeoView() {
     }).join('') : '<div class="text-center py-6 text-xs text-slate-400">등록된 하위 업무가 없습니다.</div>';
 
     box.innerHTML = `
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">${tabs}</div>
       <div class="bg-white rounded-2xl border border-rose-100 p-6 shadow-sm">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div class="min-w-0"><div class="text-[11px] font-bold text-rose-500">대표님 지시 · 담당 ${esc(c.dept)}</div>
@@ -1518,6 +1570,7 @@ function renderCeoView() {
         </div>
         <div class="mt-3">${ceoBar(p)}</div>
       </div>
+      ${ceoMetricsHtml(ceoSel)}
       <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
         <div class="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
           <h3 class="font-bold text-slate-800 text-sm flex items-center"><i class="fa-solid fa-bullseye text-blue-600 mr-2"></i> 목표</h3>
@@ -1539,6 +1592,281 @@ function renderCeoView() {
         </div>
         <div class="space-y-2.5">${taskRows}</div>
       </div>`;
+}
+
+// ===== 최우선과제 실제 지표 : 일자별 데이터 → 주별·월별 자동 집계 =====
+const CEO_METRIC_CFG = {
+ 'ceo-web': {
+  title:'홈페이지 실제 지표',
+  cols:[{k:'visit',l:'방문자',u:'명',al:['방문','접속','유입','세션','visit']},{k:'inq',l:'상담신청',u:'건',al:['상담','신청','문의']},{k:'apply',l:'인터넷 접수',u:'건',al:['접수','가입']}],
+  rates:[{k:'conv',l:'전환율',desc:'방문자 대비 상담신청',num:'inq',den:'visit'},{k:'arate',l:'접수율',desc:'상담신청 대비 인터넷 가입 접수',num:'apply',den:'inq'}],
+  e2e:{l:'방문 대비 접수',num:'apply',den:'visit'}
+ },
+ 'ceo-ad': {
+  title:'광고 실제 지표',
+  cols:[{k:'cost',l:'광고비',u:'만원',al:['광고비','비용','cost']},{k:'lead',l:'인입',u:'건',al:['인입','유입','문의','신청']},{k:'apply',l:'접수',u:'건',al:['접수','가입']},{k:'sales',l:'매출',u:'만원',al:['매출','수수료']}],
+  rates:[{k:'roas',l:'광고비 대비 매출',desc:'매출 ÷ 광고비 (목표 2배 이상)',num:'sales',den:'cost',mode:'x'},{k:'arate',l:'접수율',desc:'인입 대비 접수',num:'apply',den:'lead'}]
+ }
+};
+let ceoMonthSel = {}, ceoDayEdit = null;
+const WD = ['일','월','화','수','목','금','토'];
+const pad2 = n => String(n).padStart(2,'0');
+const dstr = (y,m,d) => `${y}-${pad2(m)}-${pad2(d)}`;
+const monthOf = d => String(d).slice(0,7);
+const monthLabel = m => `${m.slice(0,4)}년 ${+m.slice(5,7)}월`;
+const nv = v => (v === '' || v == null || isNaN(+v)) ? 0 : +v;
+const fmtN = v => (Math.round(v*10)/10).toLocaleString();
+const curMonthStr = () => { const n = new Date(); return `${n.getFullYear()}-${pad2(n.getMonth()+1)}`; };
+
+function parseDay(str, defY) {
+    str = String(str || '').trim();
+    let m = str.match(/(\d{4})\s*[.\-\/년]\s*(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})/), y, mo, d;
+    if(m) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+    else { m = str.match(/(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})/); if(!m) return ''; y = defY; mo = +m[1]; d = +m[2]; }
+    const t = new Date(y, mo-1, d);
+    return (t.getFullYear() === y && t.getMonth() === mo-1 && t.getDate() === d) ? dstr(y,mo,d) : '';
+}
+function parseNum(v) { const t = String(v == null ? '' : v).replace(/[,\s명건원%]/g, ''); return (t === '' || isNaN(+t)) ? '' : +t; }
+
+function parsePasteRows(text, cfg, defY) {
+    const lines = String(text || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const split = l => l.indexOf('\t') >= 0 ? l.split('\t') : (l.indexOf(',') >= 0 ? l.split(',') : l.split(/\s+/));
+    let map = cfg.cols.map((c,i) => i+1), start = 0;
+    if(lines.length && !/\d/.test(split(lines[0])[0])) {   // 첫 줄이 항목명이면 이름으로 열을 찾습니다
+        start = 1;
+        const m2 = cfg.cols.map(() => -1);
+        split(lines[0]).forEach((h,i) => {
+            if(i === 0 || /[율%]/.test(h)) return;
+            const j = cfg.cols.findIndex((c,jj) => m2[jj] < 0 && c.al.some(a => h.indexOf(a) >= 0));
+            if(j >= 0) m2[j] = i;
+        });
+        if(m2.some(x => x >= 0)) map = m2;
+    }
+    const rows = []; let skipped = 0;
+    for(let i = start; i < lines.length; i++) {
+        const p = split(lines[i]), d = parseDay(p[0], defY);
+        if(!d) { skipped++; continue; }
+        const r = {d};
+        cfg.cols.forEach((c,j) => { if(map[j] >= 0 && map[j] < p.length) r[c.k] = parseNum(p[map[j]]); });
+        rows.push(r);
+    }
+    return {rows, skipped, mapped: map};
+}
+
+const sumDays = (rows, cfg) => { const o = {n: rows.length}; cfg.cols.forEach(c => o[c.k] = rows.reduce((a,r) => a + nv(r[c.k]), 0)); return o; };
+const rateOf = (rt, s) => s[rt.den] > 0 ? s[rt.num] / s[rt.den] : null;
+const fmtR = (rt, v) => v == null ? '-' : (rt.mode === 'x' ? v.toFixed(2) + '배' : (v*100).toFixed(1) + '%');
+const fmtT = (rt, t) => rt.mode === 'x' ? (+t).toFixed(2) + '배' : (+t).toFixed(1) + '%';
+const tgtRatio = (rt, t) => rt.mode === 'x' ? +t : +t / 100;
+const attain = (rt, v, t) => (v == null || !(tgtRatio(rt,t) > 0)) ? null : Math.min(100, Math.round(v / tgtRatio(rt,t) * 100));
+const roundT = (rt, v) => rt.mode === 'x' ? Math.round(v*100)/100 : Math.round(v*1000)/10;   // 비율 → 목표 입력 단위(%, 배)
+
+function weeksOf(rows, month, cfg) {   // 월~일 기준 주차 (월 경계에서 잘린 주는 그 달 날짜만 포함)
+    const [y,m] = month.split('-').map(Number), last = new Date(y, m, 0).getDate(), W = {};
+    const first = new Date(y, m-1, 1), mon1 = new Date(y, m-1, 1 - (first.getDay()+6)%7);
+    rows.filter(r => monthOf(r.d) === month).forEach(r => {
+        const dt = new Date(y, m-1, +r.d.slice(8,10)), mon = new Date(y, m-1, dt.getDate() - (dt.getDay()+6)%7);
+        const key = dstr(mon.getFullYear(), mon.getMonth()+1, mon.getDate());
+        (W[key] = W[key] || {mon, rows: []}).rows.push(r);
+    });
+    return Object.keys(W).sort().map(k => {
+        const w = W[k], sun = new Date(w.mon.getFullYear(), w.mon.getMonth(), w.mon.getDate()+6);
+        const st = (w.mon.getFullYear() === y && w.mon.getMonth() === m-1) ? w.mon : first;
+        const en = (sun.getFullYear() === y && sun.getMonth() === m-1) ? sun : new Date(y, m-1, last);
+        const no = Math.round((Date.UTC(w.mon.getFullYear(), w.mon.getMonth(), w.mon.getDate()) - Date.UTC(mon1.getFullYear(), mon1.getMonth(), mon1.getDate())) / 864e5 / 7) + 1;
+        return {no, label: `${st.getMonth()+1}/${st.getDate()}~${en.getMonth()+1}/${en.getDate()}`, sum: sumDays(w.rows, cfg)};
+    });
+}
+const ceoDaily = c => Array.isArray(c.daily) ? c.daily : [];
+const ceoMonthsWithData = c => [...new Set(ceoDaily(c).map(r => monthOf(r.d)))].sort();
+function ceoMonths(c) { const set = new Set(ceoMonthsWithData(c)); set.add(curMonthStr()); return [...set].sort(); }
+function ceoCurMonth(k) { if(ceoMonthSel[k]) return ceoMonthSel[k]; const ms = ceoMonthsWithData(taskData[k]); return ms.length ? ms[ms.length-1] : curMonthStr(); }
+function ceoSetMonth(m) { ceoMonthSel[ceoSel] = m; renderCeoView(); }
+
+function miniBars(labels, vals, rt, color) {
+    const n = labels.length, W = Math.max(240, n*64), H = 124, top = 20, bot = 22, mx = Math.max(...vals.map(v => v || 0), 1e-9), bw = Math.min(38, W/n*0.55);
+    let g = '';
+    vals.forEach((v,i) => {
+        const cx = (i+.5)*W/n, h = v == null ? 0 : Math.round(v/mx*(H-top-bot)), y = H-bot-h;
+        g += `<rect x="${cx-bw/2}" y="${y}" width="${bw}" height="${h}" rx="3" fill="${color}"/><text x="${cx}" y="${y-5}" text-anchor="middle" font-size="10" fill="#475569">${fmtR(rt,v)}</text><text x="${cx}" y="${H-7}" text-anchor="middle" font-size="10" fill="#94a3b8">${esc(labels[i])}</text>`;
+    });
+    return `<svg viewBox="0 0 ${W} ${H}" class="w-full" style="max-height:140px">${g}</svg>`;
+}
+
+function ceoMetricsHtml(k) {
+    if(k === 'ceo-sys') return crmMetricsHtml();
+    const cfg = CEO_METRIC_CFG[k], c = taskData[k]; if(!cfg || !c) return '';
+    const all = ceoDaily(c), months = ceoMonths(c), month = ceoCurMonth(k);
+    const rows = all.filter(r => monthOf(r.d) === month).sort((a,b) => a.d < b.d ? -1 : 1);
+    const sum = sumDays(rows, cfg), tg = (c.mtargets || {})[month] || {}, weeks = weeksOf(rows, month, cfg);
+    const th = t => `<th class="px-2.5 py-2 text-left font-semibold whitespace-nowrap">${t}</th>`;
+    const td = (t, cls) => `<td class="px-2.5 py-2 whitespace-nowrap ${cls||''}">${t}</td>`;
+    const kpi = (label, val, sub, extra, tint) => `<div class="rounded-xl ${tint||'bg-slate-50 border-slate-100'} border p-3"><div class="text-[11px] text-slate-500">${label}</div><div class="text-xl font-bold text-slate-800 mt-0.5">${val}</div><div class="text-[10px] text-slate-400 mt-0.5">${sub}</div>${extra||''}</div>`;
+    const tgtExtra = (rt, v) => { const t = tg[rt.k]; if(t == null || t === '') return '<div class="text-[10px] text-slate-300 mt-1.5">월 목표 미설정</div>'; const at = attain(rt, v, t); return `<div class="mt-1.5 text-[10px] text-slate-500">목표 ${fmtT(rt,t)} · 달성 <b class="text-slate-700">${at == null ? '-' : at + '%'}</b></div>${ceoBar(at || 0, 'bg-rose-500')}`; };
+
+    const empty = !all.length;
+    const baseMonth = rows.length ? month : (ceoMonthsWithData(c).filter(m => m < month).pop() || ceoMonthsWithData(c).slice(-1)[0] || '');
+    const baseRows = baseMonth ? all.filter(r => monthOf(r.d) === baseMonth) : [];
+    const baseSum = sumDays(baseRows, cfg), baseWeeks = baseMonth ? weeksOf(baseRows, baseMonth, cfg) : [];
+
+    // 월 합계 카드
+    const cards = rows.length ? `<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        ${cfg.cols.map(col => kpi(`${monthLabel(month)} ${col.l}`, fmtN(sum[col.k]) + `<span class="text-xs font-normal text-slate-400 ml-0.5">${col.u}</span>`, `일평균 ${fmtN(sum[col.k]/rows.length)}${col.u} · ${rows.length}일 데이터`)).join('')}
+        ${cfg.rates.map(rt => { const v = rateOf(rt, sum); return kpi(`${monthLabel(month)} ${rt.l}`, fmtR(rt, v), rt.desc, tgtExtra(rt, v), 'bg-rose-50/50 border-rose-100'); }).join('')}
+      </div>` : '';
+
+    // 주별 표 + 차트
+    const wRows = weeks.map((w,i) => `<tr class="border-t border-slate-100">${td('<b>' + w.no + '주차</b>')}${td(w.label, 'text-slate-500')}${td(w.sum.n + '일', 'text-slate-400')}${cfg.cols.map(col => td(fmtN(w.sum[col.k]))).join('')}${cfg.rates.map(rt => {
+        const v = rateOf(rt, w.sum), pv = i ? rateOf(rt, weeks[i-1].sum) : null;
+        const dl = (v != null && pv != null) ? (rt.mode === 'x' ? v - pv : (v - pv)*100) : null;
+        return td(`<b>${fmtR(rt, v)}</b>${dl == null ? '' : `<span class="ml-1 text-[10px] ${dl >= 0 ? 'text-emerald-600' : 'text-rose-500'}">${dl >= 0 ? '▲' : '▼'}${Math.abs(dl).toFixed(rt.mode === 'x' ? 2 : 1)}</span>`}`);
+    }).join('')}</tr>`).join('');
+    const weekHtml = rows.length ? `<div class="mb-5"><div class="text-xs font-bold text-slate-700 mb-2">주별 현황 <span class="font-normal text-slate-400">(월~일 기준 · 월 경계 주는 해당 월 날짜만 집계 · ▲▼ 전주 대비)</span></div>
+        <div class="overflow-x-auto rounded-xl border border-slate-200"><table class="w-full text-xs"><thead class="bg-slate-50 text-slate-500"><tr>${th('주차')}${th('기간')}${th('일수')}${cfg.cols.map(col => th(col.l)).join('')}${cfg.rates.map(rt => th(rt.l)).join('')}</tr></thead><tbody>${wRows}
+        <tr class="border-t-2 border-slate-200 bg-slate-50 font-semibold">${td('월 합계')}${td('')}${td(rows.length + '일')}${cfg.cols.map(col => td(fmtN(sum[col.k]))).join('')}${cfg.rates.map(rt => td(fmtR(rt, rateOf(rt, sum)))).join('')}</tr></tbody></table></div>
+        <div class="grid grid-cols-1 md:grid-cols-${cfg.rates.length} gap-4 mt-3">${cfg.rates.map((rt,i) => `<div class="rounded-xl border border-slate-100 p-3"><div class="text-[11px] font-semibold text-slate-600 mb-1">주별 ${rt.l}</div>${miniBars(weeks.map(w => w.no + '주차'), weeks.map(w => rateOf(rt, w.sum)), rt, i ? '#6366f1' : '#f43f5e')}</div>`).join('')}</div></div>`
+      : `<div class="text-center py-6 text-xs text-slate-400 mb-4">${empty ? '아직 일자별 데이터가 없습니다. 엑셀에서 일자별 데이터를 복사해 [엑셀 붙여넣기]로 넣어주세요.' : monthLabel(month) + ' 데이터가 없습니다.'}</div>`;
+
+    // 월별 추이
+    const mm = ceoMonthsWithData(c).concat(Object.keys(c.mtargets || {})).filter((m,i,a) => a.indexOf(m) === i).sort();
+    const monthTbl = mm.length ? `<div class="mb-5"><div class="text-xs font-bold text-slate-700 mb-2">월별 추이</div><div class="overflow-x-auto rounded-xl border border-slate-200"><table class="w-full text-xs"><thead class="bg-slate-50 text-slate-500"><tr>${th('월')}${cfg.cols.map(col => th(col.l)).join('')}${cfg.rates.map(rt => th(rt.l + ' (목표·달성)')).join('')}</tr></thead><tbody>
+        ${mm.map(m => { const r2 = all.filter(r => monthOf(r.d) === m), s2 = sumDays(r2, cfg), t2 = (c.mtargets || {})[m] || {};
+          return `<tr class="border-t border-slate-100 ${m === month ? 'bg-rose-50/40' : ''}">${td('<b>' + monthLabel(m) + '</b>')}${cfg.cols.map(col => td(r2.length ? fmtN(s2[col.k]) : '-')).join('')}${cfg.rates.map(rt => { const v = r2.length ? rateOf(rt, s2) : null, t = t2[rt.k]; const at = (t != null && t !== '') ? attain(rt, v, t) : null;
+            return td(`<b>${fmtR(rt, v)}</b>${(t != null && t !== '') ? `<div class="text-[10px] text-slate-400">목표 ${fmtT(rt,t)}${at == null ? '' : ' · ' + at + '%'}</div>` : ''}`); }).join('')}</tr>`; }).join('')}</tbody></table></div></div>` : '';
+
+    // 현재 기준 분석
+    const facts = [];
+    if(baseRows.length) {
+        const dAvg = col => fmtN(baseSum[col.k] / baseRows.length) + col.u;
+        facts.push(`${monthLabel(baseMonth)} ${baseRows.length}일 기준 일평균 — ${cfg.cols.map(col => col.l + ' ' + dAvg(col)).join(' · ')}`);
+        cfg.rates.forEach(rt => {
+            facts.push(`${rt.l} ${fmtR(rt, rateOf(rt, baseSum))} (${rt.desc})`);
+            const ws = baseWeeks.map(w => ({no: w.no, v: rateOf(rt, w.sum), n: w.sum.n})).filter(w => w.v != null);
+            if(ws.length >= 2) { const hi = ws.reduce((a,b) => b.v > a.v ? b : a), lo = ws.reduce((a,b) => b.v < a.v ? b : a); facts.push(`${rt.l} 주별 최고 ${hi.no}주차 ${fmtR(rt, hi.v)} / 최저 ${lo.no}주차 ${fmtR(rt, lo.v)}`); }
+            const dv = baseRows.map(r => { const s1 = sumDays([r], cfg); return rateOf(rt, s1); }).filter(v => v != null);
+            if(dv.length) facts.push(`${rt.l} 일별 범위 ${fmtR(rt, Math.min(...dv))} ~ ${fmtR(rt, Math.max(...dv))}`);
+        });
+        if(cfg.e2e) { const v = baseSum[cfg.e2e.den] > 0 ? baseSum[cfg.e2e.num] / baseSum[cfg.e2e.den] : null; facts.push(`${cfg.e2e.l}(전체 구간) ${v == null ? '-' : (v*100).toFixed(2) + '%'}`); }
+    }
+    const analysis = `<div class="rounded-xl border border-slate-200 p-4"><div class="text-xs font-bold text-slate-700 mb-2"><i class="fa-solid fa-magnifying-glass-chart text-blue-600 mr-1.5"></i>현재 기준 분석 <span class="font-normal text-slate-400">${baseMonth ? '(' + monthLabel(baseMonth) + ' 데이터 기준)' : ''}</span></div>
+        ${facts.length ? `<ul class="text-xs text-slate-600 space-y-1 list-disc pl-4">${facts.map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : '<div class="text-xs text-slate-400">데이터가 들어오면 현재 수준(기준선)이 자동으로 분석됩니다.</div>'}</div>`;
+
+    // 월 목표 설정
+    const targetBox = `<div class="rounded-xl border border-slate-200 p-4"><div class="text-xs font-bold text-slate-700 mb-1"><i class="fa-solid fa-bullseye text-rose-500 mr-1.5"></i>${monthLabel(month)} 목표 설정 <span class="font-normal text-slate-400">(월별로 정하고 점진적으로 조정)</span></div>
+        <div class="space-y-3 mt-2">${cfg.rates.map(rt => {
+            const base = rateOf(rt, baseSum), t = tg[rt.k];
+            const wv = baseWeeks.map(w => rateOf(rt, w.sum)).filter(v => v != null), best = wv.length ? Math.max(...wv) : null;
+            const chips = base == null ? '<span class="text-[10px] text-slate-400">기준 데이터가 없습니다</span>' : [['현재 수준 유지', base], ['+10% 개선', base*1.1], ...(best != null ? [['최고 주 수준', best]] : [])].map(([lb, v]) => `<button type="button" ${canEdit ? `onclick="ceoSetTarget('${rt.k}', ${roundT(rt, v)})"` : 'disabled'} class="px-2 py-1 rounded-lg border border-slate-200 bg-white text-[10px] text-slate-600 ${canEdit ? 'hover:border-rose-300' : 'opacity-60'}">${lb} ${fmtT(rt, roundT(rt, v))}</button>`).join(' ');
+            return `<div><div class="flex flex-wrap items-center justify-between gap-2"><span class="text-xs font-semibold text-slate-700">${rt.l} 목표 <span class="font-normal text-slate-400">(${rt.desc})</span></span>
+              <span class="flex items-center gap-1"><input type="number" step="any" min="0" value="${t == null ? '' : t}" ${canEdit ? '' : 'disabled'} onchange="ceoSetTarget('${rt.k}', this.value)" class="w-20 px-2 py-1 text-xs border border-slate-200 rounded-lg text-right focus:outline-none focus:border-blue-500"><span class="text-xs text-slate-500">${rt.mode === 'x' ? '배' : '%'}</span></span></div>
+              <div class="flex flex-wrap items-center gap-1.5 mt-1.5"><span class="text-[10px] text-slate-400">참고값 클릭 시 입력</span>${chips}</div></div>`; }).join('')}</div></div>`;
+
+    // 일별 데이터
+    const dayRows = rows.map(r => { const dt = new Date(+r.d.slice(0,4), +r.d.slice(5,7)-1, +r.d.slice(8,10)), s1 = sumDays([r], cfg);
+        return `<tr class="border-t border-slate-100">${td(`${dt.getMonth()+1}/${dt.getDate()}(${WD[dt.getDay()]})`, 'font-medium text-slate-700')}${cfg.cols.map(col => td(r[col.k] === '' || r[col.k] == null ? '-' : fmtN(+r[col.k]))).join('')}${cfg.rates.map(rt => td(fmtR(rt, rateOf(rt, s1)), 'text-slate-500')).join('')}${td(canEdit ? `<button onclick="openCeoDay('${r.d}')" class="p-1 text-slate-400 hover:text-blue-600" title="수정"><i class="fa-solid fa-pen"></i></button><button onclick="deleteCeoDay('${r.d}')" class="p-1 text-slate-400 hover:text-rose-600" title="삭제"><i class="fa-solid fa-trash"></i></button>` : '')}</tr>`; }).join('');
+    const dayHtml = rows.length ? `<details open class="mt-5"><summary class="text-xs font-bold text-slate-700 cursor-pointer mb-2">일별 데이터 (${rows.length}일)</summary><div class="overflow-auto rounded-xl border border-slate-200" style="max-height:300px"><table class="w-full text-xs"><thead class="bg-slate-50 text-slate-500 sticky top-0"><tr>${th('일자')}${cfg.cols.map(col => th(col.l)).join('')}${cfg.rates.map(rt => th(rt.l)).join('')}${th('')}</tr></thead><tbody>${dayRows}</tbody></table></div></details>` : '';
+
+    return `<div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+      <div class="flex flex-wrap items-center justify-between gap-2 pb-3 mb-4 border-b border-slate-100">
+        <h3 class="font-bold text-slate-800 text-sm flex items-center"><i class="fa-solid fa-chart-line text-rose-500 mr-2"></i> ${cfg.title} <span class="ml-2 text-[11px] font-normal text-slate-400">일자별 데이터를 주별·월별로 자동 집계</span></h3>
+        <div class="flex flex-wrap items-center gap-2">
+          <select onchange="ceoSetMonth(this.value)" class="border border-slate-200 rounded-lg px-2 py-1 text-xs bg-white">${months.map(m => `<option value="${m}" ${m === month ? 'selected' : ''}>${monthLabel(m)}</option>`).join('')}</select>
+          ${canEdit ? `<button onclick="openCeoPaste()" class="px-3 py-1.5 bg-white border border-slate-200 hover:border-blue-300 text-slate-600 rounded-xl text-xs font-semibold"><i class="fa-solid fa-paste mr-1"></i>엑셀 붙여넣기</button><button onclick="openCeoDay(null)" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold"><i class="fa-solid fa-plus mr-1"></i>일자 추가</button>` : '<span class="text-[11px] text-slate-400">입력은 로그인 후 가능합니다</span>'}
+        </div></div>
+      ${cards}${weekHtml}${monthTbl}
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">${analysis}${targetBox}</div>
+      ${dayHtml}</div>`;
+}
+
+function crmMetricsHtml() {
+    const wrap = body => `<div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm"><div class="flex items-center justify-between pb-3 mb-4 border-b border-slate-100"><h3 class="font-bold text-slate-800 text-sm flex items-center"><i class="fa-solid fa-chart-line text-rose-500 mr-2"></i> CRM 실제 지표 <span class="ml-2 text-[11px] font-normal text-slate-400">고객 DB 기준 자동 집계</span></h3></div>${body}</div>`;
+    if(!canEdit || !Array.isArray(customerDbData) || !customerDbData.length) return wrap('<div class="text-xs text-slate-400 py-3">로그인하면 CRM 고객 데이터 기준 지표(전체 고객, 유치율, 컨택 지연 등)가 표시됩니다.</div>');
+    const m = crmStats(), kpi = (a,b,c2,cls) => `<div class="rounded-xl bg-slate-50 border border-slate-100 p-3"><div class="text-[11px] text-slate-500">${a}</div><div class="text-xl font-bold ${cls||'text-slate-800'} mt-0.5">${b}</div><div class="text-[10px] text-slate-400 mt-0.5">${c2}</div></div>`;
+    return wrap(`<div class="grid grid-cols-2 md:grid-cols-5 gap-3">${kpi('전체 고객', m.n.toLocaleString() + '명', 'CRM 등록 고객')}${kpi('상담 단계', m.consult.toLocaleString() + '명', '상담대기·예약·부재·상품안내')}${kpi('유치(접수완료 이후)', m.won.toLocaleString() + '명', '접수완료·지급·환수 단계')}${kpi('유치율', (m.rate*100).toFixed(1) + '%', '유치 ÷ 전체 고객')}${kpi('컨택 지연', m.due.toLocaleString() + '건', '고객부재·상담예약 중 예정 시각 경과', m.due ? 'text-rose-600' : 'text-slate-800')}</div>${m.unk ? `<div class="text-[11px] text-amber-600 mt-3">새 퍼널에 없는 상태값 ${m.unk}건이 있습니다.</div>` : ''}`);
+}
+function crmStats() {
+    const st = customerDbData.map(custStatus), g = n => FUNNEL_V2.find(x => x.k === n).items, nowMs = Date.now();
+    const n = st.length, won = st.filter(s => s === '접수완료' || g('지급').includes(s) || g('환수').includes(s)).length;
+    return {n, won, rate: n ? won/n : 0, consult: st.filter(s => g('상담').includes(s)).length, unk: st.filter(s => !FUNNEL_V2.some(x => x.items.includes(s))).length,
+        due: customerDbData.filter(c => ['고객부재','상담예약'].includes(custStatus(c)) && c.next_contact_at && new Date(c.next_contact_at).getTime() < nowMs).length};
+}
+function ceoKeyLine(k) {
+    if(k === 'ceo-sys') { if(!canEdit || !Array.isArray(customerDbData) || !customerDbData.length) return '로그인 후 CRM 지표 표시'; const m = crmStats(); return `유치율 ${(m.rate*100).toFixed(1)}% · 컨택 지연 ${m.due}건`; }
+    const cfg = CEO_METRIC_CFG[k], c = taskData[k]; if(!cfg || !c) return '';
+    const ms = ceoMonthsWithData(c); if(!ms.length) return '실제 지표 데이터 입력 전';
+    const m = ms[ms.length-1], sum = sumDays(ceoDaily(c).filter(r => monthOf(r.d) === m), cfg);
+    return `${+m.slice(5,7)}월 ` + cfg.rates.map(rt => rt.l + ' ' + fmtR(rt, rateOf(rt, sum))).join(' · ');
+}
+
+function renderCeoOverview() {
+    const box = $('ceo-panel'); if(!box) return;
+    box.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-4">${CEO_KEYS.filter(k => taskData[k]).map((k,i) => {
+        const c = taskData[k], p = pct(c.tasks), n = s => c.tasks.filter(t => t.status === s).length, l = c.tasks.filter(late).length;
+        const next = c.tasks.filter(t => t.status !== 'done' && t.status !== 'hold').sort((a,b) => ORDER[a.status] - ORDER[b.status])[0];
+        return `<button onclick="go('ceo','${k}')" class="text-left bg-white border border-rose-100 hover:border-rose-300 rounded-2xl p-5 shadow-sm transition-all">
+          <div class="flex items-center justify-between"><span class="text-[11px] font-extrabold text-rose-600"><i class="fa-solid ${esc(c.icon||'fa-circle')} mr-1.5"></i>최우선 ${i+1}</span><span class="text-2xl font-bold text-slate-800">${p}%</span></div>
+          <div class="text-base font-bold text-slate-800 mt-1">${esc(shortT(c))}</div>
+          <div class="text-[11px] text-slate-500 mt-0.5">목표: ${esc(c.goal||'')}</div>
+          <div class="mt-3 rounded-lg bg-blue-50 text-blue-700 text-xs font-semibold px-3 py-2">${esc(ceoKeyLine(k))}</div>
+          <div class="my-3">${ceoBar(p)}</div>
+          <div class="text-[11px] text-slate-500">완료 ${n('done')}/${c.tasks.length} · 진행 ${n('doing')+n('review')}${l ? ` · <span class="text-rose-600 font-semibold">지연 ${l}</span>` : ''}</div>
+          ${next ? `<div class="text-[11px] text-slate-600 mt-1.5 truncate"><i class="fa-solid fa-arrow-right text-rose-400 mr-1"></i>${esc(next.title)}</div>` : ''}</button>`; }).join('')}</div>`;
+}
+
+function ceoSetTarget(rk, v) {
+    if(!guard()) { renderCeoView(); return; }
+    const c = taskData[ceoSel], m = ceoCurMonth(ceoSel);
+    if(!c.mtargets) c.mtargets = {};
+    if(!c.mtargets[m]) c.mtargets[m] = {};
+    if(v === '' || v == null || isNaN(+v)) delete c.mtargets[m][rk]; else c.mtargets[m][rk] = +v;
+    if(!Object.keys(c.mtargets[m]).length) delete c.mtargets[m];
+    saveDataAndRefresh();
+}
+function openCeoDay(d) {
+    if(!guard()) return; const cfg = CEO_METRIC_CFG[ceoSel], c = taskData[ceoSel]; if(!cfg) return;
+    const row = d ? ceoDaily(c).find(r => r.d === d) : null; ceoDayEdit = d || null;
+    const last = ceoDaily(c).map(r => r.d).sort().pop(); let nd = ymd(new Date());
+    if(last) { const t = new Date(+last.slice(0,4), +last.slice(5,7)-1, +last.slice(8,10)+1); nd = dstr(t.getFullYear(), t.getMonth()+1, t.getDate()); }
+    $('cd-title').innerText = d ? '일자 데이터 수정' : '일자 데이터 추가';
+    $('cd-date').value = d || nd;
+    $('cd-fields').innerHTML = cfg.cols.map(col => `<div><label class="block text-xs font-bold text-slate-600 mb-1">${col.l} (${col.u})</label><input type="number" step="any" min="0" id="cd-${col.k}" value="${row && row[col.k] !== '' && row[col.k] != null ? row[col.k] : ''}" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"></div>`).join('');
+    $('cd-modal').classList.remove('hidden');
+}
+function closeCeoDay() { $('cd-modal').classList.add('hidden'); }
+function submitCeoDay(e) {
+    e.preventDefault(); if(!guard()) return;
+    const cfg = CEO_METRIC_CFG[ceoSel], c = taskData[ceoSel], d = $('cd-date').value; if(!d) return;
+    const row = {d}; cfg.cols.forEach(col => { const v = $('cd-' + col.k).value; row[col.k] = v === '' ? '' : +v; });
+    c.daily = ceoDaily(c);
+    if(c.daily.some(r => r.d === d && r.d !== ceoDayEdit) && !confirm(`${d} 데이터가 이미 있습니다. 덮어쓸까요?`)) return;
+    c.daily = c.daily.filter(r => r.d !== d && r.d !== ceoDayEdit); c.daily.push(row);
+    c.daily.sort((a,b) => a.d < b.d ? -1 : 1);
+    ceoMonthSel[ceoSel] = monthOf(d);
+    closeCeoDay(); saveDataAndRefresh();
+}
+function deleteCeoDay(d) { if(!guard()) return; if(confirm(`${d} 데이터를 삭제하시겠습니까?`)) { const c = taskData[ceoSel]; c.daily = ceoDaily(c).filter(r => r.d !== d); saveDataAndRefresh(); } }
+
+function openCeoPaste() {
+    if(!guard()) return; const cfg = CEO_METRIC_CFG[ceoSel]; if(!cfg) return;
+    $('cp-help').innerHTML = `엑셀에서 <b>일자 · ${cfg.cols.map(col => col.l).join(' · ')}</b> 순서로 복사해 붙여넣으세요. 첫 줄에 항목명(${cfg.cols.map(col => col.l).join('/')})이 있으면 열 순서가 달라도 자동 인식하고, 같은 일자는 덮어씁니다. 일자는 2026-09-01, 2026.9.1, 9/1, 9월 1일 형식을 인식합니다.`;
+    $('cp-text').value = ''; $('cp-preview').innerText = ''; $('cp-modal').classList.remove('hidden');
+}
+function closeCeoPaste() { $('cp-modal').classList.add('hidden'); }
+function previewCeoPaste() {
+    const cfg = CEO_METRIC_CFG[ceoSel], t = $('cp-text').value;
+    if(!cfg || !t.trim()) { $('cp-preview').innerText = ''; return; }
+    const r = parsePasteRows(t, cfg, +ceoCurMonth(ceoSel).slice(0,4));
+    $('cp-preview').innerText = `인식 ${r.rows.length}일${r.skipped ? ` · 건너뜀 ${r.skipped}줄` : ''} · ` + cfg.cols.map((col,j) => `${col.l} ${r.mapped[j] >= 0 ? '✓' : '✗'}`).join('  ');
+}
+function submitCeoPaste(e) {
+    e.preventDefault(); if(!guard()) return;
+    const cfg = CEO_METRIC_CFG[ceoSel], c = taskData[ceoSel], res = parsePasteRows($('cp-text').value, cfg, +ceoCurMonth(ceoSel).slice(0,4));
+    if(!res.rows.length) { $('cp-preview').innerText = '인식된 일자가 없습니다. 일자가 첫 번째 열인지 확인해주세요.'; return; }
+    const map = new Map(ceoDaily(c).map(r => [r.d, r]));
+    res.rows.forEach(r => map.set(r.d, map.has(r.d) ? Object.assign({}, map.get(r.d), r) : r));
+    c.daily = [...map.values()].sort((a,b) => a.d < b.d ? -1 : 1);
+    ceoMonthSel[ceoSel] = monthOf(res.rows.map(r => r.d).sort().pop());
+    closeCeoPaste(); saveDataAndRefresh();
 }
 
 function ceoSetStatus(i, v) { if(!guard()) { renderCeoView(); return; } taskData[ceoSel].tasks[i].status = v; saveDataAndRefresh(); }
