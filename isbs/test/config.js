@@ -222,10 +222,10 @@ const CONSULT_SUBSTATUSES = ['상품안내', '상담예약', '고객부재'];
 
 // 이탈·제외 사유 : customers.status_reason (customer_status 별로 선택)
 //  - 이탈(고객부재)는 3회 재안내 후 담당자가 직접 변경합니다(자동 전환 없음, D18)
-//  - 제외 사유는 현재 쓰는 2개만 둡니다. (01_structure.sql 주석에는 '없는번호·테스트 등'도 언급 — 필요 시 여기에 추가)
+//  - 제외 사유: 현재 쓰는 오인입·타부서에 01_structure.sql 주석의 없는번호·테스트를 더해 4개로 둡니다. (DB는 사유를 자유 문자열로 저장하므로 목록은 여기서만 관리하며, 줄이거나 늘려도 DB 변경이 필요 없습니다)
 const STATUS_REASONS = {
   '이탈': ['기존유지', '타사가입', '고객부재'],
-  '제외': ['오인입', '타부서']
+  '제외': ['오인입', '타부서', '없는번호', '테스트']
 };
 
 // 계약 상태 : contracts.contract_status (계약취소는 저장하지 않고 v_contract_overview.effective_status 로 계산)
