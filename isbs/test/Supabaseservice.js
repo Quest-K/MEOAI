@@ -10,6 +10,36 @@ const SUPABASE_URL = 'https://jhfhpumhifyhauuoinxc.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpoZmhwdW1oaWZ5aGF1dW9pbnhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0MDE2NTMsImV4cCI6MjEwMzk3NzY1M30.euXk3eXtUVvEQRDGgcLhvX3JhVlpv9D7fZUEDr0i8yA';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// ============================================================
+// 연락처 헬퍼 (S1) : DB에는 숫자만 저장(고객 1명 = 연락처 1개), 화면에서만 하이픈 표시
+//  - normalizeContact      : 저장·조회·비교용. 숫자 외 문자를 모두 제거
+//  - isValidContactDigits  : DB 제약(customers_contact_digits_check)과 동일하게 숫자 9~11자리
+//  - formatContactDisplay  : 표시·입력용. 010 -> 3-4-4, 02 -> 2-(3~4)-4, 그 외 지역번호 -> 3-(3~4)-4
+// ============================================================
+function normalizeContact(raw){
+  return String(raw == null ? '' : raw).replace(/[^0-9]/g, '');
+}
+
+function isValidContactDigits(digits){
+  return /^[0-9]{9,11}$/.test(String(digits || ''));
+}
+
+function formatContactDisplay(raw){
+  const d = normalizeContact(raw).slice(0, 11);
+  if (!d) return '';
+  if (d[0] !== '0') return d;                       // 대표번호(1588 등)는 그대로 표시
+  if (d.startsWith('010')) {                         // 휴대폰: 입력 중에도 3-4-4
+    if (d.length <= 3) return d;
+    if (d.length <= 7) return `${d.slice(0, 3)}-${d.slice(3)}`;
+    return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
+  }
+  const p = d.startsWith('02') ? 2 : 3;              // 서울 02, 그 외 3자리(031·070·011 등)
+  const rest = d.slice(p);
+  if (rest.length === 0) return d;
+  if (rest.length <= 4) return `${d.slice(0, p)}-${rest}`;
+  return `${d.slice(0, p)}-${rest.slice(0, rest.length - 4)}-${rest.slice(-4)}`;
+}
+
 async function loadData(){
   logs = {};
   const [internetRes, tvRes, settopRes] = await Promise.all([
