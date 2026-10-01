@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<link rel="stylesheet" href="Styles.css?v=20261001a">
+<link rel="stylesheet" href="Styles.css?v=20261001b">
 </head>
 <body>
 <div class="wrap">
@@ -534,7 +534,7 @@
 
 <script src="config.js?v=20261001b"></script>
 <script src="Calculator.js?v=20260930h"></script>
-<script src="Supabaseservice.js?v=20261001d"></script>
+<script src="Supabaseservice.js?v=20261001e"></script>
 <script>
 // 외부 파일 로드 점검: 파일 누락/내용 뒤바뀜(예: JS 자리에 CSS가 들어간 경우) 시 화면 상단에 경고 표시
 (function checkModules(){
@@ -3222,7 +3222,8 @@ async function quickUpdateCustomerStatus(selectEl, customerId){
   if (r.autoError) alert(r.userMessage);
   showToast('✓ 상태값이 변경되었습니다');
   loadFunnelDashboard();
-  if (detailCustomerId === customerId && typeof renderStatusLogSection === 'function') renderStatusLogSection(customerId);
+  if (c0) renderCustomerList(customerListCache);
+  if (detailCustomerId === customerId) { if (c0) syncDetailStatusSelect(c0); refreshDetailBundle(customerId); }
 }
 
 function formatDateShort(iso){
@@ -3351,8 +3352,8 @@ async function openCustomer(id){
         <select id="cf-telecom">${MOBILE_CARRIER_OPTIONS.map(o => `<option ${o === c.telecom ? 'selected' : ''}>${o}</option>`).join('')}</select>
       </div>
       <div class="form-group">
-        <label>상태값</label>
-        <select id="cf-funnel">${funnelStatusOptionsHtml(c.funnel_status, false)}</select>
+        <label>고객 상태 <span class="cust-note-hint">선택하면 바로 저장됩니다</span></label>
+        <select id="cf-status" onchange="quickUpdateCustomerStatus(this, ${c.customer_id})">${customerStatusOptionsHtml(custStatusInfo(c))}</select>
       </div>
       <div class="form-group">
         <label>기존 인터넷</label>
@@ -3364,7 +3365,12 @@ async function openCustomer(id){
     </div>
 
     <div class="cust-form-section">
-      <span>상태값 변경 이력 <span class="cust-note-hint">최근 변경순</span></span>
+      <span>계약 <span class="cust-note-hint">접수 · 지급 · 환수는 계약 단위, 설치 진행은 상품 단위</span></span>
+    </div>
+    <div id="contract-section"><div class="wide-table-empty">불러오는 중...</div></div>
+
+    <div class="cust-form-section">
+      <span>변경 이력 <span class="cust-note-hint">최근 변경순 · 고객 상태, 계약, 상품</span></span>
     </div>
     <div id="status-log-section"><div class="wide-table-empty">불러오는 중...</div></div>
 
@@ -3382,18 +3388,6 @@ async function openCustomer(id){
       <span class="mini-btn-row"><span id="contact-progress"></span><button type="button" class="mini-btn" onclick="resetContactHistory(${c.customer_id})">이력 초기화</button></span>
     </div>
     <div id="contact-section"><div class="wide-table-empty">불러오는 중...</div></div>
-
-    <div class="cust-form-section">
-      안내상품 · 인터넷/TV
-      <button type="button" class="mini-btn mini-btn-primary" onclick="addGuidedProductRow(${c.customer_id}, 'home')">+ 상품 추가</button>
-    </div>
-    <div id="guided-home-table"><div class="wide-table-empty">불러오는 중...</div></div>
-
-    <div class="cust-form-section">
-      안내상품 · 유심
-      <button type="button" class="mini-btn mini-btn-primary" onclick="addGuidedProductRow(${c.customer_id}, 'usim')">+ 상품 추가</button>
-    </div>
-    <div id="guided-usim-table"><div class="wide-table-empty">불러오는 중...</div></div>
 
     <div class="cust-form-section">
       <span>특이사항 <span class="cust-note-hint">날짜별 안내 내용이 최신순으로 누적됩니다</span></span>
@@ -3418,9 +3412,9 @@ async function openCustomer(id){
   `;
 
   renderCustomerProducts(c);
-  renderGuidedProductTables(c);
   renderContactSection(c.customer_id);
-  renderStatusLogSection(c.customer_id);
+  detailHistoryFilter = 'all';
+  refreshDetailBundle(c.customer_id);   // 계약 카드 + 이력 (S6)
   detailCustomerTags = new Set(Array.isArray(c.customer_tags) ? c.customer_tags : []);
   renderDetailCustomerTags();
 }
@@ -4001,29 +3995,355 @@ async function logStatusChange(customerId, fromStatus, toStatus){
   if (detailCustomerId === customerId) renderStatusLogSection(customerId);
 }
 
-async function renderStatusLogSection(customerId){
-  const box = document.getElementById('status-log-section');
-  if (!box) return;
-  await probeCustomerSchema();
-  if (!CUSTOMER_SCHEMA.hasStatusLogsTable) {
-    box.innerHTML = `<div class="wide-table-empty">customer_status_logs 테이블이 없어 변경 이력을 사용할 수 없습니다. 안내드린 SQL(customer_status_logs.sql)을 Supabase에서 실행해주세요.</div>`;
+/* =========================================================================
+   [고객조회] 상세 : 계약 카드 · 이력 타임라인 (S6)
+   - 고객 상태는 changeStatus() 로 즉시 변경(상태 선택 시 바로 저장), [수정 저장]에는 상태가 포함되지 않습니다.
+   - 계약 카드 : 헤더에 접수 · 지급 · 환수 상태, 상품 줄에 설치 진행 상태. 모두 changeStatus() 를 거쳐 이력이 1건씩 남습니다.
+   - 계약 상태는 어떤 순서로든 바꿀 수 있습니다(2026-10-01 확정). 접수완료로 처음 바뀔 때 접수 시각이 기록됩니다.
+   - 삭제는 접수 전(작성중, 접수 시각 없음)인 계약·상품만 가능합니다. 접수 이후에는 상태로 처리합니다.
+   - 계약 상태가 바뀌면 고객 상태가 자동으로 맞춰질 수 있습니다(config/서비스의 deriveCustomerStatus 규칙).
+   ========================================================================= */
+let detailBundle = null;               // 현재 열린 고객의 loadCustomerBundle 결과
+let detailHistoryFilter = 'all';       // 'all' | 'common' | 계약 ID(숫자)
+let detailBundleSeq = 0;
+
+const HISTORY_AXIS_LABEL = { status: '상태', substatus: '부가표시', progress: '진행', payout: '지급', clawback: '환수' };
+const CONTRACT_STATUS_OPTIONS = CONTRACT_STATUSES;
+
+function fmtMoney(v){ return v === null || v === undefined || v === '' ? '' : Number(v).toLocaleString(); }
+
+// 상세를 열 때와 계약·상품·상태가 바뀔 때마다 호출 : 데이터를 다시 읽어 계약 카드와 이력을 함께 다시 그립니다.
+async function refreshDetailBundle(customerId){
+  const cBox = document.getElementById('contract-section');
+  const hBox = document.getElementById('status-log-section');
+  if (!cBox && !hBox) return;
+  const seq = ++detailBundleSeq;
+  const res = await loadCustomerBundle(customerId);
+  if (seq !== detailBundleSeq || detailCustomerId !== customerId) return;   // 조회하는 동안 다른 고객을 열었으면 중단
+  if (!res.ok) {
+    detailBundle = null;
+    const msg = `<div class="wide-table-empty">조회 실패: ${escHtml(res.error)}</div>`;
+    if (cBox) cBox.innerHTML = msg;
+    if (hBox) hBox.innerHTML = msg;
     return;
   }
-  const { data, error } = await sb.from('customer_status_logs').select('*').eq('customer_id', customerId).order('changed_at', { ascending: false }).order('id', { ascending: false }).limit(50);
-  if (detailCustomerId !== customerId) return;   // 조회하는 동안 다른 고객을 열었으면 중단
-  if (error) { box.innerHTML = `<div class="wide-table-empty">조회 실패: ${escHtml(error.message)}</div>`; return; }
-  const rows = data || [];
-  if (!rows.length) { box.innerHTML = `<div class="wide-table-empty">아직 기록된 변경 이력이 없습니다.</div>`; return; }
-  box.innerHTML = `<div class="status-log-list">${rows.map(r => `
+  detailBundle = res;
+  renderContractSection();
+  renderStatusLogSection(customerId, true);
+}
+
+// 상세 화면 상단의 고객 상태 칸을 최신 값으로 맞춤
+function syncDetailStatusSelect(c){
+  const sel = document.getElementById('cf-status');
+  if (sel && c) sel.innerHTML = customerStatusOptionsHtml(custStatusInfo(c));
+}
+
+// 계약·상품 변경 뒤 공통 마무리 : 목록·대시보드·상세를 새 값으로
+async function afterContractChange(customerId){
+  const { data } = await sb.from('customers').select('*').eq('customer_id', customerId).limit(1);
+  const row = data && data[0];
+  if (row) {
+    const c0 = customerListCache.find(x => x.customer_id === customerId);
+    if (c0) { Object.assign(c0, row); renderCustomerList(customerListCache); }
+    syncDetailStatusSelect(row);
+  }
+  loadFunnelDashboard();
+  await refreshDetailBundle(customerId);
+}
+
+/* ---------- 계약 카드 ---------- */
+function ctItemsAllInstalled(ct){
+  const live = ct.items.filter(i => i.progress_status !== '접수취소');
+  return live.length > 0 && live.every(i => i.progress_status === '설치완료');
+}
+
+function ctSelectHtml(options, current, onchange, allowEmpty, emptyLabel){
+  const has = current === null || current === undefined || current === '' || options.includes(current);
+  return `<select class="ct-select" onchange="${onchange}">
+    ${allowEmpty ? `<option value="" ${!current ? 'selected' : ''}>${escHtml(emptyLabel || '-')}</option>` : ''}
+    ${has ? '' : `<option value="${escAttr(current)}" selected disabled>${escHtml(current)}</option>`}
+    ${options.map(o => `<option value="${escAttr(o)}" ${o === current ? 'selected' : ''}>${escHtml(o)}</option>`).join('')}
+  </select>`;
+}
+
+function ctMetaField(cid, label, key, value, type, span){
+  const v = value === null || value === undefined ? '' : String(value);
+  return `<div class="form-group ${span || ''}"><label>${label}</label>
+    <input type="${type || 'text'}" id="ct-${cid}-${key}" value="${escAttr(v)}"></div>`;
+}
+
+function renderContractCard(ct, all){
+  const cid = ct.contract_id;
+  const draft = ct.contract_status === '작성중' && !ct.received_at;
+  const linked = ct.linked_contract_id ? all.find(x => x.contract_id === ct.linked_contract_id) : null;
+  const usimBack = ct.contract_type === 'home' ? all.filter(x => x.linked_contract_id === cid) : [];
+  const badges = [
+    ct.effective_status === '계약취소' ? `<span class="ct-badge ct-badge-cancel">계약취소</span>` : '',
+    ctItemsAllInstalled(ct) ? `<span class="ct-badge ct-badge-ok" title="접수취소를 뺀 모든 상품이 설치완료">개통완료</span>` : '',
+    ct.received_at ? `<span class="ct-badge" title="접수 시각이 한 번 기록되면 지워지지 않습니다">접수 이력 ${escHtml(formatDateShort(ct.received_at))}</span>` : ''
+  ].join('');
+  const typeLabel = CONTRACT_TYPE_LABEL[ct.contract_type] || ct.contract_type;
+  const isHome = ct.contract_type === 'home';
+
+  const items = ct.items.length ? ct.items.map(it => `
+    <tr>
+      <td class="ct-no" title="상품 번호">${formatItemNo(it.item_id)}</td>
+      <td>${escHtml(S6_ITEM_TYPE_LABEL[it.product_type] || it.product_type)}</td>
+      <td><input type="text" id="it-${it.item_id}-carrier" value="${escAttr(it.carrier || '')}"></td>
+      <td><input type="text" id="it-${it.item_id}-name" value="${escAttr(it.product_name || '')}"></td>
+      <td><input type="text" inputmode="numeric" id="it-${it.item_id}-fee" value="${escAttr(fmtMoney(it.monthly_fee))}"></td>
+      <td><input type="text" inputmode="numeric" id="it-${it.item_id}-comm" value="${escAttr(fmtMoney(it.commission))}"></td>
+      <td>${ctSelectHtml(ITEM_PROGRESS, it.progress_status, `changeItemProgress(this, ${it.item_id}, ${cid})`, false)}
+          ${it.progress_status === '접수취소' && it.cancel_reason ? `<div class="cust-ov-sub">${escHtml(it.cancel_reason)}</div>` : ''}</td>
+      <td class="ct-row-actions"><span class="mini-btn-row">
+        <button type="button" class="mini-btn" onclick="saveItemUi(${it.item_id}, this)">저장</button>
+        ${draft ? `<button type="button" class="mini-btn" onclick="deleteItemUi(${it.item_id}, this)">삭제</button>` : ''}
+      </span></td>
+    </tr>`).join('') : `<tr><td colspan="8"><div class="wide-table-empty">상품이 없습니다. [+ 상품 추가]로 넣어 주세요.</div></td></tr>`;
+
+  const typeOptions = (S6_ITEM_TYPES[ct.contract_type] || []).map(t => `<option value="${t}">${S6_ITEM_TYPE_LABEL[t]}</option>`).join('');
+  const usimFull = ct.contract_type === 'usim' && ct.items.length >= 1;
+
+  return `
+  <div class="ct-card ${ct.effective_status === '계약취소' ? 'is-canceled' : ''}" id="ct-card-${cid}">
+    <div class="ct-head">
+      <span class="ct-no-big" title="계약 번호">${formatContractNo(cid)}</span>
+      <span class="ct-type">${escHtml(typeLabel)}${ct.label ? ` · ${escHtml(ct.label)}` : ''}</span>
+      ${badges}
+      ${linked ? `<span class="ct-link">↔ 연결: ${formatContractNo(linked.contract_id)}</span>` : ''}
+      ${usimBack.length ? `<span class="ct-link">↔ 유심 ${usimBack.map(u => formatContractNo(u.contract_id)).join(', ')}</span>` : ''}
+    </div>
+    <div class="ct-status-row">
+      <label>접수 ${ctSelectHtml(CONTRACT_STATUS_OPTIONS, ct.contract_status, `changeContractStatus(this, ${cid}, 'status')`, false)}</label>
+      <label>지급 ${ctSelectHtml(PAYOUT_STATUSES, ct.payout_status, `changeContractStatus(this, ${cid}, 'payout')`, true, '해당 없음')}</label>
+      <label>환수 ${ctSelectHtml(CLAWBACK_STATUSES, ct.clawback_status, `changeContractStatus(this, ${cid}, 'clawback')`, true, '해당 없음')}</label>
+      ${ct.status_reason && ct.contract_status === '접수불가' ? `<span class="cust-ov-sub">접수불가 사유: ${escHtml(ct.status_reason)}</span>` : ''}
+    </div>
+    <div class="ct-items-wrap">
+      <table class="cust-wide-table ct-items">
+        <colgroup><col style="width:8%"><col style="width:7%"><col style="width:14%"><col style="width:23%"><col style="width:10%"><col style="width:10%"><col style="width:16%"><col style="width:12%"></colgroup>
+        <thead><tr><th>번호</th><th>구분</th><th>통신사</th><th>상품명</th><th>월요금</th><th>수수료</th><th>설치 진행</th><th></th></tr></thead>
+        <tbody>${items}</tbody>
+      </table>
+    </div>
+    <details class="ct-edit">
+      <summary>+ 상품 추가</summary>
+      <div class="ct-add-row">
+        <select id="ct-${cid}-add-type">${typeOptions}</select>
+        <input type="text" id="ct-${cid}-add-carrier" placeholder="통신사">
+        <input type="text" id="ct-${cid}-add-name" placeholder="상품명">
+        <input type="text" inputmode="numeric" id="ct-${cid}-add-fee" placeholder="월요금">
+        <input type="text" inputmode="numeric" id="ct-${cid}-add-comm" placeholder="수수료">
+        <button type="button" class="mini-btn mini-btn-primary" ${usimFull ? 'disabled title="유심 계약에는 1회선만 넣을 수 있습니다"' : ''} onclick="addItemUi(${cid}, this)">추가</button>
+      </div>
+    </details>
+    <details class="ct-edit">
+      <summary>계약 정보 수정 · 사은품 · 환수</summary>
+      <div class="cust-form-grid">
+        ${ctMetaField(cid, '구분 이름', 'label', ct.label)}
+        ${ctMetaField(cid, '계약자', 'contractor_name', ct.contractor_name)}
+        ${ctMetaField(cid, '계약자 관계', 'contractor_relation', ct.contractor_relation)}
+        ${ctMetaField(cid, '납부 방법', 'payment_method', ct.payment_method)}
+        ${ctMetaField(cid, isHome ? '설치 주소' : '배송 주소', 'address', ct.address, 'text', 'span-2')}
+        ${ctMetaField(cid, '상세 주소', 'address_detail', ct.address_detail, 'text', 'span-2')}
+        ${isHome ? ctMetaField(cid, '설치 예정일', 'install_scheduled_at', ct.install_scheduled_at, 'date') : ''}
+        ${ctMetaField(cid, '통신사 접수번호', 'external_ref', ct.external_ref)}
+        ${ctMetaField(cid, '사은품 합계', 'gift_total', fmtMoney(ct.gift_total))}
+        ${ctMetaField(cid, '상품권', 'gift_card', fmtMoney(ct.gift_card))}
+        ${ctMetaField(cid, '현금', 'gift_cash', fmtMoney(ct.gift_cash))}
+        ${ctMetaField(cid, '추가지급', 'gift_extra', fmtMoney(ct.gift_extra))}
+        ${ctMetaField(cid, '환수 금액', 'clawback_amount', fmtMoney(ct.clawback_amount))}
+        ${ctMetaField(cid, '환수 사유', 'clawback_reason', ct.clawback_reason)}
+        ${ctMetaField(cid, '메모', 'memo', ct.memo, 'text', 'span-4')}
+      </div>
+      <div class="ct-edit-actions">
+        ${draft ? `<button type="button" class="danger-btn" onclick="deleteContractUi(${cid}, this)">계약 삭제</button>` : `<span class="cust-ov-sub">접수된 계약은 삭제할 수 없습니다. 접수 상태로 처리해 주세요.</span>`}
+        <button type="button" class="mini-btn mini-btn-primary" onclick="saveContractMetaUi(${cid}, this)">계약 정보 저장</button>
+      </div>
+    </details>
+  </div>`;
+}
+
+function renderContractSection(){
+  const box = document.getElementById('contract-section');
+  if (!box || !detailBundle) return;
+  const b = detailBundle, s = b.summary || {}, cts = b.contracts;
+  const home = cts.filter(c => c.contract_type === 'home');
+  const sumText = cts.length
+    ? `계약 ${cts.length}건 · 접수 이력 ${s.acquired_contract_count || 0}건${s.open_payout_count ? ` · 지급 남음 ${s.open_payout_count}` : ''}${s.open_clawback_count ? ` · 환수 진행 ${s.open_clawback_count}` : ''}`
+    : '계약 없음';
+  box.innerHTML = `
+    <div class="ct-summary"><span>${escHtml(sumText)}</span>
+      <button type="button" class="mini-btn mini-btn-primary" onclick="toggleNewContractForm()">+ 신규 계약 접수</button></div>
+    <div id="new-contract-form" class="ct-new-form" style="display:none;">
+      <select id="nc-type" onchange="document.getElementById('nc-link-wrap').style.display = this.value === 'usim' && ${home.length} ? '' : 'none'">
+        <option value="home">인터넷·TV</option><option value="usim">유심(1회선)</option></select>
+      <input type="text" id="nc-label" placeholder="구분 이름 (예: A집, 본가)">
+      <span id="nc-link-wrap" style="display:none;"><select id="nc-link"><option value="">연결할 인터넷·TV 계약 (선택)</option>
+        ${home.map(h => `<option value="${h.contract_id}">${formatContractNo(h.contract_id)}${h.label ? ' · ' + escHtml(h.label) : ''}</option>`).join('')}</select></span>
+      <button type="button" class="mini-btn mini-btn-primary" onclick="createContractUi(this)">계약 만들기</button>
+      <button type="button" class="mini-btn" onclick="toggleNewContractForm()">취소</button>
+    </div>
+    ${cts.length ? cts.map(c => renderContractCard(c, cts)).join('') : `<div class="wide-table-empty">등록된 계약이 없습니다. [+ 신규 계약 접수]로 만들어 주세요.</div>`}`;
+}
+
+function toggleNewContractForm(){
+  const f = document.getElementById('new-contract-form');
+  if (f) f.style.display = f.style.display === 'none' ? '' : 'none';
+}
+
+/* ---------- 이력 타임라인 ---------- */
+function historyChip(row, value){
+  if (value === null || value === undefined || value === '') return '';
+  const stage = row.target_type === 'customer' && row.axis === 'status' ? CUSTOMER_STATUS_STAGE[value]
+    : row.target_type === 'contract' && row.axis === 'status' ? CONTRACT_STATUS_STAGE[value] : 0;
+  return `<span class="cust-status-chip stage-${stage || 0}">${escHtml(value)}</span>`;
+}
+
+function historyTargetLabel(r){
+  if (r.target_type === 'contract' && r.contract_id) return formatContractNo(r.contract_id) + ' 계약';
+  if (r.target_type === 'item' && r.item_id) return formatItemNo(r.item_id) + ' 상품';
+  return '고객';
+}
+
+async function renderStatusLogSection(customerId, fromBundle){
+  if (!fromBundle) { await refreshDetailBundle(customerId); return; }   // 다른 곳에서 이력을 다시 그리라고 부르면 데이터를 새로 읽음
+  const box = document.getElementById('status-log-section');
+  if (!box || !detailBundle) return;
+  const f = detailHistoryFilter;
+  const all = detailBundle.history;
+  const rows = all.filter(r => f === 'all' ? true : f === 'common' ? !r.contract_id : r.contract_id === f).slice(0, 100);
+  const btn = (key, label) => `<button type="button" class="fd-sub ${f === key ? 'is-active' : ''}" onclick="setHistoryFilter(${typeof key === 'number' ? key : `'${key}'`})">${escHtml(label)}</button>`;
+  const filters = `<div class="fd-subs fd-subs-flat">${btn('all', '전체')}${btn('common', '공통')}${detailBundle.contracts.map(c => btn(c.contract_id, formatContractNo(c.contract_id))).join('')}</div>`;
+  const list = rows.length ? `<div class="status-log-list">${rows.map(r => `
     <div class="status-log-row">
       <span class="status-log-time">${formatDateShort(r.changed_at)}</span>
+      <span class="status-log-target">${escHtml(historyTargetLabel(r))}${r.axis ? ` · ${escHtml(HISTORY_AXIS_LABEL[r.axis] || r.axis)}` : ''}</span>
       <span class="status-log-change">
-        ${r.from_status ? `<span class="cust-status-chip stage-${getFunnelStage(r.from_status)}">${escHtml(r.from_status)}</span><span class="status-log-arrow">→</span>` : `<span class="status-log-new">신규</span>`}
-        <span class="cust-status-chip stage-${getFunnelStage(r.to_status)}">${escHtml(r.to_status)}</span>
+        ${r.from_value ? `${historyChip(r, r.from_value)}<span class="status-log-arrow">→</span>` : (r.to_value ? `<span class="status-log-new">신규</span>` : '')}
+        ${historyChip(r, r.to_value)}
+        ${r.reason ? `<span class="cust-ov-sub">${escHtml(r.reason)}</span>` : ''}
+        ${r.note ? `<span class="cust-ov-sub">${escHtml(r.note)}</span>` : ''}
       </span>
       <span class="status-log-by">${r.changed_by ? escHtml(r.changed_by) : '-'}</span>
-    </div>
-  `).join('')}</div>`;
+    </div>`).join('')}</div>` : `<div class="wide-table-empty">해당하는 변경 이력이 없습니다.</div>`;
+  box.innerHTML = filters + list + (all.length >= 500 ? `<div class="fd-note">최근 500건까지만 읽었습니다.</div>` : '');
+}
+
+function setHistoryFilter(f){ detailHistoryFilter = f; renderStatusLogSection(detailCustomerId, true); }
+
+/* ---------- 화면 동작 (모두 실패 시 안내 문구를 띄우고 값을 되돌립니다) ---------- */
+async function changeContractStatus(selectEl, contractId, axis){
+  const ct = detailBundle && detailBundle.contracts.find(c => c.contract_id === contractId);
+  if (!ct) return;
+  const colMap = { status: 'contract_status', payout: 'payout_status', clawback: 'clawback_status' };
+  const prev = ct[colMap[axis]] || '';
+  const to = selectEl.value === '' ? null : selectEl.value;
+  let reason = null;
+  if (axis === 'status' && to === '접수불가') {
+    reason = prompt('접수불가 사유를 입력해 주세요 (비워도 됩니다)');
+    if (reason === null) { selectEl.value = prev; return; }   // 취소
+  }
+  selectEl.disabled = true;
+  const r = await changeStatus({ target: 'contract', id: contractId, axis, to, reason });
+  selectEl.disabled = false;
+  if (!r.ok) { alert('변경 실패: ' + r.error); selectEl.value = prev; return; }
+  if (!r.changed) return;
+  if (axis === 'payout' && to === '지급요청' && !ctItemsAllInstalled(ct)) showToast('⚠ 설치완료가 아닌 상품이 있는 계약입니다 (변경은 적용됨)');
+  else showToast('✓ 변경되었습니다');
+  if (r.auto) showToast(`✓ 고객 상태가 '${CUSTOMER_STATUS_LABEL[r.auto.to] || r.auto.to}'(으)로 자동 전환되었습니다`);
+  if (r.autoError) alert(r.userMessage);
+  await afterContractChange(ct.customer_id);
+}
+
+async function changeItemProgress(selectEl, itemId, contractId){
+  const ct = detailBundle && detailBundle.contracts.find(c => c.contract_id === contractId);
+  const it = ct && ct.items.find(i => i.item_id === itemId);
+  if (!it) return;
+  const prev = it.progress_status || '';
+  const to = selectEl.value;
+  let reason = null;
+  if (to === '접수취소') {
+    reason = prompt('접수취소 사유를 입력해 주세요 (비워도 됩니다)');
+    if (reason === null) { selectEl.value = prev; return; }
+  }
+  selectEl.disabled = true;
+  const r = await changeStatus({ target: 'item', id: itemId, axis: 'progress', to, reason });
+  selectEl.disabled = false;
+  if (!r.ok) { alert('변경 실패: ' + r.error); selectEl.value = prev; return; }
+  showToast(r.changed ? '✓ 변경되었습니다' : r.userMessage);
+  await afterContractChange(ct.customer_id);
+}
+
+async function createContractUi(btn){
+  const type = document.getElementById('nc-type').value;
+  setBtnLoading(btn, '만드는 중...');
+  try {
+    const r = await createContract({ customerId: detailCustomerId, contractType: type, label: elVal('nc-label'),
+      linkedContractId: type === 'usim' ? (elVal('nc-link') || null) : null });
+    if (!r.ok) { alert('계약 만들기 실패: ' + r.error); return; }
+    showToast(`✓ ${formatContractNo(r.contract.contract_id)} 계약이 만들어졌습니다`);
+    await afterContractChange(detailCustomerId);
+  } finally { clearBtnLoading(btn); }
+}
+
+async function saveContractMetaUi(contractId, btn){
+  const keys = [...S6_META_TEXT, ...S6_META_INT, ...S6_META_DATE];
+  const fields = {};
+  keys.forEach(k => { const el = document.getElementById(`ct-${contractId}-${k}`); if (el) fields[k] = el.value; });
+  setBtnLoading(btn, '저장 중...');
+  try {
+    const r = await saveContractMeta(contractId, fields);
+    if (!r.ok) { alert('저장 실패: ' + r.error); return; }
+    showToast('✓ 계약 정보가 저장되었습니다');
+    await refreshDetailBundle(detailCustomerId);
+  } finally { clearBtnLoading(btn); }
+}
+
+async function addItemUi(contractId, btn){
+  setBtnLoading(btn, '추가 중...');
+  try {
+    const r = await addContractItem({ contractId, productType: elVal(`ct-${contractId}-add-type`), carrier: elVal(`ct-${contractId}-add-carrier`),
+      productName: elVal(`ct-${contractId}-add-name`), monthlyFee: elVal(`ct-${contractId}-add-fee`), commission: elVal(`ct-${contractId}-add-comm`) });
+    if (!r.ok) { alert('상품 추가 실패: ' + r.error); return; }
+    showToast('✓ 상품이 추가되었습니다');
+    await refreshDetailBundle(detailCustomerId);
+  } finally { clearBtnLoading(btn); }
+}
+
+async function saveItemUi(itemId, btn){
+  setBtnLoading(btn, '저장 중...');
+  try {
+    const r = await saveContractItem(itemId, { carrier: elVal(`it-${itemId}-carrier`), product_name: elVal(`it-${itemId}-name`),
+      monthly_fee: elVal(`it-${itemId}-fee`), commission: elVal(`it-${itemId}-comm`) });
+    if (!r.ok) { alert('저장 실패: ' + r.error); return; }
+    showToast('✓ 상품 정보가 저장되었습니다');
+    await refreshDetailBundle(detailCustomerId);
+  } finally { clearBtnLoading(btn); }
+}
+
+async function deleteItemUi(itemId, btn){
+  if (!confirm(`상품 ${formatItemNo(itemId)}을(를) 삭제할까요? 되돌릴 수 없습니다.`)) return;
+  setBtnLoading(btn, '삭제 중...');
+  try {
+    const r = await deleteContractItem(itemId);
+    if (!r.ok) { alert('삭제 실패: ' + r.error); return; }
+    showToast('✓ 삭제되었습니다');
+    await refreshDetailBundle(detailCustomerId);
+  } finally { clearBtnLoading(btn); }
+}
+
+async function deleteContractUi(contractId, btn){
+  if (!confirm(`계약 ${formatContractNo(contractId)}과(와) 하위 상품을 삭제할까요? 되돌릴 수 없습니다.\n(이력은 공통 이력으로 남습니다)`)) return;
+  setBtnLoading(btn, '삭제 중...');
+  try {
+    const r = await deleteContract(contractId);
+    if (!r.ok) { alert('삭제 실패: ' + r.error); return; }
+    if (r.historyWarning) alert(r.historyWarning);
+    if (detailHistoryFilter === contractId) detailHistoryFilter = 'all';
+    showToast('✓ 삭제되었습니다');
+    await afterContractChange(detailCustomerId);
+  } finally { clearBtnLoading(btn); }
 }
 
 async function updateCustomer(id, btn){
@@ -4040,7 +4360,6 @@ async function updateCustomer(id, btn){
     old_tv_count: Number(elVal('cf-old-tv') || 0),
     desired_product: elVal('cf-desired') || null,
     notes: elVal('cf-notes') || null,
-    funnel_status: elVal('cf-funnel') || DEFAULT_FUNNEL_STATUS,
     next_contact_at: nextContact ? new Date(nextContact).toISOString() : null
   };
 
@@ -4074,13 +4393,10 @@ async function updateCustomer(id, btn){
 
   setBtnLoading(btn, '저장 중...');
   try {
-    const { data: prevRow } = await sb.from('customers').select('funnel_status').eq('customer_id', id).limit(1);
-    const prevStatus = prevRow && prevRow[0] ? prevRow[0].funnel_status : null;
+    // S6 : 고객 상태는 상태 칸에서 바로 저장(changeStatus)하므로 여기서는 저장하지 않습니다.
     const { error } = await sb.from('customers').update(payload).eq('customer_id', id);
     if (error) { alert('수정 실패: ' + error.message); return; }
     showToast('✓ 고객 정보가 수정되었습니다');
-    await logStatusChange(id, prevStatus, payload.funnel_status);
-    if (payload.funnel_status === CONTACT_CYCLE_STATUS) await autoStartContactCycle(id);
     await searchOrRefresh();
     loadFunnelDashboard();
     if (detailCustomerId === id) renderContactSection(id);
@@ -4101,9 +4417,13 @@ async function searchOrRefresh(){
 }
 
 async function deleteCustomer(id, btn){
-  if (!confirm('해당 고객 정보를 삭제할까요? 되돌릴 수 없습니다.')) return;
+  const chk = await checkCustomerDeletable(id);
+  if (!chk.ok) { alert(chk.error); return; }   // 접수된 계약이 있는 고객은 삭제할 수 없음 (이탈·제외로 처리)
+  if (!confirm('해당 고객 정보를 삭제할까요? 되돌릴 수 없습니다.' + (chk.draftCount ? `\n(작성 중인 계약 ${chk.draftCount}건과 변경 이력도 함께 삭제됩니다)` : ''))) return;
   setBtnLoading(btn, '삭제 중...');
   try {
+    const nd = await deleteCustomerNewData(id);
+    if (!nd.ok) { alert('삭제 실패: ' + nd.error); return; }
     if (CUSTOMER_SCHEMA.hasProductsTable) await sb.from('customer_products').delete().eq('customer_id', id);
     if (CUSTOMER_SCHEMA.hasContactsTable) await sb.from('customer_contacts').delete().eq('customer_id', id);
     const { error } = await sb.from('customers').delete().eq('customer_id', id);
