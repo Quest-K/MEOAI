@@ -331,7 +331,7 @@ async function loadCustomerBundle(customerId){
 
 // ------------------------------------------------------------
 // 고객 목록 + 계약 집계 : { ok, rows[ {...customers 칼럼, overview:{...}} ], total }
-//   filters: contact(숫자·하이픈 모두 가능, 부분일치) / name(부분일치) / customerStatus(문자열 또는 배열)
+//   filters: contact(숫자·하이픈 모두 가능, 부분일치) / name(부분일치) / customerStatus(문자열 또는 배열) / substatus / reason
 //            acquired(true=유치, false=미유치) / openPayout / unpaid / openClawback (true 이면 해당 계약이 1건 이상)
 //            orderBy(기본 updated_at) / ascending(기본 false) / limit(기본 200)
 //   total : 조건에 맞는 전체 고객 수(limit 이전)
@@ -351,6 +351,8 @@ async function loadCustomerOverviewList(filters){
     if (digits) q = q.ilike('contact', `%${digits}%`);
     if (name) q = q.ilike('name', `%${name}%`);
     if (statuses) q = q.in('customer_status', statuses);
+    if (f.substatus) q = q.eq('consult_substatus', f.substatus);   // S5 추가: 상담중 부가표시
+    if (f.reason) q = q.eq('status_reason', f.reason);             // S5 추가: 이탈·제외 사유
     return q;
   };
   const applyOverview = q => {
