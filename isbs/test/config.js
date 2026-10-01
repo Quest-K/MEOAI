@@ -204,3 +204,80 @@ const GUIDED_USIM_COLS = [80, 0, 72, 82, 88];
 const PERFORMANCE_WON_STATUSES = ['접수완료', ...FUNNEL_STAGES.filter(g => g.stage >= 3 && g.stage <= 4).flatMap(g => g.items)];
 // "접수완료 리스트"에 보여줄 상태값
 const PERFORMANCE_LIST_STATUS = '접수완료';
+
+
+/* ---------- 9. 새 구조 상태 사전 (S3) ---------- */
+// 새 DB 구조(고객 > 계약 > 상품)의 상태 목록입니다. 위 5번의 FUNNEL_* 상수는 화면 전환(S5~S7)이 끝날 때까지 그대로 둡니다.
+// 값(DB에 저장되는 문자열)은 01_structure.sql 과 동일해야 합니다. 이 섹션은 추가만 했고 기존 상수는 바꾸지 않았습니다.
+
+// 고객 상태 : customers.customer_status (DB 값)
+const CUSTOMER_STATUSES = ['상담대기', '상담중', '상담완료', '이탈', '제외'];
+const DEFAULT_CUSTOMER_STATUS = '상담대기';
+// 화면 칩에 보이는 이름. DB 값 '상담완료'는 화면에서 '유치'로 표시합니다. (결정 2026-10-01)
+// ※ 상담완료 = 접수대기·보류·완료 계약이 1건이라도 있는 고객(D16). 실제 유치(접수 이력)는 v_customer_overview.is_acquired 로 따로 계산합니다.
+const CUSTOMER_STATUS_LABEL = { '상담대기': '상담대기', '상담중': '상담중', '상담완료': '유치', '이탈': '이탈', '제외': '제외' };
+
+// 상담중 부가표시 : customers.consult_substatus (customer_status = 상담중 일 때만 사용)
+const CONSULT_SUBSTATUSES = ['상품안내', '상담예약', '고객부재'];
+
+// 이탈·제외 사유 : customers.status_reason (customer_status 별로 선택)
+//  - 이탈(고객부재)는 3회 재안내 후 담당자가 직접 변경합니다(자동 전환 없음, D18)
+//  - 제외 사유는 현재 쓰는 2개만 둡니다. (01_structure.sql 주석에는 '없는번호·테스트 등'도 언급 — 필요 시 여기에 추가)
+const STATUS_REASONS = {
+  '이탈': ['기존유지', '타사가입', '고객부재'],
+  '제외': ['오인입', '타부서']
+};
+
+// 계약 상태 : contracts.contract_status (계약취소는 저장하지 않고 v_contract_overview.effective_status 로 계산)
+const CONTRACT_STATUSES = ['작성중', '접수대기', '접수보류', '접수불가', '접수완료'];
+const DEFAULT_CONTRACT_STATUS = '작성중';
+const CONTRACT_CANCELED_LABEL = '계약취소';   // effective_status 에만 나타나는 계산값
+// 화면 묶음 이름 (D3-1) : 계약진행 = 작성중 + 접수대기, 보류확인 = 접수보류
+const CONTRACT_DISPLAY_GROUP = {
+  '작성중': '계약진행', '접수대기': '계약진행', '접수보류': '보류확인', '접수불가': '접수불가', '접수완료': '접수완료'
+};
+
+// 상품 진행 상태 : contract_items.progress_status (개통완료는 저장하지 않고 '상품이 전부 설치완료'일 때의 계산 표시값, D3-3)
+const ITEM_PROGRESS = ['설치대기', '설치완료', '접수취소'];
+const ITEM_ALL_INSTALLED_LABEL = '개통완료';
+
+// 지급 / 환수 : contracts.payout_status / contracts.clawback_status (계약 단위, 값이 없으면 미설정)
+const PAYOUT_STATUSES = ['지급요청', '지급보류', '지급완료'];
+const CLAWBACK_STATUSES = ['환수요청', '환수보류', '환수진행', '환수완료'];
+
+// 구 상태값(funnel_status 22개 + LEGACY_STATUS_MAP 의 예전 값) -> 새 구조 변환표
+//  customer : { status, substatus?, reason? }  고객 상태 (이전 기준 D17)
+//  contract : { contract_status?, payout_status?, clawback_status?, allInstalled? }  계약 쪽 대응 (없으면 고객 상태만 해당)
+//  - 계약진행의 contract_status 는 작성중/접수대기 중 어느 쪽인지 구 데이터만으로 알 수 없어 '접수대기'를 기본으로 둡니다.
+//  - 환수필요는 폐지되어 환수요청으로 변환합니다(D3-2). 개통완료는 allInstalled(상품 전부 설치완료)로 표시합니다.
+//  - 종결(정상)은 지급완료로 이전했습니다.
+const FUNNEL_TO_NEW_STRUCTURE = (() => {
+  const issued = { contract_status: '접수완료' };
+  const m = {
+    '상담대기':       { customer: { status: '상담대기' } },
+    '상담예약':       { customer: { status: '상담중', substatus: '상담예약' } },
+    '고객부재':       { customer: { status: '상담중', substatus: '고객부재' } },
+    '상품안내':       { customer: { status: '상담중', substatus: '상품안내' } },
+    '계약진행':       { customer: { status: '상담중' }, contract: { contract_status: '접수대기' } },
+    '보류확인':       { customer: { status: '상담중' }, contract: { contract_status: '접수보류' } },
+    '접수불가':       { customer: { status: '상담중' }, contract: { contract_status: '접수불가' } },
+    '접수완료':       { customer: { status: '상담완료' }, contract: { ...issued } },
+    '개통완료':       { customer: { status: '상담완료' }, contract: { ...issued, allInstalled: true } },
+    '지급요청':       { customer: { status: '상담완료' }, contract: { ...issued, payout_status: '지급요청' } },
+    '지급보류':       { customer: { status: '상담완료' }, contract: { ...issued, payout_status: '지급보류' } },
+    '지급완료':       { customer: { status: '상담완료' }, contract: { ...issued, payout_status: '지급완료' } },
+    '환수필요':       { customer: { status: '상담완료' }, contract: { ...issued, clawback_status: '환수요청' } },
+    '환수요청':       { customer: { status: '상담완료' }, contract: { ...issued, clawback_status: '환수요청' } },
+    '환수진행':       { customer: { status: '상담완료' }, contract: { ...issued, clawback_status: '환수진행' } },
+    '환수완료':       { customer: { status: '상담완료' }, contract: { ...issued, clawback_status: '환수완료' } },
+    '종결(정상)':     { customer: { status: '상담완료' }, contract: { ...issued, payout_status: '지급완료' } },
+    '종결(오인입)':   { customer: { status: '제외', reason: '오인입' } },
+    '종결(타부서)':   { customer: { status: '제외', reason: '타부서' } },
+    '이탈(기존유지)': { customer: { status: '이탈', reason: '기존유지' } },
+    '이탈(타사가입)': { customer: { status: '이탈', reason: '타사가입' } },
+    '이탈(고객부재)': { customer: { status: '이탈', reason: '고객부재' } }
+  };
+  // 삭제·통합된 예전 값(개통대기 등)은 LEGACY_STATUS_MAP 으로 현재 값을 거쳐 같은 변환을 따릅니다.
+  Object.keys(LEGACY_STATUS_MAP).forEach(old => { m[old] = m[LEGACY_STATUS_MAP[old]]; });
+  return m;
+})();
