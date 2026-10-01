@@ -673,3 +673,246 @@ async function changeStatus(opts){
     return s4Fail(e && e.message ? e.message : String(e));
   }
 }
+
+
+// ============================================================
+// 계약·상품 생성 / 수정 / 삭제 (S6)
+// ------------------------------------------------------------
+//  - 추가만 한 함수입니다. 모든 함수는 예외를 던지지 않고 { ok, ..., error } 를 돌려줍니다.
+//  - 상태(접수·지급·환수·진행)는 여기서 바꾸지 않고 changeStatus() 로만 바꿉니다. 여기서는 생성·정보 수정·삭제만 다룹니다.
+//  - 삭제는 접수 전(작성중이고 접수 시각이 없는) 계약·상품만 허용합니다(D15). DB 트리거도 같은 규칙으로 막습니다.
+//  - 삭제 전에 해당 계약·상품의 이력을 '공통 이력'으로 바꿔 남깁니다. status_history 에는
+//    "target_type 이 contract/item 이면 contract_id/item_id 가 있어야 한다"는 제약이 있어, 그대로 지우면
+//    FK 의 set null 이 제약에 걸려 삭제가 실패하기 때문입니다. 삭제가 실패하면 이력을 원래대로 되돌립니다.
+//  - 번호 표기(D3-8): 계약 CT-0001, 상품 IT-3938 형태는 화면에서만 만듭니다(formatContractNo / formatItemNo).
+// ============================================================
+function formatContractNo(id){ return 'CT-' + String(id).padStart(4, '0'); }
+function formatItemNo(id){ return 'IT-' + String(id).padStart(4, '0'); }
+
+const S6_ITEM_TYPES = { home: ['internet', 'tv'], usim: ['usim'] };
+const S6_ITEM_TYPE_LABEL = { internet: '인터넷', tv: 'TV', usim: '유심' };
+const S6_META_TEXT = ['label', 'address_zip', 'address', 'address_detail', 'contractor_name', 'contractor_relation', 'payment_method', 'external_ref', 'clawback_reason', 'memo'];
+const S6_META_INT = ['gift_total', 'gift_card', 'gift_cash', 'gift_extra', 'commission_total', 'clawback_amount'];
+const S6_META_DATE = ['install_scheduled_at'];
+
+function s6Err(msg){ return { ok: false, error: msg }; }
+function s6LoginErr(){ return (typeof isLoggedIn !== 'undefined' && !isLoggedIn) ? '로그인 후 사용할 수 있습니다.' : null; }
+
+function s6Int(v){
+  if (v === '' || v === null || v === undefined) return null;
+  const t = String(v).replace(/[,\s원]/g, '');      // 1,200,000 / 1200000원 허용
+  if (!/^-?\d+$/.test(t)) return NaN;                // 그 외 글자가 섞이면 숫자가 아닌 것으로 처리
+  return Number(t);
+}
+
+async function s6DetachHistory(col, id, label){
+  const sel = await sb.from('status_history').select('history_id,target_type,contract_id,item_id,note').eq(col, id);
+  if (sel.error) return { ok: false, error: '이력을 읽지 못했습니다: ' + sel.error.message };
+  const saved = sel.data || [];
+  const done = [];
+  for (const r of saved) {
+    const up = await sb.from('status_history').update({
+      target_type: 'customer', contract_id: null, item_id: null, note: (r.note ? r.note + ' ' : '') + `[삭제된 ${label}]`
+    }).eq('history_id', r.history_id);
+    if (up.error) { await s6RestoreHistory(done); return { ok: false, error: '이력 정리에 실패했습니다: ' + up.error.message }; }
+    done.push(r);
+  }
+  return { ok: true, saved };
+}
+
+async function s6RestoreHistory(saved){
+  for (const r of (saved || [])) {
+    await sb.from('status_history').update({ target_type: r.target_type, contract_id: r.contract_id, item_id: r.item_id, note: r.note }).eq('history_id', r.history_id);
+  }
+}
+
+async function s6WriteHistory(row){
+  const r = await sb.from('status_history').insert({ event_type: 'status_change', target_type: 'customer', source: 'app', changed_by: await s4ChangedBy(), ...row }).select('history_id');
+  return r.error ? { ok: false, error: r.error.message } : { ok: true, historyId: r.data && r.data[0] ? r.data[0].history_id : null };
+}
+
+// 신규 계약 : 작성중으로 만들고 '계약 생성' 이력을 남깁니다. 이력 저장이 실패하면 계약도 취소합니다.
+//   opts: { customerId, contractType('home'|'usim'), label, linkedContractId(유심만, 선택) }
+async function createContract(opts){
+  try {
+    const le = s6LoginErr(); if (le) return s6Err(le);
+    const o = opts || {};
+    const customerId = Number(o.customerId);
+    if (!Number.isFinite(customerId)) return s6Err('고객 ID가 올바르지 않습니다.');
+    if (o.contractType !== 'home' && o.contractType !== 'usim') return s6Err('계약 구분을 선택해 주세요.');
+    let linked = null;
+    if (o.contractType === 'usim' && o.linkedContractId) {
+      linked = Number(o.linkedContractId);
+      const lk = await sb.from('contracts').select('contract_id,customer_id,contract_type').eq('contract_id', linked).limit(1);
+      if (lk.error) return s6Err('연결할 계약을 읽지 못했습니다: ' + lk.error.message);
+      const row = (lk.data || [])[0];
+      if (!row || row.customer_id !== customerId || row.contract_type !== 'home') return s6Err('유심 계약은 같은 고객의 인터넷·TV 계약에만 연결할 수 있습니다.');
+    }
+    let ins = null;
+    for (let attempt = 0; attempt < 2; attempt++) {      // 동시에 만들어 순번이 겹치면 한 번 다시 시도
+      const mx = await sb.from('contracts').select('seq').eq('customer_id', customerId);
+      if (mx.error) return s6Err('순번을 확인하지 못했습니다: ' + mx.error.message);
+      const seq = (mx.data || []).reduce((m, r) => Math.max(m, Number(r.seq) || 0), 0) + 1;
+      ins = await sb.from('contracts').insert({
+        customer_id: customerId, seq, contract_type: o.contractType, label: (o.label || '').trim() || null,
+        linked_contract_id: linked, contract_status: '작성중', source: 'app', created_by: await s4ChangedBy()
+      }).select('*');
+      if (!ins.error) break;
+    }
+    if (ins.error) return s6Err('계약 생성에 실패했습니다: ' + ins.error.message);
+    const contract = ins.data[0];
+    const h = await s6WriteHistory({ customer_id: customerId, contract_id: contract.contract_id, target_type: 'contract', axis: 'status', from_value: null, to_value: '작성중', note: '계약 생성' });
+    if (!h.ok) {
+      await sb.from('contracts').delete().eq('contract_id', contract.contract_id);
+      return s6Err('이력 저장에 실패해 계약을 만들지 않았습니다: ' + h.error);
+    }
+    return { ok: true, contract };
+  } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
+}
+
+// 계약 정보 수정(상태 제외). 허용 칼럼만 반영하고 나머지는 무시합니다.
+async function saveContractMeta(contractId, fields){
+  try {
+    const le = s6LoginErr(); if (le) return s6Err(le);
+    const id = Number(contractId);
+    if (!Number.isFinite(id)) return s6Err('계약 ID가 올바르지 않습니다.');
+    const f = fields || {}, patch = {};
+    S6_META_TEXT.forEach(k => { if (k in f) patch[k] = (f[k] == null || String(f[k]).trim() === '') ? null : String(f[k]).trim(); });
+    for (const k of S6_META_INT) {
+      if (!(k in f)) continue;
+      const n = s6Int(f[k]);
+      if (Number.isNaN(n)) return s6Err(`숫자로 입력해 주세요: ${k}`);
+      patch[k] = n;
+    }
+    S6_META_DATE.forEach(k => { if (k in f) patch[k] = f[k] ? f[k] : null; });
+    if (!Object.keys(patch).length) return { ok: true, changed: false };
+    const r = await sb.from('contracts').update(patch).eq('contract_id', id).select('contract_id');
+    if (r.error) return s6Err('저장에 실패했습니다: ' + r.error.message);
+    if (!r.data || !r.data.length) return s6Err('계약을 찾을 수 없습니다.');
+    return { ok: true, changed: true };
+  } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
+}
+
+// 상품 추가 : 설치대기로 만들고 이력을 남깁니다. 인터넷·TV 계약에는 인터넷/TV, 유심 계약에는 유심(1회선)만 넣을 수 있습니다.
+//   opts: { contractId, productType, carrier, productName, monthlyFee, commission }
+async function addContractItem(opts){
+  try {
+    const le = s6LoginErr(); if (le) return s6Err(le);
+    const o = opts || {};
+    const cid = Number(o.contractId);
+    if (!Number.isFinite(cid)) return s6Err('계약 ID가 올바르지 않습니다.');
+    const ct = await sb.from('contracts').select('contract_id,customer_id,contract_type').eq('contract_id', cid).limit(1);
+    if (ct.error) return s6Err('계약을 읽지 못했습니다: ' + ct.error.message);
+    const contract = (ct.data || [])[0];
+    if (!contract) return s6Err('계약을 찾을 수 없습니다.');
+    if (!(S6_ITEM_TYPES[contract.contract_type] || []).includes(o.productType)) return s6Err('이 계약에는 넣을 수 없는 상품 구분입니다.');
+    if (contract.contract_type === 'usim') {
+      const ex = await sb.from('contract_items').select('item_id').eq('contract_id', cid);
+      if (ex.error) return s6Err('상품을 확인하지 못했습니다: ' + ex.error.message);
+      if ((ex.data || []).length) return s6Err('유심 계약에는 1회선만 넣을 수 있습니다.');
+    }
+    const fee = s6Int(o.monthlyFee), comm = s6Int(o.commission);
+    if (Number.isNaN(fee) || Number.isNaN(comm)) return s6Err('요금·수수료는 숫자로 입력해 주세요.');
+    const ins = await sb.from('contract_items').insert({
+      contract_id: cid, customer_id: contract.customer_id, product_type: o.productType,
+      carrier: (o.carrier || '').trim() || null, product_name: (o.productName || '').trim() || null,
+      monthly_fee: fee, commission: comm, progress_status: '설치대기', source: 'app'
+    }).select('*');
+    if (ins.error) return s6Err('상품 추가에 실패했습니다: ' + ins.error.message);
+    const item = ins.data[0];
+    const h = await s6WriteHistory({ customer_id: contract.customer_id, contract_id: cid, item_id: item.item_id, target_type: 'item', axis: 'progress', from_value: null, to_value: '설치대기', note: '상품 추가' });
+    if (!h.ok) {
+      await sb.from('contract_items').delete().eq('item_id', item.item_id);
+      return s6Err('이력 저장에 실패해 상품을 추가하지 않았습니다: ' + h.error);
+    }
+    return { ok: true, item };
+  } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
+}
+
+// 상품 정보 수정(상태 제외) : 통신사·상품명·월요금·수수료만. detail(JSON) 등 나머지는 건드리지 않습니다.
+async function saveContractItem(itemId, fields){
+  try {
+    const le = s6LoginErr(); if (le) return s6Err(le);
+    const id = Number(itemId);
+    if (!Number.isFinite(id)) return s6Err('상품 ID가 올바르지 않습니다.');
+    const f = fields || {}, patch = {};
+    ['carrier', 'product_name'].forEach(k => { if (k in f) patch[k] = (f[k] == null || String(f[k]).trim() === '') ? null : String(f[k]).trim(); });
+    for (const k of ['monthly_fee', 'commission']) {
+      if (!(k in f)) continue;
+      const n = s6Int(f[k]);
+      if (Number.isNaN(n)) return s6Err('요금·수수료는 숫자로 입력해 주세요.');
+      patch[k] = n;
+    }
+    if (!Object.keys(patch).length) return { ok: true, changed: false };
+    const r = await sb.from('contract_items').update(patch).eq('item_id', id).select('item_id');
+    if (r.error) return s6Err('저장에 실패했습니다: ' + r.error.message);
+    if (!r.data || !r.data.length) return s6Err('상품을 찾을 수 없습니다.');
+    return { ok: true, changed: true };
+  } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
+}
+
+function s6IsDraft(c){ return !!c && c.contract_status === '작성중' && !c.received_at; }
+
+// 상품 삭제 : 접수 전(작성중) 계약의 상품만. 접수 이후에는 진행 상태를 '접수취소'로 바꿔 주세요.
+async function deleteContractItem(itemId){
+  try {
+    const le = s6LoginErr(); if (le) return s6Err(le);
+    const id = Number(itemId);
+    const it = await sb.from('contract_items').select('item_id,contract_id').eq('item_id', id).limit(1);
+    if (it.error) return s6Err('상품을 읽지 못했습니다: ' + it.error.message);
+    const item = (it.data || [])[0];
+    if (!item) return s6Err('상품을 찾을 수 없습니다.');
+    const ct = await sb.from('contracts').select('contract_id,contract_status,received_at').eq('contract_id', item.contract_id).limit(1);
+    if (ct.error) return s6Err('계약을 읽지 못했습니다: ' + ct.error.message);
+    if (!s6IsDraft((ct.data || [])[0])) return s6Err('접수된 계약의 상품은 삭제할 수 없습니다. 진행 상태를 접수취소로 바꿔 주세요.');
+    const det = await s6DetachHistory('item_id', id, '상품 ' + formatItemNo(id));
+    if (!det.ok) return s6Err(det.error);
+    const del = await sb.from('contract_items').delete().eq('item_id', id);
+    if (del.error) { await s6RestoreHistory(det.saved); return s6Err('삭제에 실패했습니다: ' + del.error.message); }
+    return { ok: true };
+  } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
+}
+
+// 계약 삭제 : 작성중이고 접수 시각이 없는 계약만(D15). 하위 상품·제안은 함께 삭제되고 이력은 공통 이력으로 남습니다.
+async function deleteContract(contractId){
+  try {
+    const le = s6LoginErr(); if (le) return s6Err(le);
+    const id = Number(contractId);
+    const ct = await sb.from('contracts').select('contract_id,customer_id,contract_status,received_at').eq('contract_id', id).limit(1);
+    if (ct.error) return s6Err('계약을 읽지 못했습니다: ' + ct.error.message);
+    const c = (ct.data || [])[0];
+    if (!c) return s6Err('계약을 찾을 수 없습니다.');
+    if (!s6IsDraft(c)) return s6Err('접수된 계약은 삭제할 수 없습니다. 상태(접수불가 등)로 처리해 주세요.');
+    const no = formatContractNo(id);
+    const det = await s6DetachHistory('contract_id', id, '계약 ' + no);
+    if (!det.ok) return s6Err(det.error);
+    const del = await sb.from('contracts').delete().eq('contract_id', id);
+    if (del.error) { await s6RestoreHistory(det.saved); return s6Err('삭제에 실패했습니다: ' + del.error.message); }
+    const h = await s6WriteHistory({ customer_id: c.customer_id, target_type: 'customer', axis: null, event_type: 'contract_deleted', note: `계약 ${no} 삭제` });
+    return h.ok ? { ok: true } : { ok: true, historyWarning: '계약은 삭제됐지만 삭제 이력 저장에 실패했습니다: ' + h.error };
+  } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
+}
+
+// 고객 삭제 전 확인 : 접수 이후 계약(작성중이 아니거나 접수 시각이 있는 계약)이 있으면 삭제할 수 없습니다.
+async function checkCustomerDeletable(customerId){
+  try {
+    const r = await sb.from('contracts').select('contract_id,contract_status,received_at').eq('customer_id', Number(customerId));
+    if (r.error) return s6Err('계약을 확인하지 못했습니다: ' + r.error.message);
+    const blocked = (r.data || []).filter(c => !s6IsDraft(c));
+    if (blocked.length) return { ok: false, blocked: blocked.map(c => formatContractNo(c.contract_id)),
+      error: `접수된 계약(${blocked.map(c => formatContractNo(c.contract_id)).join(', ')})이 있어 고객을 삭제할 수 없습니다. 상태를 이탈 또는 제외로 처리해 주세요.` };
+    return { ok: true, draftCount: (r.data || []).length };
+  } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
+}
+
+// 고객 삭제 전 새 구조 데이터 정리 : 이력 → 계약(작성중만, 하위 상품·제안 포함). 고객 행 자체는 호출한 쪽에서 지웁니다.
+async function deleteCustomerNewData(customerId){
+  const id = Number(customerId);
+  const chk = await checkCustomerDeletable(id);
+  if (!chk.ok) return chk;
+  const h = await sb.from('status_history').delete().eq('customer_id', id);
+  if (h.error) return s6Err('이력 삭제에 실패했습니다: ' + h.error.message);
+  const c = await sb.from('contracts').delete().eq('customer_id', id);
+  if (c.error) return s6Err('계약 삭제에 실패했습니다: ' + c.error.message);
+  return { ok: true };
+}
