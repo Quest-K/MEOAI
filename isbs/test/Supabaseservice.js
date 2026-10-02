@@ -1066,3 +1066,311 @@ function s7BuildConsultPlan(input, helpers){
   };
   return { home, usims, proposals, snapshot, warnings };
 }
+
+
+// ============================================================
+// 상담 세트 계약 저장 (S7-2)
+// ------------------------------------------------------------
+//  - 추가만 한 함수입니다. 화면은 아직 연결하지 않습니다(연결은 S7-4·S7-5). 상품·제안 저장은 S7-3에서 합니다.
+//  - 대상: S7-1 변환 결과(s7BuildConsultPlan)의 계약. 상태는 changeStatus() 로만 바꾸므로 여기서는 계약 생성·정보·스냅샷만 다룹니다.
+//  - 저장 범위(C4, B안): **상담 화면이 불러온(또는 직전에 저장한) 계약에만** 저장합니다. 새 상담이나 다른 고객은 새 계약을 만듭니다.
+//    · 인터넷·TV 계약(대표 계약)이 상담 스냅샷(consult_snapshot)을 가집니다. 최종상품이 없어도 제안·유심이 있으면 상품 없는 대표 계약을 만들어
+//      제안과 스냅샷을 보관합니다(작성중, 접수되기 전까지 상품 추가 가능). 아무 내용도 없으면 계약을 만들지 않습니다.
+//    · 대표 계약이 접수대기 이후이면 상담 저장은 아무것도 바꾸지 않고 안내만 합니다(skippedAll). 접수된 유심 계약도 같습니다.
+//    · 상담 화면에서 뺀 유심 회선의 계약은 작성중이면 삭제하고, 접수된 계약은 그대로 둡니다(경고만).
+//    · 유심 계약은 인터넷·TV 최종상품이 있을 때만 대표 계약에 연결합니다(결합할인 대상).
+//    · 계약 정보는 비어 있지 않은 값만 덮어씁니다(라벨은 새로 만들 때만 정함). 사은품 값은 상담 화면 값이 기준입니다.
+//  - 중간에 실패하면 { ok:false, error } 와 함께 그때까지 만들어진 계약 ID(carrierContractId, usimByKey)를 돌려주어 화면이 같은 계약을 기억하게 합니다.
+//  - 계약을 다시 찾는 방법: 대표 계약 = consult_snapshot 이 있는 가장 최근 인터넷·TV 계약, 유심 계약 = 그 스냅샷 최종상품의 상담 상품 ID(detail.consultKey)와
+//    같은 키를 가진 유심 상품이 든 계약(s7LoadConsultTargets).
+// ============================================================
+function s7NonNull(obj){
+  const r = {};
+  Object.keys(obj || {}).forEach(k => { if (obj[k] !== null && obj[k] !== undefined) r[k] = obj[k]; });
+  return r;
+}
+function s7ItemKey(it){
+  const d = it && it.detail;
+  return (d && typeof d === 'object' && d.consultKey) ? String(d.consultKey) : null;
+}
+
+// 상담 화면이 쓸 계약 찾기 : { ok, carrierContractId, usimByKey, snapshot, contracts }
+async function s7LoadConsultTargets(customerId){
+  try {
+    const le = s6LoginErr(); if (le) return s6Err(le);
+    const cid = Number(customerId);
+    if (!Number.isFinite(cid)) return s6Err('고객 ID가 올바르지 않습니다.');
+    const cs = await sb.from('contracts').select('contract_id,contract_type,contract_status,received_at,linked_contract_id,updated_at,consult_snapshot').eq('customer_id', cid);
+    if (cs.error) return s6Err('계약을 읽지 못했습니다: ' + cs.error.message);
+    const rows = cs.data || [];
+    const carriers = rows.filter(c => c.contract_type === 'home' && c.consult_snapshot)
+      .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')) || b.contract_id - a.contract_id);
+    const carrier = carriers[0] || null;
+    const out = { ok: true, carrierContractId: carrier ? carrier.contract_id : null, usimByKey: {}, snapshot: carrier ? carrier.consult_snapshot : null,
+      contracts: rows.map(c => ({ contract_id: c.contract_id, contract_type: c.contract_type, contract_status: c.contract_status, received_at: c.received_at, linked_contract_id: c.linked_contract_id })) };
+    if (!carrier) return out;
+    const snap = carrier.consult_snapshot;
+    const keys = new Set((Array.isArray(snap && snap.finals) ? snap.finals : []).filter(p => p && p.type === 'usim').map(p => String(p.id)));
+    const usimIds = rows.filter(c => c.contract_type === 'usim').map(c => c.contract_id);
+    if (!keys.size || !usimIds.length) return out;
+    const it = await sb.from('contract_items').select('contract_id,item_id,product_type,detail').eq('customer_id', cid).eq('product_type', 'usim');
+    if (it.error) return s6Err('상품을 읽지 못했습니다: ' + it.error.message);
+    (it.data || []).forEach(r => { const k = s7ItemKey(r); if (k && keys.has(k) && usimIds.includes(r.contract_id)) out.usimByKey[k] = r.contract_id; });
+    return out;
+  } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
+}
+
+// 상담 세트의 계약 저장.
+//   opts: { customerId, plan(s7BuildConsultPlan 결과), targets: { carrierContractId, usimByKey }, removeMissing(기본 true) }
+//   반환: { ok, error?, skippedAll?, carrierContractId, homeContractId, carrier, home, usims:[{matchKey, contractId, created, skipped, reason}], removed:[...], warnings:[...] }
+async function s7SaveConsultContracts(opts){
+  const out = { ok: false, skippedAll: false, carrierContractId: null, homeContractId: null, carrier: null, home: null, usims: [], removed: [], usimByKey: {}, warnings: [] };
+  const fail = msg => { out.ok = false; out.error = msg; return out; };
+  try {
+    const le = s6LoginErr(); if (le) return fail(le);
+    const o = opts || {};
+    const cid = Number(o.customerId);
+    if (!Number.isFinite(cid)) return fail('고객 ID가 올바르지 않습니다.');
+    const plan = o.plan;
+    if (!plan || typeof plan !== 'object') return fail('상담 변환 결과가 없습니다.');
+    const usims = Array.isArray(plan.usims) ? plan.usims : [];
+    const proposals = Array.isArray(plan.proposals) ? plan.proposals : [];
+    (plan.warnings || []).forEach(w => out.warnings.push(w));
+    const targets = o.targets || {};
+    const known = (targets.usimByKey && typeof targets.usimByKey === 'object') ? targets.usimByKey : {};
+
+    // 화면이 기억하는 계약의 현재 상태(같은 고객의 계약만 인정)
+    const ids = [targets.carrierContractId, ...Object.values(known)].filter(v => v !== null && v !== undefined).map(Number).filter(Number.isFinite);
+    const state = {};
+    if (ids.length) {
+      const r = await sb.from('contracts').select('contract_id,customer_id,contract_type,contract_status,received_at,linked_contract_id').in('contract_id', ids);
+      if (r.error) return fail('계약을 읽지 못했습니다: ' + r.error.message);
+      (r.data || []).filter(c => c.customer_id === cid).forEach(c => { state[c.contract_id] = c; });
+    }
+
+    // 1) 대표(인터넷·TV) 계약 : 기억하는 계약이 있으면 그것, 없으면 저장할 내용이 있을 때만 새로 만듭니다.
+    let carrierState = targets.carrierContractId !== null && targets.carrierContractId !== undefined ? state[Number(targets.carrierContractId)] : null;
+    if (carrierState && carrierState.contract_type !== 'home') carrierState = null;
+    if (targets.carrierContractId && !carrierState) out.warnings.push('상담 화면이 기억하던 계약을 찾지 못해 새 계약으로 저장합니다.');
+    const needCarrier = !!(plan.home || usims.length || proposals.length);
+    if (!carrierState && !needCarrier) { out.ok = true; return out; }       // 저장할 내용이 없음 : 계약을 만들지 않음
+
+    if (carrierState) {
+      out.carrierContractId = out.homeContractId = carrierState.contract_id;
+      if (!s6IsDraft(carrierState)) {
+        out.skippedAll = true; out.ok = true;
+        out.carrier = out.home = { contractId: carrierState.contract_id, skipped: true, reason: '접수가 진행된 계약이라 상담 저장이 바꾸지 않습니다. 새 상담으로 시작해 주세요.' };
+        out.warnings.push(out.carrier.reason);
+        Object.entries(known).forEach(([k, v]) => { out.usimByKey[k] = Number(v); });
+        return out;
+      }
+      out.carrier = { contractId: carrierState.contract_id, created: false };
+    } else {
+      const cr = await createContract({ customerId: cid, contractType: 'home', label: plan.home ? plan.home.label : '상담 계약' });
+      if (!cr.ok) return fail('인터넷·TV 계약을 만들지 못했습니다: ' + cr.error);
+      out.carrierContractId = out.homeContractId = cr.contract.contract_id;
+      out.carrier = { contractId: cr.contract.contract_id, created: true };
+    }
+    out.home = plan.home ? Object.assign({ matchKey: plan.home.matchKey }, out.carrier) : null;
+    const carrierId = out.carrierContractId;
+
+    // 스냅샷은 대표 계약에 가장 먼저 저장 : 이후 단계가 실패해도 다시 불러올 때 같은 대표 계약을 찾습니다.
+    const sn = await sb.from('contracts').update({ consult_snapshot: plan.snapshot || null }).eq('contract_id', carrierId).select('contract_id');
+    if (sn.error) return fail('상담 스냅샷 저장에 실패했습니다: ' + sn.error.message);
+    if (plan.home) {
+      const m = await saveContractMeta(carrierId, s7NonNull(plan.home.meta));
+      if (!m.ok) return fail('인터넷·TV 계약 정보 저장에 실패했습니다: ' + m.error);
+    }
+
+    // 2) 유심 계약 : 키(상담 상품 ID)로 기존 계약을 찾고, 없으면 새로 만듭니다. 인터넷·TV 최종상품이 있을 때만 대표 계약에 연결합니다.
+    const linkId = plan.home ? carrierId : null;
+    const inPlan = new Set();
+    for (const u of usims) {
+      inPlan.add(u.matchKey);
+      const row = { matchKey: u.matchKey, contractId: null, created: false, skipped: false };
+      const ex = known[u.matchKey] !== undefined && known[u.matchKey] !== null ? state[Number(known[u.matchKey])] : null;
+      if (ex && ex.contract_type === 'usim') {
+        row.contractId = ex.contract_id;
+        if (!s6IsDraft(ex)) {
+          row.skipped = true; row.reason = '접수가 진행된 유심 계약이라 상담 저장이 바꾸지 않습니다.';
+          out.warnings.push(`유심 ${formatContractNo(ex.contract_id)}: ${row.reason}`);
+        } else {
+          if ((ex.linked_contract_id || null) !== linkId) {
+            const lk = await sb.from('contracts').update({ linked_contract_id: linkId }).eq('contract_id', ex.contract_id).select('contract_id');
+            if (lk.error) { out.usimByKey[u.matchKey] = ex.contract_id; out.usims.push(row); return fail('유심 계약 연결 변경에 실패했습니다: ' + lk.error.message); }
+          }
+          const m = await saveContractMeta(ex.contract_id, s7NonNull(u.meta));
+          if (!m.ok) { out.usimByKey[u.matchKey] = ex.contract_id; out.usims.push(row); return fail('유심 계약 정보 저장에 실패했습니다: ' + m.error); }
+        }
+      } else {
+        if (known[u.matchKey]) out.warnings.push('상담 화면이 기억하던 유심 계약을 찾지 못해 새 계약으로 저장합니다.');
+        const cr = await createContract({ customerId: cid, contractType: 'usim', label: u.label, linkedContractId: linkId });
+        if (!cr.ok) return fail('유심 계약을 만들지 못했습니다: ' + cr.error);
+        row.contractId = cr.contract.contract_id; row.created = true;
+        out.usimByKey[u.matchKey] = row.contractId; out.usims.push(row);
+        const m = await saveContractMeta(row.contractId, s7NonNull(u.meta));
+        if (!m.ok) return fail('유심 계약 정보 저장에 실패했습니다: ' + m.error);
+        continue;
+      }
+      out.usimByKey[u.matchKey] = row.contractId; out.usims.push(row);
+    }
+
+    // 3) 상담 화면에서 뺀 유심 회선 : 작성중이면 삭제, 접수된 계약은 그대로(경고)
+    if (o.removeMissing !== false) {
+      for (const key of Object.keys(known)) {
+        if (inPlan.has(key)) continue;
+        const st = state[Number(known[key])];
+        if (!st) continue;                                                   // 이미 없어진 계약
+        if (!s6IsDraft(st)) {
+          out.usimByKey[key] = st.contract_id;
+          out.warnings.push(`유심 ${formatContractNo(st.contract_id)}: 접수가 진행된 계약이라 상담 화면에서 빼도 삭제되지 않습니다.`);
+          continue;
+        }
+        const d = await deleteContract(st.contract_id);
+        if (!d.ok) { out.usimByKey[key] = st.contract_id; return fail(`유심 ${formatContractNo(st.contract_id)} 삭제에 실패했습니다: ${d.error}`); }
+        out.removed.push({ matchKey: key, contractId: st.contract_id });
+        if (d.historyWarning) out.warnings.push(d.historyWarning);
+      }
+    }
+    out.ok = true;
+    return out;
+  } catch (e) { return fail(e && e.message ? e.message : String(e)); }
+}
+
+
+// ============================================================
+// 제안·최종상품 저장 + 상담 세트 저장 (S7-3)
+// ------------------------------------------------------------
+//  - 추가만 한 함수입니다. 화면은 아직 연결하지 않습니다(연결은 S7-4·S7-5).
+//  - 저장 방식(C5): 최종상품은 **상품 ID를 유지하며 갱신**하고, 최종상품에서 뺀 상품은 작성중 계약이라 **삭제**합니다.
+//    제안 행은 안내용 스냅샷이라 대표 계약 단위로 **통째로 교체**합니다(제안 ID 유지 안 함).
+//  - 상품 찾기: 한 계약 안에서 상품 구분(internet / tv / usim)이 같은 상품이 같은 상품입니다. 구분별로 1건만 두며, 같은 구분이 여러 건이면 첫 건만 갱신하고 경고합니다.
+//  - 상품 정보(통신사·상품명·월요금·수수료·detail)만 덮어쓰고, 진행 상태(설치대기 등)는 건드리지 않습니다.
+//  - 제안 행의 detail 모양: { consultKey(상담 화면 상품 ID), isFinal(최종상품에도 올렸는지), product(상담 화면 상품 값) }
+//  - 제안 교체 순서: 새 행 저장 → 옛 행 삭제. 새 행 저장이 실패하면 옛 제안이 그대로 남고, 삭제가 실패하면 오류로 알려 다시 저장하면 정리됩니다.
+//  - 접수가 진행된 계약(건너뜀)은 상품·제안도 바꾸지 않습니다.
+// ============================================================
+async function s7SaveContractItems(contractId, customerId, planItems){
+  const out = { ok: false, added: [], updated: [], removed: [], warnings: [] };
+  const fail = msg => { out.ok = false; out.error = msg; return out; };
+  try {
+    const le = s6LoginErr(); if (le) return fail(le);
+    const cid = Number(contractId), cust = Number(customerId);
+    if (!Number.isFinite(cid) || !Number.isFinite(cust)) return fail('계약 ID 또는 고객 ID가 올바르지 않습니다.');
+    const items = Array.isArray(planItems) ? planItems : [];
+    const ex = await sb.from('contract_items').select('*').eq('contract_id', cid).order('item_id', { ascending: true });
+    if (ex.error) return fail('상품을 읽지 못했습니다: ' + ex.error.message);
+    const rows = (ex.data || []).slice().sort((a, b) => a.item_id - b.item_id);
+    const byType = {};
+    rows.forEach(r => { (byType[r.product_type] = byType[r.product_type] || []).push(r); });
+    Object.keys(byType).forEach(t => { if (byType[t].length > 1) out.warnings.push(`계약 ${formatContractNo(cid)}에 ${t} 상품이 ${byType[t].length}건 있어 첫 건(${formatItemNo(byType[t][0].item_id)})만 갱신합니다.`); });
+
+    const wantedTypes = new Set();
+    for (const it of items) {
+      wantedTypes.add(it.productType);
+      const fee = s6Int(it.monthlyFee), comm = s6Int(it.commission);
+      if (Number.isNaN(fee) || Number.isNaN(comm)) return fail('요금·수수료는 숫자여야 합니다.');
+      const vals = { carrier: it.carrier || null, product_name: it.productName || null, monthly_fee: fee, commission: comm, detail: it.detail || null };
+      const cur = (byType[it.productType] || [])[0];
+      if (cur) {
+        const same = (cur.carrier || null) === vals.carrier && (cur.product_name || null) === vals.product_name && (cur.monthly_fee ?? null) === vals.monthly_fee
+          && (cur.commission ?? null) === vals.commission && JSON.stringify(cur.detail || null) === JSON.stringify(vals.detail);
+        if (!same) {
+          const u = await sb.from('contract_items').update(vals).eq('item_id', cur.item_id).select('item_id');
+          if (u.error) return fail(`상품 ${formatItemNo(cur.item_id)} 저장에 실패했습니다: ${u.error.message}`);
+          out.updated.push(cur.item_id);
+        }
+      } else {
+        const ins = await sb.from('contract_items').insert(Object.assign({ contract_id: cid, customer_id: cust, product_type: it.productType, progress_status: '설치대기', source: 'app' }, vals)).select('*');
+        if (ins.error) return fail('상품 추가에 실패했습니다: ' + ins.error.message);
+        const item = ins.data[0];
+        const h = await s6WriteHistory({ customer_id: cust, contract_id: cid, item_id: item.item_id, target_type: 'item', axis: 'progress', from_value: null, to_value: '설치대기', note: '상담 저장으로 상품 추가' });
+        if (!h.ok) {
+          await sb.from('contract_items').delete().eq('item_id', item.item_id);
+          return fail('이력 저장에 실패해 상품을 추가하지 않았습니다: ' + h.error);
+        }
+        out.added.push(item.item_id);
+      }
+    }
+    // 상담 화면에서 뺀 상품 삭제(작성중 계약만 여기까지 옴)
+    for (const t of Object.keys(byType)) {
+      if (wantedTypes.has(t)) continue;
+      for (const r of byType[t]) {
+        const d = await deleteContractItem(r.item_id);
+        if (!d.ok) return fail(`상품 ${formatItemNo(r.item_id)} 삭제에 실패했습니다: ${d.error}`);
+        out.removed.push(r.item_id);
+      }
+    }
+    out.ok = true;
+    return out;
+  } catch (e) { return fail(e && e.message ? e.message : String(e)); }
+}
+
+// 대표 계약의 제안 행 교체. 새 행 저장 → 옛 행 삭제 순서라 저장 실패 시 옛 제안이 남습니다.
+async function s7ReplaceProposals(contractId, customerId, proposalRows){
+  const out = { ok: false, count: 0, removed: 0 };
+  const fail = msg => { out.ok = false; out.error = msg; return out; };
+  try {
+    const le = s6LoginErr(); if (le) return fail(le);
+    const cid = Number(contractId), cust = Number(customerId);
+    if (!Number.isFinite(cid) || !Number.isFinite(cust)) return fail('계약 ID 또는 고객 ID가 올바르지 않습니다.');
+    const old = await sb.from('contract_proposals').select('proposal_id').eq('contract_id', cid);
+    if (old.error) return fail('제안을 읽지 못했습니다: ' + old.error.message);
+    const oldIds = (old.data || []).map(r => r.proposal_id);
+    const rows = (Array.isArray(proposalRows) ? proposalRows : []).map(p => ({
+      contract_id: cid, customer_id: cust, product_type: p.productType, carrier: p.carrier || null, product_name: p.productName || null,
+      monthly_fee: s6Int(p.monthlyFee), gift_amount: s6Int(p.giftAmount), commission: s6Int(p.commission), source: 'app',
+      detail: { consultKey: p.matchKey, isFinal: !!p.isFinal, product: p.detail || null }
+    }));
+    if (rows.some(r => Number.isNaN(r.monthly_fee) || Number.isNaN(r.gift_amount) || Number.isNaN(r.commission))) return fail('제안의 금액이 숫자가 아닙니다.');
+    if (rows.length) {
+      const ins = await sb.from('contract_proposals').insert(rows).select('proposal_id');
+      if (ins.error) return fail('제안 저장에 실패했습니다(기존 제안은 그대로입니다): ' + ins.error.message);
+      out.count = (ins.data || []).length;
+    }
+    if (oldIds.length) {
+      const del = await sb.from('contract_proposals').delete().in('proposal_id', oldIds);
+      if (del.error) return fail('이전 제안 정리에 실패했습니다. 다시 저장하면 정리됩니다: ' + del.error.message);
+      out.removed = oldIds.length;
+    }
+    out.ok = true;
+    return out;
+  } catch (e) { return fail(e && e.message ? e.message : String(e)); }
+}
+
+// 상담 세트 저장 : 변환(S7-1) → 계약(S7-2) → 상품 → 제안. 한 번에 호출해 같은 계약·상품 ID를 유지하며 저장합니다.
+//   opts: { customerId, input(상담 입력값: s7BuildConsultPlan 의 input), helpers(수수료 계산 함수 등), targets:{carrierContractId, usimByKey}, removeMissing }
+//   반환: s7SaveConsultContracts 결과 + { items:{ [contractId]: {added,updated,removed} }, proposals:{count,removed}, plan }
+//        실패 시 { ok:false, error, step } 과 함께 그때까지 만든 carrierContractId·usimByKey 를 돌려줍니다(화면이 기억해 다시 저장하면 이어서 저장).
+async function saveConsultSet(opts){
+  const o = opts || {};
+  let plan;
+  try { plan = s7BuildConsultPlan(o.input, o.helpers); }
+  catch (e) { return { ok: false, step: 'plan', error: '상담 입력값을 변환하지 못했습니다: ' + (e && e.message ? e.message : e), carrierContractId: null, usimByKey: {}, warnings: [] }; }
+  const res = await s7SaveConsultContracts({ customerId: o.customerId, plan, targets: o.targets, removeMissing: o.removeMissing });
+  res.plan = plan; res.items = {}; res.proposals = null;
+  if (!res.ok) { res.step = 'contracts'; return res; }
+  if (res.skippedAll || res.carrierContractId === null) return res;           // 접수 이후 계약이거나 저장할 내용 없음
+  const fail = (step, msg) => { res.ok = false; res.step = step; res.error = msg; return res; };
+  const cust = Number(o.customerId);
+
+  // 상품 : 대표(인터넷·TV) → 유심
+  const homeItems = plan.home ? plan.home.items : [];
+  const hi = await s7SaveContractItems(res.carrierContractId, cust, homeItems);
+  hi.warnings.forEach(w => res.warnings.push(w));
+  res.items[res.carrierContractId] = { added: hi.added, updated: hi.updated, removed: hi.removed };
+  if (!hi.ok) return fail('items', '인터넷·TV 상품 저장에 실패했습니다: ' + hi.error);
+  for (const u of plan.usims) {
+    const row = res.usims.find(x => x.matchKey === u.matchKey);
+    if (!row || row.skipped) continue;
+    const ui = await s7SaveContractItems(row.contractId, cust, u.items);
+    ui.warnings.forEach(w => res.warnings.push(w));
+    res.items[row.contractId] = { added: ui.added, updated: ui.updated, removed: ui.removed };
+    if (!ui.ok) return fail('items', `유심 ${formatContractNo(row.contractId)} 상품 저장에 실패했습니다: ${ui.error}`);
+  }
+  // 제안 : 대표 계약에 통째로 교체
+  const pr = await s7ReplaceProposals(res.carrierContractId, cust, plan.proposals);
+  res.proposals = { count: pr.count, removed: pr.removed };
+  if (!pr.ok) return fail('proposals', pr.error);
+  return res;
+}
