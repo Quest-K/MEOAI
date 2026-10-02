@@ -1106,9 +1106,12 @@ async function s7LoadConsultTargets(customerId){
     const carriers = rows.filter(c => c.contract_type === 'home' && c.consult_snapshot)
       .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')) || b.contract_id - a.contract_id);
     const carrier = carriers[0] || null;
-    const out = { ok: true, carrierContractId: carrier ? carrier.contract_id : null, usimByKey: {}, snapshot: carrier ? carrier.consult_snapshot : null,
+    const out = { ok: true, carrierContractId: carrier ? carrier.contract_id : null, carrierItemTypes: [], usimByKey: {}, snapshot: carrier ? carrier.consult_snapshot : null,
       contracts: rows.map(c => ({ contract_id: c.contract_id, contract_type: c.contract_type, contract_status: c.contract_status, received_at: c.received_at, linked_contract_id: c.linked_contract_id })) };
     if (!carrier) return out;
+    const ci = await sb.from('contract_items').select('product_type').eq('contract_id', carrier.contract_id);
+    if (ci.error) return s6Err('상품을 읽지 못했습니다: ' + ci.error.message);
+    out.carrierItemTypes = (ci.data || []).map(r => r.product_type);
     const snap = carrier.consult_snapshot;
     const keys = new Set((Array.isArray(snap && snap.finals) ? snap.finals : []).filter(p => p && p.type === 'usim').map(p => String(p.id)));
     const usimIds = rows.filter(c => c.contract_type === 'usim').map(c => c.contract_id);
@@ -1373,4 +1376,44 @@ async function saveConsultSet(opts){
   res.proposals = { count: pr.count, removed: pr.removed };
   if (!pr.ok) return fail('proposals', pr.error);
   return res;
+}
+
+
+// ============================================================
+// 상담 화면 불러오기 (S7-4)
+// ------------------------------------------------------------
+//  - 읽기 전용. 고객의 상담 내용(제안·최종상품·가족회선)을 새 구조(contracts.consult_snapshot)에서 읽어 상담 화면 값으로 돌려줍니다.
+//  - 대표 계약·유심 계약은 s7LoadConsultTargets 규칙으로 찾고, 그 결과(carrierContractId·usimByKey)를 화면이 기억해 다시 저장할 때 같은 계약을 쓰게 합니다.
+//  - 계약 쪽 변경 반영: S7 방식으로 저장된 스냅샷(snapshotVersion 2)은 계약·상품이 지워진 최종상품을 화면 값에서 뺍니다(제안은 그대로).
+//      · 유심 최종상품 = 그 유심 계약이 없으면 제외 / 인터넷·TV 최종상품 = 대표 계약에 인터넷·TV 상품이 하나도 없으면 제외 / "고객 본인 회선" 행은 계약이 없는 게 정상이라 항상 유지
+//    이전 데이터(snapshotVersion 없음)는 계약 키가 없으므로 이렇게 거르지 않고 스냅샷 그대로 보여 줍니다.
+//  - 대표 계약이 없으면 { ok:true, found:false } → 화면은 구 방식 값(customers.proposal_snapshot)을 그대로 씁니다.
+// ============================================================
+async function loadConsultForScreen(customerId){
+  try {
+    const t = await s7LoadConsultTargets(customerId);
+    if (!t.ok) return t;
+    if (!t.carrierContractId || !t.snapshot || typeof t.snapshot !== 'object') return { ok: true, found: false };
+    const snap = t.snapshot;
+    const arr = v => Array.isArray(v) ? v : [];
+    const finalsAll = arr(snap.finals).filter(p => p && typeof p === 'object');
+    const dropped = [];
+    let finals = finalsAll;
+    if (snap.snapshotVersion === 2) {
+      finals = finalsAll.filter(p => {
+        let keep = true;
+        if (p.type === 'usim') keep = s7IsSyncedLine(p) || Object.prototype.hasOwnProperty.call(t.usimByKey, String(p.id));
+        else if (p.type === 'home') keep = t.carrierItemTypes.some(x => x === 'internet' || x === 'tv');
+        if (!keep) dropped.push({ id: p.id, type: p.type });
+        return keep;
+      });
+    }
+    const ci = (snap.customerInfo && typeof snap.customerInfo === 'object') ? snap.customerInfo : null;
+    return {
+      ok: true, found: true, carrierContractId: t.carrierContractId, usimByKey: t.usimByKey,
+      proposals: s7Clone(arr(snap.proposals).filter(p => p && typeof p === 'object')), finals: s7Clone(finals),
+      familyLines: s7Clone(arr(ci && ci.familyLines)), customerInfo: s7Clone(ci), comboDiscount: s7Clone(snap.comboDiscount) ?? null,
+      dropped, snapshotVersion: snap.snapshotVersion || 1
+    };
+  } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
 }
