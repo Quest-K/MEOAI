@@ -281,3 +281,17 @@ const FUNNEL_TO_NEW_STRUCTURE = (() => {
   Object.keys(LEGACY_STATUS_MAP).forEach(old => { m[old] = m[LEGACY_STATUS_MAP[old]]; });
   return m;
 })();
+
+
+/* ---------- 10. 고객부재 재안내 — 새 구조 대응값 (S7-8) ---------- */
+// 재안내(컨택 사이클)는 고객 상태 '상담중' + 부가표시 '고객부재'로 표현합니다. 위 5번의 CONTACT_CYCLE_STATUS·CONTACT_CLOSED_STATUS·
+// CONTACT_CONNECTED_STATUS 는 구 퍼널 값이라 S11에서 지우고, 새 화면 코드는 아래 값을 씁니다. (추가만 했고 기존 상수는 바꾸지 않았습니다.)
+const CONTACT_CYCLE_NEW = { status: '상담중', substatus: CONTACT_CYCLE_STATUS };     // 재안내 진행 중
+const CONTACT_CYCLE_VALUE = CONTACT_CYCLE_NEW.status + '|' + CONTACT_CYCLE_NEW.substatus;   // 상태 선택칸 값('상태|세부')
+// 3회 모두 부재여도 자동으로 바꾸지 않고, 담당자가 직접 이 상태로 바꿉니다(기존 규칙 유지).
+const CONTACT_CLOSED_NEW = { status: '이탈', reason: '고객부재' };
+// 통화가 연결되면 '상담중'(부가표시 없음)으로 바꿉니다. 재안내 중(상담중 + 고객부재)일 때만 바꾸고, 이탈·제외·유치 상태는 건드리지 않습니다. (2026-10-02 사용자 확정)
+const CONTACT_CONNECTED_NEW = { status: '상담중', substatus: null };
+// 부재가 기록되면 재안내 상태로 바꿀 수 있는 현재 상태: 상담대기, 또는 상담중(부가표시 없음·상담예약).
+// 상품안내 중인 고객·이탈·제외·유치는 부재를 기록해도 상태를 바꾸지 않습니다(구 PRE_STAGE_STATUSES = 상담대기·상담예약·고객부재 와 같은 범위).
+const CONTACT_START_FROM_NEW = { statuses: ['상담대기'], consultSubstatuses: ['', RESERVATION_STATUS] };
