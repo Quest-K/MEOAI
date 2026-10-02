@@ -295,3 +295,11 @@ const CONTACT_CONNECTED_NEW = { status: '상담중', substatus: null };
 // 부재가 기록되면 재안내 상태로 바꿀 수 있는 현재 상태: 상담대기, 또는 상담중(부가표시 없음·상담예약).
 // 상품안내 중인 고객·이탈·제외·유치는 부재를 기록해도 상태를 바꾸지 않습니다(구 PRE_STAGE_STATUSES = 상담대기·상담예약·고객부재 와 같은 범위).
 const CONTACT_START_FROM_NEW = { statuses: ['상담대기'], consultSubstatuses: ['', RESERVATION_STATUS] };
+
+/* ---------- 11. 실적조회 새 기준 (S8) ---------- */
+// 8장의 PERFORMANCE_WON_STATUSES · PERFORMANCE_LIST_STATUS 는 구 퍼널(funnel_status) 기준이라 실적조회에서 더 이상 쓰지 않습니다.
+// 구 코드가 모두 사라지는 S11에서 삭제합니다(추가만). 새 실적조회는 고객 상태(9장)와 계약 상태·접수 이력(v_contract_overview)을 씁니다.
+const PERF_CONTRACT_TYPE_LABEL = { home: '인터넷·TV', usim: '유심' };
+const PERF_ITEM_TYPE_LABEL = { internet: '인터넷', tv: 'TV', usim: '유심' };
+// 부가표시·사유가 비어 있는 고객을 표에서 부르는 이름
+const PERF_CUSTOMER_DETAIL_EMPTY = { '상담중': '(부가표시 없음)', '이탈': '(사유 없음)', '제외': '(사유 없음)' };
