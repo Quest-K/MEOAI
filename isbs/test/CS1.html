@@ -534,7 +534,7 @@
 
 <script src="config.js?v=20261001b"></script>
 <script src="Calculator.js?v=20260930h"></script>
-<script src="Supabaseservice.js?v=20261002c"></script>
+<script src="Supabaseservice.js?v=20261002d"></script>
 <script>
 // 외부 파일 로드 점검: 파일 누락/내용 뒤바뀜(예: JS 자리에 CSS가 들어간 경우) 시 화면 상단에 경고 표시
 (function checkModules(){
@@ -2150,6 +2150,10 @@ function toggleDetailTagsBody(){
 
 let CUSTOMER_SCHEMA = { hasProductsTable: false, hasSnapshot: false, hasTags: false, hasInflow: false, hasContactsTable: false, hasStatusLogsTable: false, checked: false };
 let currentCustomerId = null;
+// S7-4 : 상담 화면이 기억하는 계약(불러온 계약). 다시 저장할 때 같은 계약·상품을 쓰기 위한 값입니다(저장 교체는 S7-5).
+let consultTargets = { carrierContractId: null, usimByKey: {} };
+let consultLoadSeq = 0;      // 불러오기 요청 번호 : 고객을 바꾸거나 신규 상담을 시작하면 이전 요청의 결과를 무시합니다
+function emptyConsultTargets(){ return { carrierContractId: null, usimByKey: {} }; }
 let customerListCache = [];
 let customerViewInited = false;
 let customerViewSkipRecent = false;
@@ -2410,6 +2414,8 @@ function resetConsultation(){
 // 고객상담 화면을 빈 신규 상담으로 초기화 (연락처만 미리 채워둘 수 있음)
 function startNewConsultWithContact(contact){
   currentCustomerId = null;
+  consultTargets = emptyConsultTargets();
+  consultLoadSeq++;
   setVal('cust-name', NAME_PREFIX);
   setVal('cust-contact', formatContactDisplay(contact) || '010');
   setVal('cust-notes', '');
@@ -4462,17 +4468,14 @@ function fillConsultFormFromCustomer(c){
   selectedCustomerTags = new Set(Array.isArray(c.customer_tags) ? c.customer_tags : []);
   renderCustomerTags();
 
+  // 먼저 구 방식 값(customers.proposal_snapshot)으로 채우고, 새 구조(contracts.consult_snapshot)에서 읽은 값이 있으면 곧바로 바꿉니다(S7-4).
+  consultTargets = emptyConsultTargets();
+  const seq = ++consultLoadSeq;
   const snap = c.proposal_snapshot;
   if (snap && typeof snap === 'object') {
-    reflectedProducts = Array.isArray(snap.proposals) ? snap.proposals : [];
-    finalProducts = Array.isArray(snap.finals) ? snap.finals : [];
-    addedUsimLines = reflectedProducts.filter(p => p.type === 'usim')
-      .map(p => ({ id: p.id, carrier: p.carrier, planName: p.planName, fee: p.fee, teen: false }));
-    if (Array.isArray(snap.customerInfo?.familyLines)) familyLines = snap.customerInfo.familyLines;
+    applyConsultProducts(snap.proposals, snap.finals, snap.customerInfo?.familyLines);
   } else {
-    reflectedProducts = [];
-    finalProducts = [];
-    addedUsimLines = [];
+    applyConsultProducts([], [], null);
   }
 
   syncToDesignPhones();
@@ -4481,6 +4484,36 @@ function fillConsultFormFromCustomer(c){
   updateCsSummaryPanel();
   setConsultSaveState(`불러옴 · 고객ID ${c.customer_id}`, true);
   goCsStep(1);
+  loadConsultFromContracts(c.customer_id, seq);
+}
+
+// 상담 화면의 제안·최종상품·유심 회선·가족회선 값을 한 번에 채웁니다.
+function applyConsultProducts(proposals, finals, fam){
+  reflectedProducts = Array.isArray(proposals) ? proposals : [];
+  finalProducts = Array.isArray(finals) ? finals : [];
+  addedUsimLines = reflectedProducts.filter(p => p.type === 'usim')
+    .map(p => ({ id: p.id, carrier: p.carrier, planName: p.planName, fee: p.fee, teen: false }));
+  if (Array.isArray(fam)) familyLines = fam;
+}
+
+// 새 구조에서 상담 내용 읽기 : 대표 계약의 상담 스냅샷이 있으면 제안·최종상품을 그 값으로 바꾸고 계약을 기억합니다.
+// 읽지 못하거나(로그인 전·오류) 새 구조의 상담 내용이 없으면 구 방식 값을 그대로 둡니다.
+async function loadConsultFromContracts(customerId, seq){
+  if (typeof loadConsultForScreen !== 'function') return;
+  let r;
+  try { r = await loadConsultForScreen(customerId); }
+  catch (e) { console.warn('상담 내용 읽기 실패:', e); return; }
+  if (seq !== consultLoadSeq || currentCustomerId !== customerId) return;     // 그 사이 다른 고객·신규 상담으로 바뀜
+  if (!r || !r.ok) { if (r && r.error) console.warn('상담 내용 읽기 실패:', r.error); return; }
+  if (!r.found) return;
+  consultTargets = { carrierContractId: r.carrierContractId, usimByKey: r.usimByKey || {} };
+  applyConsultProducts(r.proposals, r.finals, r.familyLines);
+  syncToDesignPhones();
+  renderProposalLists();
+  renderFinalProducts();
+  updateCsSummaryPanel();
+  const note = r.dropped && r.dropped.length ? ` · 계약에서 삭제된 최종상품 ${r.dropped.length}건 제외` : '';
+  setConsultSaveState(`불러옴 · 고객ID ${customerId}${note}`, true);
 }
 
 // 고객 정보를 [고객상담] 화면으로 불러오기 (상품 스냅샷이 있으면 함께 복원) — 목록의 [상담화면으로 불러오기] 버튼용
