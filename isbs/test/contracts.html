@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>계약 검색 - Contracts</title>
+    <style>
+        /* 기본 스타일 초기화 */
+        body { font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; margin: 0; padding: 0; background-color: #f4f7f6; display: flex; flex-direction: column; height: 100vh; }
+        
+        /* 우측 상단 네비게이션 헤더 */
+        header { background-color: #2c3e50; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+        header h1 { margin: 0; font-size: 20px; }
+        nav { display: flex; gap: 10px; }
+        nav a { color: white; text-decoration: none; padding: 8px 15px; border-radius: 4px; font-size: 14px; transition: background 0.2s; }
+        nav a:hover { background-color: #34495e; }
+        nav a.active { background-color: #3498db; font-weight: bold; }
+        
+        /* 메인 레이아웃 (좌/우 분할) */
+        .container { display: flex; flex: 1; overflow: hidden; }
+        
+        /* 좌측: 고객 연락처 검색 및 계약 목록 */
+        .left-panel { width: 350px; background: white; border-right: 1px solid #ddd; display: flex; flex-direction: column; }
+        .search-box { padding: 20px; border-bottom: 1px solid #ddd; background: #fafafa; display: flex; gap: 5px;}
+        .search-box input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+        .search-box button { padding: 10px 15px; border: none; background: #3498db; color: white; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        
+        .contract-list { flex: 1; overflow-y: auto; list-style: none; padding: 0; margin: 0; }
+        .contract-list li { padding: 15px 20px; border-bottom: 1px solid #eee; cursor: pointer; transition: background 0.2s; }
+        .contract-list li:hover { background-color: #f0f8ff; }
+        .contract-list li.selected { background-color: #e1f0fa; border-left: 4px solid #3498db; }
+        .contract-list strong { display: block; font-size: 16px; margin-bottom: 5px; color: #333; }
+        .contract-list small { color: #666; }
+        
+        /* 우측: 계약 상세 화면 */
+        .right-panel { flex: 1; padding: 30px; overflow-y: auto; background: #f4f7f6; }
+        .detail-card { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); display: none; }
+        .detail-card.active { display: block; }
+        .detail-title { margin-top: 0; border-bottom: 2px solid #3498db; padding-bottom: 15px; color: #2c3e50; font-size: 22px; }
+        
+        /* 상세 정보 그리드 */
+        .detail-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-top: 25px; }
+        .detail-item { background: #fafafa; padding: 15px; border: 1px solid #eee; border-radius: 6px; }
+        .detail-label { font-size: 13px; color: #7f8c8d; margin-bottom: 8px; display: block; }
+        .detail-value { font-size: 16px; font-weight: bold; color: #2c3e50; }
+        
+        .placeholder-msg { text-align: center; padding-top: 150px; color: #95a5a6; font-size: 18px; }
+    </style>
+</head>
+<body>
+
+    <!-- 헤더 및 네비게이션 -->
+    <header>
+        <h1>계약 관리 시스템</h1>
+        <nav>
+            <a href="CS.html">CS 메인</a>
+            <a href="contracts.html" class="active">계약 검색</a>
+            <a href="performance.html">실적 페이지</a>
+        </nav>
+    </header>
+
+    <div class="container">
+        <!-- 좌측: 검색 및 목록 -->
+        <div class="left-panel">
+            <div class="search-box">
+                <!-- 연락처(숫자만 입력 가능) -->
+                <input type="text" id="phoneInput" placeholder="연락처 (숫자만 입력)" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
+                <button onclick="searchContract()">검색</button>
+            </div>
+            <ul class="contract-list" id="contractList">
+                <!-- 예시 리스트 (클릭 시 상세화면 표시) -->
+                <li onclick="showDetails(this, '홍길동', '010-1234-5678')">
+                    <strong>홍길동</strong>
+                    <small>연락처: 010-1234-5678<br>계약일: 2026-10-01</small>
+                </li>
+                <li onclick="showDetails(this, '김철수', '010-9876-5432')">
+                    <strong>김철수</strong>
+                    <small>연락처: 010-9876-5432<br>계약일: 2026-09-15</small>
+                </li>
+            </ul>
+        </div>
+
+        <!-- 우측: 상세 화면 -->
+        <div class="right-panel">
+            <!-- 초기 안내 메시지 -->
+            <div id="placeholderMsg" class="placeholder-msg">
+                좌측에서 고객의 계약 건을 선택하시면 상세 정보가 출력됩니다.
+            </div>
+
+            <!-- 계약 상세 정보 카드 -->
+            <div class="detail-card" id="detailCard">
+                <h2 class="detail-title"><span id="customerName"></span> 고객 계약 상세</h2>
+                
+                <div class="detail-grid">
+                    <div class="detail-item"><span class="detail-label">상품리스트</span><span class="detail-value">인터넷 + TV 결합</span></div>
+                    <div class="detail-item"><span class="detail-label">통신사</span><span class="detail-value">SK 브로드밴드</span></div>
+                    <div class="detail-item"><span class="detail-label">인터넷 속도</span><span class="detail-value">500M</span></div>
+                    <div class="detail-item"><span class="detail-label">wifi</span><span class="detail-value">포함 (Giga WiFi)</span></div>
+                    <div class="detail-item"><span class="detail-label">TV채널</span><span class="detail-value">B tv All (257채널)</span></div>
+                    <div class="detail-item"><span class="detail-label">STB</span><span class="detail-value">Smart3 셋톱박스</span></div>
+                    <div class="detail-item"><span class="detail-label">추가TV</span><span class="detail-value">없음</span></div>
+                    <div class="detail-item"><span class="detail-label">추가셋탑</span><span class="detail-value">없음</span></div>
+                    <div class="detail-item"><span class="detail-label">월요금</span><span class="detail-value">42,900원</span></div>
+                    <div class="detail-item"><span class="detail-label">사은품</span><span class="detail-value">상품권 40만 / 현금 5만</span></div>
+                    <div class="detail-item"><span class="detail-label">수수료</span><span class="detail-value">50,000원</span></div>
+                    <div class="detail-item"><span class="detail-label">결합여부</span><span class="detail-value">요즘가족결합 적용완료</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 연락처 검색 기능
+        function searchContract() {
+            const val = document.getElementById('phoneInput').value;
+            if(!val) {
+                alert("검색할 연락처(숫자)를 입력해주세요.");
+            } else {
+                // 실제 구현 시 DB 연동 또는 필터링 로직이 들어가는 부분
+                alert("입력하신 번호(" + val + ")로 계약을 검색합니다.");
+            }
+        }
+
+        // 특정 계약건 클릭 시 상세화면 출력 기능
+        function showDetails(element, name, phone) {
+            // 리스트 선택(하이라이트) 효과
+            const items = document.querySelectorAll('.contract-list li');
+            items.forEach(item => item.classList.remove('selected'));
+            element.classList.add('selected');
+
+            // 안내 메시지 숨기고 상세 카드 보이기
+            document.getElementById('placeholderMsg').style.display = 'none';
+            document.getElementById('detailCard').classList.add('active');
+            
+            // 고객명 업데이트
+            document.getElementById('customerName').innerText = name + " (" + phone + ")";
+        }
+    </script>
+</body>
+</html>
