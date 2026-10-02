@@ -532,7 +532,7 @@
 
 <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
-<script src="config.js?v=20261001b"></script>
+<script src="config.js?v=20261002a"></script>
 <script src="Calculator.js?v=20260930h"></script>
 <script src="Supabaseservice.js?v=20261002d"></script>
 <script>
@@ -2421,6 +2421,15 @@ async function saveConsultation(btn){
       if (sr.ok) { statusChanged = !!sr.changed; await refreshAfterConsultStatus(customerId); }
       else statusFail = sr.error || sr.userMessage || '알 수 없는 오류';
     }
+    // 1-c) 고객부재 재안내 (S7-8) : 선택한 상태가 '상담중 · 고객부재'이고 컨택 이력이 없으면 1차 컨택을 자동 반영합니다. (이력이 있으면 아무것도 하지 않음)
+    let autoNote = '';
+    if (!statusFail && String(elVal('cust-funnel-status') || '') === CONTACT_CYCLE_VALUE) {
+      try {
+        const au = await autoStartContactCycle(customerId, { syncConsult: true });
+        if (au && au.nextAt) autoNote = ` · ${au.nextNo}차 컨택 ${formatDateShort(au.nextAt)} 예약`;
+        if (au && au.statusError) alert(`컨택은 반영되었지만 고객 상태는 바뀌지 않았습니다.\n${au.statusError}`);
+      } catch (e) { console.warn('고객부재 재안내 자동 시작 실패', e); }
+    }
     const reportStatusFail = () => {
       if (statusFail) alert(`고객 상태는 바뀌지 않았습니다.\n${statusFail}\n\n선택한 상태는 그대로 두었으니 [저장]을 다시 누르거나 고객 상태를 직접 바꿔 주세요.`);
     };
@@ -2440,11 +2449,11 @@ async function saveConsultation(btn){
     }
     if (set.skippedAll) {
       setConsultSaveState(`고객 정보만 저장됨 · 고객ID ${customerId}`, true);
-      showToast('✓ 고객 정보가 저장되었습니다' + (statusChanged ? ' (상태 변경)' : ''));
+      showToast('✓ 고객 정보가 저장되었습니다' + (statusChanged ? ' (상태 변경)' : '') + autoNote);
       alert('접수가 진행된 계약이라 상품·제안은 바꾸지 않았습니다.\n새 상품은 새 상담(🆕 신규상담)으로 시작해 저장해 주세요.');
     } else {
       setConsultSaveState(`저장됨 · 고객ID ${customerId}`, !statusFail);
-      showToast('✓ 상담 내용이 저장되었습니다' + (statusChanged ? ' (상태 변경)' : ''));
+      showToast('✓ 상담 내용이 저장되었습니다' + (statusChanged ? ' (상태 변경)' : '') + autoNote);
       if (set.warnings && set.warnings.length) alert('저장되었습니다. 확인해 주세요:\n- ' + set.warnings.slice(0, 5).join('\n- '));
     }
     reportStatusFail();
@@ -3258,7 +3267,7 @@ function updateSortArrows(){
 // 고객 목록에서 상세화면을 거치지 않고 바로 고객 상태만 변경 (S5 : changeStatus 경유)
 //  - 선택값 형식 : '상태' 또는 '상태|세부'(상담중 부가표시 / 이탈·제외 사유)
 //  - 이력 저장이 실패하면 상태가 바뀌지 않고 안내 문구가 표시됩니다.
-//  - 고객부재 재안내 자동 예약(autoStartContactCycle)은 아직 구 상태값(funnel_status)을 읽으므로 S7에서 새 구조로 옮길 때 다시 연결합니다.
+//  - '상담중 · 고객부재'로 바꾸면 컨택 이력이 없을 때 1차 컨택을 자동 반영·예약합니다(autoStartContactCycle, S7-8).
 async function quickUpdateCustomerStatus(selectEl, customerId){
   const [status, detail] = String(selectEl.value).split('|');
   const c0 = customerListCache.find(x => x.customer_id === customerId);
@@ -3287,6 +3296,12 @@ async function quickUpdateCustomerStatus(selectEl, customerId){
   loadFunnelDashboard();
   if (c0) renderCustomerList(customerListCache);
   if (detailCustomerId === customerId) { if (c0) syncDetailStatusSelect(c0); refreshDetailBundle(customerId); }
+  if (status === CONTACT_CYCLE_NEW.status && (detail || '') === CONTACT_CYCLE_NEW.substatus) {
+    try {
+      const au = await autoStartContactCycle(customerId);
+      if (au && au.statusError) alert(`컨택은 반영되었지만 고객 상태는 바뀌지 않았습니다.\n${au.statusError}`);
+    } catch (e) { console.warn('고객부재 재안내 자동 시작 실패', e); }
+  }
 }
 
 function formatDateShort(iso){
@@ -3804,17 +3819,12 @@ async function currentUserEmail(){
   } catch (e) { return null; }
 }
 
-// 고객 정보(상태값·다음 컨택일시)를 DB와 화면(목록/상세/상담화면)에 함께 반영
+// 고객 정보(다음 컨택일시 등)를 DB와 화면(목록/상세/상담화면)에 함께 반영
+// S7-8: 고객 상태는 여기서 바꾸지 않습니다. 상태는 changeStatus 로 따로 바꿔야 status_history 에 이력이 남습니다(applyContactCycle 참고).
 async function setCustomerPatch(customerId, patch){
-  let prevStatus;
-  if ('funnel_status' in patch) {
-    const { data: cur } = await sb.from('customers').select('funnel_status').eq('customer_id', customerId).limit(1);
-    prevStatus = cur && cur[0] ? cur[0].funnel_status : null;
-  }
   const { error } = await sb.from('customers').update(patch).eq('customer_id', customerId);
   if (error) { alert('고객 정보 갱신 실패: ' + error.message); return false; }
   syncCustomerLocal(customerId, patch);
-  if ('funnel_status' in patch) await logStatusChange(customerId, prevStatus, patch.funnel_status);
   return true;
 }
 
@@ -3822,12 +3832,11 @@ function syncCustomerLocal(customerId, patch){
   const c = customerListCache.find(x => x.customer_id === customerId);
   if (c) Object.assign(c, patch);
   if (detailCustomerId === customerId) {
-    if ('funnel_status' in patch) setVal('cf-funnel', patch.funnel_status);
     if ('next_contact_at' in patch) setVal('cf-next-contact', toLocalInputValue(patch.next_contact_at));
   }
   // 상담화면에 같은 고객이 열려 있으면 저장 시 옛 값으로 되돌리지 않도록 함께 맞춤
   if (currentCustomerId === customerId) {
-    // S7-6: 상담 화면 선택칸은 새 고객 상태 선택지라 구 상태값(funnel_status)을 넣지 않습니다. 컨택 재안내의 상태 변경은 S7-8에서 새 구조로 연결합니다.
+    // 상태 선택칸은 상태가 바뀐 뒤 refreshAfterConsultStatus 가 맞춥니다(S7-6·S7-8).
     if ('next_contact_at' in patch) setVal('cust-next-contact', toLocalInputValue(patch.next_contact_at));
   }
   renderCustomerList(customerListCache);
@@ -3909,8 +3918,15 @@ async function applyContactCycle(customerId){
   const recorded = list.filter(r => r.contacted_at);
   const last = recorded.length ? recorded[recorded.length - 1] : null;
 
-  const { data: cd } = await sb.from('customers').select('funnel_status').eq('customer_id', customerId).limit(1);
-  const status = (cd && cd[0] && cd[0].funnel_status) || DEFAULT_FUNNEL_STATUS;
+  // 현재 고객 상태(새 구조). 상태 변경이 필요하면 아래에서 statusChange 로 모아 마지막에 changeStatus 로 한 번 바꿉니다. (S7-8)
+  const { data: cd, error: cde } = await sb.from('customers').select('customer_status,consult_substatus,status_reason,funnel_status').eq('customer_id', customerId).limit(1);
+  if (cde || !cd || !cd[0]) { alert('고객 상태 조회 실패: ' + (cde ? cde.message : '고객을 찾을 수 없습니다.')); return null; }
+  const info = custStatusInfo(cd[0]);
+  const inCycle = info.status === CONTACT_CYCLE_NEW.status && info.substatus === CONTACT_CYCLE_NEW.substatus;
+  const canStartCycle = !inCycle && (
+    (CONTACT_START_FROM_NEW.statuses.includes(info.status)) ||
+    (info.status === '상담중' && CONTACT_START_FROM_NEW.consultSubstatuses.includes(info.substatus || '')));
+  let statusChange = null;   // { substatus } : 상담중 으로, 부가표시를 substatus 로
 
   const patch = {};
   let exhausted = false, connected = false, nextAt = null, nextNo = null;
@@ -3923,7 +3939,7 @@ async function applyContactCycle(customerId){
     const stale = list.filter(r => !r.contacted_at).map(r => r.id);   // 예약만 되어 있던 회차는 취소
     if (stale.length) await sb.from('customer_contacts').delete().in('id', stale);
     patch.next_contact_at = null;
-    if (status === CONTACT_CYCLE_STATUS) patch.funnel_status = CONTACT_CONNECTED_STATUS;
+    if (inCycle) statusChange = { substatus: CONTACT_CONNECTED_NEW.substatus };   // 통화 연결 → 상담중 (재안내 중일 때만)
   } else if (last.attempt_no < CONTACT_RULES.maxAttempts) {
     nextNo = last.attempt_no + 1;
     const sched = computeNextContactTime(new Date(last.contacted_at));
@@ -3935,7 +3951,7 @@ async function applyContactCycle(customerId){
       await sb.from('customer_contacts').update({ scheduled_at: sched.toISOString() }).eq('id', nextRow.id);
     }
     if (!nextRow || !nextRow.contacted_at) { patch.next_contact_at = sched.toISOString(); nextAt = patch.next_contact_at; }
-    if (PRE_STAGE_STATUSES.includes(status) && status !== CONTACT_CYCLE_STATUS) patch.funnel_status = CONTACT_CYCLE_STATUS;
+    if (canStartCycle) statusChange = { substatus: CONTACT_CYCLE_NEW.substatus };   // 부재 기록 → 상담중 · 고객부재
     if (isBeyondHolidayCoverage(sched)) showToast(`⚠ 공휴일 목록이 ${KOREAN_HOLIDAYS_LAST_YEAR}년까지라 이후 일정은 주말만 제외하고 계산했습니다`);
   } else {
     exhausted = true;   // 마지막 회차까지 부재
@@ -3943,7 +3959,19 @@ async function applyContactCycle(customerId){
   }
 
   if (Object.keys(patch).length) await setCustomerPatch(customerId, patch);
-  return { exhausted, connected, nextAt, nextNo, last };
+
+  // 상태 변경(changeStatus) : status_history 에 1건 남습니다. 실패해도 컨택 기록·예약은 이미 저장되었으므로 statusError 로 알립니다.
+  let statusError = null, statusChanged = false;
+  if (statusChange) {
+    const r = (info.status === '상담중' && !info.legacy)
+      ? await changeStatus({ target: 'customer', id: customerId, axis: 'substatus', to: statusChange.substatus })   // 상담중 안에서는 부가표시만 바꿈
+      : await changeStatus({ target: 'customer', id: customerId, to: '상담중', substatus: statusChange.substatus });
+    if (!r.ok) statusError = r.error || r.userMessage || '알 수 없는 오류';
+    else statusChanged = !!r.changed;
+    if (r.ok && r.autoError) statusError = r.userMessage;
+    if (statusChanged) await refreshAfterConsultStatus(customerId);
+  }
+  return { exhausted, connected, nextAt, nextNo, last, statusError, statusChanged };
 }
 
 async function saveContactAttempt(customerId, n, btn){
@@ -3984,8 +4012,11 @@ async function saveContactAttempt(customerId, n, btn){
     } else {
       showToast(`✓ ${n}차 컨택이 기록되었습니다`);
     }
+    if (out && out.statusError) {
+      alert(`컨택은 기록되었지만 고객 상태는 바뀌지 않았습니다.\n${out.statusError}\n\n고객 상태는 고객조회 상세에서 직접 바꿔 주세요.`);
+    }
     if (out && out.exhausted) {   // 자동 전환하지 않고, 담당자가 직접 변경하도록 안내만 합니다
-      alert(`${CONTACT_RULES.maxAttempts}회 모두 부재입니다.\n재안내를 더 진행하지 않으려면 상태값을 '이탈(고객부재)'로 직접 변경해주세요.`);
+      alert(`${CONTACT_RULES.maxAttempts}회 모두 부재입니다.\n재안내를 더 진행하지 않으려면 고객 상태를 '${CONTACT_CLOSED_NEW.status} · ${CONTACT_CLOSED_NEW.reason}'로 직접 변경해주세요.`);
     }
     await renderContactSection(customerId);
     await refreshListRowExtras(customerId);
@@ -3994,7 +4025,7 @@ async function saveContactAttempt(customerId, n, btn){
   }
 }
 
-// 상태값이 '고객부재'가 되는 시점(상담 저장 / 상세 수정 / 목록 상태 변경)에 컨택 이력이 아직 없으면 1차 컨택을 자동 반영합니다.
+// 고객 상태가 '상담중 · 고객부재'가 되는 시점(상담 저장 / 목록·상세 상태 변경)에 컨택 이력이 아직 없으면 1차 컨택을 자동 반영합니다. (S7-8 : 새 상태 구조 기준)
 //  - 근무시간 안: 지금을 1차 컨택(부재)으로 기록하고 3시간 뒤(규칙 적용)를 2차로 자동 예약
 //  - 근무시간 밖: 다음 영업일 10:00를 1차 예약으로 저장
 async function autoStartContactCycle(customerId, opts){
