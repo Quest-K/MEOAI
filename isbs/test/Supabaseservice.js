@@ -916,3 +916,153 @@ async function deleteCustomerNewData(customerId){
   if (c.error) return s6Err('계약 삭제에 실패했습니다: ' + c.error.message);
   return { ok: true };
 }
+
+
+// ============================================================
+// 상담 입력값 → 계약·제안·상품 변환 규칙 (S7-1)
+// ------------------------------------------------------------
+//  - 추가만 한 순수 함수입니다. DB를 읽거나 쓰지 않고 화면도 바꾸지 않습니다(저장은 S7-2·S7-3, 화면 연결은 S7-4·S7-5).
+//  - 상담 화면(1세트 구조)의 값을 받아 "인터넷·TV 계약 1건 + 유심 계약 N건 + 제안 행 + 상담 스냅샷"으로 바꿉니다.
+//  - 계약·상품은 **최종상품(finalProducts)에서만** 만듭니다. 제안상품(reflectedProducts)은 안내용이라 제안 행으로만 남깁니다.
+//  - 유심은 회선 1개 = 계약 1건입니다. "고객 본인 회선(상담정보 연동)" 자동 행은 판매 상품이 아니므로 계약으로 만들지 않고,
+//    본인 회선 정보는 스냅샷의 customerInfo(mobileCarrier·mobileFee)에 남습니다.
+//  - 다시 저장할 때 같은 계약·상품을 찾을 수 있도록 matchKey 를 붙입니다.
+//      인터넷·TV 계약 'home' / 그 안의 상품 'internet', 'tv' / 유심 계약은 상담 화면 상품 ID(p.id) — 유심 상품은 'usim'
+//  - 상태(접수·진행)는 여기서 다루지 않습니다. 상태는 changeStatus() 로만 바꿉니다.
+//  - 금액 필드 이름은 saveContractMeta·addContractItem 이 받는 이름(gift_total 등 / monthlyFee·commission)과 같습니다.
+// ============================================================
+const S7_USIM_GIFT_BASE = 150000;   // 유심 사은품 기본값 = 수수료 - 150,000원 (상담 화면의 기존 계산과 동일)
+
+function s7Num(v){
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(typeof v === 'string' ? v.replace(/[,\s원]/g, '') : v);
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
+function s7Clone(v){ return (v === null || v === undefined) ? v : JSON.parse(JSON.stringify(v)); }
+function s7IsSyncedLine(p){ return !!p && (p.synced === true || p.id === 'synced-cs-line'); }
+function s7HasTv(p){
+  if (p.tvTier !== undefined && p.tvTier !== null) return p.tvTier !== 'none';
+  return !!p.tvLabel && p.tvLabel !== '미포함' && p.tvLabel !== '인터넷 단독';
+}
+function s7UsimCommission(p, helpers){
+  if (!helpers || typeof helpers.usimCommission !== 'function') return null;
+  const fee = s7Num(p.fee) || 0;
+  const c = helpers.usimCommission(p.carrier, fee);
+  return Number.isFinite(Number(c)) && c !== null ? Math.round(Number(c)) : null;
+}
+function s7UsimGift(p, commission){
+  if (p.gift !== null && p.gift !== undefined && p.gift !== '') return s7Num(p.gift);
+  return commission != null ? Math.max(0, commission - S7_USIM_GIFT_BASE) : null;
+}
+function s7HomeCommission(p, helpers){
+  if (!helpers || typeof helpers.homeCommission !== 'function') return null;
+  const c = helpers.homeCommission(p);
+  return (c === null || c === undefined || !Number.isFinite(Number(c))) ? null : Math.round(Number(c));
+}
+
+// 인터넷·TV 최종상품 1건 → 계약 1건(+ 인터넷 상품, TV 상품).
+// 상품별 월요금(확정 C8):
+//   인터넷 = 인터넷요금 + 공유기요금 - 인터넷·TV 결합할인(bundleDiscount)
+//   TV     = TV요금 + 셋탑박스요금 - TV결합할인(tvBundleDiscount) + 추가 TV 요금(메인 TV 상품에 종속, D3-6)
+//   → 두 상품 요금의 합은 상담 화면 합계(totalFee)와 같아야 하며, 다르면 경고를 남깁니다.
+// 홈 수수료(lookupCommission 결과)는 인터넷·TV로 나눌 수 없어 인터넷 상품과 계약(commission_total)에만 기록하고 TV 상품은 비웁니다.
+function s7HomeContract(p, helpers, warnings){
+  const hasTv = s7HasTv(p);
+  const total = s7Num(p.totalFee);
+  const internetFee = (s7Num(p.internetFee) || 0) + (s7Num(p.routerFee) || 0) - (hasTv ? (s7Num(p.bundleDiscount) || 0) : 0);
+  const tvFee = hasTv
+    ? (s7Num(p.tvFee) || 0) + (s7Num(p.settopFee) || 0) - (s7Num(p.tvBundleDiscount) || 0) + (s7Num(p.extraTvFee) || 0)
+    : null;
+  const commission = s7HomeCommission(p, helpers);
+  if (total === null) warnings.push('인터넷·TV 최종상품의 합계 요금(totalFee)이 없어 항목별 요금 합계를 비교하지 못했습니다.');
+  else if (internetFee + (tvFee || 0) !== total) warnings.push(`인터넷·TV 상품 요금의 합(${(internetFee + (tvFee || 0)).toLocaleString()}원)이 상담 화면 합계(${total.toLocaleString()}원)와 다릅니다. 요금 항목을 확인해 주세요.`);
+
+  const items = [{
+    matchKey: 'internet', productType: 'internet', carrier: p.carrierName || null,
+    productName: p.internetLabel || null, monthlyFee: internetFee, commission,
+    detail: { consultKey: p.id, carrierKey: p.carrierKey || null, speedNum: p.speedNum ?? null, internetLabel: p.internetLabel || null,
+      internetFee: s7Num(p.internetFee), routerLabel: p.routerLabel || null, routerFee: s7Num(p.routerFee), bundleDiscount: s7Num(p.bundleDiscount) }
+  }];
+  if (hasTv) {
+    items.push({
+      matchKey: 'tv', productType: 'tv', carrier: p.carrierName || null,
+      productName: p.tvLabel || null, monthlyFee: tvFee, commission: null,
+      detail: { consultKey: p.id, carrierKey: p.carrierKey || null, tvTier: p.tvTier ?? null, tvLabel: p.tvLabel || null, tvName: p.tvName || null,
+        tvChannels: p.tvChannels ?? null, tvFee: s7Num(p.tvFee), settopLabel: p.settopLabel || null, settopFee: s7Num(p.settopFee),
+        tvBundleDiscount: s7Num(p.tvBundleDiscount), extraTVs: s7Clone(p.extraTVs) || [], extraTvFee: s7Num(p.extraTvFee) || 0,
+        extraTvDetails: s7Clone(p.extraTvDetails) || [] }     // 추가 TV는 메인 TV 상품에 종속(D3-6)
+    });
+  }
+  return {
+    matchKey: 'home', contractType: 'home', sourceId: p.id,
+    label: `${p.carrierName || ''} ${hasTv ? '인터넷+TV' : '인터넷'}`.trim(),
+    meta: { gift_total: s7Num(p.benefitTotal), gift_card: s7Num(p.giftCard), gift_cash: s7Num(p.cash), gift_extra: s7Num(p.extraPay), commission_total: commission },
+    items
+  };
+}
+
+// 유심 최종상품 1건 → 계약 1건(+ 유심 상품 1건)
+function s7UsimContract(p, helpers){
+  const fee = s7Num(p.fee) || 0;
+  const commission = s7UsimCommission(p, helpers);
+  const gift = s7UsimGift(p, commission);
+  return {
+    matchKey: p.id, contractType: 'usim', sourceId: p.id,
+    label: `${p.carrier || ''} ${p.planName || ''}`.trim(),
+    meta: { gift_total: gift, commission_total: commission },
+    items: [{ matchKey: 'usim', productType: 'usim', carrier: p.carrier || null, productName: p.planName || null, monthlyFee: fee, commission,
+      detail: Object.assign(s7Clone(p), { consultKey: p.id }) }]
+  };
+}
+
+// 제안 행 1건(안내용 스냅샷). 최종상품에도 올라간 제안은 isFinal = true.
+function s7ProposalRow(p, isFinal, helpers){
+  if (p.type === 'home') {
+    return { matchKey: p.id, productType: 'home', isFinal, carrier: p.carrierName || null,
+      productName: `${p.internetLabel || ''} · ${p.tvLabel || ''}`, monthlyFee: s7Num(p.totalFee), giftAmount: s7Num(p.benefitTotal),
+      commission: s7HomeCommission(p, helpers), detail: s7Clone(p) };
+  }
+  const commission = s7UsimCommission(p, helpers);
+  return { matchKey: p.id, productType: 'usim', isFinal, carrier: p.carrier || null, productName: p.planName || null,
+    monthlyFee: s7Num(p.fee) || 0, giftAmount: s7UsimGift(p, commission), commission, detail: s7Clone(p) };
+}
+
+// 변환 진입점.
+//   input:   { reflectedProducts, finalProducts, addedUsimLines, customerInfo:{ mobileCarrier, mobileFee, oldInternet, familyLines }, comboDiscount }
+//   helpers: { homeCommission(item)→숫자|null, usimCommission(carrier, fee)→숫자|null, now()→ISO 문자열(선택) }
+//            (비로그인이면 두 수수료 함수가 null 을 돌려주도록 호출하는 쪽에서 감쌉니다)
+//   반환:    { home: 계약|null, usims: [계약...], proposals: [제안 행...], snapshot, warnings: [문구...] }
+function s7BuildConsultPlan(input, helpers){
+  const inp = input || {};
+  const warnings = [];
+  const reflected = Array.isArray(inp.reflectedProducts) ? inp.reflectedProducts : [];
+  const finals = Array.isArray(inp.finalProducts) ? inp.finalProducts : [];
+
+  const homeFinals = finals.filter(p => p && p.type === 'home');
+  if (homeFinals.length > 1) warnings.push('인터넷·TV 최종상품이 2건 이상입니다. 첫 번째 상품만 계약으로 만듭니다.');
+  const home = homeFinals.length ? s7HomeContract(homeFinals[0], helpers, warnings) : null;
+
+  const seen = new Set();
+  const usims = [];
+  finals.filter(p => p && p.type === 'usim').forEach(p => {
+    if (s7IsSyncedLine(p)) return;                              // 고객 본인 회선(연동 행)은 판매 상품이 아님
+    if (seen.has(p.id)) { warnings.push('같은 유심 최종상품이 중복되어 한 번만 반영합니다.'); return; }
+    seen.add(p.id);
+    usims.push(s7UsimContract(p, helpers));
+  });
+
+  const finalIds = new Set(finals.filter(Boolean).map(p => p.id));
+  const proposals = reflected.filter(p => p && (p.type === 'home' || p.type === 'usim')).map(p => s7ProposalRow(p, finalIds.has(p.id), helpers));
+
+  const ci = inp.customerInfo || {};
+  const snapshot = {
+    snapshotVersion: 2,
+    savedAt: (helpers && typeof helpers.now === 'function') ? helpers.now() : new Date().toISOString(),
+    customerInfo: {
+      mobileCarrier: ci.mobileCarrier ?? '', mobileFee: ci.mobileFee ?? null,
+      oldInternet: s7Clone(ci.oldInternet) ?? null, familyLines: s7Clone(ci.familyLines) || []
+    },
+    proposals: s7Clone(reflected), finals: s7Clone(finals), comboDiscount: s7Clone(inp.comboDiscount) ?? null
+  };
+  return { home, usims, proposals, snapshot, warnings };
+}
