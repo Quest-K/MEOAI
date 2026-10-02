@@ -1,0 +1,43 @@
+import os
+import win32com.client as win32
+
+def convert_hwp_to_pdf(hwp_file_path, pdf_file_path):
+    """
+    HWP 문서 파일을 열어 PDF 형식으로 자동 변환 및 저장하는 함수입니다.
+    
+    :param hwp_file_path: 변환할 HWP 파일의 절대 경로
+    :param pdf_file_path: 저장될 PDF 파일의 절대 경로
+    """
+    # Windows OLE 자동화를 통해 한글(HWP) 응용 프로그램 객체를 생성합니다.
+    hwp = win32.gencache.EnsureDispatch("HWPFrame.HwpObject")
+    
+    # 보안 승인 팝업 차단 및 백그라운드 실행을 위해 백그라운드 모드를 설정합니다.
+    hwp.RegisterModule("FilePathCheckDLL", "SecurityModule")
+    hwp.XHwpWindows.Item(0).Visible = False
+
+    # 지정한 HWP 문서를 열어옵니다.
+    hwp.Open(hwp_file_path)
+
+    # 포맷을 "PDF"로 지정하여 다른 이름으로 저장합니다.
+    hwp.SaveAs(pdf_file_path, "PDF")
+
+    # 백그라운드에서 실행 중인 한글 프로세스를 종료합니다.
+    hwp.Quit()
+
+if __name__ == "__main__":
+    # 변환 대상 HWP 파일 리스트 정의
+    files_to_convert = ["file1.hwp", "file2.hwp"]
+
+    for file_name in files_to_convert:
+        # 파일의 절대 경로 추출
+        abs_hwp_path = os.path.abspath(file_name)
+        # 확장자를 .pdf로 변경한 저장 경로 생성
+        abs_pdf_path = os.path.abspath(os.path.splitext(file_name)[0] + ".pdf")
+
+        # 파일 존재 여부 확인 후 변환 로직 실행
+        if os.path.exists(abs_hwp_path):
+            print(f"변환 시작: {file_name} -> {os.path.basename(abs_pdf_path)}")
+            convert_hwp_to_pdf(abs_hwp_path, abs_pdf_path)
+            print(f"변환 완료: {abs_pdf_path}")
+        else:
+            print(f"오류: {file_name} 파일을 찾을 수 없습니다.")
