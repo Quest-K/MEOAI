@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<link rel="stylesheet" href="Styles.css?v=20261001b">
+<link rel="stylesheet" href="Styles.css?v=20261002a">
 </head>
 <body>
 <div class="wrap">
@@ -477,19 +477,24 @@
     <div class="cs-card">
       <h3>실적조회</h3>
       <div class="cust-search-row perf-filter">
-        <span>최초저장일</span>
+        <span>기간</span>
         <input type="date" id="perf-from"> ~ <input type="date" id="perf-to">
         <button type="button" class="primary-btn" onclick="loadPerformance(this)">🔍 조회</button>
         <button type="button" class="secondary-btn" onclick="resetPerfFilter(this)">전체 기간</button>
       </div>
+      <p class="perf-note">고객 건수·유치율은 <b>고객 최초 등록일</b> 기준, 유치 계약·지급·환수·수수료는 <b>접수 시각</b> 기준입니다.</p>
       <div id="perf-summary"></div>
     </div>
     <div class="cs-card">
-      <h3>퍼널별 건수 · 전체 대비 비율</h3>
+      <h3>고객 상태별 건수 · 전체 대비 비율</h3>
       <div id="perf-funnel" class="perf-scroll"></div>
     </div>
     <div class="cs-card">
-      <h3 id="perf-list-title">접수완료 리스트</h3>
+      <h3>유치 계약 현황</h3>
+      <div id="perf-contracts"></div>
+    </div>
+    <div class="cs-card">
+      <h3 id="perf-list-title">유치 계약 리스트</h3>
       <div id="perf-list" class="perf-scroll"></div>
     </div>
   </div>
@@ -532,9 +537,9 @@
 
 <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
-<script src="config.js?v=20261002a"></script>
+<script src="config.js?v=20261002b"></script>
 <script src="Calculator.js?v=20260930h"></script>
-<script src="Supabaseservice.js?v=20261002d"></script>
+<script src="Supabaseservice.js?v=20261002e"></script>
 <script>
 // 외부 파일 로드 점검: 파일 누락/내용 뒤바뀜(예: JS 자리에 CSS가 들어간 경우) 시 화면 상단에 경고 표시
 (function checkModules(){
@@ -3074,14 +3079,20 @@ function exportCustomerListCsv(){
 }
 
 /* =========================================================================
-   실적조회
-   - 퍼널별 건수 · 전체 대비 비율 : customers.funnel_status 집계 (기간 = 최초저장일 created_at 기준)
-   - 유치율 = PERFORMANCE_WON_STATUSES(config.js) 건수 ÷ 전체 건수
-   - 접수완료 리스트 : 상품 1건당 1행. 최종상품(is_final)이 있으면 그것만, 없으면 안내상품 전체
-   - 마진 = 수수료 − 사은품 합계, 마진율 = 마진 ÷ 수수료 (수수료·마진·마진율은 로그인 시에만 표시)
-   - 수수료는 로그인 상태에서 저장된 상품에만 값이 있습니다. 없으면 '-'로 표시하고 합계에서 제외합니다.
+   실적조회 (S8 : 계약 기준)
+   - 기간 기준이 둘로 나뉩니다 (C11).
+       고객 : 고객 최초 등록일(customers.created_at)  → 전체 고객 · 고객 상태별 건수 · 유치율
+       계약 : 접수 시각(contracts.received_at)         → 유치 계약 · 지급 · 환수 · 수수료 · 리스트
+   - 유치 (C10) : 접수 이력이 있는 계약(is_acquired). 접수 후 취소돼도 유치로 세고, 계약취소 건수를 따로 보여 줍니다.
+     유치율 = 기간 안에 등록한 고객 중 접수 이력이 있는 고객 ÷ 기간 안에 등록한 고객 (고객 기준: 계약을 여러 건 접수해도 1명)
+   - 리스트 (C12) : 계약 1건당 1행. 상품(인터넷·TV·유심)은 한 칸에 묶어 표시하고 사은품·수수료는 계약 값을 씁니다.
+   - 마진 = 수수료 − 사은품 합계, 마진율 = 마진 ÷ 수수료. 합계에서 계약취소는 제외합니다. 수수료·마진은 로그인 시에만 표시합니다.
+   - 새 테이블·뷰는 로그인한 사용자만 읽을 수 있어, 로그인 전에는 안내만 보여 줍니다.
    ========================================================================= */
-let perfCustomers = null, perfProdMap = {};
+let perfData = null;
+let perfLoadSeq = 0;
+const perfOpenGroups = new Set();   // 펼쳐 둔 고객 상태 key (기본: 모두 접힘)
+const PERF_DETAIL_STATUSES = ['상담중', '이탈', '제외'];   // 부가표시·사유로 나눠 보여 줄 고객 상태
 
 function resetPerfFilter(btn){
   document.getElementById('perf-from').value = '';
@@ -3089,152 +3100,261 @@ function resetPerfFilter(btn){
   loadPerformance(btn);
 }
 
-async function loadPerformance(btn){
+function renderPerformanceMessage(msg){
   const summary = document.getElementById('perf-summary');
-  if (!summary) return;
-  const from = elVal('perf-from'), to = elVal('perf-to');
+  if (summary) summary.innerHTML = `<div class="wide-table-empty">${escHtml(msg)}</div>`;
+  ['perf-funnel', 'perf-contracts', 'perf-list'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
+}
+
+async function loadPerformance(btn){
+  if (!document.getElementById('perf-summary')) return;
+  const seq = ++perfLoadSeq;
   if (btn) setBtnLoading(btn, '조회 중...');
   try {
-    // Supabase는 한 번에 최대 1000행 → 나눠서 전부 가져옵니다.
-    const rows = [];
-    for (let i = 0; ; i += 1000) {
-      let q = sb.from('customers').select('customer_id,name,contact,funnel_status,created_at,updated_at').order('customer_id').range(i, i + 999);
-      if (from) q = q.gte('created_at', new Date(from + 'T00:00:00').toISOString());
-      if (to) q = q.lte('created_at', new Date(to + 'T23:59:59').toISOString());
-      const { data, error } = await q;
-      if (error) { summary.innerHTML = `<div class="wide-table-empty">조회 실패: ${escHtml(error.message)}</div>`; return; }
-      rows.push(...(data || []));
-      if (!data || data.length < 1000) break;
+    if (!isLoggedIn) {
+      perfData = null;
+      renderPerformanceMessage('실적은 관리자 로그인 후 조회할 수 있습니다. 우측 상단 [관리자 로그인]을 눌러 주세요.');
+      return;
     }
-    perfCustomers = rows;
-
-    perfProdMap = {};
-    const ids = rows.filter(r => normalizeFunnelStatus(r.funnel_status) === PERFORMANCE_LIST_STATUS).map(r => r.customer_id);
-    await probeCustomerSchema();
-    if (ids.length && CUSTOMER_SCHEMA.hasProductsTable) {
-      for (let i = 0; i < ids.length; i += 150) {
-        const { data, error } = await sb.from('customer_products')
-          .select('customer_id,product_type,is_final,carrier,product_name,monthly_fee,gift_amount,commission,detail')
-          .in('customer_id', ids.slice(i, i + 150)).order('id', { ascending: true });
-        if (error) { console.warn('실적 상품 조회 실패', error.message); break; }
-        (data || []).forEach(r => { (perfProdMap[r.customer_id] = perfProdMap[r.customer_id] || []).push(r); });
-      }
-    }
+    const from = elVal('perf-from'), to = elVal('perf-to');
+    if (from && to && from > to) { renderPerformanceMessage('시작일이 종료일보다 늦습니다. 기간을 다시 선택해 주세요.'); return; }
+    const res = await loadPerformanceData({ from, to });
+    if (seq !== perfLoadSeq) return;     // 더 최근에 시작한 조회가 있으면 이 결과는 버림
+    if (!res.ok) { perfData = null; renderPerformanceMessage('조회 실패: ' + res.error); return; }
+    perfData = res;
     renderPerformance();
   } finally {
     if (btn) clearBtnLoading(btn);
   }
 }
 
-const perfOpenGroups = new Set();   // 펼쳐 둔 단계 key (기본: 모두 접힘)
 function togglePerfGroup(key){
   if (perfOpenGroups.has(key)) perfOpenGroups.delete(key); else perfOpenGroups.add(key);
   renderPerformance();
 }
 function setAllPerfGroups(open){
   perfOpenGroups.clear();
-  if (open) [...DASHBOARD_GROUPS.map(g => g.key), 'etc'].forEach(k => perfOpenGroups.add(k));
+  if (open) PERF_DETAIL_STATUSES.forEach(k => perfOpenGroups.add(k));
   renderPerformance();
 }
 
+// 로그인·로그아웃 때 호출됩니다. 실적 탭을 보고 있을 때만 다시 불러옵니다.
 function refreshPerformanceView(){
-  if (perfCustomers && document.getElementById('view-performance')?.classList.contains('active')) renderPerformance();
+  const active = document.getElementById('view-performance')?.classList.contains('active');
+  if (!active) { if (!isLoggedIn) perfData = null; return; }
+  loadPerformance();
+}
+
+const perfNum = v => (v === null || v === undefined || v === '' || isNaN(Number(v))) ? null : Number(v);
+
+// 조회 결과 → 집계 숫자 (화면과 분리해 두어 계산만 따로 점검할 수 있게 함)
+function computePerfStats(data){
+  const customers = data.customers || [];
+  const contracts = data.contracts || [];
+  const total = customers.length;
+
+  // 고객 상태 (구 상태값만 있는 고객은 custStatusInfo 가 새 상태로 변환)
+  const groups = {};
+  CUSTOMER_STATUSES.forEach(st => { groups[st] = { total: 0, items: {} }; });
+  let acquiredCustomers = 0;
+  customers.forEach(c => {
+    const info = custStatusInfo(c);
+    const g = groups[info.status] || (groups[info.status] = { total: 0, items: {} });
+    g.total++;
+    if (PERF_DETAIL_STATUSES.includes(info.status)) {
+      const key = custStatusDetail(info) || PERF_CUSTOMER_DETAIL_EMPTY[info.status];
+      g.items[key] = (g.items[key] || 0) + 1;
+    }
+    if (data.acquired && data.acquired[c.customer_id]) acquiredCustomers++;
+  });
+
+  // 유치 계약
+  const canceledLabel = CONTRACT_CANCELED_LABEL;
+  const valid = contracts.filter(r => r.effective_status !== canceledLabel);
+  const canceledCount = contracts.length - valid.length;
+
+  const byStatus = {};
+  [...CONTRACT_STATUSES, canceledLabel].forEach(k => { byStatus[k] = 0; });
+  contracts.forEach(r => { const k = r.effective_status || r.contract_status; byStatus[k] = (byStatus[k] || 0) + 1; });
+
+  const payout = { '지급 전': 0 };
+  PAYOUT_STATUSES.forEach(k => { payout[k] = 0; });
+  valid.forEach(r => { const k = r.payout_status || '지급 전'; payout[k] = (payout[k] || 0) + 1; });
+  const payoutDone = payout['지급완료'] || 0;
+
+  const claw = {};
+  CLAWBACK_STATUSES.forEach(k => { claw[k] = 0; });
+  let clawN = 0, clawAmount = 0;
+  contracts.forEach(r => {
+    if (!r.clawback_status) return;
+    claw[r.clawback_status] = (claw[r.clawback_status] || 0) + 1; clawN++;
+    clawAmount += perfNum(r.clawback_amount) || 0;
+  });
+  const clawOpen = (claw['환수요청'] || 0) + (claw['환수보류'] || 0) + (claw['환수진행'] || 0);
+
+  // 금액 (계약취소 제외). 마진은 수수료·사은품이 둘 다 있는 계약만 계산합니다.
+  const money = { gift: 0, giftCard: 0, giftCash: 0, comm: 0, margin: 0, marginComm: 0, noComm: 0 };
+  valid.forEach(r => {
+    const gift = perfNum(r.gift_total), comm = perfNum(r.commission_total);
+    money.gift += gift || 0; money.giftCard += perfNum(r.gift_card) || 0; money.giftCash += perfNum(r.gift_cash) || 0;
+    money.comm += comm || 0;
+    if (comm !== null && gift !== null) { money.margin += comm - gift; money.marginComm += comm; }
+    if (comm === null) money.noComm++;
+  });
+
+  return {
+    total, groups, acquiredCustomers, acquireRate: total ? acquiredCustomers / total : null,
+    contractCount: contracts.length, canceledCount, validCount: valid.length,
+    byStatus, payout, payoutDone, payoutRemaining: valid.length - payoutDone,
+    claw, clawN, clawOpen, clawAmount, money
+  };
+}
+
+const perfPct = (n, base) => base ? (n / base * 100).toFixed(1) + '%' : '-';
+const perfWon = v => (v === null || v === undefined) ? '-' : Number(v).toLocaleString('ko-KR');
+
+function buildPerfSummaryHtml(st, admin, data){
+  const card = (label, value, title) => `<div class="perf-card"${title ? ` title="${escAttr(title)}"` : ''}><small>${escHtml(label)}</small><b>${value}</b></div>`;
+  const m = st.money;
+  const marginRate = m.marginComm > 0 ? (m.margin / m.marginComm * 100).toFixed(1) + '%' : '-';
+  const tr = (data && data.truncated) || {};
+  const warn = (tr.customers || tr.acquired || tr.contracts)
+    ? '<p class="perf-warn">※ 조회 상한(2만 건)에 닿아 일부만 집계되었습니다. 기간을 좁혀 다시 조회해 주세요.</p>' : '';
+  return `
+    <div class="perf-cards">
+      ${card('전체 고객 (기간 내 등록)', st.total.toLocaleString())}
+      ${card('유치 고객 (접수 이력)', st.acquiredCustomers.toLocaleString(), '기간 안에 등록한 고객 중 접수 이력이 있는 고객 (이후 이탈·제외로 바뀌었어도 포함)')}
+      ${card('유치율', perfPct(st.acquiredCustomers, st.total), '유치 고객 ÷ 전체 고객')}
+      ${card('유치 계약 (접수 시각 기준)', st.contractCount.toLocaleString(), '접수 이력이 있는 계약. 접수 후 취소된 계약도 포함 (취소 ' + st.canceledCount + '건)')}
+      ${card('계약취소', st.canceledCount.toLocaleString(), '유치 계약 중 상품이 전부 접수취소된 계약')}
+      ${card('지급완료', st.payoutDone.toLocaleString(), '취소를 뺀 유치 계약 기준')}
+      ${card('지급 남음', st.payoutRemaining.toLocaleString(), '취소를 뺀 유치 계약 중 지급완료가 아닌 계약')}
+      ${card('환수 진행 중', st.clawOpen.toLocaleString(), '환수요청 · 환수보류 · 환수진행')}
+      ${admin ? card('수수료 합계', perfWon(m.comm), '취소를 뺀 유치 계약의 수수료 합계' + (m.noComm ? ` (수수료 미입력 ${m.noComm}건 제외)` : '')) : ''}
+      ${admin ? card('사은품 합계', perfWon(m.gift)) : ''}
+      ${admin ? card('마진', `<span style="color:${m.margin >= 0 ? '#1E7E34' : '#D9534F'}">${perfWon(m.margin)}</span>`, '수수료 − 사은품 (수수료·사은품이 둘 다 있는 계약만)') : ''}
+      ${admin ? card('마진율', marginRate, '마진 ÷ 수수료') : ''}
+      ${admin ? card('환수 금액', perfWon(st.clawAmount), '환수 상태가 있는 계약의 환수 금액 합계') : ''}
+    </div>
+    <p class="perf-note">유치율 = 기간 안에 등록한 고객 중 접수 이력이 있는 고객 ÷ 기간 안에 등록한 고객 (한 고객이 계약을 여러 건 접수해도 1명으로 셉니다).
+      유치 계약은 접수 후 취소돼도 유치로 세며 지급·금액 합계에서는 계약취소를 뺍니다.${admin ? '' : ' 수수료·마진은 관리자 로그인 시 표시됩니다.'}</p>
+    ${warn}`;
+}
+
+function buildPerfFunnelHtml(st){
+  const total = st.total;
+  const open = k => perfOpenGroups.has(k);
+  const known = new Set(CUSTOMER_STATUSES);
+  const statuses = [...CUSTOMER_STATUSES, ...Object.keys(st.groups).filter(k => !known.has(k))];
+  const body = statuses.map(status => {
+    const g = st.groups[status] || { total: 0, items: {} };
+    const label = CUSTOMER_STATUS_LABEL[status] || status;
+    const hasItems = PERF_DETAIL_STATUSES.includes(status);
+    const head = hasItems
+      ? `<tr class="perf-group perf-toggle" onclick="togglePerfGroup('${escAttr(status)}')" title="클릭하여 ${open(status) ? '접기' : '펼치기'}">
+           <td colspan="2"><span class="perf-caret">${open(status) ? '▾' : '▸'}</span> ${escHtml(label)}</td>`
+      : `<tr class="perf-group"><td colspan="2"><span class="perf-caret"></span> ${escHtml(label)}</td>`;
+    const row = head + `<td class="num">${g.total.toLocaleString()}</td><td class="num">${perfPct(g.total, total)}</td></tr>`;
+    if (!hasItems) return row;
+    const order = status === '상담중' ? CONSULT_SUBSTATUSES : (STATUS_REASONS[status] || []);
+    const emptyKey = PERF_CUSTOMER_DETAIL_EMPTY[status];
+    const keys = [...order, ...(g.items[emptyKey] ? [emptyKey] : []), ...Object.keys(g.items).filter(k => !order.includes(k) && k !== emptyKey)];
+    const items = keys.map(k => {
+      const n = g.items[k] || 0;
+      const isEmpty = k === emptyKey || !order.includes(k);
+      const chip = isEmpty ? escHtml(k)
+        : custStatusChipHtml({ status, substatus: status === '상담중' ? k : '', reason: status === '상담중' ? '' : k, legacy: false });
+      return `<tr class="perf-item"${open(status) ? '' : ' style="display:none"'}><td></td><td>${chip}</td><td class="num">${n.toLocaleString()}</td><td class="num">${perfPct(n, total)}</td></tr>`;
+    }).join('');
+    return row + items;
+  }).join('');
+  const ref = `<tr class="perf-ref"><td colspan="2">참고 · 접수 이력이 있는 고객 (이탈·제외 포함)</td><td class="num">${st.acquiredCustomers.toLocaleString()}</td><td class="num">${perfPct(st.acquiredCustomers, total)}</td></tr>`;
+  return `
+    <div class="perf-toolbar"><button type="button" class="mini-btn" onclick="setAllPerfGroups(true)">모두 펼치기</button> <button type="button" class="mini-btn" onclick="setAllPerfGroups(false)">모두 접기</button></div>
+    <table class="perf-table"><thead><tr><th colspan="2">고객 상태</th><th class="num">건수</th><th class="num">전체 대비</th></tr></thead>
+    <tbody>${body}<tr class="perf-sum"><td colspan="2">전체 (기간 내 등록 고객)</td><td class="num">${total.toLocaleString()}</td><td class="num">${total ? '100%' : '-'}</td></tr>${ref}</tbody></table>`;
+}
+
+function buildPerfContractsHtml(st, admin){
+  const table = (title, rows, totalLabel, totalCount, extraRow) => `
+    <div><h4>${escHtml(title)}</h4>
+    <table class="perf-table compact"><thead><tr><th>상태</th><th class="num">건수</th><th class="num">비율</th></tr></thead><tbody>
+      ${rows.map(([k, n]) => `<tr><td>${escHtml(k)}</td><td class="num">${n.toLocaleString()}</td><td class="num">${perfPct(n, totalCount)}</td></tr>`).join('')}
+      <tr class="perf-sum"><td>${escHtml(totalLabel)}</td><td class="num">${totalCount.toLocaleString()}</td><td class="num">${totalCount ? '100%' : '-'}</td></tr>
+      ${extraRow || ''}
+    </tbody></table></div>`;
+  const statusRows = Object.keys(st.byStatus).map(k => [k, st.byStatus[k]]);
+  const payoutKeys = ['지급 전', ...PAYOUT_STATUSES];
+  const payoutRows = [...payoutKeys, ...Object.keys(st.payout).filter(k => !payoutKeys.includes(k))].map(k => [k, st.payout[k] || 0]);
+  const clawRows = Object.keys(st.claw).map(k => [k, st.claw[k]]);
+  const clawAmountRow = admin ? `<tr class="perf-ref"><td>환수 금액 합계</td><td class="num" colspan="2">${perfWon(st.clawAmount)}</td></tr>` : '';
+  return `<div class="perf-grid">
+    ${table('계약 상태 (현재, 유치 계약 전체)', statusRows, '유치 계약', st.contractCount)}
+    ${table('지급 (계약취소 제외)', payoutRows, '지급 대상', st.validCount)}
+    ${table('환수 (유치 계약 중 환수 상태가 있는 계약)', clawRows, '환수 건수', st.clawN, clawAmountRow)}
+  </div>`;
+}
+
+function buildPerfListHtml(data, admin){
+  const contracts = data.contracts || [];
+  if (!contracts.length) return '<div class="wide-table-empty">이 기간에 접수된 계약이 없습니다.</div>';
+  const items = data.itemsByContract || {};
+  const typeLabel = PERF_ITEM_TYPE_LABEL;
+  const rows = contracts.map(r => {
+    const canceled = r.effective_status === CONTRACT_CANCELED_LABEL;
+    const its = items[r.contract_id] || [];
+    const carriers = [...new Set(its.map(i => i.carrier).filter(Boolean))].join(' / ') || '-';
+    const product = its.length
+      ? its.map(i => `${typeLabel[i.product_type] || i.product_type} ${i.product_name || ''}${i.progress_status === '접수취소' ? '(취소)' : ''}`.trim()).join(' · ')
+      : '-';
+    const gift = perfNum(r.gift_total), comm = perfNum(r.commission_total);
+    const margin = (comm !== null && gift !== null) ? comm - gift : null;
+    const rate = (margin !== null && comm > 0) ? margin / comm * 100 : null;
+    return { r, canceled, carriers, product, giftCard: perfNum(r.gift_card), cash: perfNum(r.gift_cash), gift, comm, margin, rate };
+  });
+
+  const valid = rows.filter(x => !x.canceled);
+  const add = k => valid.reduce((a, x) => a + (x[k] || 0), 0);
+  const withComm = valid.filter(x => x.margin !== null);
+  const sComm = withComm.reduce((a, x) => a + x.comm, 0), sMargin = withComm.reduce((a, x) => a + x.margin, 0);
+  const mc = v => v === null ? '-' : `<span style="color:${v >= 0 ? '#1E7E34' : '#D9534F'}">${v.toLocaleString('ko-KR')}</span>`;
+
+  return `<table class="perf-table"><thead><tr>
+      <th>접수일시</th><th>고객</th><th>계약</th><th>통신사</th><th>상품</th><th>계약 상태</th><th>지급</th><th>환수</th>
+      <th class="num">상품권</th><th class="num">현금</th><th class="num">사은품 합계</th>
+      ${admin ? '<th class="num">수수료</th><th class="num">마진</th><th class="num">마진율</th>' : ''}</tr></thead><tbody>
+    ${rows.map(x => {
+      const r = x.r, cu = r.customer || {};
+      const typeText = PERF_CONTRACT_TYPE_LABEL[r.contract_type] || r.contract_type;
+      return `<tr${x.canceled ? ' class="perf-canceled"' : ''}>
+        <td>${formatDateShort(r.received_at)}</td>
+        <td>${escHtml(cu.name) || '(이름없음)'}<br><small style="color:#888">${escHtml(formatContactDisplay(cu.contact))}</small></td>
+        <td>${escHtml(formatContractNo(r.contract_id))}<br><small style="color:#888">${escHtml(typeText)}${r.label ? ' · ' + escHtml(r.label) : ''}</small></td>
+        <td>${escHtml(x.carriers)}</td>
+        <td class="perf-wrap">${escHtml(x.product)}</td>
+        <td>${escHtml(r.effective_status || r.contract_status || '-')}${r.status_reason ? `<br><small style="color:#888">${escHtml(r.status_reason)}</small>` : ''}</td>
+        <td>${escHtml(r.payout_status || '-')}${r.payout_status === '지급완료' && r.payout_at ? `<br><small style="color:#888">${formatDateShort(r.payout_at)}</small>` : ''}</td>
+        <td>${escHtml(r.clawback_status || '-')}${admin && r.clawback_status && perfNum(r.clawback_amount) !== null ? `<br><small style="color:#888">${perfWon(perfNum(r.clawback_amount))}</small>` : ''}</td>
+        <td class="num">${perfWon(x.giftCard)}</td><td class="num">${perfWon(x.cash)}</td><td class="num">${perfWon(x.gift)}</td>
+        ${admin ? `<td class="num">${perfWon(x.comm)}</td><td class="num">${mc(x.margin)}</td><td class="num">${x.rate === null ? '-' : x.rate.toFixed(1) + '%'}</td>` : ''}</tr>`;
+    }).join('')}
+    <tr class="perf-sum"><td colspan="8">합계 (계약취소 제외 ${valid.length}건 / 전체 ${rows.length}건)</td>
+      <td class="num">${add('giftCard').toLocaleString('ko-KR')}</td><td class="num">${add('cash').toLocaleString('ko-KR')}</td><td class="num">${add('gift').toLocaleString('ko-KR')}</td>
+      ${admin ? `<td class="num">${sComm.toLocaleString('ko-KR')}</td><td class="num">${mc(sMargin)}</td><td class="num">${sComm > 0 ? (sMargin / sComm * 100).toFixed(1) + '%' : '-'}</td>` : ''}</tr>
+    </tbody></table>
+    <p class="perf-note">계약 1건당 1행입니다. 상품권·현금·사은품·수수료는 계약에 저장된 값이며, 마진 = 수수료 − 사은품 합계 · 마진율 = 마진 ÷ 수수료입니다(수수료·사은품이 둘 다 있는 계약만). 계약취소(회색 행)는 합계에서 제외합니다.${admin ? '' : ' 수수료·마진은 관리자 로그인 시 표시됩니다.'}</p>`;
 }
 
 function renderPerformance(){
-  const rows = perfCustomers || [];
-  const total = rows.length;
-  const counts = {};
-  rows.forEach(r => { const st = normalizeFunnelStatus(r.funnel_status || DEFAULT_FUNNEL_STATUS); counts[st] = (counts[st] || 0) + 1; });
-  const pct = n => total ? (n / total * 100).toFixed(1) + '%' : '-';
-  const sum = items => items.reduce((a, i) => a + (counts[i] || 0), 0);
-
-  const won = sum(PERFORMANCE_WON_STATUSES);
-  const listCnt = counts[PERFORMANCE_LIST_STATUS] || 0;
-  document.getElementById('perf-summary').innerHTML = `
-    <div class="perf-cards">
-      <div class="perf-card"><small>전체 건수</small><b>${total.toLocaleString()}</b></div>
-      <div class="perf-card" title="${escAttr(PERFORMANCE_WON_STATUSES.join(', '))}"><small>유치 건수 (접수완료 이후)</small><b>${won.toLocaleString()}</b></div>
-      <div class="perf-card"><small>유치율</small><b>${pct(won)}</b></div>
-      <div class="perf-card"><small>${escHtml(PERFORMANCE_LIST_STATUS)}</small><b>${listCnt.toLocaleString()}</b></div>
-    </div>
-    <p class="perf-note">유치 = ${escHtml(PERFORMANCE_WON_STATUSES.join(' · '))} · 유치율 = 유치 건수 ÷ 전체 건수 (기준은 config.js의 PERFORMANCE_WON_STATUSES)</p>`;
-
-  // 단계별 접기/펼치기 : 기본은 접힘. 다시 그려도(로그인 전환 등) 펼친 상태를 유지합니다.
-  const grpRow = (key, label, cnt) => {
-    const open = perfOpenGroups.has(key);
-    return `<tr class="perf-group perf-toggle" onclick="togglePerfGroup('${key}')" title="클릭하여 ${open ? '접기' : '펼치기'}">
-      <td colspan="2"><span class="perf-caret">${open ? '▾' : '▸'}</span> ${escHtml(label)}</td>
-      <td class="num">${cnt.toLocaleString()}</td><td class="num">${pct(cnt)}</td></tr>`;
-  };
-  const itemRow = (key, name, cnt, chip) => `<tr class="perf-item" data-pg="${key}"${perfOpenGroups.has(key) ? '' : ' style="display:none"'}>
-      <td></td><td>${chip ? `<span class="cust-status-chip stage-${getFunnelStage(name)}">${escHtml(name)}</span>` : escHtml(name)}</td>
-      <td class="num">${cnt.toLocaleString()}</td><td class="num">${pct(cnt)}</td></tr>`;
-
-  const body = DASHBOARD_GROUPS.map(g =>
-    grpRow(g.key, g.label, sum(g.items)) + g.items.map(i => itemRow(g.key, i, counts[i] || 0, true)).join('')
-  ).join('');
-  const known = new Set(DASHBOARD_GROUPS.flatMap(g => g.items));
-  const others = Object.keys(counts).filter(k => !known.has(k));
-  const otherRows = others.length
-    ? grpRow('etc', '기타(분류 외)', sum(others)) + others.map(k => itemRow('etc', k, counts[k], false)).join('') : '';
-  document.getElementById('perf-funnel').innerHTML = `
-    <div class="perf-toolbar"><button type="button" class="mini-btn" onclick="setAllPerfGroups(true)">모두 펼치기</button> <button type="button" class="mini-btn" onclick="setAllPerfGroups(false)">모두 접기</button></div>
-    <table class="perf-table"><thead><tr><th colspan="2">단계 / 상태값</th><th class="num">건수</th><th class="num">전체 대비</th></tr></thead>
-    <tbody>${body}${otherRows}<tr class="perf-sum"><td colspan="2">전체</td><td class="num">${total.toLocaleString()}</td><td class="num">${total ? '100%' : '-'}</td></tr></tbody></table>`;
-
-  renderPerformanceList();
-}
-
-function renderPerformanceList(){
-  const box = document.getElementById('perf-list');
-  const title = document.getElementById('perf-list-title');
-  const custs = (perfCustomers || []).filter(r => normalizeFunnelStatus(r.funnel_status) === PERFORMANCE_LIST_STATUS)
-    .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
-  if (title) title.textContent = `${PERFORMANCE_LIST_STATUS} 리스트 (${custs.length}명)`;
-  if (!custs.length) { box.innerHTML = `<div class="wide-table-empty">${escHtml(PERFORMANCE_LIST_STATUS)} 건이 없습니다.</div>`; return; }
-
-  const n = v => (v === null || v === undefined || v === '' || isNaN(Number(v))) ? null : Number(v);
-  const lines = [];
-  custs.forEach(c => {
-    const prods = perfProdMap[c.customer_id] || [];
-    const finals = prods.filter(p => p.is_final);
-    const use = finals.length ? finals : prods;
-    if (!use.length) { lines.push({ c, carrier: '-', product: '-', giftCard: null, cash: null, gift: null, comm: null }); return; }
-    use.forEach(p => {
-      const d = detailOf(p);
-      lines.push({
-        c, carrier: p.carrier || '-', product: (p.product_type === 'usim' ? '[유심] ' : '') + (p.product_name || '-'),
-        giftCard: n(d.giftCard), cash: n(d.cash), gift: n(p.gift_amount), comm: n(p.commission)
-      });
-    });
-  });
-  lines.forEach(l => {
-    l.margin = (l.comm !== null && l.gift !== null) ? l.comm - l.gift : null;
-    l.rate = (l.margin !== null && l.comm > 0) ? l.margin / l.comm * 100 : null;
-  });
-
-  const w = v => v === null ? '-' : v.toLocaleString('ko-KR');
-  const mc = v => v === null ? '-' : `<span style="color:${v >= 0 ? '#1E7E34' : '#D9534F'}">${v.toLocaleString('ko-KR')}</span>`;
-  const add = key => lines.reduce((a, l) => a + (l[key] || 0), 0);
-  const withComm = lines.filter(l => l.margin !== null);
-  const sComm = withComm.reduce((a, l) => a + l.comm, 0), sMargin = withComm.reduce((a, l) => a + l.margin, 0);
+  if (!perfData) return;
   const admin = isLoggedIn;
-
-  box.innerHTML = `<table class="perf-table"><thead><tr>
-      <th>고객</th><th>통신사</th><th>상품</th><th class="num">상품권</th><th class="num">현금</th><th class="num">사은품 합계</th>
-      ${admin ? '<th class="num">수수료</th><th class="num">마진</th><th class="num">마진율</th>' : ''}<th>최종수정</th></tr></thead><tbody>
-    ${lines.map(l => `<tr>
-      <td>${escHtml(l.c.name) || '(이름없음)'}<br><small style="color:#888">${escHtml(formatContactDisplay(l.c.contact))}</small></td>
-      <td>${escHtml(l.carrier)}</td><td>${escHtml(l.product)}</td>
-      <td class="num">${w(l.giftCard)}</td><td class="num">${w(l.cash)}</td><td class="num">${w(l.gift)}</td>
-      ${admin ? `<td class="num">${w(l.comm)}</td><td class="num">${mc(l.margin)}</td><td class="num">${l.rate === null ? '-' : l.rate.toFixed(1) + '%'}</td>` : ''}
-      <td>${formatDateShort(l.c.updated_at)}</td></tr>`).join('')}
-    <tr class="perf-sum"><td colspan="3">합계 (${lines.length}건)</td>
-      <td class="num">${add('giftCard').toLocaleString('ko-KR')}</td><td class="num">${add('cash').toLocaleString('ko-KR')}</td><td class="num">${add('gift').toLocaleString('ko-KR')}</td>
-      ${admin ? `<td class="num">${sComm.toLocaleString('ko-KR')}</td><td class="num">${mc(sMargin)}</td><td class="num">${sComm > 0 ? (sMargin / sComm * 100).toFixed(1) + '%' : '-'}</td>` : ''}
-      <td></td></tr></tbody></table>
-    <p class="perf-note">마진 = 수수료 − 사은품 합계 · 마진율 = 마진 ÷ 수수료 · 최종상품이 있으면 최종상품만, 없으면 안내상품 전체를 표시합니다.${admin ? ' 수수료가 저장되지 않은 상품(비로그인 저장분)은 \'-\'이며 마진 합계에서 제외됩니다.' : ' 수수료·마진은 관리자 로그인 시 표시됩니다.'}</p>`;
+  const st = computePerfStats(perfData);
+  document.getElementById('perf-summary').innerHTML = buildPerfSummaryHtml(st, admin, perfData);
+  document.getElementById('perf-funnel').innerHTML = buildPerfFunnelHtml(st);
+  document.getElementById('perf-contracts').innerHTML = buildPerfContractsHtml(st, admin);
+  const title = document.getElementById('perf-list-title');
+  if (title) title.textContent = `유치 계약 리스트 (${st.contractCount.toLocaleString()}건)`;
+  document.getElementById('perf-list').innerHTML = buildPerfListHtml(perfData, admin);
 }
 
 /* ---- 고객 목록 정렬 ---- */
