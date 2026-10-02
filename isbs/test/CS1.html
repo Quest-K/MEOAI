@@ -192,7 +192,7 @@
             <div class="info-subsection-body">
               <div class="form-row">
                 <div class="form-group">
-                  <label>상태값 (퍼널)</label>
+                  <label>고객 상태 <span class="cust-note-hint">유치는 계약 상태에 따라 자동</span></label>
                   <select id="cust-funnel-status"></select>
                 </div>
                 <div class="form-group">
@@ -2153,6 +2153,8 @@ let currentCustomerId = null;
 // S7-4 : 상담 화면이 기억하는 계약(불러온 계약). 다시 저장할 때 같은 계약·상품을 쓰기 위한 값입니다(저장 교체는 S7-5).
 let consultTargets = { carrierContractId: null, usimByKey: {} };
 let consultLoadSeq = 0;      // 불러오기 요청 번호 : 고객을 바꾸거나 신규 상담을 시작하면 이전 요청의 결과를 무시합니다
+let consultLoadPromise = null;   // 진행 중인 새 구조 읽기(저장 전에 끝날 때까지 기다림)
+let consultLoadState = 'none';   // 'none'(읽을 고객 없음/아직) · 'ok'(읽음·없음 포함) · 'failed'(읽기 실패 → 저장 전 한 번 더 시도)
 function emptyConsultTargets(){ return { carrierContractId: null, usimByKey: {} }; }
 let customerListCache = [];
 let customerViewInited = false;
@@ -2183,10 +2185,58 @@ function funnelStatusOptionsHtml(selected, includeAll){
 }
 
 function initFunnelSelects(){
-  const a = document.getElementById('cust-funnel-status');
-  if (a) a.innerHTML = funnelStatusOptionsHtml(DEFAULT_FUNNEL_STATUS, false);
+  setConsultStatusSelect(null);   // S7-6: 상담 화면 상태 선택칸도 새 고객 상태 선택지(고객조회 목록의 빠른 변경과 동일)
   const b = document.getElementById('cust-search-status');
   if (b) b.innerHTML = `<option value="">상태값 전체</option>` + CUSTOMER_STATUSES.map(v => `<option value="${v}">${escHtml(CUSTOMER_STATUS_LABEL[v])}</option>`).join('');   // S5: 고객 상태 5개 (값은 DB 값)
+}
+
+/* ---- 상담 화면 상태 선택칸 (S7-6) ----
+   - 선택지는 고객조회 목록의 빠른 변경과 같습니다: 상담대기 / 상담중(+부가표시) / 이탈(+사유) / 제외(+사유). 유치(상담완료)는 계약 상태에 따라 자동이라 직접 고를 수 없습니다.
+   - 선택칸을 채운 시점의 값(consultStatusBase)에서 바뀐 경우에만 저장할 때 상태를 변경합니다 → 같은 값으로 다시 저장해도 이력이 늘지 않고,
+     연락처로 찾은 기존 고객의 상태를 상담 화면의 기본값(상담대기)이 덮어쓰지도 않습니다.
+   - 상태는 changeStatus 를 거쳐 status_history 에 1건 기록됩니다. */
+let consultStatusBase = DEFAULT_CUSTOMER_STATUS;
+
+function setConsultStatusSelect(info){
+  const cur = info || { status: DEFAULT_CUSTOMER_STATUS, substatus: '', reason: '', legacy: false };
+  const sel = document.getElementById('cust-funnel-status');
+  if (sel) sel.innerHTML = customerStatusOptionsHtml(cur);
+  consultStatusBase = encodeCustStatus(cur);
+}
+
+// 사용자가 선택칸을 바꿨다면 새 선택값, 그대로면 null
+function consultStatusChange(){
+  const v = String(elVal('cust-funnel-status') || '');
+  return v && v !== consultStatusBase ? v : null;
+}
+
+// 선택값('상태' 또는 '상태|세부')을 고객에게 적용 : { ok, changed, error }
+async function applyConsultStatus(customerId, value){
+  const [status, detail] = String(value).split('|');
+  const { data, error } = await sb.from('customers').select('customer_status,consult_substatus,status_reason,funnel_status').eq('customer_id', customerId).limit(1);
+  if (error) return { ok: false, error: '현재 상태를 읽지 못했습니다: ' + error.message };
+  if (!data || !data[0]) return { ok: false, error: '고객을 찾을 수 없습니다.' };
+  const info = custStatusInfo(data[0]);
+  if (!info.legacy && info.status === '상담중' && status === '상담중') {      // 상담중 안에서는 부가표시만 변경
+    return changeStatus({ target: 'customer', id: customerId, axis: 'substatus', to: detail || null });
+  }
+  return changeStatus({
+    target: 'customer', id: customerId, to: status,
+    reason: (status === '이탈' || status === '제외') ? (detail || null) : null,
+    substatus: status === '상담중' ? (detail || null) : null
+  });
+}
+
+// 상태가 바뀐 뒤 : 상담 화면 선택칸·고객조회 목록·열려 있는 상세·대시보드를 저장된 값으로 맞춤
+async function refreshAfterConsultStatus(customerId){
+  const { data } = await sb.from('customers').select('*').eq('customer_id', customerId).limit(1);
+  const row = data && data[0];
+  if (!row) return;
+  if (currentCustomerId === customerId) setConsultStatusSelect(custStatusInfo(row));
+  const c0 = customerListCache.find(x => x.customer_id === customerId);
+  if (c0) { Object.assign(c0, row); renderCustomerList(customerListCache); }
+  if (detailCustomerId === customerId) syncDetailStatusSelect(row);
+  loadFunnelDashboard();
 }
 
 // 연락처 자동 하이픈
@@ -2220,8 +2270,11 @@ function homeCommissionOf(item){
   catch (e) { return null; }
 }
 
-function buildCustomerPayload(){
-  const { home, usim } = pickSaveTargets();
+// 고객 기본정보만 만듭니다(S7-5). 안내상품(guided_*·usim_*)·상태값(funnel_status)·proposal_snapshot 은 더 이상 customers 에 저장하지 않습니다.
+//  - 상품·제안·상담 스냅샷은 계약(saveConsultSet)으로 저장하고, 고객 상태는 changeStatus·목록·상세에서만 바꿉니다.
+//  - 새 고객을 만들 때만 상태를 정합니다: customer_status = 상담대기, 구 funnel_status 는 아직 쓰는 화면(실적조회 등)이 있어 기본값을 함께 넣습니다.
+function buildCustomerPayload(isNew){
+  const { home } = pickSaveTargets();
   const oldOn = document.getElementById('old-internet-toggle')?.checked;
   const nextContact = elVal('cust-next-contact');
 
@@ -2231,24 +2284,11 @@ function buildCustomerPayload(){
     telecom: elVal('cust-mobile-carrier') || null,
     old_isp: oldOn ? (elVal('old-isp') || null) : null,
     old_tv_count: oldOn ? Number(elVal('old-tv-count') || 0) : 0,
-    desired_product: home ? (home.tvTier !== 'none' ? '인터넷,TV' : '인터넷') : null,
-    guided_carrier: home ? home.carrierName : null,
-    guided_internet_speed: home ? home.internetLabel : null,
-    guided_router: home ? home.routerLabel : null,
-    guided_tv_channel: home ? home.tvLabel : null,
-    guided_settop: home ? home.settopLabel : null,
-    guided_home_fee: home ? home.totalFee : null,
-    guided_home_gift: home ? home.benefitTotal : null,
-    guided_home_commission: homeCommissionOf(home),
-    usim_telecom: usim ? usim.carrier : null,
-    usim_plan: usim ? usim.planName : null,
-    usim_fee: usim ? Number(usim.fee) || 0 : null,
-    usim_gift: usim ? (usim.gift != null ? usim.gift : (isLoggedIn ? Math.max(0, getUsimCommission(usim.carrier, Number(usim.fee) || 0) - 150000) : null)) : null,
-    usim_commission: usim && isLoggedIn ? getUsimCommission(usim.carrier, Number(usim.fee) || 0) : null,
     notes: elVal('cust-notes') || null,
-    funnel_status: elVal('cust-funnel-status') || DEFAULT_FUNNEL_STATUS,
     next_contact_at: nextContact ? new Date(nextContact).toISOString() : null
   };
+  if (home) payload.desired_product = home.tvTier !== 'none' ? '인터넷,TV' : '인터넷';   // 상품이 없을 때 기존 값을 지우지 않습니다
+  if (isNew) { payload.customer_status = DEFAULT_CUSTOMER_STATUS; payload.funnel_status = DEFAULT_FUNNEL_STATUS; }
 
   if (CUSTOMER_SCHEMA.hasTags) {
     payload.customer_tags = Array.from(selectedCustomerTags);
@@ -2259,22 +2299,28 @@ function buildCustomerPayload(){
   } else if (elVal('cust-inflow')) {
     showToast('⚠ customers 테이블에 inflow_route 칼럼이 없어 인입경로는 저장되지 않습니다');
   }
-
-  if (CUSTOMER_SCHEMA.hasSnapshot) {
-    payload.proposal_snapshot = {
-      savedAt: new Date().toISOString(),
-      customerInfo: {
-        mobileCarrier: elVal('cust-mobile-carrier'),
-        mobileFee: Number(elVal('cust-mobile-fee')) || null,
-        oldInternet: getOldInternetSummaryValue(),
-        familyLines: familyLines
-      },
-      proposals: reflectedProducts,
-      finals: finalProducts,
-      comboDiscount: buildComboSnapshot()
-    };
-  }
   return payload;
+}
+
+// 상담 세트 저장에 넘길 입력값(상담 화면의 현재 값)
+function buildConsultSetInput(){
+  return {
+    reflectedProducts, finalProducts,
+    customerInfo: {
+      mobileCarrier: elVal('cust-mobile-carrier'),
+      mobileFee: Number(elVal('cust-mobile-fee')) || null,
+      oldInternet: getOldInternetSummaryValue(),
+      familyLines
+    },
+    comboDiscount: buildComboSnapshot()
+  };
+}
+// 수수료 계산 함수 : 로그인 전에는 수수료를 알 수 없으므로 null
+function consultSaveHelpers(){
+  return {
+    homeCommission: item => homeCommissionOf(item),
+    usimCommission: (carrier, fee) => { if (!isLoggedIn) return null; try { return getUsimCommission(carrier, fee); } catch (e) { return null; } }
+  };
 }
 
 // 최종상품 기준 결합할인 요약 (스냅샷용)
@@ -2284,45 +2330,6 @@ function buildComboSnapshot(){
   const combo = computeFinalCombo(homeItem, usimItems);
   if (!combo) return null;
   return { name: combo.best.name, total: combo.best.total, internetDiscount: combo.best.internetDiscount };
-}
-
-function buildProductRows(customerId){
-  const finalIds = new Set(finalProducts.map(p => p.id));
-  const rows = [];
-
-  reflectedProducts.filter(p => p.type === 'home').forEach(p => {
-    rows.push({
-      customer_id: customerId,
-      product_type: 'home',
-      is_final: finalIds.has(p.id),
-      carrier: p.carrierName,
-      product_name: `${p.internetLabel} · ${p.tvLabel}`,
-      monthly_fee: p.totalFee,
-      gift_amount: p.benefitTotal,
-      commission: homeCommissionOf(p),
-      detail: p
-    });
-  });
-
-  addedUsimLines.forEach(p => {
-    const linked = reflectedProducts.find(r => r.id === p.id);
-    const fee = Number(p.fee) || 0;
-    const commission = isLoggedIn ? getUsimCommission(p.carrier, fee) : null;
-    const giftAmount = linked && linked.gift != null ? linked.gift : (commission != null ? Math.max(0, commission - 150000) : null);
-    rows.push({
-      customer_id: customerId,
-      product_type: 'usim',
-      is_final: finalIds.has(p.id),
-      carrier: p.carrier,
-      product_name: p.planName,
-      monthly_fee: fee,
-      gift_amount: giftAmount,
-      commission: commission,
-      detail: linked || p
-    });
-  });
-
-  return rows;
 }
 
 async function probeCustomerSchema(){
@@ -2350,50 +2357,81 @@ async function saveConsultation(btn){
 
   setBtnLoading(btn, '저장 중...');
   try {
-    await probeCustomerSchema();
-    const payload = buildCustomerPayload();
+    // 고객을 불러오는 중이면 끝날 때까지 기다리고, 읽기에 실패했다면 한 번 더 읽습니다(계약이 중복으로 만들어지는 것을 막기 위함).
+    if (currentCustomerId) {
+      const cid0 = currentCustomerId;
+      if (consultLoadPromise) await consultLoadPromise;
+      if (consultLoadState === 'failed') {
+        consultLoadPromise = loadConsultFromContracts(cid0, consultLoadSeq);
+        await consultLoadPromise;
+      }
+      if (currentCustomerId !== cid0) return;                                     // 기다리는 사이 다른 고객으로 바뀜
+      if (consultLoadState === 'failed') {
+        alert('저장된 상담 내용을 읽지 못해 저장하지 않았습니다.\n로그인과 연결 상태를 확인한 뒤 고객을 다시 불러와 저장해 주세요.');
+        return;
+      }
+    }
 
+    await probeCustomerSchema();
     let customerId = currentCustomerId;
-    let prevStatus = null;
     if (!customerId) {
-      const { data: exist } = await sb.from('customers').select('customer_id,funnel_status').eq('contact', contact).limit(1);
+      const { data: exist } = await sb.from('customers').select('customer_id').eq('contact', contact).limit(1);
       if (exist && exist.length) {
         if (!confirm(`동일한 연락처(${formatContactDisplay(contact)})의 고객이 이미 등록되어 있습니다.\n기존 고객 정보를 업데이트할까요?`)) return;
         customerId = exist[0].customer_id;
-        prevStatus = exist[0].funnel_status;
+        consultTargets = emptyConsultTargets();                                    // 기존 고객의 계약은 아직 읽지 않았으므로 아래에서 다시 찾습니다
+        const found = await s7LoadConsultTargets(customerId);
+        if (!found.ok) { alert('기존 고객의 상담 계약을 읽지 못해 저장하지 않았습니다: ' + found.error); return; }
+        consultTargets = { carrierContractId: found.carrierContractId, usimByKey: found.usimByKey || {} };
       }
-    } else {
-      const { data: cur } = await sb.from('customers').select('funnel_status').eq('customer_id', customerId).limit(1);
-      prevStatus = cur && cur[0] ? cur[0].funnel_status : null;
     }
 
+    // 1) 고객 기본정보
+    const payload = buildCustomerPayload(!customerId);
     const res = customerId
       ? await sb.from('customers').update(payload).eq('customer_id', customerId).select()
       : await sb.from('customers').insert(payload).select();
-
     if (res.error) { alert('저장 실패: ' + res.error.message); return; }
-
     customerId = (res.data && res.data[0]) ? res.data[0].customer_id : customerId;
     currentCustomerId = customerId;
-    await logStatusChange(customerId, prevStatus, payload.funnel_status);
+    if (consultLoadState === 'none') consultLoadState = 'ok';
 
-    let prodMsg = '';
-    if (CUSTOMER_SCHEMA.hasProductsTable) {
-      await sb.from('customer_products').delete().eq('customer_id', customerId);
-      const rows = buildProductRows(customerId);
-      if (rows.length) {
-        const pr = await sb.from('customer_products').insert(rows);
-        if (pr.error) prodMsg = ' (상품 이력 저장 실패: ' + pr.error.message + ')';
-      }
-    } else {
-      prodMsg = ' · customer_products 테이블 미생성으로 상품 이력은 저장되지 않았습니다';
+    // 1-b) 상태값 (S7-6) : 선택칸을 바꾼 경우에만 changeStatus 로 저장 (이력 1건). 실패해도 아래 상담 내용 저장은 계속합니다.
+    let statusChanged = false, statusFail = null;
+    const wantStatus = consultStatusChange();
+    if (wantStatus) {
+      const sr = await applyConsultStatus(customerId, wantStatus);
+      if (sr.ok) { statusChanged = !!sr.changed; await refreshAfterConsultStatus(customerId); }
+      else statusFail = sr.error || sr.userMessage || '알 수 없는 오류';
     }
+    const reportStatusFail = () => {
+      if (statusFail) alert(`고객 상태는 바뀌지 않았습니다.\n${statusFail}\n\n선택한 상태는 그대로 두었으니 [저장]을 다시 누르거나 고객 상태를 직접 바꿔 주세요.`);
+    };
 
-    setConsultSaveState(`저장됨 · 고객ID ${customerId}`, true);
+    // 2) 상담 세트(계약·상품·제안·상담 스냅샷) : 같은 계약·상품 ID를 유지하며 저장
+    const set = await saveConsultSet({ customerId, input: buildConsultSetInput(), helpers: consultSaveHelpers(), targets: consultTargets });
+    if (set.carrierContractId) consultTargets = { carrierContractId: set.carrierContractId, usimByKey: set.usimByKey || {} };
     custTabOnConsultSaved(customerId);
-    showToast('✓ 상담 내용이 저장되었습니다' + prodMsg);
-    if (payload.funnel_status === CONTACT_CYCLE_STATUS) await autoStartContactCycle(customerId, { syncConsult: true });
     if (document.getElementById('funnel-dashboard')) loadFunnelDashboard();
+
+    if (!set.ok) {
+      setConsultSaveState(`일부만 저장됨 · 고객ID ${customerId} · 다시 저장해 주세요`, false);
+      alert(`고객 정보는 저장되었지만 상담 내용(계약·상품·제안) 저장 중 문제가 생겼습니다.\n${set.error}\n\n같은 화면에서 [저장]을 다시 누르면 이어서 저장됩니다.`);
+      reportStatusFail();
+      if (detailCustomerId === customerId) await afterContractChange(customerId);
+      return;
+    }
+    if (set.skippedAll) {
+      setConsultSaveState(`고객 정보만 저장됨 · 고객ID ${customerId}`, true);
+      showToast('✓ 고객 정보가 저장되었습니다' + (statusChanged ? ' (상태 변경)' : ''));
+      alert('접수가 진행된 계약이라 상품·제안은 바꾸지 않았습니다.\n새 상품은 새 상담(🆕 신규상담)으로 시작해 저장해 주세요.');
+    } else {
+      setConsultSaveState(`저장됨 · 고객ID ${customerId}`, !statusFail);
+      showToast('✓ 상담 내용이 저장되었습니다' + (statusChanged ? ' (상태 변경)' : ''));
+      if (set.warnings && set.warnings.length) alert('저장되었습니다. 확인해 주세요:\n- ' + set.warnings.slice(0, 5).join('\n- '));
+    }
+    reportStatusFail();
+    if (detailCustomerId === customerId) await afterContractChange(customerId);   // 열려 있는 고객 상세의 계약 카드를 새 값으로
   } finally {
     clearBtnLoading(btn);
   }
@@ -2416,12 +2454,14 @@ function startNewConsultWithContact(contact){
   currentCustomerId = null;
   consultTargets = emptyConsultTargets();
   consultLoadSeq++;
+  consultLoadPromise = null;
+  consultLoadState = 'none';
   setVal('cust-name', NAME_PREFIX);
   setVal('cust-contact', formatContactDisplay(contact) || '010');
   setVal('cust-notes', '');
   setVal('cust-inflow', '');
   setVal('cust-next-contact', getDefaultNextContactValue());
-  setVal('cust-funnel-status', DEFAULT_FUNNEL_STATUS);
+  setConsultStatusSelect(null);
   const oldToggleReset = document.getElementById('old-internet-toggle');
   if (oldToggleReset) { oldToggleReset.checked = false; toggleOldInternetSection(false); }
   selectedCustomerTags = new Set();
@@ -3770,7 +3810,7 @@ function syncCustomerLocal(customerId, patch){
   }
   // 상담화면에 같은 고객이 열려 있으면 저장 시 옛 값으로 되돌리지 않도록 함께 맞춤
   if (currentCustomerId === customerId) {
-    if ('funnel_status' in patch) setVal('cust-funnel-status', patch.funnel_status);
+    // S7-6: 상담 화면 선택칸은 새 고객 상태 선택지라 구 상태값(funnel_status)을 넣지 않습니다. 컨택 재안내의 상태 변경은 S7-8에서 새 구조로 연결합니다.
     if ('next_contact_at' in patch) setVal('cust-next-contact', toLocalInputValue(patch.next_contact_at));
   }
   renderCustomerList(customerListCache);
@@ -4453,7 +4493,7 @@ function fillConsultFormFromCustomer(c){
   setVal('cust-contact', formatContactDisplay(c.contact));
   setVal('cust-notes', c.notes || '');
   setVal('cust-inflow', c.inflow_route || '');
-  setVal('cust-funnel-status', c.funnel_status || DEFAULT_FUNNEL_STATUS);
+  setConsultStatusSelect(custStatusInfo(c));   // S7-6: 새 고객 상태(없으면 구 상태값을 변환해 표시)
   setVal('cust-next-contact', toLocalInputValue(c.next_contact_at));
   if (c.telecom) setVal('cust-mobile-carrier', c.telecom);
 
@@ -4470,6 +4510,7 @@ function fillConsultFormFromCustomer(c){
 
   // 먼저 구 방식 값(customers.proposal_snapshot)으로 채우고, 새 구조(contracts.consult_snapshot)에서 읽은 값이 있으면 곧바로 바꿉니다(S7-4).
   consultTargets = emptyConsultTargets();
+  consultLoadState = 'none';
   const seq = ++consultLoadSeq;
   const snap = c.proposal_snapshot;
   if (snap && typeof snap === 'object') {
@@ -4484,7 +4525,7 @@ function fillConsultFormFromCustomer(c){
   updateCsSummaryPanel();
   setConsultSaveState(`불러옴 · 고객ID ${c.customer_id}`, true);
   goCsStep(1);
-  loadConsultFromContracts(c.customer_id, seq);
+  consultLoadPromise = loadConsultFromContracts(c.customer_id, seq);
 }
 
 // 상담 화면의 제안·최종상품·유심 회선·가족회선 값을 한 번에 채웁니다.
@@ -4502,9 +4543,10 @@ async function loadConsultFromContracts(customerId, seq){
   if (typeof loadConsultForScreen !== 'function') return;
   let r;
   try { r = await loadConsultForScreen(customerId); }
-  catch (e) { console.warn('상담 내용 읽기 실패:', e); return; }
+  catch (e) { console.warn('상담 내용 읽기 실패:', e); r = null; }
   if (seq !== consultLoadSeq || currentCustomerId !== customerId) return;     // 그 사이 다른 고객·신규 상담으로 바뀜
-  if (!r || !r.ok) { if (r && r.error) console.warn('상담 내용 읽기 실패:', r.error); return; }
+  if (!r || !r.ok) { consultLoadState = 'failed'; if (r && r.error) console.warn('상담 내용 읽기 실패:', r.error); return; }
+  consultLoadState = 'ok';
   if (!r.found) return;
   consultTargets = { carrierContractId: r.carrierContractId, usimByKey: r.usimByKey || {} };
   applyConsultProducts(r.proposals, r.finals, r.familyLines);
