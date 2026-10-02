@@ -1978,6 +1978,9 @@ function parseRoughDateText(text){
   return `${year}-${pad(month)}-${pad(day)}T09:00`;
 }
 
+// 상담예약 등록으로 만드는 고객 상태 : 상담중 + 부가표시 상담예약 ('상태|세부' 형식, applyConsultStatus 와 같음)
+const RESERVATION_CUSTOMER_STATE = '상담중|' + RESERVATION_STATUS;
+
 async function submitReservation(btn){
   const errEl = document.getElementById('resv-error');
   errEl.textContent = '';
@@ -1994,33 +1997,47 @@ async function submitReservation(btn){
   if (timingRaw) noteParts.push(`예상 시점: ${timingRaw}`);
   if (memoRaw) noteParts.push(memoRaw);
 
+  if (!isLoggedIn) { errEl.textContent = '등록하려면 로그인이 필요합니다. 우측 상단 [관리자 로그인] 후 다시 시도해주세요.'; return; }
+
   setBtnLoading(btn, '등록 중...');
   try {
-    const { data: exist } = await sb.from('customers').select('customer_id,funnel_status').eq('contact', contact).limit(1);
-    const payload = {
-      contact,
-      funnel_status: RESERVATION_STATUS,
-      next_contact_at: parsedDate ? new Date(parsedDate).toISOString() : null,
-      notes: noteParts.join(' / ') || null
-    };
+    // S7-7 : 상태는 구 funnel_status 가 아니라 changeStatus 로 '상담중 · 상담예약' 으로 바꿉니다(status_history 에 1건 기록).
+    //        기존 고객의 특이사항·다음 컨택일시는 덮어쓰지 않고 이어 붙입니다(입력한 값이 있을 때만 바꿈).
+    const { data: exist, error: se } = await sb.from('customers').select('customer_id,customer_status,consult_substatus,status_reason,funnel_status').eq('contact', contact).limit(1);
+    if (se) { errEl.textContent = '조회 실패: ' + se.message; return; }
+    const noteText = noteParts.join(' / ');
+    const nextIso = parsedDate ? new Date(parsedDate).toISOString() : null;
 
-    let error, resvCustomerId = null, prevStatus = null;
+    let resvCustomerId = null;
     if (exist && exist.length) {
-      if (!confirm(`동일한 연락처(${formatContactDisplay(contact)})의 고객이 이미 등록되어 있습니다.\n기존 정보를 상담예약 상태로 업데이트할까요?`)) return;
+      const curLabel = custStatusLabelText(custStatusInfo(exist[0]));
+      if (!confirm(`동일한 연락처(${formatContactDisplay(contact)})의 고객이 이미 등록되어 있습니다.\n(현재 상태: ${curLabel})\n기존 정보를 상담예약 상태로 업데이트할까요?`)) return;
       resvCustomerId = exist[0].customer_id;
-      prevStatus = exist[0].funnel_status;
-      ({ error } = await sb.from('customers').update(payload).eq('customer_id', resvCustomerId));
+      if (nextIso) {
+        const up = await sb.from('customers').update({ next_contact_at: nextIso }).eq('customer_id', resvCustomerId).select('customer_id');
+        if (up.error) { errEl.textContent = '등록 실패: ' + up.error.message; return; }
+      }
+      if (noteText) await prependNoteLine(resvCustomerId, `[${formatNoteStamp(new Date())}] 상담예약 등록: ${noteText}`);
     } else {
-      const ins = await sb.from('customers').insert(payload).select();
-      error = ins.error;
+      const ins = await sb.from('customers').insert({
+        contact, customer_status: DEFAULT_CUSTOMER_STATUS, funnel_status: DEFAULT_FUNNEL_STATUS,   // 구 funnel_status 는 아직 읽는 화면·DB 제약 대비로만 넣음
+        next_contact_at: nextIso, notes: noteText || null
+      }).select('customer_id');
+      if (ins.error) { errEl.textContent = '등록 실패: ' + ins.error.message; return; }
       resvCustomerId = (ins.data && ins.data[0]) ? ins.data[0].customer_id : null;
+      if (!resvCustomerId) { errEl.textContent = '등록 결과를 확인하지 못했습니다. 고객조회에서 확인해주세요.'; return; }
     }
 
-    if (error) { errEl.textContent = '등록 실패: ' + error.message; return; }
-    if (resvCustomerId) await logStatusChange(resvCustomerId, prevStatus, RESERVATION_STATUS);
+    const rs = await applyConsultStatus(resvCustomerId, RESERVATION_CUSTOMER_STATE);
+    if (!rs.ok) {
+      errEl.textContent = `고객 정보는 저장되었지만 상태를 '상담예약'으로 바꾸지 못했습니다: ${rs.error || rs.userMessage}  (같은 번호로 [등록]을 다시 누르면 이어서 처리됩니다)`;
+      await searchOrRefresh();
+      return;
+    }
 
-    showToast('✓ 상담예약이 등록되었습니다');
+    showToast(rs.changed ? '✓ 상담예약이 등록되었습니다' : '✓ 상담예약이 등록되었습니다 (이미 상담예약 상태였습니다)');
     closeReservationModal();
+    if (currentCustomerId === resvCustomerId || detailCustomerId === resvCustomerId) await refreshAfterConsultStatus(resvCustomerId);   // 열려 있는 상담 화면·상세의 상태 칸을 새 값으로
     await searchOrRefresh();
     if (document.getElementById('funnel-dashboard')) loadFunnelDashboard();
   } finally {
