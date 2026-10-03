@@ -1076,7 +1076,9 @@ function s7BuildConsultPlan(input, helpers){
 //  - 저장 범위(C4, B안): **상담 화면이 불러온(또는 직전에 저장한) 계약에만** 저장합니다. 새 상담이나 다른 고객은 새 계약을 만듭니다.
 //    · 인터넷·TV 계약(대표 계약)이 상담 스냅샷(consult_snapshot)을 가집니다. 최종상품이 없어도 제안·유심이 있으면 상품 없는 대표 계약을 만들어
 //      제안과 스냅샷을 보관합니다(작성중, 접수되기 전까지 상품 추가 가능). 아무 내용도 없으면 계약을 만들지 않습니다.
-//    · 대표 계약이 접수대기 이후이면 상담 저장은 아무것도 바꾸지 않고 안내만 합니다(skippedAll). 접수된 유심 계약도 같습니다.
+//    · 대표 계약이 수정 가능 범위(작성중·접수대기·접수보류, 접수 시각 없음 — s7IsEditable)가 아니면 상담 저장은 아무것도 바꾸지 않고 안내만 합니다(skippedAll). 유심 계약도 같습니다. (S7-9b, C9)
+//    · 접수 단계(작성중이 아닌) 계약에서는 상담 화면에서 뺀 상품을 삭제하지 않고 진행 상태 접수취소로 바꿉니다(이력 남김, S7-9c). 설치완료 상품은 바꾸지 않고 경고합니다.
+//      빠진 유심 회선의 계약도 삭제하지 않고 계약은 남기며 상품만 접수취소로 바꿉니다. 상담 저장이 접수취소한 상품은 다시 올리면 되살립니다(사유 표식으로 구분, 계약 카드에서 직접 접수취소한 상품은 되살리지 않음).
 //    · 상담 화면에서 뺀 유심 회선의 계약은 작성중이면 삭제하고, 접수된 계약은 그대로 둡니다(경고만).
 //    · 유심 계약은 인터넷·TV 최종상품이 있을 때만 대표 계약에 연결합니다(결합할인 대상).
 //    · 계약 정보는 비어 있지 않은 값만 덮어씁니다(라벨은 새로 만들 때만 정함). 사은품 값은 상담 화면 값이 기준입니다.
@@ -1084,6 +1086,11 @@ function s7BuildConsultPlan(input, helpers){
 //  - 계약을 다시 찾는 방법: 대표 계약 = consult_snapshot 이 있는 가장 최근 인터넷·TV 계약, 유심 계약 = 그 스냅샷 최종상품의 상담 상품 ID(detail.consultKey)와
 //    같은 키를 가진 유심 상품이 든 계약(s7LoadConsultTargets).
 // ============================================================
+// 상담 저장으로 수정할 수 있는 계약인가(S7-9b, C9): 작성중·접수대기·접수보류이면서 접수 시각이 없는 계약.
+// 접수완료·접수불가 등이거나 접수 시각이 한 번이라도 기록된 계약은 상담 저장이 바꾸지 않습니다.
+const S7_EDITABLE_STATUSES = ['작성중', '접수대기', '접수보류'];
+function s7IsEditable(c){ return !!c && S7_EDITABLE_STATUSES.includes(c.contract_status) && !c.received_at; }
+
 function s7NonNull(obj){
   const r = {};
   Object.keys(obj || {}).forEach(k => { if (obj[k] !== null && obj[k] !== undefined) r[k] = obj[k]; });
@@ -1160,19 +1167,19 @@ async function s7SaveConsultContracts(opts){
 
     if (carrierState) {
       out.carrierContractId = out.homeContractId = carrierState.contract_id;
-      if (!s6IsDraft(carrierState)) {
+      if (!s7IsEditable(carrierState)) {
         out.skippedAll = true; out.ok = true;
-        out.carrier = out.home = { contractId: carrierState.contract_id, skipped: true, reason: '접수가 진행된 계약이라 상담 저장이 바꾸지 않습니다. 새 상담으로 시작해 주세요.' };
+        out.carrier = out.home = { contractId: carrierState.contract_id, skipped: true, reason: `계약 상태가 '${carrierState.contract_status}'이거나 접수 이력이 있어 상담 저장이 바꾸지 않습니다. 새 상담으로 시작해 주세요.` };
         out.warnings.push(out.carrier.reason);
         Object.entries(known).forEach(([k, v]) => { out.usimByKey[k] = Number(v); });
         return out;
       }
-      out.carrier = { contractId: carrierState.contract_id, created: false };
+      out.carrier = { contractId: carrierState.contract_id, created: false, draft: s6IsDraft(carrierState) };
     } else {
       const cr = await createContract({ customerId: cid, contractType: 'home', label: plan.home ? plan.home.label : '상담 계약' });
       if (!cr.ok) return fail('인터넷·TV 계약을 만들지 못했습니다: ' + cr.error);
       out.carrierContractId = out.homeContractId = cr.contract.contract_id;
-      out.carrier = { contractId: cr.contract.contract_id, created: true };
+      out.carrier = { contractId: cr.contract.contract_id, created: true, draft: true };
     }
     out.home = plan.home ? Object.assign({ matchKey: plan.home.matchKey }, out.carrier) : null;
     const carrierId = out.carrierContractId;
@@ -1193,9 +1200,9 @@ async function s7SaveConsultContracts(opts){
       const row = { matchKey: u.matchKey, contractId: null, created: false, skipped: false };
       const ex = known[u.matchKey] !== undefined && known[u.matchKey] !== null ? state[Number(known[u.matchKey])] : null;
       if (ex && ex.contract_type === 'usim') {
-        row.contractId = ex.contract_id;
-        if (!s6IsDraft(ex)) {
-          row.skipped = true; row.reason = '접수가 진행된 유심 계약이라 상담 저장이 바꾸지 않습니다.';
+        row.contractId = ex.contract_id; row.draft = s6IsDraft(ex);
+        if (!s7IsEditable(ex)) {
+          row.skipped = true; row.reason = `유심 계약 상태가 '${ex.contract_status}'이거나 접수 이력이 있어 상담 저장이 바꾸지 않습니다.`;
           out.warnings.push(`유심 ${formatContractNo(ex.contract_id)}: ${row.reason}`);
         } else {
           if ((ex.linked_contract_id || null) !== linkId) {
@@ -1209,7 +1216,7 @@ async function s7SaveConsultContracts(opts){
         if (known[u.matchKey]) out.warnings.push('상담 화면이 기억하던 유심 계약을 찾지 못해 새 계약으로 저장합니다.');
         const cr = await createContract({ customerId: cid, contractType: 'usim', label: u.label, linkedContractId: linkId });
         if (!cr.ok) return fail('유심 계약을 만들지 못했습니다: ' + cr.error);
-        row.contractId = cr.contract.contract_id; row.created = true;
+        row.contractId = cr.contract.contract_id; row.created = true; row.draft = true;
         out.usimByKey[u.matchKey] = row.contractId; out.usims.push(row);
         const m = await saveContractMeta(row.contractId, s7NonNull(u.meta));
         if (!m.ok) return fail('유심 계약 정보 저장에 실패했습니다: ' + m.error);
@@ -1226,7 +1233,14 @@ async function s7SaveConsultContracts(opts){
         if (!st) continue;                                                   // 이미 없어진 계약
         if (!s6IsDraft(st)) {
           out.usimByKey[key] = st.contract_id;
-          out.warnings.push(`유심 ${formatContractNo(st.contract_id)}: 접수가 진행된 계약이라 상담 화면에서 빼도 삭제되지 않습니다.`);
+          if (!s7IsEditable(st)) {
+            out.warnings.push(`유심 ${formatContractNo(st.contract_id)}: 접수 이력이 있는 계약('${st.contract_status}')이라 상담 화면에서 빼도 바뀌지 않습니다.`);
+            continue;
+          }
+          // 접수대기·접수보류 계약 : 삭제하지 않고 계약은 남기며 상품을 접수취소로 바꿉니다(D15).
+          const ci = await s7SaveContractItems(st.contract_id, cid, [], { allowDelete: false });
+          ci.warnings.forEach(w => out.warnings.push(w));
+          if (!ci.ok) return fail(`유심 ${formatContractNo(st.contract_id)} 상품을 접수취소로 바꾸지 못했습니다: ${ci.error}`);
           continue;
         }
         const d = await deleteContract(st.contract_id);
@@ -1253,20 +1267,27 @@ async function s7SaveConsultContracts(opts){
 //  - 제안 교체 순서: 새 행 저장 → 옛 행 삭제. 새 행 저장이 실패하면 옛 제안이 그대로 남고, 삭제가 실패하면 오류로 알려 다시 저장하면 정리됩니다.
 //  - 접수가 진행된 계약(건너뜀)은 상품·제안도 바꾸지 않습니다.
 // ============================================================
-async function s7SaveContractItems(contractId, customerId, planItems){
-  const out = { ok: false, added: [], updated: [], removed: [], warnings: [] };
+const S7_CANCEL_REASON = '상담 저장: 상담 화면에서 상품 제외';   // 상담 저장이 접수취소로 바꾼 상품의 사유(다시 올리면 되살리는 기준)
+
+async function s7SaveContractItems(contractId, customerId, planItems, opts){
+  const out = { ok: false, added: [], updated: [], removed: [], canceled: [], reactivated: [], warnings: [] };
   const fail = msg => { out.ok = false; out.error = msg; return out; };
   try {
     const le = s6LoginErr(); if (le) return fail(le);
     const cid = Number(contractId), cust = Number(customerId);
     if (!Number.isFinite(cid) || !Number.isFinite(cust)) return fail('계약 ID 또는 고객 ID가 올바르지 않습니다.');
     const items = Array.isArray(planItems) ? planItems : [];
+    const allowDelete = !(opts && opts.allowDelete === false);      // 접수 단계 계약은 삭제하지 않고 접수취소로 처리(S7-9b·c)
     const ex = await sb.from('contract_items').select('*').eq('contract_id', cid).order('item_id', { ascending: true });
     if (ex.error) return fail('상품을 읽지 못했습니다: ' + ex.error.message);
     const rows = (ex.data || []).slice().sort((a, b) => a.item_id - b.item_id);
+    const isCanceled = r => r.progress_status === '접수취소';
     const byType = {};
     rows.forEach(r => { (byType[r.product_type] = byType[r.product_type] || []).push(r); });
-    Object.keys(byType).forEach(t => { if (byType[t].length > 1) out.warnings.push(`계약 ${formatContractNo(cid)}에 ${t} 상품이 ${byType[t].length}건 있어 첫 건(${formatItemNo(byType[t][0].item_id)})만 갱신합니다.`); });
+    Object.keys(byType).forEach(t => {
+      const act = byType[t].filter(r => !isCanceled(r));
+      if (act.length > 1) out.warnings.push(`계약 ${formatContractNo(cid)}에 ${t} 상품이 ${act.length}건 있어 첫 건(${formatItemNo(act[0].item_id)})만 갱신합니다.`);
+    });
 
     const wantedTypes = new Set();
     for (const it of items) {
@@ -1274,7 +1295,19 @@ async function s7SaveContractItems(contractId, customerId, planItems){
       const fee = s6Int(it.monthlyFee), comm = s6Int(it.commission);
       if (Number.isNaN(fee) || Number.isNaN(comm)) return fail('요금·수수료는 숫자여야 합니다.');
       const vals = { carrier: it.carrier || null, product_name: it.productName || null, monthly_fee: fee, commission: comm, detail: it.detail || null };
-      const cur = (byType[it.productType] || [])[0];
+      const list = byType[it.productType] || [];
+      let cur = list.find(r => !isCanceled(r));
+      if (!cur && list.length) {
+        const mk = list.find(r => isCanceled(r) && r.cancel_reason === S7_CANCEL_REASON);
+        if (!mk) {                                                  // 계약 카드에서 직접 접수취소한 상품 : 되살리지 않음
+          out.warnings.push(`계약 ${formatContractNo(cid)}: 계약 카드에서 접수취소된 ${it.productType} 상품(${list.map(r => formatItemNo(r.item_id)).join(', ')})이 있어 이 구분은 상담 저장이 바꾸지 않았습니다. 새 상품은 계약 카드에서 추가해 주세요.`);
+          continue;
+        }
+        const re = await changeStatus({ target: 'item', id: mk.item_id, axis: 'progress', to: '설치대기', note: '상담 저장으로 상품 다시 추가' });
+        if (!re.ok) return fail(`상품 ${formatItemNo(mk.item_id)}를 다시 올리지 못했습니다: ${re.error}`);
+        out.reactivated.push(mk.item_id);
+        cur = Object.assign({}, mk, { progress_status: '설치대기', cancel_reason: null });
+      }
       if (cur) {
         const same = (cur.carrier || null) === vals.carrier && (cur.product_name || null) === vals.product_name && (cur.monthly_fee ?? null) === vals.monthly_fee
           && (cur.commission ?? null) === vals.commission && JSON.stringify(cur.detail || null) === JSON.stringify(vals.detail);
@@ -1295,13 +1328,25 @@ async function s7SaveContractItems(contractId, customerId, planItems){
         out.added.push(item.item_id);
       }
     }
-    // 상담 화면에서 뺀 상품 삭제(작성중 계약만 여기까지 옴)
+    // 상담 화면에서 뺀 상품 : 작성중 계약은 삭제, 접수 단계 계약은 삭제하지 않고 진행 상태를 접수취소로 바꿈(이력 남김)
     for (const t of Object.keys(byType)) {
       if (wantedTypes.has(t)) continue;
       for (const r of byType[t]) {
-        const d = await deleteContractItem(r.item_id);
-        if (!d.ok) return fail(`상품 ${formatItemNo(r.item_id)} 삭제에 실패했습니다: ${d.error}`);
-        out.removed.push(r.item_id);
+        if (allowDelete) {
+          const d = await deleteContractItem(r.item_id);
+          if (!d.ok) return fail(`상품 ${formatItemNo(r.item_id)} 삭제에 실패했습니다: ${d.error}`);
+          out.removed.push(r.item_id);
+          continue;
+        }
+        if (isCanceled(r)) continue;                                // 이미 접수취소
+        if (r.progress_status === '설치완료') {
+          out.warnings.push(`계약 ${formatContractNo(cid)}: ${t} 상품 ${formatItemNo(r.item_id)}는 이미 설치완료라 접수취소로 바꾸지 않았습니다. 계약 카드에서 확인해 주세요.`);
+          continue;
+        }
+        const c = await changeStatus({ target: 'item', id: r.item_id, axis: 'progress', to: '접수취소', reason: S7_CANCEL_REASON, note: '상담 저장으로 상품 제외' });
+        if (!c.ok) return fail(`상품 ${formatItemNo(r.item_id)}를 접수취소로 바꾸지 못했습니다: ${c.error}`);
+        out.canceled.push(r.item_id);
+        out.warnings.push(`계약 ${formatContractNo(cid)}: 상담 화면에서 뺀 ${t} 상품 ${formatItemNo(r.item_id)}를 접수취소로 바꿨습니다.`);
       }
     }
     out.ok = true;
@@ -1359,16 +1404,16 @@ async function saveConsultSet(opts){
 
   // 상품 : 대표(인터넷·TV) → 유심
   const homeItems = plan.home ? plan.home.items : [];
-  const hi = await s7SaveContractItems(res.carrierContractId, cust, homeItems);
+  const hi = await s7SaveContractItems(res.carrierContractId, cust, homeItems, { allowDelete: !res.carrier || res.carrier.draft !== false });
   hi.warnings.forEach(w => res.warnings.push(w));
-  res.items[res.carrierContractId] = { added: hi.added, updated: hi.updated, removed: hi.removed };
+  res.items[res.carrierContractId] = { added: hi.added, updated: hi.updated, removed: hi.removed, canceled: hi.canceled, reactivated: hi.reactivated };
   if (!hi.ok) return fail('items', '인터넷·TV 상품 저장에 실패했습니다: ' + hi.error);
   for (const u of plan.usims) {
     const row = res.usims.find(x => x.matchKey === u.matchKey);
     if (!row || row.skipped) continue;
-    const ui = await s7SaveContractItems(row.contractId, cust, u.items);
+    const ui = await s7SaveContractItems(row.contractId, cust, u.items, { allowDelete: row.draft !== false });
     ui.warnings.forEach(w => res.warnings.push(w));
-    res.items[row.contractId] = { added: ui.added, updated: ui.updated, removed: ui.removed };
+    res.items[row.contractId] = { added: ui.added, updated: ui.updated, removed: ui.removed, canceled: ui.canceled, reactivated: ui.reactivated };
     if (!ui.ok) return fail('items', `유심 ${formatContractNo(row.contractId)} 상품 저장에 실패했습니다: ${ui.error}`);
   }
   // 제안 : 대표 계약에 통째로 교체
@@ -1416,4 +1461,88 @@ async function loadConsultForScreen(customerId){
       dropped, snapshotVersion: snap.snapshotVersion || 1
     };
   } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
+}
+
+
+// ============================================================
+// 실적조회 데이터 읽기 (S8)
+// ------------------------------------------------------------
+//  - 추가만 한 함수입니다. 기존 함수는 바꾸지 않았고, 실적조회 화면(loadPerformance)이 호출합니다.
+//  - 기준(화면 설명 문구와 같음)
+//      · 고객 = 기간 안에 **등록한**(customers.created_at) 고객
+//      · 유치 고객 = 그 고객 중 접수 이력이 있는 고객(v_customer_overview.is_acquired). 이후 이탈·제외·계약취소가 되어도 포함
+//      · 유치 계약 = 기간 안에 **접수된**(received_at) 계약. 접수 후 취소된 계약도 포함(effective_status = 계약취소)
+//      · 기간은 한국 시간 기준, 시작일 0시부터 종료일 23:59:59.999까지(양쪽 포함). 기간을 비우면 전체
+//  - 반환: { ok, customers[], acquired{ 고객ID: true }, contracts[ {...계약 칼럼, customer:{customer_id,name,contact}} ],
+//            itemsByContract{ 계약ID: [상품...] }, truncated:{ customers, acquired, contracts }, period:{ from, to } }
+//    · customers 는 상태 표시에 필요한 칼럼만 읽습니다(상담 스냅샷 같은 큰 JSON 제외).
+//    · 한 번에 읽는 행 수에 한계가 있어 1,000건씩 나누어 읽고, 상한(기본 20,000건)에 닿으면 truncated 로 알립니다.
+//  - 예외를 던지지 않고 { ok:false, error } 를 돌려줍니다. 미로그인이면 로그인 안내를 돌려줍니다.
+// ============================================================
+const S8_CUSTOMER_COLUMNS = 'customer_id,name,contact,created_at,customer_status,consult_substatus,status_reason,funnel_status';
+const S8_ITEM_COLUMNS = 'contract_id,item_id,product_type,carrier,product_name,progress_status';
+
+function s8Bounds(from, to){
+  const re = /^\d{4}-\d{2}-\d{2}$/;
+  const f = from ? String(from) : '', t = to ? String(to) : '';
+  if ((f && !re.test(f)) || (t && !re.test(t))) return { error: '기간 형식이 올바르지 않습니다.' };
+  if (f && t && f > t) return { error: '시작일이 종료일보다 늦습니다.' };
+  const lo = f ? new Date(f + 'T00:00:00+09:00') : null, hi = t ? new Date(t + 'T23:59:59.999+09:00') : null;
+  if ((lo && isNaN(lo.getTime())) || (hi && isNaN(hi.getTime()))) return { error: '기간 날짜가 올바르지 않습니다.' };
+  return { lo: lo ? lo.toISOString() : null, hi: hi ? hi.toISOString() : null };
+}
+
+async function loadPerformanceData(opts){
+  const loginErr = s2LoginError();
+  if (loginErr) return { ok: false, error: loginErr };
+  try {
+    const o = opts || {};
+    const b = s8Bounds(o.from, o.to);
+    if (b.error) return { ok: false, error: b.error };
+    const cap = Number(o.maxRows) > 0 ? Number(o.maxRows) : S2_MAX_ROWS;
+    const truncated = { customers: false, acquired: false, contracts: false };
+
+    // 1) 기간 안에 등록한 고객
+    const cu = await s2FetchAll((from, to) => {
+      let q = sb.from('customers').select(S8_CUSTOMER_COLUMNS);
+      if (b.lo) q = q.gte('created_at', b.lo);
+      if (b.hi) q = q.lte('created_at', b.hi);
+      return q.order('created_at', { ascending: true }).order('customer_id', { ascending: true }).range(from, to);
+    }, cap);
+    if (cu.error) return { ok: false, error: 'customers: ' + cu.error.message };
+    const customers = cu.rows;
+    truncated.customers = !!cu.truncated;
+
+    // 2) 그 고객 중 접수 이력이 있는 고객(이후 상태가 바뀌어도 포함)
+    const acquired = {};
+    if (customers.length) {
+      const inPeriod = new Set(customers.map(c => c.customer_id));
+      const ac = await s2FetchAll((from, to) =>
+        sb.from('v_customer_overview').select('customer_id').eq('is_acquired', true).order('customer_id', { ascending: true }).range(from, to), cap);
+      if (ac.error) return { ok: false, error: 'v_customer_overview: ' + ac.error.message };
+      ac.rows.forEach(r => { if (inPeriod.has(r.customer_id)) acquired[r.customer_id] = true; });
+      truncated.acquired = !!ac.truncated;
+    }
+
+    // 3) 기간 안에 접수된 계약(접수 후 취소된 계약 포함)
+    const cr = await loadContractOverviewList({ acquired: true, receivedFrom: b.lo || undefined, receivedTo: b.hi || undefined, limit: cap });
+    if (!cr.ok) return { ok: false, error: cr.error };
+    const contracts = cr.rows;
+    truncated.contracts = !!cr.truncated;
+
+    // 4) 계약별 상품
+    const itemsByContract = {};
+    const ids = contracts.map(c => c.contract_id);
+    const chunks = s2Chunk(ids, S2_ID_CHUNK);
+    for (let i = 0; i < chunks.length; i += 5) {
+      const rs = await Promise.all(chunks.slice(i, i + 5).map(ch => sb.from('contract_items').select(S8_ITEM_COLUMNS).in('contract_id', ch).order('item_id', { ascending: true })));
+      for (const r of rs) {
+        if (r.error) return { ok: false, error: 'contract_items: ' + r.error.message };
+        (r.data || []).forEach(it => { (itemsByContract[it.contract_id] = itemsByContract[it.contract_id] || []).push(it); });
+      }
+    }
+    return { ok: true, customers, acquired, contracts, itemsByContract, truncated, period: { from: o.from || '', to: o.to || '' } };
+  } catch (e) {
+    return { ok: false, error: e && e.message ? e.message : String(e) };
+  }
 }
