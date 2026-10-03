@@ -1101,6 +1101,71 @@ function s7ItemKey(it){
   return (d && typeof d === 'object' && d.consultKey) ? String(d.consultKey) : null;
 }
 
+// ------------------------------------------------------------
+// 변경 메모 이력 (S7-9d)
+//  - 접수 단계(작성중이 아닌) 계약에서 상담 저장이 상품·사은품·수수료 값을 바꾸면, 무엇이 어떻게 바뀌었는지 status_history 에 메모로 남깁니다.
+//    작성중 계약은 접수 전이라 저장할 때마다 값이 바뀌는 게 정상이므로 메모를 남기지 않습니다(접수 전 변경은 추적 대상이 아님).
+//  - 메모 행: event_type = 'memo'(DB에 event_type 제약 없음: 01_structure.sql 의 CHECK 는 target_type 뿐), axis·from·to 는 비우고 note 에 내용을 적습니다.
+//    상품 값 변경은 target_type = 'item'(item_id + contract_id), 사은품·수수료 합계 변경은 target_type = 'contract'. 둘 다 계약 필터에 보입니다.
+//  - 저장 순서는 changeStatus 와 같습니다: 메모를 먼저 저장 → 실패하면 값을 바꾸지 않음 → 값 저장이 실패하면 방금 저장한 메모를 지움.
+//  - 값이 실제로 달라진 항목만 적습니다(같은 내용으로 다시 저장해도 메모가 늘지 않음). 상세(detail JSON)만 달라진 경우는 눈에 보이는 변경이 없어 메모하지 않습니다.
+// ------------------------------------------------------------
+const S7_MEMO_MONEY = ['monthly_fee', 'commission', 'gift_total', 'gift_card', 'gift_cash', 'gift_extra', 'commission_total'];
+const S7_MEMO_ITEM_FIELDS = [['carrier', '통신사'], ['product_name', '상품명'], ['monthly_fee', '월요금'], ['commission', '수수료']];
+const S7_MEMO_CONTRACT_FIELDS = [['gift_total', '사은품 합계'], ['gift_card', '상품권'], ['gift_cash', '현금'], ['gift_extra', '추가지급'], ['commission_total', '수수료 합계']];
+
+function s7MemoVal(col, v){
+  if (v === null || v === undefined || v === '') return '(없음)';
+  if (S7_MEMO_MONEY.includes(col)) return String(Math.round(Number(v))).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '원';
+  return `'${v}'`;
+}
+
+// before(현재 행) 와 after(새 값) 에서 fields 의 값이 달라진 것만 "라벨 이전 → 이후" 문구로 만듭니다. 달라진 게 없으면 ''.
+function s7DiffNote(before, after, fields){
+  const parts = [];
+  for (const [col, label] of fields) {
+    if (!after || !(col in after)) continue;
+    const money = S7_MEMO_MONEY.includes(col);
+    const norm = v => (v === undefined || v === '' || v === null) ? null : (money ? s7Num(v) : String(v));
+    const a = norm(before ? before[col] : null), b = norm(after[col]);
+    if (a === b) continue;
+    parts.push(`${label} ${s7MemoVal(col, a)} → ${s7MemoVal(col, b)}`);
+  }
+  return parts.join(' · ');
+}
+
+// 변경 메모 1건 저장 : { ok, historyId } / { ok:false, error }
+async function s7WriteChangeMemo(o){
+  return s6WriteHistory({
+    customer_id: o.customerId, contract_id: o.contractId, item_id: o.itemId || null,
+    event_type: 'memo', target_type: o.itemId ? 'item' : 'contract', axis: null, from_value: null, to_value: null, note: o.note
+  });
+}
+async function s7DropMemo(historyId){
+  if (historyId === null || historyId === undefined) return;
+  await sb.from('status_history').delete().eq('history_id', historyId);
+}
+
+// 계약 정보(사은품·수수료 합계) 저장. withMemo 이면 바뀐 값을 메모로 남깁니다.
+async function s7SaveMeta(contractId, customerId, meta, withMemo){
+  if (!withMemo) return saveContractMeta(contractId, meta);
+  const cur = await sb.from('contracts').select('contract_id,gift_total,gift_card,gift_cash,gift_extra,commission_total').eq('contract_id', contractId).limit(1);
+  if (cur.error) return s6Err('계약 정보를 읽지 못했습니다: ' + cur.error.message);
+  const row = (cur.data || [])[0];
+  if (!row) return s6Err('계약을 찾을 수 없습니다.');
+  const note = s7DiffNote(row, meta, S7_MEMO_CONTRACT_FIELDS);
+  let memoId = null;
+  if (note) {
+    const h = await s7WriteChangeMemo({ customerId, contractId, note: '상담 저장으로 계약 정보 변경: ' + note });
+    if (!h.ok) return s6Err('변경 이력을 저장하지 못해 계약 정보를 바꾸지 않았습니다: ' + h.error);
+    memoId = h.historyId;
+  }
+  const r = await saveContractMeta(contractId, meta);
+  if (!r.ok) await s7DropMemo(memoId);
+  else if (memoId !== null) r.memoId = memoId;
+  return r;
+}
+
 // 상담 화면이 쓸 계약 찾기 : { ok, carrierContractId, usimByKey, snapshot, contracts }
 async function s7LoadConsultTargets(customerId){
   try {
@@ -1188,8 +1253,9 @@ async function s7SaveConsultContracts(opts){
     const sn = await sb.from('contracts').update({ consult_snapshot: plan.snapshot || null }).eq('contract_id', carrierId).select('contract_id');
     if (sn.error) return fail('상담 스냅샷 저장에 실패했습니다: ' + sn.error.message);
     if (plan.home) {
-      const m = await saveContractMeta(carrierId, s7NonNull(plan.home.meta));
+      const m = await s7SaveMeta(carrierId, cid, s7NonNull(plan.home.meta), out.carrier.draft === false);   // S7-9d: 접수 단계 계약이면 변경 메모
       if (!m.ok) return fail('인터넷·TV 계약 정보 저장에 실패했습니다: ' + m.error);
+      if (m.memoId !== undefined && m.memoId !== null) out.carrier.metaMemo = true;      // 화면 안내용(S7-9e)
     }
 
     // 2) 유심 계약 : 키(상담 상품 ID)로 기존 계약을 찾고, 없으면 새로 만듭니다. 인터넷·TV 최종상품이 있을 때만 대표 계약에 연결합니다.
@@ -1209,8 +1275,9 @@ async function s7SaveConsultContracts(opts){
             const lk = await sb.from('contracts').update({ linked_contract_id: linkId }).eq('contract_id', ex.contract_id).select('contract_id');
             if (lk.error) { out.usimByKey[u.matchKey] = ex.contract_id; out.usims.push(row); return fail('유심 계약 연결 변경에 실패했습니다: ' + lk.error.message); }
           }
-          const m = await saveContractMeta(ex.contract_id, s7NonNull(u.meta));
+          const m = await s7SaveMeta(ex.contract_id, cid, s7NonNull(u.meta), row.draft === false);   // S7-9d: 접수 단계 계약이면 변경 메모
           if (!m.ok) { out.usimByKey[u.matchKey] = ex.contract_id; out.usims.push(row); return fail('유심 계약 정보 저장에 실패했습니다: ' + m.error); }
+          if (m.memoId !== undefined && m.memoId !== null) row.metaMemo = true;      // 화면 안내용(S7-9e)
         }
       } else {
         if (known[u.matchKey]) out.warnings.push('상담 화면이 기억하던 유심 계약을 찾지 못해 새 계약으로 저장합니다.');
@@ -1270,7 +1337,7 @@ async function s7SaveConsultContracts(opts){
 const S7_CANCEL_REASON = '상담 저장: 상담 화면에서 상품 제외';   // 상담 저장이 접수취소로 바꾼 상품의 사유(다시 올리면 되살리는 기준)
 
 async function s7SaveContractItems(contractId, customerId, planItems, opts){
-  const out = { ok: false, added: [], updated: [], removed: [], canceled: [], reactivated: [], warnings: [] };
+  const out = { ok: false, added: [], updated: [], removed: [], canceled: [], reactivated: [], memos: [], warnings: [] };
   const fail = msg => { out.ok = false; out.error = msg; return out; };
   try {
     const le = s6LoginErr(); if (le) return fail(le);
@@ -1312,9 +1379,19 @@ async function s7SaveContractItems(contractId, customerId, planItems, opts){
         const same = (cur.carrier || null) === vals.carrier && (cur.product_name || null) === vals.product_name && (cur.monthly_fee ?? null) === vals.monthly_fee
           && (cur.commission ?? null) === vals.commission && JSON.stringify(cur.detail || null) === JSON.stringify(vals.detail);
         if (!same) {
+          let memoId = null;
+          if (!allowDelete) {                                       // S7-9d: 접수 단계 계약이면 바뀐 값을 메모로 남김(먼저 저장, 실패하면 값을 바꾸지 않음)
+            const note = s7DiffNote(cur, vals, S7_MEMO_ITEM_FIELDS);
+            if (note) {
+              const h = await s7WriteChangeMemo({ customerId: cust, contractId: cid, itemId: cur.item_id, note: `상담 저장으로 ${S6_ITEM_TYPE_LABEL[it.productType] || it.productType} 상품 변경: ${note}` });
+              if (!h.ok) return fail(`상품 ${formatItemNo(cur.item_id)} 변경 이력을 저장하지 못해 바꾸지 않았습니다: ${h.error}`);
+              memoId = h.historyId;
+            }
+          }
           const u = await sb.from('contract_items').update(vals).eq('item_id', cur.item_id).select('item_id');
-          if (u.error) return fail(`상품 ${formatItemNo(cur.item_id)} 저장에 실패했습니다: ${u.error.message}`);
+          if (u.error) { await s7DropMemo(memoId); return fail(`상품 ${formatItemNo(cur.item_id)} 저장에 실패했습니다: ${u.error.message}`); }
           out.updated.push(cur.item_id);
+          if (memoId !== null) out.memos.push(memoId);
         }
       } else {
         const ins = await sb.from('contract_items').insert(Object.assign({ contract_id: cid, customer_id: cust, product_type: it.productType, progress_status: '설치대기', source: 'app' }, vals)).select('*');
@@ -1406,14 +1483,14 @@ async function saveConsultSet(opts){
   const homeItems = plan.home ? plan.home.items : [];
   const hi = await s7SaveContractItems(res.carrierContractId, cust, homeItems, { allowDelete: !res.carrier || res.carrier.draft !== false });
   hi.warnings.forEach(w => res.warnings.push(w));
-  res.items[res.carrierContractId] = { added: hi.added, updated: hi.updated, removed: hi.removed, canceled: hi.canceled, reactivated: hi.reactivated };
+  res.items[res.carrierContractId] = { added: hi.added, updated: hi.updated, removed: hi.removed, canceled: hi.canceled, reactivated: hi.reactivated, memos: hi.memos };
   if (!hi.ok) return fail('items', '인터넷·TV 상품 저장에 실패했습니다: ' + hi.error);
   for (const u of plan.usims) {
     const row = res.usims.find(x => x.matchKey === u.matchKey);
     if (!row || row.skipped) continue;
     const ui = await s7SaveContractItems(row.contractId, cust, u.items, { allowDelete: row.draft !== false });
     ui.warnings.forEach(w => res.warnings.push(w));
-    res.items[row.contractId] = { added: ui.added, updated: ui.updated, removed: ui.removed, canceled: ui.canceled, reactivated: ui.reactivated };
+    res.items[row.contractId] = { added: ui.added, updated: ui.updated, removed: ui.removed, canceled: ui.canceled, reactivated: ui.reactivated, memos: ui.memos };
     if (!ui.ok) return fail('items', `유심 ${formatContractNo(row.contractId)} 상품 저장에 실패했습니다: ${ui.error}`);
   }
   // 제안 : 대표 계약에 통째로 교체
