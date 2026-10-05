@@ -122,11 +122,100 @@ function pickLatestRow(rows){
   });
 }
 
+// ============================================================
+// 수수료 에이전시 (C-AG1)
+//  - 수수료를 주는 에이전시가 2곳 이상이 되어, 같은 상품에 에이전시별 수수료가 여러 개일 수 있습니다.
+//  - 화면은 '에이전시별 합계(인터넷+TV)가 가장 큰 곳'의 금액과 에이전시 이름을 보여 줍니다. 선택 규칙은 pickBestCommission 한 곳에만 있습니다.
+//  - DB 연결 전 단계: RAW_COMMISSION_DATA(get_admin_commissions 결과)의 각 행에 에이전시 이름 칼럼이 있으면 그 값을 쓰고,
+//    칼럼이 없으면 에이전시 1곳(이름 없음)으로 보아 기존과 똑같이 동작합니다. 칼럼 이름이 확정되면 COMMISSION_ROW_FIELDS.agency 만 고치면 됩니다.
+//  - 유심 수수료는 Calculator.js 의 getUsimCommission(단일 구간표)이 기본입니다. 에이전시별 구간표를 USIM_COMMISSION_BY_AGENCY 에 넣으면
+//    같은 규칙으로 비교합니다(DB 연결 시 { 에이전시명: { SK:[{max,fee}..], KT:[..], LG:[..] } } 모양으로 채우면 됩니다).
+//  - 화면 확인용 가짜 에이전시: 주소 끝에 ?commMock=1 (저장은 막힙니다). 아래 commissionMock* 참고.
+// ============================================================
+const COMMISSION_ROW_FIELDS = { agency: 'agency' };   // 수수료 행에서 에이전시 이름이 든 칼럼
+let USIM_COMMISSION_BY_AGENCY = null;                 // null 이면 단일 구간표(getUsimCommission) 사용
+
+function commissionAgencyOf(row){
+  const v = row ? row[COMMISSION_ROW_FIELDS.agency] : null;
+  return (v === null || v === undefined || String(v).trim() === '') ? null : String(v).trim();
+}
+
+// 후보(에이전시별 금액) 중 합계가 가장 큰 곳. 같으면 먼저 나온 곳.
+function pickBestCommission(cands){
+  if (!cands || !cands.length) return null;
+  return cands.reduce((best, c) => (c.totalComm > best.totalComm ? c : best), cands[0]);
+}
+
+// 홈(인터넷·TV) 수수료 : 기존 필드(internetComm·tvComm·totalComm)는 '가장 큰 에이전시' 값이라 기존 화면 코드가 그대로 동작합니다.
+//   추가 필드: agency(선택된 에이전시 이름 또는 null), agencies(에이전시별 후보, 합계 높은 순)
 function lookupCommission(carrierKey, speedNum, tvTier){
   const rows = RAW_COMMISSION_DATA.filter(r => String(r.carrier).toLowerCase() === carrierKey && normalizeSpeedValue(r.speed) === speedNum);
-  const internetComm = pickLatestRow(rows.filter(r => String(r.tv_tier) === 'none'))?.commission_amount || 0;
-  const tvComm = tvTier !== 'none' ? (pickLatestRow(rows.filter(r => String(r.tv_tier) === tvTier))?.commission_amount || 0) : 0;
-  return { internetComm, tvComm, totalComm: internetComm + tvComm };
+  const names = [];
+  rows.forEach(r => { const a = commissionAgencyOf(r); if (!names.includes(a)) names.push(a); });
+  const cands = names.map(a => {
+    const rs = rows.filter(r => commissionAgencyOf(r) === a);
+    const internetComm = pickLatestRow(rs.filter(r => String(r.tv_tier) === 'none'))?.commission_amount || 0;
+    const tvComm = tvTier !== 'none' ? (pickLatestRow(rs.filter(r => String(r.tv_tier) === tvTier))?.commission_amount || 0) : 0;
+    return { agency: a, internetComm, tvComm, totalComm: internetComm + tvComm };
+  });
+  const best = pickBestCommission(cands);
+  if (!best) return { internetComm: 0, tvComm: 0, totalComm: 0, agency: null, agencies: [] };
+  return {
+    internetComm: best.internetComm, tvComm: best.tvComm, totalComm: best.totalComm,
+    agency: best.agency, agencies: cands.slice().sort((x, y) => y.totalComm - x.totalComm)
+  };
+}
+
+// 유심 수수료 : { amount, agency, agencies } — amount 는 getUsimCommission 과 같은 의미(가장 큰 에이전시 금액)
+function usimBandFee(bands, fee){
+  if (!bands) return 0;
+  const b = bands.find(x => fee <= x.max);
+  return b ? b.fee : 0;
+}
+function usimCommissionInfo(carrier, monthlyFee){
+  const fee = Number(monthlyFee) || 0;
+  const table = USIM_COMMISSION_BY_AGENCY;
+  if (table && Object.keys(table).length) {
+    const cands = Object.keys(table).map(a => { const amount = usimBandFee(table[a][carrier], fee); return { agency: a, amount, totalComm: amount }; });
+    const best = pickBestCommission(cands);
+    return { amount: best.amount, agency: best.agency, agencies: cands.slice().sort((x, y) => y.amount - x.amount) };
+  }
+  return { amount: getUsimCommission(carrier, fee), agency: null, agencies: [] };
+}
+
+// ---- 화면 확인용 가짜 에이전시(?commMock=1) : DB 와 무관한 테스트 값이며 저장은 막힙니다 ----
+let COMMISSION_MOCK_ON = false;
+const COMMISSION_MOCK_A = 'A에이전시(테스트)', COMMISSION_MOCK_B = 'B에이전시(테스트)';
+function commissionMockFactor(carrier){ return ['kt', 'lg', 'KT', 'LG'].includes(carrier) ? 1.1 : 0.9; }   // B 가 KT·LG 에서 높고 SK 계열에서 낮게
+function commissionMockRows(rows){
+  const out = [];
+  (rows || []).forEach(r => {
+    out.push(Object.assign({}, r, { [COMMISSION_ROW_FIELDS.agency]: COMMISSION_MOCK_A }));
+    out.push(Object.assign({}, r, { [COMMISSION_ROW_FIELDS.agency]: COMMISSION_MOCK_B,
+      commission_amount: Math.round((Number(r.commission_amount) || 0) * commissionMockFactor(String(r.carrier).toLowerCase()) / 1000) * 1000 }));
+  });
+  return out;
+}
+function commissionMockUsimTable(){
+  const mapBands = (bands, f) => bands.map(b => ({ max: b.max, fee: Math.round(b.fee * f / 1000) * 1000 }));
+  const a = {}, b = {};
+  Object.keys(USIM_COMMISSION_BANDS).forEach(k => { a[k] = USIM_COMMISSION_BANDS[k]; b[k] = mapBands(USIM_COMMISSION_BANDS[k], commissionMockFactor(k)); });
+  return { [COMMISSION_MOCK_A]: a, [COMMISSION_MOCK_B]: b };
+}
+function commissionMockRequested(){
+  try { return typeof location !== 'undefined' && new URLSearchParams(location.search).get('commMock') === '1'; } catch (e) { return false; }
+}
+function commissionMockInit(){
+  if (!commissionMockRequested()) return;
+  COMMISSION_MOCK_ON = true;
+  USIM_COMMISSION_BY_AGENCY = commissionMockUsimTable();
+  if (typeof document !== 'undefined' && document.body) {
+    const bar = document.createElement('div');
+    bar.id = 'commission-mock-banner';
+    bar.style.cssText = 'background:#b3261e;color:#fff;padding:6px 12px;font-size:13px;font-weight:700;text-align:center;position:sticky;top:0;z-index:9999;';
+    bar.textContent = '⚠ 수수료 에이전시 화면 확인용 테스트 모드 — 표시되는 에이전시·금액은 가짜 값이며 상담 저장은 막혀 있습니다. (주소의 ?commMock=1 을 빼면 해제)';
+    document.body.insertBefore(bar, document.body.firstChild);
+  }
 }
 
 function normalizeSpeedValue(v){
@@ -154,6 +243,7 @@ async function loadFinanceData() {
 
   COMMISSION_DATA = {};
   RAW_COMMISSION_DATA = commRes.data || [];
+  if (COMMISSION_MOCK_ON) RAW_COMMISSION_DATA = commissionMockRows(RAW_COMMISSION_DATA);   // 화면 확인용(?commMock=1)
   CARRIERS.forEach(carrier => {
     const commRows = commRes.data
       ? commRes.data.filter(r => String(r.carrier).toLowerCase() === carrier && normalizeSpeedValue(r.speed) === targetSpeed)
@@ -938,6 +1028,8 @@ function s7Num(v){
   const n = Number(typeof v === 'string' ? v.replace(/[,\s원]/g, '') : v);
   return Number.isFinite(n) ? Math.round(n) : null;
 }
+// 수수료 에이전시 이름이 있을 때만 상품 detail 에 담습니다(없으면 키를 만들지 않아 기존 상품과 값이 같게 유지).
+function s7AgencyDetail(agency){ return agency ? { commissionAgency: agency } : {}; }
 function s7Clone(v){ return (v === null || v === undefined) ? v : JSON.parse(JSON.stringify(v)); }
 function s7IsSyncedLine(p){ return !!p && (p.synced === true || p.id === 'synced-cs-line'); }
 function s7HasTv(p){
@@ -981,7 +1073,8 @@ function s7HomeContract(p, helpers, warnings){
     matchKey: 'internet', productType: 'internet', carrier: p.carrierName || null,
     productName: p.internetLabel || null, monthlyFee: internetFee, commission,
     detail: { consultKey: p.id, carrierKey: p.carrierKey || null, speedNum: p.speedNum ?? null, internetLabel: p.internetLabel || null,
-      internetFee: s7Num(p.internetFee), routerLabel: p.routerLabel || null, routerFee: s7Num(p.routerFee), bundleDiscount: s7Num(p.bundleDiscount) }
+      internetFee: s7Num(p.internetFee), routerLabel: p.routerLabel || null, routerFee: s7Num(p.routerFee), bundleDiscount: s7Num(p.bundleDiscount),
+      ...s7AgencyDetail(helpers && typeof helpers.homeAgency === 'function' ? helpers.homeAgency(p) : null) }     // 수수료 에이전시(C-AG1)
   }];
   if (hasTv) {
     items.push({
@@ -1011,7 +1104,7 @@ function s7UsimContract(p, helpers){
     label: `${p.carrier || ''} ${p.planName || ''}`.trim(),
     meta: { gift_total: gift, commission_total: commission },
     items: [{ matchKey: 'usim', productType: 'usim', carrier: p.carrier || null, productName: p.planName || null, monthlyFee: fee, commission,
-      detail: Object.assign(s7Clone(p), { consultKey: p.id }) }]
+      detail: Object.assign(s7Clone(p), { consultKey: p.id }, s7AgencyDetail(helpers && typeof helpers.usimAgency === 'function' ? helpers.usimAgency(p.carrier, fee) : null)) }]
   };
 }
 
@@ -1623,3 +1716,5 @@ async function loadPerformanceData(opts){
     return { ok: false, error: e && e.message ? e.message : String(e) };
   }
 }
+
+commissionMockInit();   // ?commMock=1 일 때만 동작
