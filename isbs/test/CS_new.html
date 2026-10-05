@@ -9,6 +9,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <link rel="stylesheet" href="Styles.css?v=20261002a">
+<style id="agency-style">
+/* 수수료 에이전시 표시 (C-AG1) */
+.ag-badge{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:10px;background:#eef3ff;color:#2b5cb8;font-size:11px;font-weight:700;vertical-align:middle;cursor:help;white-space:nowrap}
+.ag-other-row{color:#888}
+.ag-sub{display:block;font-size:11px;color:#2b5cb8}
+</style>
 <style id="cd-layout-style">
 /* 고객상세 탭 레이아웃 (L1·L2). Styles.css 로 옮겨도 됩니다(S9b). */
 #view-customers .cs-layout{display:block}
@@ -565,7 +571,7 @@
 
 <script src="config.js?v=20261002b"></script>
 <script src="Calculator.js?v=20260930h"></script>
-<script src="Supabaseservice.js?v=20261003a"></script>
+<script src="Supabaseservice.js?v=20261006a"></script>
 <script>
 // 외부 파일 로드 점검: 파일 누락/내용 뒤바뀜(예: JS 자리에 CSS가 들어간 경우) 시 화면 상단에 경고 표시
 (function checkModules(){
@@ -782,9 +788,10 @@ function renderRecoCards(){
       const margin = comm.totalComm - userGiftVal;
       commHtml = `
         <div class="reco-block">
-          <div class="info-row main-label"><span>대리점 판매 수수료</span><span>${comm.totalComm.toLocaleString()}</span></div>
+          <div class="info-row main-label"><span>대리점 판매 수수료${agBadgeHtml(comm.agency, comm.agencies)}</span><span>${comm.totalComm.toLocaleString()}</span></div>
           <div class="info-row sub-item-row"><span>인터넷 수수료</span><span>${comm.internetComm.toLocaleString()}</span></div>
           ${tvTier !== 'none' ? `<div class="info-row sub-item-row"><span>TV 수수료</span><span>${comm.tvComm.toLocaleString()}</span></div>` : ''}
+          ${agOthersRowsHtml(comm, false)}
           <div class="total-row reco-margin-row"><span>최종마진</span><span class="amount" style="color:${margin >= 0 ? '#1E7E34' : '#D9534F'};">${margin.toLocaleString()}</span></div>
         </div>
       `;
@@ -964,7 +971,8 @@ async function fetchRecoUsimPlans(tier){
     const body = plans.length
       ? plans.map(p => {
           const fee = Number(p.monthly_fee) || 0;
-          const commission = getUsimCommission(col.net, fee);
+          const uci = usimCommissionInfo(col.net, fee);
+          const commission = uci.amount;
           const defaultGift = Math.max(0, commission - 150000);
           const giftKey = `${col.net}|${p.plan_name}`;
           const gift = customUsimGiftValues[giftKey] !== undefined ? customUsimGiftValues[giftKey] : defaultGift;
@@ -980,7 +988,7 @@ async function fetchRecoUsimPlans(tier){
                      onchange="handleUsimRecoGiftChange(${p.__poolIdx}, this.value)" onfocus="this.select()">
             </span>
           </div>` : ''}
-          ${isLoggedIn ? `<div class="info-row"><span>수수료</span><span>${commission.toLocaleString()}원</span></div>` : ''}
+          ${isLoggedIn ? `<div class="info-row"><span>수수료${agBadgeHtml(uci.agency, uci.agencies)}</span><span>${commission.toLocaleString()}원</span></div>` : ''}
           <button type="button" class="join-btn usim-reflect-btn" onclick="reflectRecoUsimPlan(${p.__poolIdx})">✨ 상품반영</button>
         </div>
       `;
@@ -1028,7 +1036,7 @@ function reflectRecoUsimPlan(poolIdx){
   const baseFee = Number(plan.monthly_fee) || 0;
   const contractFee = plan.contract_discount_fee != null ? Number(plan.contract_discount_fee) : Math.round(baseFee * 0.75 / 10) * 10;
 
-  const commission = isLoggedIn ? getUsimCommission(net, baseFee) : null;
+  const commission = isLoggedIn ? usimCommissionInfo(net, baseFee).amount : null;
   const defaultGift = commission != null ? Math.max(0, commission - 150000) : 0;
   const giftKey = `${net}|${plan.plan_name}`;
   const gift = customUsimGiftValues[giftKey] !== undefined ? customUsimGiftValues[giftKey] : defaultGift;
@@ -1304,7 +1312,8 @@ function syncToDesignPhones() {
 
 function buildProposalUsimCard(p){
   const linked = reflectedProducts.find(r => r.id === p.id);
-  const commission = getUsimCommission(p.carrier, Number(p.fee) || 0);
+  const uci = usimCommissionInfo(p.carrier, Number(p.fee) || 0);
+  const commission = uci.amount;
   const gift = p.gift != null ? p.gift : Math.max(0, commission - 150000);
   const canFinalize = !p.synced && !!linked;
   return `
@@ -1324,7 +1333,7 @@ function buildProposalUsimCard(p){
                  onchange="handleUsimProposalGiftChange('${p.id}', this.value)" onfocus="this.select()">
         </span>
       </div>` : ''}
-      ${isLoggedIn ? `<div class="info-row"><span>수수료</span><span>${commission.toLocaleString()}원</span></div>` : ''}
+      ${isLoggedIn ? `<div class="info-row"><span>수수료${agBadgeHtml(uci.agency, uci.agencies)}</span><span>${commission.toLocaleString()}원</span></div>` : ''}
       <div class="usim-line-actions">
         <label class="phone-teen-toggle">
           <input type="checkbox" ${p.teen ? 'checked' : ''} onchange="updateAddedUsimLine('${p.id}', 'teen', this.checked)">
@@ -1532,7 +1541,8 @@ function handleGiftInputChange(carrier, rawVal) {
 
 function buildProductSummaryLines(p){
   if (p.type === 'usim') {
-    const commission = isLoggedIn ? getUsimCommission(p.carrier, Number(p.fee) || 0) : null;
+    const uci = isLoggedIn ? usimCommissionInfo(p.carrier, Number(p.fee) || 0) : null;
+    const commission = uci ? uci.amount : null;
     const gift = p.gift != null ? p.gift : (commission != null ? Math.max(0, commission - 150000) : null);
     const lines = [p.planName];
     lines.push(`월요금: ${p.fee.toLocaleString()}원`);
@@ -1540,7 +1550,7 @@ function buildProductSummaryLines(p){
     lines.push(`데이터: ${p.dataAllowance}`);
     if (isLoggedIn) {
       lines.push(`사은품: ${gift.toLocaleString()}원`);
-      lines.push(`수수료: ${commission.toLocaleString()}원`);
+      lines.push(`수수료: ${commission.toLocaleString()}원${uci && uci.agency ? ` (${uci.agency})` : ''}`);
     }
     return lines;
   }
@@ -1553,7 +1563,7 @@ function buildProductSummaryLines(p){
   lines.push(`사은품 ${p.benefitTotal.toLocaleString()}원 (상 ${p.giftCard.toLocaleString()}원,현 ${p.cash.toLocaleString()}원${p.extraPay ? `,추가지급 ${p.extraPay.toLocaleString()}원` : ''})`);
   if (isLoggedIn) {
     const comm = lookupCommission(p.carrierKey, p.speedNum, p.tvTier);
-    lines.push(`수수료 ${comm.totalComm.toLocaleString()}원`);
+    lines.push(`수수료 ${comm.totalComm.toLocaleString()}원${comm.agency ? ` (${comm.agency})` : ''}`);
   }
   return lines;
 }
@@ -1697,9 +1707,10 @@ function buildProposalHomeRow(item){
       <div class="info-row sub-item-row"><span>현금</span><span>${(item.cash || 0).toLocaleString()}원</span></div>
       <div class="info-row sub-item-row"><span>추가지급</span><span>${(item.extraPay || 0).toLocaleString()}원</span></div>
       ${isLoggedIn ? `
-      <div class="info-row"><span>수수료</span><span>${comm.totalComm.toLocaleString()}원</span></div>
+      <div class="info-row"><span>수수료${agBadgeHtml(comm.agency, comm.agencies)}</span><span>${comm.totalComm.toLocaleString()}원</span></div>
       <div class="info-row sub-item-row"><span>인터넷</span><span>${comm.internetComm.toLocaleString()}원</span></div>
       ${item.tvTier !== 'none' ? `<div class="info-row sub-item-row"><span>TV</span><span>${comm.tvComm.toLocaleString()}원</span></div>` : ''}
+      ${agOthersRowsHtml(comm, true)}
       <div class="info-row sub-item-row"><span>추가지급</span><span>${(item.extraPay || 0).toLocaleString()}원</span></div>` : ''}
       <div class="usim-line-actions">
         <button type="button" class="mini-btn mini-btn-primary" onclick="moveProposalToFinal('${item.id}')">➕ 최종반영</button>
@@ -1850,7 +1861,8 @@ function buildFinalHomeCard(item, usimItems){
 
 function buildFinalUsimCard(item){
   const contractDiscount = item.contractFee != null ? (item.fee - item.contractFee) : null;
-  const commission = getUsimCommission(item.carrier, item.fee);
+  const uci = usimCommissionInfo(item.carrier, item.fee);
+  const commission = uci.amount;
   const gift = item.gift != null ? item.gift : Math.max(0, commission - 150000);
   return `
     <div class="final-card fc-simple">
@@ -1878,7 +1890,7 @@ function buildFinalUsimCard(item){
             <span><input type="text" inputmode="numeric" pattern="[0-9]*" class="gift-input" value="${gift.toLocaleString()}"
                    onchange="handleUsimFinalGiftChange('${item.id}', this.value)" onfocus="this.select()"></span>
           </div>
-          ${fcRow('결합수수료', `${commission.toLocaleString()}원`, 'fc-sub')}
+          ${fcRow(`결합수수료${agBadgeHtml(uci.agency, uci.agencies)}`, `${commission.toLocaleString()}원`, 'fc-sub')}
         </div>
       ` : ''}
     </div>
@@ -1924,9 +1936,10 @@ function renderCommissionPanels(homeItem, usimItems){
     homePanel.innerHTML = `
       <div class="final-card fc-simple">
         <div class="fc-sec">
-          ${fcRow('총 수수료', `${comm.totalComm.toLocaleString()}원`, 'fc-strong')}
+          ${fcRow(`총 수수료${agBadgeHtml(comm.agency, comm.agencies)}`, `${comm.totalComm.toLocaleString()}원`, 'fc-strong')}
           ${fcRow('인터넷', `${comm.internetComm.toLocaleString()}원`, 'fc-sub')}
           ${homeItem.tvTier !== 'none' ? fcRow('TV', `${comm.tvComm.toLocaleString()}원`, 'fc-sub') : ''}
+          ${agOthersRowsHtml(comm, true).replace(/info-row sub-item-row/g, 'fc-row fc-sub')}
         </div>
         <div class="fc-sec">
           ${fcRow('지급 사은품', `-${homeItem.benefitTotal.toLocaleString()}원`, 'fc-strong')}
@@ -1942,12 +1955,12 @@ function renderCommissionPanels(homeItem, usimItems){
   if (!usimItems.length) {
     usimPanel.innerHTML = `<div class="reflected-empty">최종상품이 반영되면 수수료 정보가 표시됩니다.</div>`;
   } else {
-    const usimTotalComm = usimItems.reduce((sum, item) => sum + getUsimCommission(item.carrier, item.fee), 0);
+    const usimTotalComm = usimItems.reduce((sum, item) => sum + usimCommissionInfo(item.carrier, item.fee).amount, 0);
     usimPanel.innerHTML = `
       <div class="final-card fc-simple">
         <div class="fc-sec">
           ${fcRow('총 수수료', `${usimTotalComm.toLocaleString()}원`, 'fc-strong')}
-          ${usimItems.map(item => fcRow(`${item.carrier} / ${item.planName}`, `${getUsimCommission(item.carrier, item.fee).toLocaleString()}원`, 'fc-sub')).join('')}
+          ${usimItems.map(item => { const u = usimCommissionInfo(item.carrier, item.fee); return fcRow(`${item.carrier} / ${item.planName}${agBadgeHtml(u.agency, u.agencies)}`, `${u.amount.toLocaleString()}원`, 'fc-sub'); }).join('')}
         </div>
       </div>
     `;
@@ -2314,6 +2327,22 @@ function pickSaveTargets(){
   };
 }
 
+// ---- 수수료 에이전시 표시 (C-AG1) ----
+// 에이전시 이름 표식. 후보가 2곳 이상이면 마우스를 올렸을 때 에이전시별 금액을 보여 줍니다.
+function agBadgeHtml(agency, agencies){
+  if (!agency) return '';
+  const cmp = (agencies && agencies.length > 1)
+    ? '에이전시별 수수료(높은 순): ' + agencies.map(a => `${a.agency || '이름 없음'} ${Number(a.totalComm != null ? a.totalComm : a.amount || 0).toLocaleString()}원`).join(' / ')
+    : '수수료 에이전시';
+  return `<span class="ag-badge" title="${escAttr(cmp)}">${escHtml(agency)}</span>`;
+}
+// 선택되지 않은 에이전시(비교용) 행들. 후보가 1곳이면 없음.
+function agOthersRowsHtml(info, withUnit){
+  if (!info || !info.agencies || info.agencies.length < 2) return '';
+  return info.agencies.filter(a => a.agency !== info.agency).map(a =>
+    `<div class="info-row sub-item-row ag-other-row"><span>비교 · ${escHtml(a.agency || '이름 없음')}</span><span>${Number(a.totalComm != null ? a.totalComm : a.amount || 0).toLocaleString()}${withUnit ? '원' : ''}</span></div>`).join('');
+}
+
 function homeCommissionOf(item){
   if (!item || !isLoggedIn) return null;
   try { return lookupCommission(item.carrierKey, item.speedNum, item.tvTier).totalComm; }
@@ -2369,7 +2398,9 @@ function buildConsultSetInput(){
 function consultSaveHelpers(){
   return {
     homeCommission: item => homeCommissionOf(item),
-    usimCommission: (carrier, fee) => { if (!isLoggedIn) return null; try { return getUsimCommission(carrier, fee); } catch (e) { return null; } }
+    usimCommission: (carrier, fee) => { if (!isLoggedIn) return null; try { return usimCommissionInfo(carrier, fee).amount; } catch (e) { return null; } },
+    homeAgency: item => { if (!item || !isLoggedIn) return null; try { return lookupCommission(item.carrierKey, item.speedNum, item.tvTier).agency || null; } catch (e) { return null; } },
+    usimAgency: (carrier, fee) => { if (!isLoggedIn) return null; try { return usimCommissionInfo(carrier, fee).agency || null; } catch (e) { return null; } }
   };
 }
 
@@ -2401,6 +2432,7 @@ async function probeCustomerSchema(){
 }
 
 async function saveConsultation(btn){
+  if (typeof COMMISSION_MOCK_ON !== 'undefined' && COMMISSION_MOCK_ON) { alert('수수료 에이전시 테스트 모드(?commMock=1)에서는 상담을 저장할 수 없습니다.\n주소의 ?commMock=1 을 빼고 다시 열어 주세요.'); return; }
   const contact = normalizeContact(elVal('cust-contact'));
   if (!hasValidContact()) { alert('연락처를 정확히 입력해주세요.'); document.getElementById('cust-contact')?.focus(); return; }
   if (!reflectedProducts.length && !confirm('제안상품이 없습니다. 고객 정보만 저장할까요?')) return;
@@ -4349,6 +4381,12 @@ let detailHistoryFilter = 'all';       // 'all' | 'common' | 계약 ID(숫자)
 let detailBundleSeq = 0;
 let ctOpenMap = {};                    // 계약 ID -> 펼침 여부(사용자가 바꾼 값). 없으면 ctIsOpen 의 기본 규칙
 const CT_OPEN_STATUSES = ['작성중', '접수대기', '접수보류'];   // 처리할 일이 남은 계약은 기본으로 펼침
+// 계약의 수수료를 준 에이전시(상품 detail 에 저장된 이름). 없으면 빈 문자열.
+function ctAgencyText(ct){
+  const names = [];
+  (ct.items || []).forEach(i => { const a = i.detail && i.detail.commissionAgency; if (a && !names.includes(a)) names.push(a); });
+  return names.length ? ` · ${escHtml(names.join(', '))}` : '';
+}
 function ctIsOpen(ct){
   if (Object.prototype.hasOwnProperty.call(ctOpenMap, ct.contract_id)) return !!ctOpenMap[ct.contract_id];
   return CT_OPEN_STATUSES.includes(ct.contract_status) && ct.effective_status !== '계약취소';
@@ -4450,7 +4488,7 @@ function renderContractCard(ct, all){
       <td><input type="text" id="it-${it.item_id}-carrier" value="${escAttr(it.carrier || '')}"></td>
       <td><input type="text" id="it-${it.item_id}-name" value="${escAttr(it.product_name || '')}"></td>
       <td><input type="text" inputmode="numeric" id="it-${it.item_id}-fee" value="${escAttr(fmtMoney(it.monthly_fee))}"></td>
-      <td><input type="text" inputmode="numeric" id="it-${it.item_id}-comm" value="${escAttr(fmtMoney(it.commission))}"></td>
+      <td><input type="text" inputmode="numeric" id="it-${it.item_id}-comm" value="${escAttr(fmtMoney(it.commission))}">${it.detail && it.detail.commissionAgency ? `<span class="ag-sub" title="상담 저장 당시 수수료를 준 에이전시">${escHtml(it.detail.commissionAgency)}</span>` : ''}</td>
       <td>${ctSelectHtml(ITEM_PROGRESS, it.progress_status, `changeItemProgress(this, ${it.item_id}, ${cid})`, false)}
           ${it.progress_status === '접수취소' && it.cancel_reason ? `<div class="cust-ov-sub">${escHtml(it.cancel_reason)}</div>` : ''}</td>
       <td class="ct-row-actions"><span class="mini-btn-row">
@@ -4469,7 +4507,7 @@ function renderContractCard(ct, all){
     + (ct.payout_status ? `<span class="ct-badge">${escHtml(ct.payout_status)}</span>` : '')
     + (ct.clawback_status ? `<span class="ct-badge ct-badge-cancel">${escHtml(ct.clawback_status)}</span>` : '');
   const headSum = `<span class="ct-head-sum"><span>상품 ${liveItems.length}건</span><span>월 ${feeSum.toLocaleString()}원</span>`
-    + `<span>사은품 ${(Number(ct.gift_total) || 0).toLocaleString()}원</span><span>수수료 ${(Number(ct.commission_total) || 0).toLocaleString()}원</span></span>`;
+    + `<span>사은품 ${(Number(ct.gift_total) || 0).toLocaleString()}원</span><span>수수료 ${(Number(ct.commission_total) || 0).toLocaleString()}원${ctAgencyText(ct)}</span></span>`;
 
   return `
   <div class="ct-card ${ct.effective_status === '계약취소' ? 'is-canceled' : ''} ${ctIsOpen(ct) ? 'is-open' : ''}" id="ct-card-${cid}">
