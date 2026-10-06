@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<link rel="stylesheet" href="Styles.css?v=20261006b">
+<link rel="stylesheet" href="Styles.css?v=20261006c">
 </head>
 <body>
 <div class="wrap">
@@ -2295,10 +2295,30 @@ function pickSaveTargets(){
 function agBadgeHtml(agency, agencies){
   if (!agency) return '';
   const cmp = (agencies && agencies.length > 1)
-    ? '에이전시별 수수료(높은 순): ' + agencies.map(a => `${a.agency || '이름 없음'} ${Number(a.totalComm != null ? a.totalComm : a.amount || 0).toLocaleString()}원`).join(' / ')
+    ? '에이전시별 수수료 (높은 순)\n' + agencies.map(a => `${a.agency || '이름 없음'}  ${Number(a.totalComm != null ? a.totalComm : a.amount || 0).toLocaleString()}원`).join('\n')
     : '수수료 에이전시';
-  return `<span class="ag-badge" title="${escAttr(cmp)}">${escHtml(agency)}</span>`;
+  return `<span class="ag-badge" data-tip="${escAttr(cmp)}" tabindex="0">${escHtml(agency)}</span>`;
 }
+// 표식에 마우스를 올리면(또는 터치·클릭하면) 바로 뜨는 말풍선. 브라우저 기본 title 은 늦게 뜨거나 안 떠서 사용하지 않습니다.
+(function(){
+  let tip = null;
+  function show(b){
+    const t = b.getAttribute('data-tip'); if (!t) return;
+    if (!tip) { tip = document.createElement('div'); tip.id = 'ag-tip'; document.body.appendChild(tip); }
+    tip.textContent = t; tip.style.display = 'block';
+    const r = b.getBoundingClientRect(), tw = tip.offsetWidth, th = tip.offsetHeight;
+    const left = Math.min(Math.max(8, r.left), Math.max(8, window.innerWidth - tw - 8));
+    let top = r.bottom + 6; if (top + th > window.innerHeight - 8) top = Math.max(8, r.top - th - 6);
+    tip.style.left = left + 'px'; tip.style.top = top + 'px';
+  }
+  function hide(){ if (tip) tip.style.display = 'none'; }
+  document.addEventListener('mouseover', e => { const b = e.target.closest && e.target.closest('.ag-badge'); if (b) show(b); });
+  document.addEventListener('mouseout',  e => { const b = e.target.closest && e.target.closest('.ag-badge'); if (b) hide(); });
+  document.addEventListener('focusin',   e => { const b = e.target.closest && e.target.closest('.ag-badge'); if (b) show(b); });
+  document.addEventListener('focusout',  e => { const b = e.target.closest && e.target.closest('.ag-badge'); if (b) hide(); });
+  document.addEventListener('click',     e => { const b = e.target.closest && e.target.closest('.ag-badge'); if (b) show(b); else hide(); });
+  window.addEventListener('scroll', hide, true);
+})();
 // 에이전시가 2곳 이상인지
 function agMulti(info){ return !!(info && info.agencies && info.agencies.length >= 2); }
 // 에이전시별 수수료 줄(높은 순). 후보가 2곳 이상일 때만 표시: "(에이전시명) 수수료  금액"
