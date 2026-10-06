@@ -80,6 +80,7 @@
           <span id="cs-strip-status" style="color:#475569;">-</span>
           <span id="cs-strip-carrier" style="color:#475569;">-</span>
           <span style="flex:1"></span>
+          <button type="button" class="mini-btn mini-btn-primary" id="cs-strip-edit-btn" onclick="openCustEditDrawer()">✏️ 고객정보 수정</button>
           <button type="button" class="mini-btn" id="cs-strip-detail-btn" onclick="openDetailFromConsult()" title="저장된 고객만 열 수 있습니다">📂 고객상세 보기</button>
         </div>
 
@@ -661,6 +662,7 @@ let finalProducts = [];
 let isLoggedIn = false;
 
 function switchTab(tabId) {
+  try { closeCustEditDrawer(); } catch (e) {}
   document.querySelectorAll('.view-container').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
 
@@ -693,6 +695,7 @@ function switchTab(tabId) {
 
 // [고객상담] 단계형 서브탭 : 고객정보 → 추천상품 → 제안상품 → 최종상품
 function goCsStep(n) {
+  try { closeCustEditDrawer(); } catch (e) {}
   document.querySelectorAll('#cs-wiz-nav .cs-wiz-btn').forEach(b => {
     b.classList.toggle('active', Number(b.dataset.step) === n);
   });
@@ -1659,6 +1662,64 @@ function buildConsultSummary(){
   }
 
   return lines.join('\n');
+}
+
+// ===== 상담 화면 고객정보 편집 패널 =====
+let custEditMarker = null;
+function openCustEditDrawer(){
+  if (!currentCustomerId) { goCsStep(1); showToast('신규 고객은 [고객정보] 단계에서 입력한 뒤 [상담저장]을 눌러 주세요'); return; }
+  const card = document.getElementById('cs-customer-info-card');
+  const body = document.getElementById('cs-edit-drawer-body');
+  if (!card || !body || custEditMarker) return;
+  custEditMarker = document.createComment('cs-customer-info-card-home');
+  card.parentNode.insertBefore(custEditMarker, card);
+  body.appendChild(card);                       // 같은 요소를 옮기므로 입력칸 ID·이벤트가 그대로 유지됩니다
+  document.getElementById('cs-edit-backdrop').style.display = 'block';
+  document.getElementById('cs-edit-drawer').style.display = 'flex';
+}
+function closeCustEditDrawer(){
+  if (!custEditMarker) return;
+  const card = document.getElementById('cs-customer-info-card');
+  if (card && custEditMarker.parentNode) custEditMarker.parentNode.insertBefore(card, custEditMarker);
+  custEditMarker.remove(); custEditMarker = null;
+  document.getElementById('cs-edit-backdrop').style.display = 'none';
+  document.getElementById('cs-edit-drawer').style.display = 'none';
+  try { updateCsSummaryPanel(); } catch (e) {}
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCustEditDrawer(); });
+
+// 고객 정보만 저장 (상품·계약은 건드리지 않음) : 기본정보 + 상태값
+async function saveCustomerOnlyFromConsult(btn){
+  if (!currentCustomerId) { alert('저장된 고객이 아닙니다. [상담저장]을 이용해 주세요.'); return; }
+  if (!hasValidContact()) { alert('연락처를 정확히 입력해주세요.'); document.getElementById('cust-contact')?.focus(); return; }
+  setBtnLoading(btn, '저장 중...');
+  try {
+    const cid = currentCustomerId;
+    await probeCustomerSchema();
+    const payload = buildCustomerPayload(false);
+    delete payload.desired_product;             // 상품 정보로 정해지는 값이라 여기서는 바꾸지 않음
+    const { error } = await sb.from('customers').update(payload).eq('customer_id', cid);
+    if (error) { alert('저장 실패: ' + error.message); return; }
+    let statusMsg = '';
+    const wantStatus = consultStatusChange();
+    if (wantStatus) {
+      const sr = await applyConsultStatus(cid, wantStatus);
+      if (sr.ok) {
+        await refreshAfterConsultStatus(cid);
+        if (wantStatus === CONTACT_CYCLE_VALUE) {
+          try { await autoStartContactCycle(cid, { syncConsult: true }); } catch (e) { console.warn('고객부재 재안내 자동 시작 실패', e); }
+        }
+      } else statusMsg = '\n(고객 상태는 바뀌지 않았습니다: ' + (sr.error || sr.userMessage || '알 수 없는 오류') + ')';
+    }
+    showToast('✓ 고객 정보를 저장했습니다' + (statusMsg ? ' (상태 제외)' : ''));
+    if (statusMsg) alert('고객 정보는 저장했지만' + statusMsg);
+    await searchOrRefresh();
+    loadFunnelDashboard();
+    if (detailCustomerId === cid) { try { await openCustomer(cid); } catch (e) {} }   // 열려 있는 상세도 새 값으로
+    closeCustEditDrawer();
+  } finally {
+    clearBtnLoading(btn);
+  }
 }
 
 // [고객상담] 상단 고객 요약줄 : 이름·연락처·상태·통신사를 한 줄로 보여 주고, 저장된 고객이면 상세로 바로 이동
@@ -5252,5 +5313,20 @@ async function quickTopSearch(rawContact, btn){
   renderFinalProducts();
 })();
 </script>
+
+<!-- 상담 화면 고객정보 편집 패널 : 화면 이동 없이 고객정보 카드를 오른쪽에 펼칩니다 -->
+<div id="cs-edit-backdrop" onclick="closeCustEditDrawer()" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:999;"></div>
+<aside id="cs-edit-drawer" style="display:none;position:fixed;top:0;right:0;bottom:0;width:min(520px,100vw);background:#fff;z-index:1000;box-shadow:-8px 0 24px rgba(15,23,42,.18);flex-direction:column;">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #e2e8f0;">
+    <b>고객정보 수정</b>
+    <button type="button" class="mini-btn" onclick="closeCustEditDrawer()" aria-label="닫기">✕</button>
+  </div>
+  <div id="cs-edit-drawer-body" style="flex:1;overflow:auto;padding:12px 16px;"></div>
+  <div style="display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:1px solid #e2e8f0;">
+    <span style="flex:1;font-size:12px;color:#64748b;align-self:center;">고객 정보만 저장됩니다(상품·계약은 [상담저장]).</span>
+    <button type="button" class="secondary-btn" onclick="closeCustEditDrawer()">닫기</button>
+    <button type="button" class="primary-btn" id="cs-edit-save-btn" onclick="saveCustomerOnlyFromConsult(this)">💾 고객정보 저장</button>
+  </div>
+</aside>
 </body>
 </html>
