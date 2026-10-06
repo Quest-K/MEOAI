@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<link rel="stylesheet" href="Styles.css?v=20261006e">
+<link rel="stylesheet" href="Styles.css?v=20261006f">
 </head>
 <body>
 <div class="wrap">
@@ -603,10 +603,14 @@ let lastRecoTvTier = 'basic';
 // LG [홈]/[소호] 선택(기본 홈). 요금제는 같고 수수료만 달라서 수수료 조회에만 반영합니다.
 let LG_VARIANT = (typeof LG_VARIANT_DEFAULT !== 'undefined') ? LG_VARIANT_DEFAULT : 'home';
 function lgVariantOf(carrier){ return carrier === 'lg' ? LG_VARIANT : null; }
-function carrierTitleHtml(c){
-  if (c !== 'lg') return `<span>${CARRIER_LABEL[c]}</span>`;
-  const btn = v => `<button type="button" class="lg-var-btn${LG_VARIANT === v ? ' on' : ''}" onclick="setLgVariant('${v}')">${LG_VARIANT_LABEL[v]}</button>`;
-  return `<span>${CARRIER_LABEL[c]}<span class="lg-var-toggle">${btn('home')}${btn('soho')}</span></span>`;
+// 추천상품 카드 제목(2줄): 1줄 = 통신사명(왼쪽) / 2줄 = LG 만 [홈][소호](왼쪽) + 금액(오른쪽)
+function carrierTitleHtml(c, totalHtml){
+  let toggle = '';
+  if (c === 'lg') {
+    const btn = v => `<button type="button" class="lg-var-btn${LG_VARIANT === v ? ' on' : ''}" onclick="setLgVariant('${v}')">${LG_VARIANT_LABEL[v]}</button>`;
+    toggle = `<span class="lg-var-toggle">${btn('home')}${btn('soho')}</span>`;
+  }
+  return `<span class="rt-name">${CARRIER_LABEL[c]}</span><span class="rt-sub">${toggle}</span>${totalHtml || ''}`;
 }
 function setLgVariant(v){ if (!LG_VARIANT_LABEL[v] || v === LG_VARIANT) return; LG_VARIANT = v; renderRecoCards(); }
 let recoUsimTier = null;
@@ -730,7 +734,7 @@ function renderRecoCards(){
     if (excluded.includes(c)) {
       return `
         <div class="reco-product-card reco-product-card-disabled">
-          <div class="reco-product-card-title carrier-${c}">
+          <div class="reco-product-card-title reco-title-2row carrier-${c}">
             ${carrierTitleHtml(c)}
           </div>
           <div class="reco-unavailable">가입불가</div>
@@ -740,7 +744,7 @@ function renderRecoCards(){
 
     const price = computePrice(c, recoState);
     if (!price.available) {
-      return `<div class="reco-product-card"><div class="reco-product-card-title carrier-${c}">${carrierTitleHtml(c)}</div><div class="reflected-empty">해당 스펙의 상품 정보가 없습니다.</div></div>`;
+      return `<div class="reco-product-card"><div class="reco-product-card-title reco-title-2row carrier-${c}">${carrierTitleHtml(c)}</div><div class="reflected-empty">해당 스펙의 상품 정보가 없습니다.</div></div>`;
     }
 
     const needsUsim = isMvno || MOBILE_GROUP_MAP[c] !== mobileGroup;
@@ -786,9 +790,8 @@ function renderRecoCards(){
 
     return `
       <div class="reco-product-card">
-        <div class="reco-product-card-title carrier-${c}">
-          ${carrierTitleHtml(c)}
-          <span class="reco-product-total">${(price.total || 0).toLocaleString()}</span>
+        <div class="reco-product-card-title reco-title-2row carrier-${c}">
+          ${carrierTitleHtml(c, `<span class="reco-product-total">${(price.total || 0).toLocaleString()}</span>`)}
         </div>
         <div class="reco-block first">
           <div class="info-row main-label reco-subtotal-row"><span>인터넷</span><span>${internetSubtotal.toLocaleString()}</span></div>
