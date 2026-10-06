@@ -40,12 +40,23 @@ function formatContactDisplay(raw){
   return `${d.slice(0, p)}-${rest.slice(0, rest.length - 4)}-${rest.slice(-4)}`;
 }
 
+// ---- 통신사 키 (SKY 추가) ----
+// 화면 키는 소문자(kt·lg·skb·skt·sky)입니다. DB 에는 SKY 가 skylife / SKYLIFE / SKY 로 섞여 있어 화면 키 sky 로 모아 읽습니다.
+// 옛 CS.html 이 예전 config.js 를 캐시로 쓰는 경우를 대비해 CARRIERS_ALL 이 없으면 CARRIERS 를 씁니다.
+const DB_CARRIER_ALIAS = { skylife: 'sky' };
+function allCarriers(){ return (typeof CARRIERS_ALL !== 'undefined') ? CARRIERS_ALL : CARRIERS; }
+function carrierKeyOf(v){
+  const k = String(v === null || v === undefined ? '' : v).trim().toLowerCase();
+  return DB_CARRIER_ALIAS[k] || k;
+}
+function dbCarrierNames(){ return allCarriers().concat(['skylife', 'SKYLIFE', 'SKY']); }   // .in('carrier', …) 조회용(대소문자 구분)
+
 async function loadData(){
   logs = {};
   const [internetRes, tvRes, settopRes] = await Promise.all([
-    sb.from('internet_plans').select('*').in('carrier', CARRIERS),
-    sb.from('tv_plans').select('*').in('carrier', CARRIERS),
-    sb.from('settop_boxes').select('*').in('carrier', CARRIERS)
+    sb.from('internet_plans').select('*').in('carrier', dbCarrierNames()),
+    sb.from('tv_plans').select('*').in('carrier', dbCarrierNames()),
+    sb.from('settop_boxes').select('*').in('carrier', dbCarrierNames())
   ]);
 
   addLog('internet_plans', !internetRes.error, internetRes.error ? internetRes.error.message : `${internetRes.data.length}건 로드 완료`);
@@ -55,15 +66,16 @@ async function loadData(){
   if (internetRes.error || tvRes.error || settopRes.error) return false;
 
   DATA = {};
-  CARRIERS.forEach(c => { DATA[c] = { internet:{}, tv:{ low:null, basic:null, premium:null }, settopList:[] }; });
+  allCarriers().forEach(c => { DATA[c] = { internet:{}, tv:{ low:null, basic:null, premium:null }, settopList:[] }; });
 
   internetRes.data.forEach(row => {
-    if (DATA[row.carrier]) DATA[row.carrier].internet[row.speed] = { fee: row.monthly_fee, routerFee: row.router_fee };
+    const ck = carrierKeyOf(row.carrier);
+    if (DATA[ck]) DATA[ck].internet[row.speed] = { fee: row.monthly_fee, routerFee: row.router_fee };
   });
 
   // 통신사별 올바른 TV 요금제 명칭 정밀 매핑 (오류 해결)
   tvRes.data.forEach(row => {
-    const c = row.carrier;
+    const c = carrierKeyOf(row.carrier);
     if (!DATA[c]) return;
     const name = row.plan_name;
     
@@ -79,20 +91,26 @@ async function loadData(){
       if (name.includes('이코노미')) DATA[c].tv.low = { name, fee: row.monthly_fee, channels: row.channel_count };
       else if (name.includes('스탠다드')) DATA[c].tv.basic = { name, fee: row.monthly_fee, channels: row.channel_count };
       else if (name.includes('All')) DATA[c].tv.premium = { name, fee: row.monthly_fee, channels: row.channel_count };
+    } else if (c === 'sky') {
+      // SKY 는 TV 요금제가 2개(베이직·플러스)뿐: 저가형=베이직, 기본형·고급형=플러스 (수수료도 기본형=고급형 금액)
+      const tv = { name, fee: row.monthly_fee, channels: row.channel_count };
+      if (name.includes('베이직')) DATA[c].tv.low = tv;
+      else if (name.includes('플러스')) { DATA[c].tv.basic = tv; DATA[c].tv.premium = tv; }
     }
   });
 
   // 매칭 누락 방지 폴백 처리
-  CARRIERS.forEach(c => {
+  allCarriers().forEach(c => {
     const t = DATA[c].tv;
-    const available = tvRes.data.filter(r => r.carrier === c);
+    const available = tvRes.data.filter(r => carrierKeyOf(r.carrier) === c);
     if (!t.low && available.length) t.low = { name: available[0].plan_name, fee: available[0].monthly_fee, channels: available[0].channel_count };
     if (!t.basic && available.length) t.basic = { name: available[Math.min(1, available.length-1)].plan_name, fee: available[Math.min(1, available.length-1)].monthly_fee, channels: available[Math.min(1, available.length-1)].channel_count };
     if (!t.premium && available.length) t.premium = { name: available[available.length-1].plan_name, fee: available[available.length-1].monthly_fee, channels: available[available.length-1].channel_count };
   });
 
   settopRes.data.forEach(row => {
-    if (DATA[row.carrier]) DATA[row.carrier].settopList.push({ name: row.model_name, fee: row.monthly_fee });
+    const ck = carrierKeyOf(row.carrier);
+    if (DATA[ck]) DATA[ck].settopList.push({ name: row.model_name, fee: row.monthly_fee });
   });
 
   return true;
@@ -149,7 +167,7 @@ function pickBestCommission(cands){
 // 홈(인터넷·TV) 수수료 : 기존 필드(internetComm·tvComm·totalComm)는 '가장 큰 에이전시' 값이라 기존 화면 코드가 그대로 동작합니다.
 //   추가 필드: agency(선택된 에이전시 이름 또는 null), agencies(에이전시별 후보, 합계 높은 순)
 function lookupCommission(carrierKey, speedNum, tvTier){
-  const rows = RAW_COMMISSION_DATA.filter(r => String(r.carrier).toLowerCase() === carrierKey && normalizeSpeedValue(r.speed) === speedNum);
+  const rows = RAW_COMMISSION_DATA.filter(r => carrierKeyOf(r.carrier) === carrierKey && normalizeSpeedValue(r.speed) === speedNum);
   const names = [];
   rows.forEach(r => { const a = commissionAgencyOf(r); if (!names.includes(a)) names.push(a); });
   const cands = names.map(a => {
@@ -244,9 +262,9 @@ async function loadFinanceData() {
   COMMISSION_DATA = {};
   RAW_COMMISSION_DATA = commRes.data || [];
   if (COMMISSION_MOCK_ON) RAW_COMMISSION_DATA = commissionMockRows(RAW_COMMISSION_DATA);   // 화면 확인용(?commMock=1)
-  CARRIERS.forEach(carrier => {
+  allCarriers().forEach(carrier => {
     const commRows = commRes.data
-      ? commRes.data.filter(r => String(r.carrier).toLowerCase() === carrier && normalizeSpeedValue(r.speed) === targetSpeed)
+      ? commRes.data.filter(r => carrierKeyOf(r.carrier) === carrier && normalizeSpeedValue(r.speed) === targetSpeed)
       : [];
     const internetComm = pickLatestRow(commRows.filter(r => String(r.tv_tier) === 'none'))?.commission_amount || 0;
     const tvComm = tvTierForComm !== 'none' ? (pickLatestRow(commRows.filter(r => String(r.tv_tier) === tvTierForComm))?.commission_amount || 0) : 0;
@@ -258,9 +276,9 @@ async function loadFinanceData() {
   });
 
   PROMOTION_DATA = {};
-  CARRIERS.forEach(carrier => {
+  allCarriers().forEach(carrier => {
     const promoRow = promoRes.data
-      ? promoRes.data.find(r => String(r.carrier).toLowerCase() === carrier && normalizeSpeedValue(r.speed) === targetSpeed)
+      ? promoRes.data.find(r => carrierKeyOf(r.carrier) === carrier && normalizeSpeedValue(r.speed) === targetSpeed)
       : null;
     if (promoRow) {
       PROMOTION_DATA[carrier] = {
