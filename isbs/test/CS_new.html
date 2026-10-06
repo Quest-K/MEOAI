@@ -212,8 +212,13 @@
                 </div>
               </div>
               <div class="form-group">
-                <label>특이사항</label>
-                <textarea id="cust-notes" rows="4" placeholder="상담 중 특이사항을 입력하세요."></textarea>
+                <label>특이사항 <span class="cust-note-hint">날짜별 안내 내용이 최신순으로 누적됩니다</span></label>
+                <div class="cust-note-add">
+                  <textarea id="cust-note-input" rows="2" placeholder="오늘 고객에게 안내한 내용을 입력하고 [+ 추가]를 누르세요 (Ctrl+Enter로도 추가)"
+                    onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();addConsultNote(document.getElementById('cust-note-add-btn'));}"></textarea>
+                  <button type="button" id="cust-note-add-btn" class="mini-btn mini-btn-primary" onclick="addConsultNote(this)">+ 추가</button>
+                </div>
+                <textarea id="cust-notes" class="cust-note-log" rows="5" placeholder="누적된 특이사항이 여기에 표시됩니다." oninput="mirrorNotes('cs')"></textarea>
               </div>
             </div>
           </div>
@@ -1664,6 +1669,39 @@ function buildConsultSummary(){
   return lines.join('\n');
 }
 
+// ===== 특이사항 통일 : 상담 화면과 상세가 같은 날짜별 누적 방식을 쓰고, 같은 고객이 양쪽에 열려 있으면 내용을 맞춥니다 =====
+function mirrorNotes(from){
+  if (!currentCustomerId || currentCustomerId !== detailCustomerId) return;
+  const src = document.getElementById(from === 'cs' ? 'cust-notes' : 'cf-notes');
+  const dst = document.getElementById(from === 'cs' ? 'cf-notes' : 'cust-notes');
+  if (src && dst && dst.value !== src.value) dst.value = src.value;
+}
+async function addConsultNote(btn){
+  const input = document.getElementById('cust-note-input');
+  const text = (input ? input.value : '').trim();
+  if (!text) { alert('추가할 안내 내용을 입력해주세요.'); if (input) input.focus(); return; }
+  const line = `[${formatNoteStamp(new Date())}] ${text}`;
+  const logEl = document.getElementById('cust-notes');
+  if (!currentCustomerId) {                       // 아직 저장 전인 신규 고객 : 칸에만 쌓고 [상담저장] 때 함께 저장
+    const base = logEl ? logEl.value.trim() : '';
+    if (logEl) logEl.value = base ? `${line}\n${base}` : line;
+    if (input) input.value = '';
+    showToast('✓ 특이사항을 추가했습니다 (상담저장 때 저장됩니다)');
+    return;
+  }
+  setBtnLoading(btn, '추가 중...');
+  try {
+    const cid = currentCustomerId;
+    const base = (detailCustomerId === cid) ? undefined : (logEl ? logEl.value : '');   // 상세가 같은 고객이면 상세 칸 기준
+    const merged = await prependNoteLine(cid, line, base, true);
+    if (merged === null) return;
+    if (input) input.value = '';
+    showToast('✓ 특이사항이 추가되었습니다');
+  } finally {
+    clearBtnLoading(btn);
+  }
+}
+
 // ===== 상담 화면 고객정보 편집 패널 =====
 let custEditMarker = null;
 function openCustEditDrawer(){
@@ -2715,6 +2753,7 @@ function startNewConsultWithContact(contact){
   setVal('cust-name', NAME_PREFIX);
   setVal('cust-contact', formatContactDisplay(contact) || '010');
   setVal('cust-notes', '');
+  setVal('cust-note-input', '');
   setVal('cust-inflow', '');
   setVal('cust-next-contact', getDefaultNextContactValue());
   setConsultStatusSelect(null);
@@ -3894,7 +3933,7 @@ async function openCustomer(id){
     </div>
     <div class="cust-form-grid">
       <div class="form-group span-4">
-        <textarea id="cf-notes" class="cust-note-log" rows="6">${escHtml(c.notes)}</textarea>
+        <textarea id="cf-notes" class="cust-note-log" rows="6" oninput="mirrorNotes('cf')">${escHtml(c.notes)}</textarea>
       </div>
     </div>
         </section>
@@ -4985,6 +5024,7 @@ function fillConsultFormFromCustomer(c){
   setVal('cust-name', c.name || NAME_PREFIX);
   setVal('cust-contact', formatContactDisplay(c.contact));
   setVal('cust-notes', c.notes || '');
+  setVal('cust-note-input', '');
   setVal('cust-inflow', c.inflow_route || '');
   setConsultStatusSelect(custStatusInfo(c));   // S7-6: 새 고객 상태(없으면 구 상태값을 변환해 표시)
   setVal('cust-next-contact', toLocalInputValue(c.next_contact_at));
