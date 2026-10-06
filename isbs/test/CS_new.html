@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<link rel="stylesheet" href="Styles.css?v=20261006a">
+<link rel="stylesheet" href="Styles.css?v=20261006b">
 </head>
 <body>
 <div class="wrap">
@@ -751,10 +751,10 @@ function renderRecoCards(){
       const margin = comm.totalComm - userGiftVal;
       commHtml = `
         <div class="reco-block">
-          <div class="info-row main-label"><span>대리점 판매 수수료${agBadgeHtml(comm.agency, comm.agencies)}</span><span>${comm.totalComm.toLocaleString()}</span></div>
+          <div class="info-row main-label"><span>대리점 판매 수수료${agMulti(comm) ? '' : agBadgeHtml(comm.agency, comm.agencies)}</span><span>${comm.totalComm.toLocaleString()}</span></div>
           <div class="info-row sub-item-row"><span>인터넷 수수료</span><span>${comm.internetComm.toLocaleString()}</span></div>
           ${tvTier !== 'none' ? `<div class="info-row sub-item-row"><span>TV 수수료</span><span>${comm.tvComm.toLocaleString()}</span></div>` : ''}
-          ${agOthersRowsHtml(comm, false)}
+          ${agAgencyRowsHtml(comm, false)}
           <div class="total-row reco-margin-row"><span>최종마진</span><span class="amount" style="color:${margin >= 0 ? '#1E7E34' : '#D9534F'};">${margin.toLocaleString()}</span></div>
         </div>
       `;
@@ -2298,6 +2298,16 @@ function agBadgeHtml(agency, agencies){
     ? '에이전시별 수수료(높은 순): ' + agencies.map(a => `${a.agency || '이름 없음'} ${Number(a.totalComm != null ? a.totalComm : a.amount || 0).toLocaleString()}원`).join(' / ')
     : '수수료 에이전시';
   return `<span class="ag-badge" title="${escAttr(cmp)}">${escHtml(agency)}</span>`;
+}
+// 에이전시가 2곳 이상인지
+function agMulti(info){ return !!(info && info.agencies && info.agencies.length >= 2); }
+// 에이전시별 수수료 줄(높은 순). 후보가 2곳 이상일 때만 표시: "(에이전시명) 수수료  금액"
+function agAgencyRowsHtml(info, withUnit){
+  if (!agMulti(info)) return '';
+  return info.agencies.map((a, i) => {
+    const amt = Number(a.totalComm != null ? a.totalComm : a.amount || 0).toLocaleString() + (withUnit ? '원' : '');
+    return `<div class="info-row sub-item-row ag-agency-row${i === 0 ? ' ag-agency-first ag-agency-top' : ''}"><span>${escHtml(a.agency || '이름 없음')} 수수료</span><span>${amt}</span></div>`;
+  }).join('');
 }
 // 선택되지 않은 에이전시(비교용) 행들. 후보가 1곳이면 없음.
 function agOthersRowsHtml(info, withUnit){
