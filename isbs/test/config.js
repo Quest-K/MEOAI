@@ -11,14 +11,17 @@
 // ============================================================
 
 /* ---------- 1. 통신사 · 요금 구간 · 라벨 ---------- */
-const CARRIERS = ['kt', 'lg', 'skb', 'skt'];
-const BRAND_LABEL = { kt:'KT', lg:'LG', skb:'SKB', skt:'SKT' };
+const CARRIERS = ['kt', 'lg', 'skb', 'skt'];   // 옛 CS.html 이 쓰는 4개 — 컷오버 전까지 바꾸지 않습니다.
+// 새 화면(CS_new.html)이 쓰는 5개 목록(SKY 추가). 컷오버 때 CARRIERS 와 하나로 합칩니다.
+const CARRIERS_ALL = [...CARRIERS, 'sky'];
+const BRAND_LABEL = { kt:'KT', lg:'LG', skb:'SKB', skt:'SKT', sky:'SKY' };
 
 const TV_BUNDLE_DISCOUNT = {
   kt: { low:2090, basic:2640, premium:2640 },
   lg: { low:2200, basic:2200, premium:2200 },
   skb: { low:2200, basic:2200, premium:2200 },
-  skt: { low:2200, basic:2200, premium:2200 }
+  skt: { low:2200, basic:2200, premium:2200 },
+  sky: { low:0, basic:0, premium:0 }          // SKY : TV결합할인 규칙 미확정 → 0원
 };
 
 const SPEED_LABEL = { 100:'100M', 500:'500M', 1000:'1기가' };
@@ -44,9 +47,10 @@ const OLD_INTERNET_FEE_RANGES = [
 const HOME_CARRIER_OPTIONS = ['KT', 'LG', 'SK', '기타'];
 const MOBILE_CARRIER_OPTIONS = ['KT', 'LG', 'SK', 'KT알뜰', 'LG알뜰', 'SK알뜰'];
 
-const CARRIER_LABEL = { kt:'KT', lg:'LG', skb:'SK브로드밴드', skt:'SK텔레콤' };
+const CARRIER_LABEL = { kt:'KT', lg:'LG', skb:'SK브로드밴드', skt:'SK텔레콤', sky:'SKY' };
 const ISP_HOME_CARRIER_MAP = { 'KT':['kt'], 'LG':['lg'], 'SK':['skb','skt'], '기타':[] };
-const MOBILE_GROUP_MAP = { kt:'KT', lg:'LG', skb:'SK', skt:'SK' };
+// sky: SKY 는 휴대폰 결합할인을 계산하지 않으므로(2026-10-06 결정) 어떤 유심 그룹과도 매칭되지 않는 값을 둡니다.
+const MOBILE_GROUP_MAP = { kt:'KT', lg:'LG', skb:'SK', skt:'SK', sky:'SKY' };
 const USIM_TIER_RANGE = { low:[0,29999], mid:[30000,49999], high:[50000,79999], premium:[80000,Infinity] };
 const USIM_TIER_LABEL = { low:'저가형', mid:'중가형', high:'고가형', premium:'프리미엄' };
 
