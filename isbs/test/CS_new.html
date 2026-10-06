@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<link rel="stylesheet" href="Styles.css?v=20261006d">
+<link rel="stylesheet" href="Styles.css?v=20261006e">
 </head>
 <body>
 <div class="wrap">
@@ -532,12 +532,12 @@
 
 <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
-<script src="config.js?v=20261006a"></script>
+<script src="config.js?v=20261006b"></script>
 <script src="Calculator.js?v=20261006a"></script>
-<script src="Supabaseservice.js?v=20261006b"></script>
+<script src="Supabaseservice.js?v=20261006c"></script>
 <script>
-// 인터넷/TV 통신사 열 목록: 새 화면은 SKY 포함 5개(CARRIERS_ALL). config.js 가 예전 파일이면 기존 4개로 동작합니다.
-const HOME_CARRIERS = (typeof CARRIERS_ALL !== 'undefined') ? CARRIERS_ALL : ((typeof CARRIERS !== 'undefined') ? CARRIERS : []);
+// 인터넷/TV 통신사 열 목록: KT·LG·SKB·SKT·SKY 5개(config.js 의 CARRIERS)
+const HOME_CARRIERS = (typeof CARRIERS !== 'undefined') ? CARRIERS : [];
 
 // 외부 파일 로드 점검: 파일 누락/내용 뒤바뀜(예: JS 자리에 CSS가 들어간 경우) 시 화면 상단에 경고 표시
 (function checkModules(){
@@ -600,6 +600,15 @@ let addedUsimLines = [];
 let familyLines = [];
 let recoState = { speed:'500', tv:'basic', settopTier:'basic', router:'Y', extraTVs:[] };
 let lastRecoTvTier = 'basic';
+// LG [홈]/[소호] 선택(기본 홈). 요금제는 같고 수수료만 달라서 수수료 조회에만 반영합니다.
+let LG_VARIANT = (typeof LG_VARIANT_DEFAULT !== 'undefined') ? LG_VARIANT_DEFAULT : 'home';
+function lgVariantOf(carrier){ return carrier === 'lg' ? LG_VARIANT : null; }
+function carrierTitleHtml(c){
+  if (c !== 'lg') return `<span>${CARRIER_LABEL[c]}</span>`;
+  const btn = v => `<button type="button" class="lg-var-btn${LG_VARIANT === v ? ' on' : ''}" onclick="setLgVariant('${v}')">${LG_VARIANT_LABEL[v]}</button>`;
+  return `<span>${CARRIER_LABEL[c]}<span class="lg-var-toggle">${btn('home')}${btn('soho')}</span></span>`;
+}
+function setLgVariant(v){ if (!LG_VARIANT_LABEL[v] || v === LG_VARIANT) return; LG_VARIANT = v; renderRecoCards(); }
 let recoUsimTier = null;
 let recoUsimPlanPool = [];
 
@@ -722,7 +731,7 @@ function renderRecoCards(){
       return `
         <div class="reco-product-card reco-product-card-disabled">
           <div class="reco-product-card-title carrier-${c}">
-            <span>${CARRIER_LABEL[c]}</span>
+            ${carrierTitleHtml(c)}
           </div>
           <div class="reco-unavailable">가입불가</div>
         </div>
@@ -731,7 +740,7 @@ function renderRecoCards(){
 
     const price = computePrice(c, recoState);
     if (!price.available) {
-      return `<div class="reco-product-card"><div class="reco-product-card-title carrier-${c}"><span>${CARRIER_LABEL[c]}</span></div><div class="reflected-empty">해당 스펙의 상품 정보가 없습니다.</div></div>`;
+      return `<div class="reco-product-card"><div class="reco-product-card-title carrier-${c}">${carrierTitleHtml(c)}</div><div class="reflected-empty">해당 스펙의 상품 정보가 없습니다.</div></div>`;
     }
 
     const needsUsim = isMvno || MOBILE_GROUP_MAP[c] !== mobileGroup;
@@ -750,7 +759,7 @@ function renderRecoCards(){
     let commHtml = '';
     let properGiftRowHtml = '';
     if (isLoggedIn) {
-      const comm = lookupCommission(c, speedNum, tvTier);
+      const comm = lookupCommission(c, speedNum, tvTier, lgVariantOf(c));
       const margin = comm.totalComm - userGiftVal;
       commHtml = `
         <div class="reco-block">
@@ -778,7 +787,7 @@ function renderRecoCards(){
     return `
       <div class="reco-product-card">
         <div class="reco-product-card-title carrier-${c}">
-          <span>${CARRIER_LABEL[c]}</span>
+          ${carrierTitleHtml(c)}
           <span class="reco-product-total">${(price.total || 0).toLocaleString()}</span>
         </div>
         <div class="reco-block first">
@@ -825,7 +834,7 @@ function reflectRecoCardToProposal(carrier){
 
   const speedNum = Number(recoState.speed);
   const tvTier = recoState.tv;
-  const isDuplicate = reflectedProducts.some(p => p.type === 'home' && p.carrierKey === carrier && p.speedNum === speedNum && p.tvTier === tvTier);
+  const isDuplicate = reflectedProducts.some(p => p.type === 'home' && p.carrierKey === carrier && (p.lgVariant || null) === lgVariantOf(carrier) && p.speedNum === speedNum && p.tvTier === tvTier);
   if (isDuplicate) {
     alert('이미 동일한 조건의 인터넷/TV 제안상품이 반영되어 있습니다.');
     return;
@@ -840,8 +849,9 @@ function reflectRecoCardToProposal(carrier){
   reflectedProducts.push({
     id: `home-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     type: 'home',
-    carrierName: BRAND_LABEL[carrier],
+    carrierName: BRAND_LABEL[carrier] + (lgVariantOf(carrier) === 'soho' ? ' 소호' : ''),
     carrierKey: carrier,
+    lgVariant: lgVariantOf(carrier),
     speedNum: speedNum,
     tvTier: tvTier,
     internetLabel: SPEED_LABEL[recoState.speed],
@@ -868,7 +878,7 @@ function reflectRecoCardToProposal(carrier){
 
   renderProposalLists();
   updateCsSummaryPanel();
-  showToast(`✓ ${BRAND_LABEL[carrier]} 상품이 반영되었습니다 · [고객상담] 제안상품에서 확인하세요`);
+  showToast(`✓ ${BRAND_LABEL[carrier]}${lgVariantOf(carrier) === 'soho' ? ' 소호' : ''} 상품이 반영되었습니다 · [고객상담] 제안상품에서 확인하세요`);
 }
 
 function getUsimTierForFee(fee){
@@ -1532,7 +1542,7 @@ function buildProductSummaryLines(p){
   lines.push(`월요금 ${p.totalFee.toLocaleString()}원`);
   lines.push(`사은품 ${p.benefitTotal.toLocaleString()}원 (상 ${p.giftCard.toLocaleString()}원,현 ${p.cash.toLocaleString()}원${p.extraPay ? `,추가지급 ${p.extraPay.toLocaleString()}원` : ''})`);
   if (isLoggedIn) {
-    const comm = lookupCommission(p.carrierKey, p.speedNum, p.tvTier);
+    const comm = lookupCommission(p.carrierKey, p.speedNum, p.tvTier, p.lgVariant);
     lines.push(`수수료 ${comm.totalComm.toLocaleString()}원${comm.agency ? ` (${comm.agency})` : ''}`);
   }
   return lines;
@@ -1663,7 +1673,7 @@ function copyCsSummary(){
 
 
 function buildProposalHomeRow(item){
-  const comm = isLoggedIn ? lookupCommission(item.carrierKey, item.speedNum, item.tvTier) : null;
+  const comm = isLoggedIn ? lookupCommission(item.carrierKey, item.speedNum, item.tvTier, item.lgVariant) : null;
   return `
     <div class="phone-line usim-added-line">
       <div class="usim-added-row">
@@ -1908,7 +1918,7 @@ function renderCommissionPanels(homeItem, usimItems){
   if (!homeItem) {
     homePanel.innerHTML = `<div class="reflected-empty">최종상품이 반영되면 수수료 정보가 표시됩니다.</div>`;
   } else {
-    const comm = lookupCommission(homeItem.carrierKey, homeItem.speedNum, homeItem.tvTier);
+    const comm = lookupCommission(homeItem.carrierKey, homeItem.speedNum, homeItem.tvTier, homeItem.lgVariant);
     const margin = comm.totalComm - homeItem.benefitTotal;
     const extraPay = homeItem.extraPay || 0;
     homePanel.innerHTML = `
@@ -2353,7 +2363,7 @@ function agOthersRowsHtml(info, withUnit){
 
 function homeCommissionOf(item){
   if (!item || !isLoggedIn) return null;
-  try { return lookupCommission(item.carrierKey, item.speedNum, item.tvTier).totalComm; }
+  try { return lookupCommission(item.carrierKey, item.speedNum, item.tvTier, item.lgVariant).totalComm; }
   catch (e) { return null; }
 }
 
@@ -2407,7 +2417,7 @@ function consultSaveHelpers(){
   return {
     homeCommission: item => homeCommissionOf(item),
     usimCommission: (carrier, fee) => { if (!isLoggedIn) return null; try { return usimCommissionInfo(carrier, fee).amount; } catch (e) { return null; } },
-    homeAgency: item => { if (!item || !isLoggedIn) return null; try { return lookupCommission(item.carrierKey, item.speedNum, item.tvTier).agency || null; } catch (e) { return null; } },
+    homeAgency: item => { if (!item || !isLoggedIn) return null; try { return lookupCommission(item.carrierKey, item.speedNum, item.tvTier, item.lgVariant).agency || null; } catch (e) { return null; } },
     usimAgency: (carrier, fee) => { if (!isLoggedIn) return null; try { return usimCommissionInfo(carrier, fee).agency || null; } catch (e) { return null; } }
   };
 }
