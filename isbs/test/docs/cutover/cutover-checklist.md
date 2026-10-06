@@ -1,7 +1,7 @@
 # CS_new.html 컷오버 전 실DB·실화면 확인표 (S9a)
 
 - 작성: 2026-10-04 · 기준: 계획서 v22 7장 T1~T13을 **한 번에 끝낼 수 있는 순서**로 묶은 것
-- 대상 파일: `CS_new.html`(`config.js?v=20261002b` · `Calculator.js?v=20260930h` · `Supabaseservice.js?v=20261006a` · `Styles.css?v=20261002a`)
+- 대상 파일: `CS_new.html`(`config.js?v=20261002b` · `Calculator.js?v=20260930h` · `Supabaseservice.js?v=20261006a` · `Styles.css?v=20261006a`)
 - 테스트 고객은 **`(인생비서)테스트` 이름만** 사용합니다. 실제 고객 데이터는 건드리지 않습니다(조회만 하는 항목 제외).
 - 준비: ① 로그인한 상태로 `CS_new.html` 열기 ② 개발자 도구 콘솔을 열어 두고 빨간 오류가 뜨면 그 문구를 기록 ③ Supabase SQL 편집기 열기
 - 모든 항목은 **합격 = 아래 "합격 기준"이 그대로 보임**, 하나라도 다르면 해당 T번호와 화면·문구를 알려 주세요.
