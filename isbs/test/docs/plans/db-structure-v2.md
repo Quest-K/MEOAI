@@ -1,7 +1,9 @@
 # 상품·수수료·에이전시 DB 구조 확정안 v2 (추가만 · 기존 유지)
 
+> **상태: 확정 (2026-10-06)** — 2장 목록 + 3장 a~g + 4장 답변 반영. 확정 후 변경 사항은 `db-redesign-log.md` 이력에 남깁니다.
+
 - 작성: 2026-10-06 · 근거: 실제 DB 조회 결과(`01a_inspect_schema` 실행 결과) + 계획서 결정 D1~D12
-- 이 문서는 **확정 요청용**입니다. 확정되면 `db-redesign-log.md`에 기록하고 단계별 SQL을 하나씩 드립니다.
+- 확정되었으므로 `db-redesign-log.md`의 단계 순서대로 SQL을 하나씩 드립니다.
 - 원칙: 기존 테이블·칼럼은 이름·타입을 바꾸지 않습니다. 새 테이블과 새 칼럼(비워둘 수 있음)만 추가합니다.
 
 ## 1. 조회로 새로 알게 된 사실
@@ -14,7 +16,7 @@
 | 4 | `fee_*`의 `agency_id`는 비워둘 수 있고, 통신사 일치·기간 겹침을 막는 제약이 없음 | 데이터 정리 후 제약 강화 단계에서 처리 |
 | 5 | `fee_internet`은 이미 `internet_id`(→`plans_internet`)가 있고, `fee_tv`에는 `tv_id`만 있어 **속도 정보가 없음** | `fee_tv`에 기준 인터넷 상품 칼럼 추가(D2) |
 | 6 | `fee_tv`에 `tv_fee`·`add_tv_fee`·`bundle_fee`가 이미 있음 | 결합·추가TV 수수료는 **새 칼럼 없이** 이걸 사용 |
-| 7 | `fee_usim`은 0행, `plans_usim`은 구 `usim_plans`와 같은 76행 | 유심 수수료는 요금제 단위로 적재 |
+| 7 | `fee_usim`은 0행, `plans_usim`은 구 `usim_plans`와 같은 76행. 구 수수료의 `standalone_fee`=유심 단독 가입, `dongpan_fee`=인터넷+유심 같이 가입 기준(사용자 확인) | 유심 수수료는 요금제 단위로, **단독·동판 두 금액**을 담아야 함. 현재 앱 구간표(`USIM_COMMISSION_BANDS`)는 동판 금액을 사용 중 |
 | 8 | `plans_internet.speed`는 문자('100','500','1g'), `plans_tv.tv_tier`는 필수 칼럼 | 속도는 옆에 숫자 칼럼 추가, TV 등급은 값만 정리 |
 | 9 | 조회 결과의 `policies`가 비어 있음 | RLS(행 보안) 켜짐 여부는 `01a2_check_rls.sql`로 별도 확인 |
 | 10 | `contracts`에는 `commission_total`(합계 하나)만 있고 에이전시 칼럼 없음. `UNIQUE(contract_id, customer_id)`가 이미 있어 새 테이블이 참조하기 좋음 | `contracts` 보강 |
@@ -63,7 +65,7 @@
 | `line_id` (PK) | bigint 자동증가 | |
 | `contract_id` + `customer_id` | bigint, 필수 | → `contracts(contract_id, customer_id)`, 계약 삭제 시 함께 삭제 |
 | `item_id` | bigint | → `contract_items`, 상품 단위일 때만 |
-| `fee_type` | text, 필수 | internet · tv · bundle · add_tv · usim · other |
+| `fee_type` | text, 필수 | internet · tv · bundle · add_tv · usim_dongpan · usim_standalone · other (유심은 인터넷과 같이 가입하면 `usim_dongpan`, 유심만 가입하면 `usim_standalone`) |
 | `amount` | int, 필수 | |
 | `source_table` / `source_id` | text | 어느 수수료 행에서 가져왔는지 |
 | `calculated_at` | timestamptz | |
@@ -80,6 +82,8 @@
 | `plans_internet` | `speed_num` int, `legacy_id` int | 숫자 속도(100·500·1000), 구 `internet_plans.id`(대조용) |
 | `plans_tv` | `legacy_id` int | 구 `tv_plans.id`(대조용) |
 | `agencies` | `is_active` boolean(기본 true), `sort_order` int | 사용 여부·표시 순서 |
+| `fee_usim` | `usim_fee_dongpan` numeric(기본 0) | **동판**(인터넷+유심 같이 가입) 기준 유심 수수료. 기존 `usim_fee`는 **단독**(유심만 가입) 수수료로 사용 |
+| `fee_internet`·`fee_tv`·`fee_usim` | `remarks` text | 구 `carrier_commissions.remarks`(비고)를 옮길 자리 |
 
 ### 2.3 이번에 바꾸지 않는 것
 - 구 상품·수수료 7개 테이블과 `get_admin_commissions`
@@ -94,14 +98,14 @@
 | b | TV 등급은 새 칼럼 없이 `tv_tier` **값**만 정리(`none/low/basic/high/premium`, 옛 `premium→high` 먼저, 그다음 `premium+→premium`) | `plans_tv`가 4행뿐이고 칼럼 변경이 아니라 값 정리라서 |
 | c | `legacy_id` 추가 | 구 테이블과 신규 테이블의 금액을 행 단위로 대조하기 위해 |
 | d | 결합·추가TV 수수료는 `fee_tv`의 기존 칼럼 사용 | 확인된 사실 6 |
-| e | 유심 수수료는 요금제 단위(`fee_usim`), 현재 앱의 구간표 금액으로 적재 | 확인된 사실 7 |
+| e | 유심 수수료는 요금제 단위(`fee_usim`). **단독 = `usim_fee`, 동판 = `usim_fee_dongpan`**. 어느 쪽을 쓸지는 계약 구조로 판단(`contracts.linked_contract_id`가 있으면 인터넷과 같이 가입 = 동판, 없으면 단독) → 새 칼럼 필요 없음 | 확인된 사실 7 |
 | f | 한 계약 = 한 에이전시, 자동 선택은 총수수료 최대 | 계획서 기본값 |
 | g | 통신사 일치(`carriers` 참조)·`agency_id` 필수는 데이터 정리 후 제약으로 | 지금 걸면 기존 시험 데이터가 걸림 |
 
-## 4. 답이 필요한 것
+## 4. 답변 기록 (2026-10-06)
 
-| # | 질문 | 기본값 |
-|---|---|---|
-| Q1 | 구 `carrier_commissions`의 **`standalone_fee`(단독)·`dongpan_fee`(동판)** 는 무엇의 수수료인가요? 새 구조에 가져올지 결정 필요 | 가져오지 않음 |
-| Q2 | 구 `min_retention_period`(유지 기간)·`remarks`(비고)를 새 수수료 테이블에 둘까요? | `remarks`만 `fee_internet`·`fee_tv`·`fee_usim`에 추가(비워둘 수 있음), 유지기간은 안 가져옴 |
-| Q3 | 위 2장 목록과 3장 a~g에 이의가 있나요? | 없으면 그대로 확정 |
+| # | 질문 | 답 | 반영 |
+|---|---|---|---|
+| Q1 | `standalone_fee`·`dongpan_fee`의 의미 | 단독 = **유심 단독 가입**, 동판 = **인터넷과 유심 같이 가입** 기준 | `fee_usim`에 `usim_fee_dongpan` 추가(2.2), `contract_fee_lines.fee_type`에 `usim_standalone`·`usim_dongpan` 구분(2.1) |
+| Q2 | `remarks` 새 테이블에 둘지, 유지기간 | 제안대로: `remarks`만 `fee_internet`·`fee_tv`·`fee_usim`에 추가, `min_retention_period`(유지기간)는 가져오지 않음 | 2.2 `remarks` 행 |
+| Q3 | 2장 목록·3장 a~g 이의 | 이의 없음으로 보고 확정(사용자가 "제안대로 진행"이라고 답함) | 문서 상태 = 확정 |
