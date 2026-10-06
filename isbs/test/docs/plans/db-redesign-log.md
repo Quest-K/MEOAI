@@ -33,8 +33,8 @@
 | 1-4 | 백업 복사 | `01b_backup.sql` | 백업 행 수 = 원본 | [x] 2026-10-06 15개 테이블 모두 일치 |
 | 1-5 | `carriers` 테이블 | `01c_1_carriers.sql` | 6칼럼, RLS 켜짐, 0행 | [x] 2026-10-06 |
 | 1-6 | `plans_settop` 테이블 | `01c_2_plans_settop.sql` | 8칼럼, RLS 켜짐, 0행 | [x] 2026-10-06 |
-| 1-7 | `plans_internet`(`speed_num`·`legacy_id`)·`plans_tv`(`legacy_id`) 칼럼 추가 | `01c_3_plans_cols.sql` | 칼럼 3개 존재, 행 수(3·4) 그대로, 새 칼럼 값 비어 있음 | [!] **지금 단계**(실행 결과 대기) |
-| 1-8 | `agencies` 칼럼 추가 | `01c_4_agencies_cols.sql` | 〃 | [ ] |
+| 1-7 | `plans_internet`(`speed_num`·`legacy_id`)·`plans_tv`(`legacy_id`) 칼럼 추가 | `01c_3_plans_cols.sql` | 칼럼 3개 존재, 행 수(3·4) 그대로, 새 칼럼 값 비어 있음 | [x] 2026-10-06 |
+| 1-8 | `agencies` 칼럼 추가(`is_active`·`sort_order`) | `01c_4_agencies_cols.sql` | 칼럼 2개 존재, 3행 그대로, `is_active` 3행 true | [!] **지금 단계**(실행 결과 대기) |
 | 1-9 | `fee_tv.internet_id` 추가 | `01c_5_fee_tv_col.sql` | 〃 | [ ] |
 | 1-10 | `fee_usim.usim_fee_dongpan` 추가 | `01c_6_fee_usim_col.sql` | 〃 | [ ] |
 | 1-11 | `fee_internet`·`fee_tv`·`fee_usim`에 `remarks` 추가 | `01c_7_fee_remarks.sql` | 〃 | [ ] |
@@ -95,3 +95,4 @@
 | 9 | 2026-10-06 | **1-4 백업 완료**: `backup` 스키마에 15개 테이블을 `_20261006`로 복사, 행 수 모두 일치(agencies 3, carrier_commissions 246, carrier_commissions_new 246, carrier_promotions 42, contracts 31, fee_internet 6, fee_tv 4, fee_usim 0, internet_plans 25, plans_internet 3, plans_tv 4, plans_usim 76, settop_boxes 24, tv_plans 40, usim_plans 76). 다음 1-5 `carriers` 테이블 SQL 작성 |
 | 10 | 2026-10-06 | **1-5 `carriers` 완료**: 6칼럼(`carrier_id` PK·`carrier_name`·`aliases`·`sort_order`·`is_active`·`created_at`), RLS 켜짐, 0행 확인. 다음 1-6 `plans_settop` SQL 작성 |
 | 11 | 2026-10-06 | **1-6 `plans_settop` 완료**: 8칼럼(`id` PK·`carrier`·`model_name`·`monthly_fee`·`is_active`·`legacy_id`·`created_at`·`updated_at`), RLS 켜짐, 0행 확인. 다음 1-7 `plans_internet`·`plans_tv` 칼럼 추가 SQL 작성 |
+| 12 | 2026-10-06 | **1-7 완료**: `plans_internet`에 `speed_num`·`legacy_id`, `plans_tv`에 `legacy_id` 추가(모두 비어 있음, 행 수 3·4 그대로). 다음 1-8 `agencies` 칼럼 추가 SQL 작성 |
