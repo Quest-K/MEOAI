@@ -1,6 +1,6 @@
 // ============================================================
 // calculator.js
-// 통신사별(KT/LG/SKB/SKT) 결합 할인 및 요금 계산 로직
+// 통신사별(KT/LG/SKB/SKT/SKY) 결합 할인 및 요금 계산 로직
 // 이 파일은 config.js 다음, CS.html 인라인 스크립트보다 먼저 로드되어야 합니다.
 // TV_BUNDLE_DISCOUNT / FEE_RANGES 등 상수는 config.js, DATA / state 등 상태값은
 // CS.html 인라인 스크립트의 전역 변수를 호출 시점에 참조합니다 (일반 스크립트로 로드).
@@ -55,6 +55,7 @@ function computePrice(carrier, overrideState){
       else if (speedNum === 500) bundleDiscount = 5500;
       else if (speedNum === 1000) bundleDiscount = 5500;
     }
+    // SKY(sky): 인터넷+TV 결합할인 규칙 미확정 → 0원(위 분기에 해당하지 않으면 bundleDiscount 는 0)
     total -= bundleDiscount;
 
     tvBundleDiscount = TV_BUNDLE_DISCOUNT[carrier]?.[st.tv] || 0;
@@ -361,6 +362,10 @@ function getUsimCommission(carrier, monthlyFee){
   const band = bands.find(b => fee <= b.max);
   return band ? band.fee : 0;
 }
+
+// ---- SKY(스카이라이프) ----
+// 휴대폰 결합할인은 계산하지 않습니다(2026-10-06 결정). 결합 규칙이 정해지면 여기에 옵션을 만들어 돌려주세요.
+function computeSkyOptions(){ return []; }
 
 // ---- SKB / SKT ----
 
