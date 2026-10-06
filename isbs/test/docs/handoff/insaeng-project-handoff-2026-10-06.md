@@ -59,12 +59,23 @@
 | `상태값_구조변경_1002_14_10.md` | 트랙 1 계획서 v14 (파일명이 트랙 2처럼 보이지만 내용은 트랙 1 v14) |
 | `cutover-checklist__1_.md` | 확인표 구판(A-3 없음, `Supabaseservice.js?v=20261003a`) |
 
-### 2.3 구 화면 · 폐기 후보
+### 2.3 삭제된 파일 (2026-10-06 정리 완료)
 
 | 파일 | 설명 |
 |---|---|
-| `CS1.html` | 구 화면, **현재 운영 중인 `CS.html`로 추정[추정]**. 컷오버 직전 `old/`에 백업할 대상 |
-| `contracts.html` | 예시 데이터(홍길동·김철수)를 쓰는 **DB 연결 없는 목업**. 고객상세 탭이 대체. 폐기 후보 [제안] |
+| `CS1.html` | `CS_new.html`의 옛 중간본(S6 반영). 운영 파일이 아니었음 → **삭제 완료** [확정] |
+| `contracts.html` | 예시 데이터만 있던 DB 연결 없는 목업. 고객상세 탭이 대체 → **삭제 완료** [확정] |
+
+### 2.3-1 저장소 폴더 구조 (2026-10-06 확인, 개발 환경 Codespaces, 정리 브랜치 `chore/repo-cleanup`)
+
+| 위치 | 내용 | 상태 |
+|---|---|---|
+| `isbs/test/` | **운영 + 개발 폴더.** 직원이 쓰는 `CS.html`(구)와 개발본 `CS_new.html`, `config.js`·`Calculator.js`·`Styles.css`·`Supabaseservice.js`, `docs/` | [확정] 운영은 `isbs/test/` |
+| `isbs/` (test 밖) | `CS.html`, `config.js`, `Calculator.js`, `CA.html`, `CS12.html`, `edu.html`, `flow.html` 등 별도 복사본 | [미정] 용도 불명, **확인 전 이동·삭제 금지** |
+| `isbs/work/` | `main.html`, `home.html`, `crmtest.html` | [미정] 구 상품·수수료 테이블 사용 여부 점검 필요(A3) |
+| `isbs/test/docs/` | `cutover/`, `handoff/`, `history/`, `plans/` | 정리 완료 |
+
+**컷오버 = `isbs/test/` 안에서 `CS_new.html`을 `CS.html`로 교체**하는 작업입니다(런북과 동일). 백업 폴더는 `isbs/test/old/`에 만듭니다.
 
 ### 2.4 데이터 파일(CSV, Supabase 내보내기)
 
@@ -107,8 +118,8 @@
 
 ### 3.2 앱 (git)
 
-- 운영: 구 `CS.html`(`CS1.html`로 보이는 파일)
-- 개발: `CS_new.html` — 5개 탭 구현, 컷오버 확인표 **A1~A10(A-2까지) 완료**, **A-3(수수료 에이전시 표시, `?commMock=1`) 진행 필요**, B·C·D·E 미진행
+- 운영: `isbs/test/CS.html`(구 화면, 직원이 현재 사용 중, `Styles.css?v=20260930j`) [확정]
+- 개발: `isbs/test/CS_new.html`(운영 화면과 같은 폴더) — 5개 탭 구현, 컷오버 확인표 **A1~A10(A-2까지) 완료**, **A-3(수수료 에이전시 표시, `?commMock=1`) 진행 필요**, B·C·D·E 미진행
 - 에이전시 화면 코드는 있으나 **DB 연결 전**(가짜 데이터로만 확인 가능)
 
 ### 3.3 컷오버 확인표 진행도
@@ -187,9 +198,10 @@
 ### A. 사전 보존
 | # | 곳 | 대상 | 작업 | 합격 기준 |
 |---|---|---|---|---|
-| [ ] A1 | git | 운영 파일 5개 | 태그 `prod-before-p6` 생성, `old/`에 날짜 붙여 보관(런북 0-2) | 5개 파일 보관됨 |
+| [x] A0 | git | 문서 구조 | `isbs/test/docs/` 정리, `CS1.html`·`contracts.html` 삭제, 체크리스트·런북 반영 (2026-10-06 커밋) | 완료 |
+| [ ] A1 | git | `isbs/test/`의 운영 파일 5개 | 태그 `prod-before-p6` 생성, `isbs/test/old/`에 날짜 붙여 보관(런북 0-2) | 5개 파일 보관됨 |
 | [ ] A2 | Supabase | `backup` 스키마 | 구 상품·수수료 7개 테이블 스냅샷 복사(읽기만) | 행 수가 원본과 같음 |
-| [ ] A3 | git | `main.html` 등 다른 화면 | `carrier_commissions`·`*_plans`·`settop_boxes`·`carrier_promotions` 사용처 검색 | 사용처 목록 작성(삭제 전 판단용) |
+| [ ] A3 | git | `isbs/work/main.html` 등 다른 화면, `isbs/` 바깥 복사본 | `carrier_commissions`·`*_plans`·`settop_boxes`·`carrier_promotions` 사용처 검색 | 사용처 목록 작성(삭제 전 판단용) |
 
 ### B. Supabase 추가 — 상품·수수료 (기존 앱 영향 0)
 | # | 대상 | 작업 |
@@ -252,11 +264,12 @@
 
 ```
 / (운영 루트)
+├─ (실제 위치: isbs/test/)
 ├─ CS.html                  ← CS_new.html에서 ?v= 만 바꿔 교체한 최종본
 ├─ config.js · Calculator.js · Supabaseservice.js · Styles.css
 ├─ main.html 등 기타 화면    (구 테이블 의존 제거 확인 후)
 ├─ old/                     ← 컷오버 전 운영 파일 5개 (날짜 붙은 이름)
-└─ docs/
+└─ docs/                    ← 현재 isbs/test/docs/ (웹 노출 여부 확인 필요, 8장 #9)
    ├─ handoff/   insaeng-project-handoff-YYYY-MM-DD.md   (최신 1개만 루트에, 이전은 history)
    ├─ plans/     cs-migration-plan.md · db-redesign-plan_MMDD_P#.md
    ├─ cutover/   cutover-checklist.md · cutover-runbook.md
@@ -295,7 +308,9 @@
 | 5 | 수수료 원본 `A` 에이전시(10행), `SK`(10행), `실속형`(4행)의 정체 | B8 |
 | 6 | 계획서 v24 및 `db-redesign-plan` P1 이후 파일 위치 | 문서 정리 |
 | 7 | 사은품 테이블(`carrier_promotions`) 새 이름 | B 단계 이후 |
-| 8 | `main.html` 등 다른 화면의 구 테이블 사용 여부 | A3 → E1 |
+| 8 | `isbs/work/main.html` 등 다른 화면의 구 테이블 사용 여부 | A3 → E1 |
+| 9 | `isbs/test/`가 웹에 서빙된다면 `docs/`(계획서·SQL 구조 정보)가 외부에서 보일 수 있음 → 저장소 공개 여부·배포 방식 확인, 필요 시 `docs/`를 서빙 폴더 밖으로 이동 | 문서 보안 |
+| 10 | `isbs/` 바깥의 `CS.html`·`config.js`·`Calculator.js`·`CA.html`·`CS12.html`·`edu.html`·`flow.html` 용도 | 정리 단계 |
 
 ---
 
@@ -322,4 +337,5 @@
 
 | 날짜 | 내용 |
 |---|---|
+| 2026-10-06 (개정) | git 정리 반영: `CS1.html`은 `CS_new.html`의 옛 중간본으로 확인되어 삭제, 운영 폴더를 `isbs/test/`로 확정, 저장소 구조(2.3-1)와 미확인 항목(8장 #9·#10) 추가 |
 | 2026-10-06 | 최초 통합 작성: 업로드된 파일 14개 + CSV 11개 정리, 트랙 1·2 통합, 통신사 6개·TV 등급·수수료 분리·속도 숫자 결정 반영, 1안 변형 진행 순서 제안 |
