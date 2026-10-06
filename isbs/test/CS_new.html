@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<link rel="stylesheet" href="Styles.css?v=20261006f">
+<link rel="stylesheet" href="Styles.css?v=20261006g">
 </head>
 <body>
 <div class="wrap">
@@ -282,7 +282,7 @@
             <div id="reco-extra-tv-list" class="extra-tv-col"></div>
           </div>
 
-          <div id="reco-carrier-cards" class="reco-cards cols-5">
+          <div id="reco-carrier-cards" class="reco-cards cols-3">
             <div class="reflected-empty">상품 데이터 로딩 중입니다.</div>
           </div>
 
@@ -603,14 +603,44 @@ let lastRecoTvTier = 'basic';
 // LG [홈]/[소호] 선택(기본 홈). 요금제는 같고 수수료만 달라서 수수료 조회에만 반영합니다.
 let LG_VARIANT = (typeof LG_VARIANT_DEFAULT !== 'undefined') ? LG_VARIANT_DEFAULT : 'home';
 function lgVariantOf(carrier){ return carrier === 'lg' ? LG_VARIANT : null; }
-// 추천상품 카드 제목(2줄): 1줄 = 통신사명(왼쪽) / 2줄 = LG 만 [홈][소호](왼쪽) + 금액(오른쪽)
+// 추천상품 3분할 : [KT·SKY] / [LG] / [SKB·SKT] 한 열에 한 통신사씩 보여주고, 첫 줄 우측 버튼으로 전환합니다.
+const RECO_GROUPS = [
+  { key: 'kt', members: ['kt', 'sky'], btnLabel: { kt: 'KT', sky: 'SKY' } },
+  { key: 'lg', members: ['lg'] },
+  { key: 'sk', members: ['skb', 'skt'], btnLabel: { skb: 'SKB', skt: 'SKT' }, fixedName: 'SK' }
+];
+let recoGroupSel = { kt: 'kt', sk: 'skb' };   // 그룹별로 현재 선택된 통신사
+
+function recoGroupMembers(g){ return g.members.filter(m => HOME_CARRIERS.includes(m)); }
+function recoGroupOf(c){ return RECO_GROUPS.find(g => g.members.includes(c)) || null; }
+// 화면에 그릴 통신사 목록(그룹별 선택된 1개씩)
+function recoVisibleCarriers(){
+  return RECO_GROUPS.map(g => {
+    const ms = recoGroupMembers(g);
+    if (!ms.length) return null;
+    const sel = recoGroupSel[g.key];
+    return ms.includes(sel) ? sel : ms[0];
+  }).filter(Boolean);
+}
+
+// 추천상품 카드 제목(2줄): 1줄 = 통신사명(왼쪽) + 선택 버튼(오른쪽 정렬) / 2줄 = 금액(오른쪽)
 function carrierTitleHtml(c, totalHtml){
+  const g = recoGroupOf(c);
   let toggle = '';
   if (c === 'lg') {
     const btn = v => `<button type="button" class="lg-var-btn${LG_VARIANT === v ? ' on' : ''}" onclick="setLgVariant('${v}')">${LG_VARIANT_LABEL[v]}</button>`;
     toggle = `<span class="lg-var-toggle">${btn('home')}${btn('soho')}</span>`;
+  } else if (g && recoGroupMembers(g).length > 1) {
+    const btn = m => `<button type="button" class="lg-var-btn rt-btn-${m}${c === m ? ' on' : ''}" onclick="setRecoGroupCarrier('${g.key}','${m}')">${g.btnLabel[m]}</button>`;
+    toggle = `<span class="lg-var-toggle">${recoGroupMembers(g).map(btn).join('')}</span>`;
   }
-  return `<span class="rt-name">${CARRIER_LABEL[c]}</span><span class="rt-sub">${toggle}</span>${totalHtml || ''}`;
+  const name = (g && g.fixedName) || CARRIER_LABEL[c];
+  return `<span class="rt-name">${name}</span><span class="rt-sub">${toggle}</span>${totalHtml || ''}`;
+}
+function setRecoGroupCarrier(groupKey, carrier){
+  if (recoGroupSel[groupKey] === carrier) return;
+  recoGroupSel[groupKey] = carrier;
+  renderRecoCards();
 }
 function setLgVariant(v){ if (!LG_VARIANT_LABEL[v] || v === LG_VARIANT) return; LG_VARIANT = v; renderRecoCards(); }
 let recoUsimTier = null;
@@ -730,7 +760,7 @@ function renderRecoCards(){
   const speedNum = Number(recoState.speed);
   const tvTier = recoState.tv;
 
-  container.innerHTML = HOME_CARRIERS.map(c => {
+  container.innerHTML = recoVisibleCarriers().map(c => {
     if (excluded.includes(c)) {
       return `
         <div class="reco-product-card reco-product-card-disabled">
