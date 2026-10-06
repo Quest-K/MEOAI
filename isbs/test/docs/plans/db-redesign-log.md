@@ -38,8 +38,8 @@
 | 1-9 | `fee_tv.internet_id` 추가(→`plans_internet`) | `01c_5_fee_tv_col.sql` | 칼럼 존재, 4행 그대로, 값 비어 있음, 외래키 존재 | [x] 2026-10-06 |
 | 1-10 | `fee_usim.usim_fee_dongpan` 추가 | `01c_6_fee_usim_col.sql` | 칼럼 존재, 기본값 0, 0행 | [x] 2026-10-06 |
 | 1-11 | `fee_internet`·`fee_tv`·`fee_usim`에 `remarks` 추가 | `01c_7_fee_remarks.sql` | 3행, 행 수(6·4·0) 그대로, 값 비어 있음 | [x] 2026-10-06 |
-| 1-12 | `fee_extra` 테이블 | `01c_8_fee_extra.sql` | 12칼럼, RLS 켜짐, 0행 | [!] **지금 단계**(실행 결과 대기) |
-| 1-13 | `contracts` 칼럼 추가 | `01c_9_contracts_cols.sql` | 기존 계약 행 변화 없음 | [ ] |
+| 1-12 | `fee_extra` 테이블 | `01c_8_fee_extra.sql` | 12칼럼, RLS 켜짐, 0행 | [x] 2026-10-06 |
+| 1-13 | `contracts` 칼럼 추가(`agency_id`·`agency_pick_type`) | `01c_9_contracts_cols.sql` | 칼럼 2개, 연결·검사 제약 존재, 기존 계약 값 비어 있음 | [!] **지금 단계**(실행 결과 대기) |
 | 1-14 | `contract_fee_lines` 테이블 | `01c_10_contract_fee_lines.sql` | 빈 테이블 생성 확인 | [ ] |
 
 - 새 테이블(1-5, 1-6, 1-12, 1-14)은 만들 때 `enable row level security` 한 줄을 함께 넣어 기본 잠금으로 둡니다(읽기 규칙은 나중).
@@ -100,3 +100,4 @@
 | 14 | 2026-10-06 | **1-9 완료**: `fee_tv.internet_id`(→`plans_internet(id)`, 삭제 시 함께 삭제) 추가, 4행 그대로·값 비어 있음·외래키 확인. 다음 1-10 `fee_usim.usim_fee_dongpan` 추가 SQL 작성 |
 | 15 | 2026-10-06 | **1-10 완료**: `fee_usim.usim_fee_dongpan`(numeric, 기본 0) 추가, 0행 확인. 이로써 기존 `usim_fee`=단독, `usim_fee_dongpan`=동판. 다음 1-11 `remarks` 추가 SQL 작성 |
 | 16 | 2026-10-06 | **1-11 완료**: `fee_internet`·`fee_tv`·`fee_usim`에 `remarks`(text) 추가, 행 수 6·4·0 그대로·값 비어 있음. 다음 1-12 `fee_extra` 테이블 SQL 작성(에이전시 참조에 이름 변경 연쇄 포함, 기간 검사 제약 포함) |
+| 17 | 2026-10-06 | **1-12 `fee_extra` 완료**: 12칼럼, RLS 켜짐, 0행 확인. 다음 1-13 `contracts`에 `agency_id`(→`agencies`, 이름 변경 연쇄)·`agency_pick_type`(`auto`/`manual`만 허용) 추가 SQL 작성. 과거 계약은 에이전시 정보 없이 비워 둠 |
