@@ -35,8 +35,8 @@
 | 1-6 | `plans_settop` 테이블 | `01c_2_plans_settop.sql` | 8칼럼, RLS 켜짐, 0행 | [x] 2026-10-06 |
 | 1-7 | `plans_internet`(`speed_num`·`legacy_id`)·`plans_tv`(`legacy_id`) 칼럼 추가 | `01c_3_plans_cols.sql` | 칼럼 3개 존재, 행 수(3·4) 그대로, 새 칼럼 값 비어 있음 | [x] 2026-10-06 |
 | 1-8 | `agencies` 칼럼 추가(`is_active`·`sort_order`) | `01c_4_agencies_cols.sql` | 칼럼 2개 존재, 3행 그대로, `is_active` 3행 true | [x] 2026-10-06 |
-| 1-9 | `fee_tv.internet_id` 추가(→`plans_internet`) | `01c_5_fee_tv_col.sql` | 칼럼 존재, 4행 그대로, 값 비어 있음, 외래키 존재 | [!] **지금 단계**(실행 결과 대기) |
-| 1-10 | `fee_usim.usim_fee_dongpan` 추가 | `01c_6_fee_usim_col.sql` | 〃 | [ ] |
+| 1-9 | `fee_tv.internet_id` 추가(→`plans_internet`) | `01c_5_fee_tv_col.sql` | 칼럼 존재, 4행 그대로, 값 비어 있음, 외래키 존재 | [x] 2026-10-06 |
+| 1-10 | `fee_usim.usim_fee_dongpan` 추가 | `01c_6_fee_usim_col.sql` | 칼럼 존재, 기본값 0, 0행 | [!] **지금 단계**(실행 결과 대기) |
 | 1-11 | `fee_internet`·`fee_tv`·`fee_usim`에 `remarks` 추가 | `01c_7_fee_remarks.sql` | 〃 | [ ] |
 | 1-12 | `fee_extra` 테이블 | `01c_8_fee_extra.sql` | 빈 테이블 생성 확인 | [ ] |
 | 1-13 | `contracts` 칼럼 추가 | `01c_9_contracts_cols.sql` | 기존 계약 행 변화 없음 | [ ] |
@@ -97,3 +97,4 @@
 | 11 | 2026-10-06 | **1-6 `plans_settop` 완료**: 8칼럼(`id` PK·`carrier`·`model_name`·`monthly_fee`·`is_active`·`legacy_id`·`created_at`·`updated_at`), RLS 켜짐, 0행 확인. 다음 1-7 `plans_internet`·`plans_tv` 칼럼 추가 SQL 작성 |
 | 12 | 2026-10-06 | **1-7 완료**: `plans_internet`에 `speed_num`·`legacy_id`, `plans_tv`에 `legacy_id` 추가(모두 비어 있음, 행 수 3·4 그대로). 다음 1-8 `agencies` 칼럼 추가 SQL 작성 |
 | 13 | 2026-10-06 | **1-8 완료**: `agencies`에 `is_active`(기존 3행 모두 true)·`sort_order`(비어 있음) 추가. 다음 1-9 `fee_tv.internet_id` 추가 SQL 작성(`plans_internet(id)` 참조, 삭제 시 함께 삭제 — 기존 `fee_internet.internet_id`와 같은 방식) |
+| 14 | 2026-10-06 | **1-9 완료**: `fee_tv.internet_id`(→`plans_internet(id)`, 삭제 시 함께 삭제) 추가, 4행 그대로·값 비어 있음·외래키 확인. 다음 1-10 `fee_usim.usim_fee_dongpan` 추가 SQL 작성 |
