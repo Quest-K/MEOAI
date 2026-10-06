@@ -42,13 +42,14 @@ function formatContactDisplay(raw){
 
 // ---- 통신사 키 (SKY 추가) ----
 // 화면 키는 소문자(kt·lg·skb·skt·sky)입니다. DB 에는 SKY 가 skylife / SKYLIFE / SKY 로 섞여 있어 화면 키 sky 로 모아 읽습니다.
-// 옛 CS.html 이 예전 config.js 를 캐시로 쓰는 경우를 대비해 CARRIERS_ALL 이 없으면 CARRIERS 를 씁니다.
 const DB_CARRIER_ALIAS = { skylife: 'sky' };
-function allCarriers(){ return (typeof CARRIERS_ALL !== 'undefined') ? CARRIERS_ALL : CARRIERS; }
+function allCarriers(){ return CARRIERS; }
 function carrierKeyOf(v){
   const k = String(v === null || v === undefined ? '' : v).trim().toLowerCase();
   return DB_CARRIER_ALIAS[k] || k;
 }
+// LG 소호: 요금제는 홈과 같고 수수료만 다릅니다. 화면 키 lg + 구분 'soho' → 수수료 행의 carrier 'LGbiz'/'LGBIZ'(소문자로 모으면 lgbiz)
+function commissionKeyOf(carrierKey, variant){ return (carrierKey === 'lg' && variant === 'soho') ? 'lgbiz' : carrierKey; }
 function dbCarrierNames(){ return allCarriers().concat(['skylife', 'SKYLIFE', 'SKY']); }   // .in('carrier', …) 조회용(대소문자 구분)
 
 async function loadData(){
@@ -166,8 +167,9 @@ function pickBestCommission(cands){
 
 // 홈(인터넷·TV) 수수료 : 기존 필드(internetComm·tvComm·totalComm)는 '가장 큰 에이전시' 값이라 기존 화면 코드가 그대로 동작합니다.
 //   추가 필드: agency(선택된 에이전시 이름 또는 null), agencies(에이전시별 후보, 합계 높은 순)
-function lookupCommission(carrierKey, speedNum, tvTier){
-  const rows = RAW_COMMISSION_DATA.filter(r => carrierKeyOf(r.carrier) === carrierKey && normalizeSpeedValue(r.speed) === speedNum);
+function lookupCommission(carrierKey, speedNum, tvTier, variant){
+  const dbKey = commissionKeyOf(carrierKey, variant);   // variant: LG 의 'home'|'soho' (없으면 홈)
+  const rows = RAW_COMMISSION_DATA.filter(r => carrierKeyOf(r.carrier) === dbKey && normalizeSpeedValue(r.speed) === speedNum);
   const names = [];
   rows.forEach(r => { const a = commissionAgencyOf(r); if (!names.includes(a)) names.push(a); });
   const cands = names.map(a => {
@@ -1090,7 +1092,7 @@ function s7HomeContract(p, helpers, warnings){
   const items = [{
     matchKey: 'internet', productType: 'internet', carrier: p.carrierName || null,
     productName: p.internetLabel || null, monthlyFee: internetFee, commission,
-    detail: { consultKey: p.id, carrierKey: p.carrierKey || null, speedNum: p.speedNum ?? null, internetLabel: p.internetLabel || null,
+    detail: { consultKey: p.id, carrierKey: p.carrierKey || null, lgVariant: p.lgVariant || null, speedNum: p.speedNum ?? null, internetLabel: p.internetLabel || null,
       internetFee: s7Num(p.internetFee), routerLabel: p.routerLabel || null, routerFee: s7Num(p.routerFee), bundleDiscount: s7Num(p.bundleDiscount),
       ...s7AgencyDetail(helpers && typeof helpers.homeAgency === 'function' ? helpers.homeAgency(p) : null) }     // 수수료 에이전시(C-AG1)
   }];
@@ -1098,7 +1100,7 @@ function s7HomeContract(p, helpers, warnings){
     items.push({
       matchKey: 'tv', productType: 'tv', carrier: p.carrierName || null,
       productName: p.tvLabel || null, monthlyFee: tvFee, commission: null,
-      detail: { consultKey: p.id, carrierKey: p.carrierKey || null, tvTier: p.tvTier ?? null, tvLabel: p.tvLabel || null, tvName: p.tvName || null,
+      detail: { consultKey: p.id, carrierKey: p.carrierKey || null, lgVariant: p.lgVariant || null, tvTier: p.tvTier ?? null, tvLabel: p.tvLabel || null, tvName: p.tvName || null,
         tvChannels: p.tvChannels ?? null, tvFee: s7Num(p.tvFee), settopLabel: p.settopLabel || null, settopFee: s7Num(p.settopFee),
         tvBundleDiscount: s7Num(p.tvBundleDiscount), extraTVs: s7Clone(p.extraTVs) || [], extraTvFee: s7Num(p.extraTvFee) || 0,
         extraTvDetails: s7Clone(p.extraTvDetails) || [] }     // 추가 TV는 메인 TV 상품에 종속(D3-6)
