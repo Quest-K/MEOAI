@@ -11,9 +11,10 @@
 // ============================================================
 
 /* ---------- 1. 통신사 · 요금 구간 · 라벨 ---------- */
-const CARRIERS = ['kt', 'lg', 'skb', 'skt'];   // 옛 CS.html 이 쓰는 4개 — 컷오버 전까지 바꾸지 않습니다.
-// 새 화면(CS_new.html)이 쓰는 5개 목록(SKY 추가). 컷오버 때 CARRIERS 와 하나로 합칩니다.
-const CARRIERS_ALL = [...CARRIERS, 'sky'];
+const CARRIERS = ['kt', 'lg', 'skb', 'skt', 'sky'];   // 인터넷/TV 통신사 5개(화면 열 순서)
+// LG 는 [홈]/[소호] 두 가지입니다. 요금제는 같고 수수료만 다릅니다(소호 수수료 = DB carrier 'LGbiz'/'LGBIZ'). 기본값은 홈.
+const LG_VARIANT_LABEL = { home:'홈', soho:'소호' };
+const LG_VARIANT_DEFAULT = 'home';
 const BRAND_LABEL = { kt:'KT', lg:'LG', skb:'SKB', skt:'SKT', sky:'SKY' };
 
 const TV_BUNDLE_DISCOUNT = {
