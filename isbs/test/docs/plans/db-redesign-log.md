@@ -30,9 +30,9 @@
 | 1-1 | 현재 구조 조회 | `01a_inspect_schema.sql` | 결과 JSON 수신 | [x] |
 | 1-2 | RLS·권한·규칙 확인 | `01a2`, `01a3` | 결과 수신 | [x] 현재 안전, 권한 설정은 구조 이후 |
 | 1-3 | 구조 확정 | `db-structure-v2.md` | 사용자 확정 | [x] 2026-10-06 |
-| 1-4 | 백업 복사 | `01b_backup.sql` | 백업 행 수 = 원본 | [ ] **다음 단계** |
-| 1-5 | `carriers` 테이블 | `01c_1_carriers.sql` | 빈 테이블 생성 확인 | [ ] |
-| 1-6 | `plans_settop` 테이블 | `01c_2_plans_settop.sql` | 〃 | [ ] |
+| 1-4 | 백업 복사 | `01b_backup.sql` | 백업 행 수 = 원본 | [x] 2026-10-06 15개 테이블 모두 일치 |
+| 1-5 | `carriers` 테이블 | `01c_1_carriers.sql` | 6칼럼, RLS 켜짐, 0행 | [x] 2026-10-06 |
+| 1-6 | `plans_settop` 테이블 | `01c_2_plans_settop.sql` | 8칼럼, RLS 켜짐, 0행 | [!] **지금 단계**(실행 결과 대기) |
 | 1-7 | `plans_internet`(`speed_num`·`legacy_id`)·`plans_tv`(`legacy_id`) 칼럼 추가 | `01c_3_plans_cols.sql` | 칼럼 존재, 기존 행 그대로 | [ ] |
 | 1-8 | `agencies` 칼럼 추가 | `01c_4_agencies_cols.sql` | 〃 | [ ] |
 | 1-9 | `fee_tv.internet_id` 추가 | `01c_5_fee_tv_col.sql` | 〃 | [ ] |
@@ -92,3 +92,5 @@
 | 6 | 2026-10-06 | `01a2` 결과 1 수신: 14개 테이블 **모두 RLS 켜짐** → anon에게 열린 쓰기 권한은 기본값이며 규칙(policy)이 없으면 막힘. 이전 조회에서 `agencies`·`plans_*`·`fee_*`는 규칙이 없음(= 로그인 사용자도 직접 읽기 불가). 따라서 **새 테이블을 화면이 읽게 만들 때 규칙(읽기 정책)을 반드시 추가**해야 함(상품은 공개 읽기, 수수료는 로그인 전용). 구 테이블(`internet_plans` 등)의 규칙은 아직 미확인 → `01a3_check_policies.sql` 요청 |
 | 7 | 2026-10-06 | `01a3` 결과 수신: 구 테이블(`internet_plans`·`tv_plans`·`settop_boxes`·`carrier_promotions`·`usim_plans`)은 읽기 전용 규칙(로그인 전 공개), `carrier_commissions`는 로그인 사용자 읽기, 그 외 `carrier_commissions_new`·`agencies`·`plans_*`·`fee_*`는 규칙 없음(직접 접근 불가). **쓰기를 허용하는 규칙은 없어 현재 안전** → 보안 조치 불필요, 권한 설정은 구조 확정 이후로 보류. 다음은 구조 확정(1-3) 대기 |
 | 8 | 2026-10-06 | **구조 확정(1-3 완료).** 사용자 답변 반영: Q1 `standalone_fee`=유심 단독 가입, `dongpan_fee`=인터넷+유심 같이 가입 기준 → `fee_usim`에 `usim_fee_dongpan` 추가(기존 `usim_fee`=단독), `contract_fee_lines.fee_type`에 `usim_standalone`·`usim_dongpan` 구분, 단독/동판 판단은 `contracts.linked_contract_id`로(새 칼럼 없음). Q2 제안대로: `remarks`만 `fee_internet`·`fee_tv`·`fee_usim`에 추가, 유지기간(`min_retention_period`)은 가져오지 않음. 확인 사항: 현재 앱 유심 구간표(`USIM_COMMISSION_BANDS`)는 동판 금액(`dongpan_fee`)을 쓰고 있음. 구조 단계가 12개→14개로 늘어남(칼럼 추가를 한 단계씩 분리). 다음: 1-4 백업 |
+| 9 | 2026-10-06 | **1-4 백업 완료**: `backup` 스키마에 15개 테이블을 `_20261006`로 복사, 행 수 모두 일치(agencies 3, carrier_commissions 246, carrier_commissions_new 246, carrier_promotions 42, contracts 31, fee_internet 6, fee_tv 4, fee_usim 0, internet_plans 25, plans_internet 3, plans_tv 4, plans_usim 76, settop_boxes 24, tv_plans 40, usim_plans 76). 다음 1-5 `carriers` 테이블 SQL 작성 |
+| 10 | 2026-10-06 | **1-5 `carriers` 완료**: 6칼럼(`carrier_id` PK·`carrier_name`·`aliases`·`sort_order`·`is_active`·`created_at`), RLS 켜짐, 0행 확인. 다음 1-6 `plans_settop` SQL 작성 |
