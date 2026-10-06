@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<link rel="stylesheet" href="Styles.css?v=20261006c">
+<link rel="stylesheet" href="Styles.css?v=20261006d">
 </head>
 <body>
 <div class="wrap">
@@ -238,7 +238,7 @@
             </div>
           </div>
           <div class="reco-section-title">1. 인터넷 + TV</div>
-          <div class="reco-controls">
+          <div class="reco-controls cols-5">
             <div class="control-group">
               <label class="group-label">속도</label>
               <div class="seg" id="reco-seg-speed">
@@ -282,7 +282,7 @@
             <div id="reco-extra-tv-list" class="extra-tv-col"></div>
           </div>
 
-          <div id="reco-carrier-cards" class="reco-cards">
+          <div id="reco-carrier-cards" class="reco-cards cols-5">
             <div class="reflected-empty">상품 데이터 로딩 중입니다.</div>
           </div>
 
@@ -532,10 +532,13 @@
 
 <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
-<script src="config.js?v=20261002b"></script>
-<script src="Calculator.js?v=20260930h"></script>
-<script src="Supabaseservice.js?v=20261006a"></script>
+<script src="config.js?v=20261006a"></script>
+<script src="Calculator.js?v=20261006a"></script>
+<script src="Supabaseservice.js?v=20261006b"></script>
 <script>
+// 인터넷/TV 통신사 열 목록: 새 화면은 SKY 포함 5개(CARRIERS_ALL). config.js 가 예전 파일이면 기존 4개로 동작합니다.
+const HOME_CARRIERS = (typeof CARRIERS_ALL !== 'undefined') ? CARRIERS_ALL : ((typeof CARRIERS !== 'undefined') ? CARRIERS : []);
+
 // 외부 파일 로드 점검: 파일 누락/내용 뒤바뀜(예: JS 자리에 CSS가 들어간 경우) 시 화면 상단에 경고 표시
 (function checkModules(){
   var missing = [];
@@ -714,7 +717,7 @@ function renderRecoCards(){
   const speedNum = Number(recoState.speed);
   const tvTier = recoState.tv;
 
-  container.innerHTML = CARRIERS.map(c => {
+  container.innerHTML = HOME_CARRIERS.map(c => {
     if (excluded.includes(c)) {
       return `
         <div class="reco-product-card reco-product-card-disabled">
@@ -1410,6 +1413,7 @@ function renderAccordionItem(opt, lines, isMax, keyPrefix){
 function computeComboOptionsFor(carrierKey, lines, speedNum){
   if (carrierKey === 'kt') return computeKTOptions(lines, speedNum, state.tcDistMode);
   if (carrierKey === 'lg') return computeLGOptions(lines, speedNum);
+  if (carrierKey === 'sky') return computeSkyOptions();     // SKY : 휴대폰 결합할인 계산 안 함
   return computeSKOptions(lines, speedNum, carrierKey);
 }
 
@@ -1430,9 +1434,11 @@ function buildComboCardForProposal(item){
   const maxKey = maxTotal !== null ? (availOptions.find(o => o.total === maxTotal) || {}).key : null;
   const specText = `${item.internetLabel}${item.tvTier !== 'none' ? ' + TV' : ' 단독'}`;
 
-  const body = lines.length
-    ? options.map(opt => renderAccordionItem(opt, lines, opt.key === maxKey, item.id + '-')).join('')
-    : `<div class="proposal-col-empty">제안상품에 담긴 ${MOBILE_GROUP_MAP[item.carrierKey]} 유심 회선이 없습니다.</div>`;
+  const body = item.carrierKey === 'sky'
+    ? `<div class="proposal-col-empty">SKY는 휴대폰 결합할인을 계산하지 않습니다.</div>`
+    : lines.length
+      ? options.map(opt => renderAccordionItem(opt, lines, opt.key === maxKey, item.id + '-')).join('')
+      : `<div class="proposal-col-empty">제안상품에 담긴 ${MOBILE_GROUP_MAP[item.carrierKey]} 유심 회선이 없습니다.</div>`;
 
   return `
     <div class="fam-accordion-card">
@@ -1455,7 +1461,7 @@ function renderFamilyDiscountAccordion(){
   if (!homeItems.length) {
     html = `<div class="reflected-empty">제안상품에 인터넷/TV 상품이 담기면 해당 상품 기준으로 결합할인이 계산됩니다.</div>`;
   } else {
-    const colsHtml = CARRIERS.map(c => {
+    const colsHtml = HOME_CARRIERS.map(c => {
       const items = homeItems.filter(p => p.carrierKey === c);
       return `
         <div class="fam-col-stack">
@@ -1470,11 +1476,12 @@ function renderFamilyDiscountAccordion(){
     }).join('');
 
     html = `
-      <div class="fam-accordion-grid">${colsHtml}</div>
+      <div class="fam-accordion-grid cols-5">${colsHtml}</div>
       <div class="fam-table-note">
         · [제안상품]에 담긴 인터넷/TV 상품과 유심 회선을 기준으로 통신사별로 계산됩니다.
         <br>· 인터넷 속도는 각 제안상품에 반영된 속도를 그대로 사용합니다.
         <br>· SK브로드밴드/SK텔레콤은 동일한 SK 모바일 회선을 기준으로 계산됩니다(실제로는 인터넷을 SK브로드밴드로 가입할 때만 적용).
+        <br>· SKY는 휴대폰 결합할인을 계산하지 않습니다.
       </div>
     `;
   }
@@ -1689,7 +1696,7 @@ function renderProposalLists(){
   const homeItems = reflectedProducts.filter(p => p.type === 'home');
 
   homeContainer.innerHTML = homeItems.length
-    ? `<div class="proposal-carrier-grid">${CARRIERS.map(c => {
+    ? `<div class="proposal-carrier-grid cols-5">${HOME_CARRIERS.map(c => {
         const items = homeItems.filter(p => p.carrierKey === c);
         return `
           <div class="reco-product-card">
@@ -1755,6 +1762,14 @@ function fcRow(label, value, cls){
 }
 
 function buildFinalComboBlock(homeItem, usimItems){
+  if (homeItem && homeItem.carrierKey === 'sky') {
+    return `
+      <div class="fc-sec">
+        ${fcRow('가족 결합할인', '해당 없음', 'fc-strong')}
+        <div class="fc-note">SKY는 휴대폰 결합할인을 계산하지 않습니다.</div>
+      </div>
+    `;
+  }
   const combo = computeFinalCombo(homeItem, usimItems);
   if (!combo) {
     return `
