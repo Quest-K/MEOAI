@@ -3395,8 +3395,10 @@ function customerHomeLines(c){
       const tv = live.filter(i => kind(i) === 'tv').map(i => i.product_name).filter(Boolean);
       const carrier = (live.find(i => i.carrier) || {}).carrier || '';
       const body = [net.join(' + '), tv.join(' + ')].filter(Boolean).join(' / ');
-      const label = ct.label ? `[${ct.label}] ` : '';
-      const text = live.length ? (label + [carrier, body].filter(Boolean).join(' ')) : (label + '최종상품 없음');
+      const autoLabel = !ct.label || /인터넷(\+TV)?$/.test(ct.label) || ct.label === '상담 계약';   // 상담 저장이 자동으로 붙인 이름은 숨김
+      const label = autoLabel ? '' : `[${ct.label}] `;
+      const pn = ct.proposalCount || 0;
+      const text = live.length ? (label + [carrier, body].filter(Boolean).join(' ')) : (label + (pn ? `제안 ${pn}건 (최종상품 없음)` : '최종상품 없음'));
       const fee = live.length ? live.reduce((a, i) => a + (Number(i.monthly_fee) || 0), 0) : null;
       return { text, fee, gift: ct.gift_total, comm: ct.commission_total, final: live.length > 0 };
     });
@@ -3439,6 +3441,14 @@ async function loadListContracts(ids, reset){
       if (iRes.error) { console.warn('목록 계약상품 조회 실패', iRes.error.message); return; }
       (iRes.data || []).forEach(it => { (byCid[it.contract_id] = byCid[it.contract_id] || []).push(it); });
     }
+    // 최종상품이 없는 계약은 제안이 몇 건 있는지만 함께 읽어 둡니다.
+    const emptyIds = cts.filter(ct => !(byCid[ct.contract_id] || []).length).map(ct => ct.contract_id);
+    const pcount = {};
+    for (let i = 0; i < emptyIds.length; i += 150) {
+      const pRes = await sb.from('contract_proposals').select('contract_id').in('contract_id', emptyIds.slice(i, i + 150));
+      if (!pRes.error) (pRes.data || []).forEach(r => { pcount[r.contract_id] = (pcount[r.contract_id] || 0) + 1; });
+    }
+    cts.forEach(ct => { ct.proposalCount = pcount[ct.contract_id] || 0; });
     ids.forEach(id => { delete customerContractsMap[id]; });
     cts.forEach(ct => { (customerContractsMap[ct.customer_id] = customerContractsMap[ct.customer_id] || []).push({ contract: ct, items: byCid[ct.contract_id] || [] }); });
   } catch (e) { console.warn('목록 계약 조회 오류', e); }
