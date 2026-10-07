@@ -4977,6 +4977,7 @@ function renderContractCard(ct, all){
       ${linked ? `<span class="ct-link">↔ 연결: ${formatContractNo(linked.contract_id)}</span>` : ''}
       ${usimBack.length ? `<span class="ct-link">↔ 유심 ${usimBack.map(u => formatContractNo(u.contract_id)).join(', ')}</span>` : ''}
       ${headSum}
+      <button type="button" class="mini-btn" style="margin-left:auto;color:#c0392b;" title="잘못 만든 계약 삭제" onclick="event.stopPropagation();deleteContractUi(${cid}, this)">🗑 삭제</button>
     </div>
     <div class="ct-body">
     <div class="ct-status-row">
@@ -5023,7 +5024,7 @@ function renderContractCard(ct, all){
         ${ctMetaField(cid, '메모', 'memo', ct.memo, 'text', 'span-4')}
       </div>
       <div class="ct-edit-actions">
-        ${draft ? `<button type="button" class="danger-btn" onclick="deleteContractUi(${cid}, this)">계약 삭제</button>` : `<span class="cust-ov-sub">접수된 계약은 삭제할 수 없습니다. 접수 상태로 처리해 주세요.</span>`}
+        <button type="button" class="danger-btn" onclick="deleteContractUi(${cid}, this)" title="${draft ? '작성중 계약을 삭제합니다' : '잘못 만든 계약을 삭제합니다 (지급·환수 상태가 있으면 삭제되지 않습니다)'}">${draft ? '계약 삭제' : '계약 삭제 (접수 이후)'}</button>
         <button type="button" class="mini-btn mini-btn-primary" onclick="saveContractMetaUi(${cid}, this)">계약 정보 저장</button>
       </div>
     </details>
@@ -5201,10 +5202,23 @@ async function deleteItemUi(itemId, btn){
 }
 
 async function deleteContractUi(contractId, btn){
-  if (!confirm(`계약 ${formatContractNo(contractId)}과(와) 하위 상품을 삭제할까요? 되돌릴 수 없습니다.\n(이력은 공통 이력으로 남습니다)`)) return;
+  const ct = (detailBundle && detailBundle.contracts || []).find(x => x.contract_id === contractId) || {};
+  const draft = ct.contract_status === '작성중' && !ct.received_at;
+  const no = formatContractNo(contractId);
+  const linkedUsims = (detailBundle && detailBundle.contracts || []).filter(x => x.linked_contract_id === contractId);
+  const usimNote = linkedUsims.length ? `\n연결된 유심 계약(${linkedUsims.map(u => formatContractNo(u.contract_id)).join(', ')})은 남기고 연결만 풉니다.` : '';
+  if (draft) {
+    if (!confirm(`계약 ${no}과(와) 하위 상품을 삭제할까요? 되돌릴 수 없습니다.\n(이력은 공통 이력으로 남습니다)${usimNote}`)) return;
+  } else {
+    const hasMoney = ct.payout_status || ct.clawback_status;
+    if (hasMoney) { alert(`계약 ${no}은(는) 지급·환수 상태가 있어 삭제할 수 없습니다.\n(지급: ${ct.payout_status || '없음'} / 환수: ${ct.clawback_status || '없음'})\n잘못 만든 계약이면 먼저 지급·환수 상태를 정리하거나 계약취소로 처리해 주세요.`); return; }
+    const ans = prompt(`⚠ 접수 이후 계약 ${no}을(를) 삭제합니다. (상태: ${ct.contract_status || '-'})\n하위 상품·제안이 함께 지워지고 되돌릴 수 없습니다. 실적(유치 건수)에서도 빠집니다.${usimNote}\n(삭제 사실은 공통 이력에 남습니다)\n\n삭제하려면 "삭제"라고 입력해 주세요.`);
+    if (ans === null) return;
+    if (String(ans).trim() !== '삭제') { alert('"삭제"라고 정확히 입력하지 않아 취소했습니다.'); return; }
+  }
   setBtnLoading(btn, '삭제 중...');
   try {
-    const r = await deleteContract(contractId);
+    const r = await deleteContract(contractId, { force: !draft });
     if (!r.ok) { alert('삭제 실패: ' + r.error); return; }
     if (r.historyWarning) alert(r.historyWarning);
     if (detailHistoryFilter === contractId) detailHistoryFilter = 'all';
