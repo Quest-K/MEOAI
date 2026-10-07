@@ -1738,3 +1738,406 @@ async function loadPerformanceData(opts){
 }
 
 commissionMockInit();   // ?commMock=1 일 때만 동작
+
+
+// ============================================================
+// CS v2 개편 1단계 : 계약 중심 화면용 서비스 함수 (추가만 한 블록)
+// ------------------------------------------------------------
+//  - 기존 s6*/s7* 함수와 saveConsultSet 은 수정하지 않았습니다. 이 블록의 함수는 그것들을 불러다 씁니다.
+//  - 제안(상담 작업본)은 customers.consult_draft(jsonb)에 보관하고, [계약등록] 1회 = 제안 1건 → 계약 1건입니다.
+//  - "등록됨" 여부는 저장하지 않고 contract_items.detail.consultKey(제안 ID)로 계산합니다(findRegisteredByProposal).
+//  - 새 계약은 consult_snapshot 을 비워 둡니다. 옛 화면(s7LoadConsultTargets)이 새 계약을 '대표 계약'으로 오인하지 않게 하기 위함입니다.
+//  - 모든 함수는 예외를 던지지 않고 { ok, ..., error } 를 돌려줍니다.
+// ============================================================
+const V2_MONEY_COLS = S7_MEMO_MONEY.concat(['clawback_amount']);
+const V2_ITEM_FIELDS = [['carrier', '통신사'], ['product_name', '상품명'], ['monthly_fee', '월요금'], ['commission', '수수료']];
+const V2_META_FIELDS = [
+  ['label', '구분 이름'], ['contractor_name', '계약자'], ['contractor_relation', '계약자 관계'], ['payment_method', '납부 방법'],
+  ['address_zip', '우편번호'], ['address', '주소'], ['address_detail', '상세주소'], ['install_scheduled_at', '설치 예정일'],
+  ['external_ref', '외부 접수번호'], ['gift_total', '사은품 합계'], ['gift_card', '상품권'], ['gift_cash', '현금'], ['gift_extra', '추가지급'],
+  ['commission_total', '수수료 합계'], ['clawback_amount', '환수 금액'], ['clawback_reason', '환수 사유'], ['memo', '메모']
+];
+const V2_DATE_COLS = ['install_scheduled_at'];
+
+function v2Norm(col, v){
+  if (v === null || v === undefined) return null;
+  if (V2_MONEY_COLS.includes(col)) { const n = s6Int(v); return (n === null || Number.isNaN(n)) ? (n === null ? null : NaN) : n; }
+  if (V2_DATE_COLS.includes(col)) { const s = String(v).slice(0, 10); return s || null; }
+  const t = String(v).trim();
+  return t === '' ? null : t;
+}
+function v2Val(col, v){
+  if (v === null || v === undefined) return '(없음)';
+  if (V2_MONEY_COLS.includes(col)) return String(Math.round(Number(v))).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '원';
+  return `'${v}'`;
+}
+// before(현재 행)와 after(새 값, 일부 칼럼만 있어도 됨)를 비교해 달라진 칼럼만 돌려줍니다.
+//   → { note:'라벨 이전 → 이후 · …', cols:{col:새값}, before:{col:이전값} } / 숫자가 아니면 { error }
+function v2Diff(before, after, pairs){
+  const parts = [], cols = {}, prev = {};
+  for (const [col, label] of pairs) {
+    if (!after || !(col in after)) continue;
+    const b = v2Norm(col, after[col]);
+    if (typeof b === 'number' && Number.isNaN(b)) return { error: `숫자로 입력해 주세요: ${label}` };
+    const a = v2Norm(col, before ? before[col] : null);
+    if (a === b) continue;
+    parts.push(`${label} ${v2Val(col, a)} → ${v2Val(col, b)}`);
+    cols[col] = b; prev[col] = (before && before[col] !== undefined) ? before[col] : null;
+  }
+  return { note: parts.join(' · '), cols, before: prev };
+}
+function v2IsMissingColumn(err){
+  if (!err) return false;
+  const m = String(err.message || '');
+  return err.code === '42703' || (/consult_draft/.test(m) && /(column|schema cache)/i.test(m));
+}
+function v2GroupOfCarrier(name){
+  const s = String(name || '').toUpperCase();
+  if (/^KT/.test(s) || s === 'KT') return 'KT';
+  if (/^LG/.test(s)) return 'LG';
+  if (/^SK/.test(s) && !/SKY/.test(s)) return 'SK';
+  return null;
+}
+// 인터넷·TV 계약의 통신사 그룹(KT/LG/SK/SKY) : 상품 detail.carrierKey → MOBILE_GROUP_MAP. 알 수 없으면 null.
+async function v2HomeGroupOf(homeContractId){
+  const r = await sb.from('contract_items').select('detail').eq('contract_id', homeContractId);
+  if (r.error) return { ok: false, error: '인터넷·TV 계약 상품을 읽지 못했습니다: ' + r.error.message };
+  for (const it of (r.data || [])) {
+    const k = it.detail && typeof it.detail === 'object' ? it.detail.carrierKey : null;
+    if (k && MOBILE_GROUP_MAP[k]) return { ok: true, group: MOBILE_GROUP_MAP[k] };
+  }
+  return { ok: true, group: null };
+}
+// R6 : 유심 통신사와 인터넷·TV 통신사 그룹이 다르면 오류 문구, 모르면(또는 KT/LG/SK 외 유심이면) 통과.
+async function v2CheckLinkGroup(usimCarrier, homeContractId){
+  const ug = v2GroupOfCarrier(usimCarrier);
+  if (!ug) return { ok: true };
+  const hg = await v2HomeGroupOf(homeContractId);
+  if (!hg.ok) return hg;
+  if (hg.group && hg.group !== ug) return s6Err(`통신사 그룹이 달라 연결할 수 없습니다 (유심 ${ug} / 인터넷·TV ${hg.group})`);
+  return { ok: true };
+}
+
+// 제안 ID(consultKey)별로 이미 등록된 계약 ID 목록. 접수취소된 상품은 등록으로 세지 않습니다.
+//   → { ok, byProposal:{ [consultKey]: [contractId, ...] } }
+async function findRegisteredByProposal(customerId){
+  try {
+    const le = s6LoginErr(); if (le) return s6Err(le);
+    const cid = Number(customerId);
+    if (!Number.isFinite(cid)) return s6Err('고객 ID가 올바르지 않습니다.');
+    const r = await sb.from('contract_items').select('contract_id,item_id,progress_status,detail').eq('customer_id', cid);
+    if (r.error) return s6Err('등록 내역을 읽지 못했습니다: ' + r.error.message);
+    const map = {};
+    (r.data || []).forEach(it => {
+      if (it.progress_status === '접수취소') return;
+      const k = s7ItemKey(it); if (!k) return;
+      (map[k] = map[k] || []);
+      if (!map[k].includes(it.contract_id)) map[k].push(it.contract_id);
+    });
+    Object.keys(map).forEach(k => map[k].sort((a, b) => a - b));
+    return { ok: true, byProposal: map };
+  } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
+}
+
+// [계약등록] : 제안 1건 → 계약 1건(작성중). 중간에 실패하면 만든 계약을 지웁니다.
+//   opts: { customerId, proposal, contractType('home'|'usim', 생략 시 proposal.type), label, address, addressDetail, addressZip,
+//           linkedContractId(유심, 선택), allowDuplicate, helpers }
+//   이미 등록된 제안이면 { ok:false, duplicate:true, existing:[계약ID...] } → 화면이 확인 후 allowDuplicate+label 로 다시 호출(R3)
+async function registerContract(opts){
+  const o = opts || {};
+  const out = { ok: false, warnings: [] };
+  const fail = msg => { out.ok = false; out.error = msg; return out; };
+  let createdId = null;
+  const rollback = async () => {
+    if (createdId === null) return '';
+    const d = await deleteContract(createdId);
+    out.rolledBack = !!d.ok;
+    return d.ok ? '' : ` (만들어진 계약 ${formatContractNo(createdId)}을(를) 지우지 못했습니다. 직접 삭제해 주세요: ${d.error})`;
+  };
+  try {
+    const le = s6LoginErr(); if (le) return fail(le);
+    const customerId = Number(o.customerId);
+    if (!Number.isFinite(customerId)) return fail('고객 ID가 올바르지 않습니다.');
+    const p = o.proposal;
+    if (!p || !p.id) return fail('등록할 제안이 없습니다.');
+    if (s7IsSyncedLine(p)) return fail('고객 본인 회선(연동 행)은 계약으로 등록할 수 없습니다.');
+    const type = o.contractType || p.type;
+    if (type !== 'home' && type !== 'usim') return fail('인터넷·TV 또는 유심 제안만 계약으로 등록할 수 있습니다.');
+    if (p.type !== type) return fail('제안 종류와 계약 구분이 다릅니다.');
+
+    const reg = await findRegisteredByProposal(customerId);
+    if (!reg.ok) return fail(reg.error);
+    const existing = reg.byProposal[String(p.id)] || [];
+    const label0 = (o.label || '').trim();
+    if (existing.length && !o.allowDuplicate) { out.duplicate = true; out.existing = existing; return fail('이미 등록한 제안입니다. 한 번 더 등록하려면 확인이 필요합니다.'); }
+    if (existing.length && !label0) return fail('같은 제안을 다시 등록할 때는 구분 이름(예: A집, B집)을 입력해 주세요.');
+
+    const plan = type === 'home' ? s7HomeContract(p, o.helpers, out.warnings) : s7UsimContract(p, o.helpers);
+    const label = label0 || plan.label || null;
+    const linked = (type === 'usim' && o.linkedContractId) ? Number(o.linkedContractId) : null;
+    if (type === 'usim' && linked) {
+      const lk = await v2CheckLinkGroup(p.carrier, linked);
+      if (!lk.ok) return fail(lk.error);
+    }
+
+    const cr = await createContract({ customerId, contractType: type, label, linkedContractId: linked });
+    if (!cr.ok) return fail(cr.error);
+    const contract = cr.contract; createdId = contract.contract_id; out.contract = contract;
+
+    const meta = Object.assign(s7NonNull(plan.meta), {});
+    if (type === 'home') {
+      if (o.address != null) meta.address = o.address;
+      if (o.addressDetail != null) meta.address_detail = o.addressDetail;
+      if (o.addressZip != null) meta.address_zip = o.addressZip;
+    }
+    const sm = await saveContractMeta(createdId, meta);
+    if (!sm.ok) return fail('계약 정보 저장에 실패했습니다: ' + sm.error + await rollback());
+
+    const itemRows = plan.items.map(it => ({
+      contract_id: createdId, customer_id: customerId, product_type: it.productType, carrier: it.carrier || null, product_name: it.productName || null,
+      monthly_fee: s6Int(it.monthlyFee), commission: s6Int(it.commission), progress_status: '설치대기', source: 'app', detail: it.detail || null
+    }));
+    if (itemRows.some(r => Number.isNaN(r.monthly_fee) || Number.isNaN(r.commission))) return fail('상품 금액이 숫자가 아닙니다.' + await rollback());
+    const ins = await sb.from('contract_items').insert(itemRows).select('*');
+    if (ins.error) return fail('상품 저장에 실패했습니다: ' + ins.error.message + await rollback());
+    out.items = ins.data || [];
+    const h = await s6WriteHistory({ customer_id: customerId, contract_id: createdId, target_type: 'contract', axis: 'status', from_value: '작성중', to_value: '작성중', note: '계약 등록으로 상품 추가' });
+    if (!h.ok) return fail('이력 저장에 실패해 계약을 만들지 않았습니다: ' + h.error + await rollback());
+
+    const pr = s7ProposalRow(p, true, o.helpers);
+    const pins = await sb.from('contract_proposals').insert({
+      contract_id: createdId, customer_id: customerId, product_type: pr.productType, carrier: pr.carrier || null, product_name: pr.productName || null,
+      monthly_fee: s6Int(pr.monthlyFee), gift_amount: s6Int(pr.giftAmount), commission: s6Int(pr.commission), source: 'app',
+      detail: { consultKey: pr.matchKey, isFinal: true, product: pr.detail || null }
+    }).select('proposal_id');
+    if (pins.error) return fail('제안 보관에 실패했습니다: ' + pins.error.message + await rollback());
+    out.proposalId = pins.data && pins.data[0] ? pins.data[0].proposal_id : null;
+
+    // R11 : 첫 계약등록 시 상담대기 → 상담중 (실패해도 등록은 유지)
+    const cu = await sb.from('customers').select('customer_id,customer_status').eq('customer_id', customerId).limit(1);
+    const cur = (cu.data || [])[0];
+    if (!cu.error && cur && cur.customer_status === '상담대기') {
+      const sc = await changeStatus({ target: 'customer', id: customerId, axis: 'status', to: '상담중', note: '계약 등록' });
+      out.statusChange = sc.ok ? { from: '상담대기', to: '상담중' } : { error: sc.error };
+      if (!sc.ok) out.warnings.push('고객 상태를 상담중으로 바꾸지 못했습니다: ' + sc.error);
+    }
+    out.ok = true;
+    return out;
+  } catch (e) { return fail((e && e.message ? e.message : String(e)) + await rollback()); }
+}
+
+// 같은 고객의 인터넷·TV 계약 중 유심을 연결할 수 있는 후보(R6). usimCarrier 를 주면 같은 통신사 그룹만.
+//   → { ok, candidates:[{ contractId, label, group, status }] }
+async function findHomeCandidatesForUsim(customerId, usimCarrier){
+  try {
+    const cid = Number(customerId);
+    if (!Number.isFinite(cid)) return s6Err('고객 ID가 올바르지 않습니다.');
+    const cs = await sb.from('contracts').select('contract_id,label,contract_status,contract_type').eq('customer_id', cid).eq('contract_type', 'home');
+    if (cs.error) return s6Err('계약을 읽지 못했습니다: ' + cs.error.message);
+    const its = await sb.from('contract_items').select('contract_id,progress_status,detail').eq('customer_id', cid);
+    if (its.error) return s6Err('상품을 읽지 못했습니다: ' + its.error.message);
+    const ug = v2GroupOfCarrier(usimCarrier);
+    const candidates = [];
+    (cs.data || []).forEach(c => {
+      const mine = (its.data || []).filter(i => i.contract_id === c.contract_id);
+      if (mine.length && mine.every(i => i.progress_status === '접수취소')) return;
+      let group = null;
+      mine.forEach(i => { const k = i.detail && i.detail.carrierKey; if (!group && k && MOBILE_GROUP_MAP[k]) group = MOBILE_GROUP_MAP[k]; });
+      if (ug && group && group !== ug) return;
+      candidates.push({ contractId: c.contract_id, label: c.label || '', group, status: c.contract_status });
+    });
+    return { ok: true, candidates };
+  } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
+}
+
+// 유심 계약 ↔ 인터넷·TV 계약 연결 변경. homeContractId 가 null 이면 연결 해제.
+//   바뀌면 변경 메모를 먼저 남기고, 값 저장이 실패하면 메모를 지웁니다.
+async function linkUsimContract(usimContractId, homeContractId, opts){
+  try {
+    const le = s6LoginErr(); if (le) return s6Err(le);
+    const uid = Number(usimContractId);
+    if (!Number.isFinite(uid)) return s6Err('유심 계약 ID가 올바르지 않습니다.');
+    const hid = (homeContractId === null || homeContractId === undefined || homeContractId === '') ? null : Number(homeContractId);
+    if (hid !== null && !Number.isFinite(hid)) return s6Err('인터넷·TV 계약 ID가 올바르지 않습니다.');
+    const ur = await sb.from('contracts').select('contract_id,customer_id,contract_type,linked_contract_id').eq('contract_id', uid).limit(1);
+    if (ur.error) return s6Err('유심 계약을 읽지 못했습니다: ' + ur.error.message);
+    const usim = (ur.data || [])[0];
+    if (!usim) return s6Err('유심 계약을 찾을 수 없습니다.');
+    if (usim.contract_type !== 'usim') return s6Err('유심 계약만 연결할 수 있습니다.');
+    const before = usim.linked_contract_id === undefined ? null : usim.linked_contract_id;
+    if (before === hid) return { ok: true, changed: false };
+    if (hid !== null) {
+      const hr = await sb.from('contracts').select('contract_id,customer_id,contract_type').eq('contract_id', hid).limit(1);
+      if (hr.error) return s6Err('인터넷·TV 계약을 읽지 못했습니다: ' + hr.error.message);
+      const home = (hr.data || [])[0];
+      if (!home || home.contract_type !== 'home') return s6Err('인터넷·TV 계약에만 연결할 수 있습니다.');
+      if (home.customer_id !== usim.customer_id) return s6Err('같은 고객의 계약에만 연결할 수 있습니다.');
+      const ui = await sb.from('contract_items').select('carrier').eq('contract_id', uid).limit(1);
+      if (ui.error) return s6Err('유심 상품을 읽지 못했습니다: ' + ui.error.message);
+      const lk = await v2CheckLinkGroup(((ui.data || [])[0] || {}).carrier, hid);
+      if (!lk.ok) return s6Err(lk.error);
+    }
+    const fmt = id => id === null ? '(없음)' : formatContractNo(id);
+    const h = await s7WriteChangeMemo({ customerId: usim.customer_id, contractId: uid, note: `유심 연결 변경: ${fmt(before)} → ${fmt(hid)}` + ((opts && opts.reason) ? ` [사유: ${opts.reason}]` : '') });
+    if (!h.ok) return s6Err('변경 이력을 저장하지 못해 연결을 바꾸지 않았습니다: ' + h.error);
+    const up = await sb.from('contracts').update({ linked_contract_id: hid }).eq('contract_id', uid).select('contract_id');
+    if (up.error || !up.data || !up.data.length) {
+      await s7DropMemo(h.historyId);
+      return s6Err('연결 저장에 실패했습니다: ' + (up.error ? up.error.message : '계약을 찾을 수 없습니다.'));
+    }
+    return { ok: true, changed: true, memoId: h.historyId };
+  } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
+}
+
+// 계약 수정(R7·R8·R9).
+//   opts: { contractId, itemEdits:{ [itemId]:{carrier,product_name,monthly_fee,commission} }, metaEdits:{...}, reason, confirmPayout }
+//   단계: draft(작성중·접수 시각 없음) → 메모·사유 불필요 / pre(접수대기·접수보류) → 메모 기록, 사유는 선택 / post(그 외) → 사유 필수
+//   지급 상태(payout_status)가 있으면 { ok:false, needsConfirm:true, payoutWarning } 로 먼저 확인받습니다. 사은품·수수료는 자동 재계산하지 않습니다.
+async function editContractWithReason(opts){
+  const o = opts || {};
+  const memoIds = [];
+  const applied = { items: [], meta: null };
+  const undo = async () => {
+    for (const a of applied.items) await saveContractItem(a.itemId, a.before);
+    if (applied.meta) await saveContractMeta(o.contractId, applied.meta);
+    for (const m of memoIds) await s7DropMemo(m);
+  };
+  try {
+    const le = s6LoginErr(); if (le) return s6Err(le);
+    const cid = Number(o.contractId);
+    if (!Number.isFinite(cid)) return s6Err('계약 ID가 올바르지 않습니다.');
+    const cr = await sb.from('contracts').select('*').eq('contract_id', cid).limit(1);
+    if (cr.error) return s6Err('계약을 읽지 못했습니다: ' + cr.error.message);
+    const c = (cr.data || [])[0];
+    if (!c) return s6Err('계약을 찾을 수 없습니다.');
+    const stage = s6IsDraft(c) ? 'draft' : (s7IsEditable(c) ? 'pre' : 'post');
+
+    const itemEdits = o.itemEdits || {};
+    const itemIds = Object.keys(itemEdits).map(Number);
+    let itemRows = [];
+    if (itemIds.length) {
+      const ir = await sb.from('contract_items').select('*').eq('contract_id', cid).in('item_id', itemIds);
+      if (ir.error) return s6Err('상품을 읽지 못했습니다: ' + ir.error.message);
+      itemRows = ir.data || [];
+      if (itemRows.length !== itemIds.length) return s6Err('이 계약에 속하지 않는 상품이 있습니다.');
+    }
+    const itemDiffs = [];
+    for (const row of itemRows) {
+      const d = v2Diff(row, itemEdits[row.item_id], V2_ITEM_FIELDS);
+      if (d.error) return s6Err(d.error);
+      if (d.note) itemDiffs.push({ row, d });
+    }
+    let metaDiff = null;
+    if (o.metaEdits) {
+      metaDiff = v2Diff(c, o.metaEdits, V2_META_FIELDS);
+      if (metaDiff.error) return s6Err(metaDiff.error);
+      if (!metaDiff.note) metaDiff = null;
+    }
+    if (!itemDiffs.length && !metaDiff) return { ok: true, changed: false, stage };
+
+    const reason = (o.reason || '').trim();
+    if (stage === 'post' && !reason) return s6Err('접수 이후 계약을 수정하려면 사유를 입력해야 합니다.');
+
+    const payoutWarning = c.payout_status ? `지급 상태가 '${c.payout_status}'인 계약입니다. 수정해도 사은품·수수료는 자동으로 다시 계산되지 않습니다.` : null;
+    if (payoutWarning && !o.confirmPayout) return { ok: false, needsConfirm: true, payoutWarning, stage, error: payoutWarning };
+
+    const suffix = (payoutWarning ? ` [지급 상태: ${c.payout_status}]` : '');
+    const prefix = reason ? `[사유: ${reason}] ` : '';
+    if (stage !== 'draft') {
+      for (const { row, d } of itemDiffs) {
+        const h = await s7WriteChangeMemo({ customerId: c.customer_id, contractId: cid, itemId: row.item_id, note: `${prefix}계약 수정으로 상품 변경: ${d.note}${suffix}` });
+        if (!h.ok) { await undo(); return s6Err('변경 이력을 저장하지 못해 수정하지 않았습니다: ' + h.error); }
+        memoIds.push(h.historyId);
+      }
+      if (metaDiff) {
+        const h = await s7WriteChangeMemo({ customerId: c.customer_id, contractId: cid, note: `${prefix}계약 수정으로 계약 정보 변경: ${metaDiff.note}${suffix}` });
+        if (!h.ok) { await undo(); return s6Err('변경 이력을 저장하지 못해 수정하지 않았습니다: ' + h.error); }
+        memoIds.push(h.historyId);
+      }
+    }
+    for (const { row, d } of itemDiffs) {
+      const r = await saveContractItem(row.item_id, d.cols);
+      if (!r.ok) { await undo(); return s6Err(`상품 ${formatItemNo(row.item_id)} 저장에 실패해 되돌렸습니다: ${r.error}`); }
+      applied.items.push({ itemId: row.item_id, before: d.before });
+    }
+    if (metaDiff) {
+      const r = await saveContractMeta(cid, metaDiff.cols);
+      if (!r.ok) { await undo(); return s6Err('계약 정보 저장에 실패해 되돌렸습니다: ' + r.error); }
+      applied.meta = metaDiff.before;
+    }
+    const productChanged = itemDiffs.some(x => ['carrier', 'product_name', 'monthly_fee'].some(k => k in x.d.cols));
+    return { ok: true, changed: true, stage, payoutWarning, memoIds, recalcHint: !!(payoutWarning && productChanged) };
+  } catch (e) { await undo(); return s6Err(e && e.message ? e.message : String(e)); }
+}
+
+// 상담 작업본(제안 목록 등) : customers.consult_draft(jsonb). 칼럼이 없으면 noColumn:true 로 알려 화면이 브라우저 저장으로 대체하게 합니다.
+async function loadConsultDraft(customerId){
+  try {
+    const cid = Number(customerId);
+    if (!Number.isFinite(cid)) return s6Err('고객 ID가 올바르지 않습니다.');
+    const r = await sb.from('customers').select('customer_id,consult_draft').eq('customer_id', cid).limit(1);
+    if (r.error) return v2IsMissingColumn(r.error) ? { ok: false, noColumn: true, error: 'consult_draft 칼럼이 없습니다. SQL 을 먼저 실행해 주세요.' } : s6Err('작업본을 읽지 못했습니다: ' + r.error.message);
+    const row = (r.data || [])[0];
+    if (!row) return s6Err('고객을 찾을 수 없습니다.');
+    return { ok: true, draft: row.consult_draft || null };
+  } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
+}
+async function saveConsultDraft(customerId, draft){
+  try {
+    const le = s6LoginErr(); if (le) return s6Err(le);
+    const cid = Number(customerId);
+    if (!Number.isFinite(cid)) return s6Err('고객 ID가 올바르지 않습니다.');
+    const body = Object.assign({}, draft || {}, { v: 1, savedAt: new Date().toISOString() });
+    if (JSON.stringify(body).length > 2000000) return s6Err('상담 작업본이 너무 큽니다(약 2MB 초과).');
+    const r = await sb.from('customers').update({ consult_draft: body }).eq('customer_id', cid).select('customer_id');
+    if (r.error) return v2IsMissingColumn(r.error) ? { ok: false, noColumn: true, error: 'consult_draft 칼럼이 없습니다. SQL 을 먼저 실행해 주세요.' } : s6Err('작업본 저장에 실패했습니다: ' + r.error.message);
+    if (!r.data || !r.data.length) return s6Err('고객을 찾을 수 없습니다.');
+    return { ok: true, savedAt: body.savedAt };
+  } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
+}
+
+// 계약 1건 단위 결합할인(R12) : 인터넷·TV 계약 + 그 계약에 연결된 유심 계약들로 계산합니다. 저장은 하지 않습니다.
+//   → { ok, homeContractId, carrierKey, lgVariant, speedNum, group, lines, excludedLines, options, best }
+async function computeContractCombo(homeContractId, tcDistMode){
+  try {
+    const hid = Number(homeContractId);
+    if (!Number.isFinite(hid)) return s6Err('계약 ID가 올바르지 않습니다.');
+    const hc = await sb.from('contracts').select('contract_id,contract_type').eq('contract_id', hid).limit(1);
+    if (hc.error) return s6Err('계약을 읽지 못했습니다: ' + hc.error.message);
+    const home = (hc.data || [])[0];
+    if (!home) return s6Err('계약을 찾을 수 없습니다.');
+    if (home.contract_type !== 'home') return s6Err('인터넷·TV 계약만 계산할 수 있습니다.');
+    const hi = await sb.from('contract_items').select('item_id,product_type,progress_status,detail').eq('contract_id', hid);
+    if (hi.error) return s6Err('상품을 읽지 못했습니다: ' + hi.error.message);
+    const internet = (hi.data || []).find(i => i.product_type === 'internet' && i.progress_status !== '접수취소');
+    if (!internet) return s6Err('인터넷 상품이 없어 결합할인을 계산할 수 없습니다.');
+    const d = internet.detail || {};
+    const speedNum = Number(d.speedNum);
+    if (!Number.isFinite(speedNum) || speedNum <= 0) return s6Err('인터넷 속도 정보가 없어 결합할인을 계산할 수 없습니다.');
+    const carrierKey = d.carrierKey || null;
+    const group = carrierKey ? (MOBILE_GROUP_MAP[carrierKey] || null) : null;
+
+    const uc = await sb.from('contracts').select('contract_id').eq('linked_contract_id', hid).eq('contract_type', 'usim');
+    if (uc.error) return s6Err('연결된 유심 계약을 읽지 못했습니다: ' + uc.error.message);
+    const uids = (uc.data || []).map(r => r.contract_id);
+    let usimItems = [];
+    if (uids.length) {
+      const ui = await sb.from('contract_items').select('item_id,contract_id,carrier,product_name,monthly_fee,progress_status,detail').in('contract_id', uids);
+      if (ui.error) return s6Err('유심 상품을 읽지 못했습니다: ' + ui.error.message);
+      usimItems = (ui.data || []).filter(i => i.progress_status !== '접수취소');
+    }
+    const lines = [], excludedLines = [];
+    usimItems.forEach((i, idx) => {
+      const line = { carrier: i.carrier, fee: Number(i.monthly_fee) || 0, teen: !!(i.detail && i.detail.teen), idx, planName: i.product_name, contractId: i.contract_id, itemId: i.item_id };
+      (group && v2GroupOfCarrier(i.carrier) === group ? lines : excludedLines).push(line);
+    });
+
+    let options = [];
+    if (carrierKey === 'kt' && typeof computeKTOptions === 'function') options = computeKTOptions(lines, speedNum, tcDistMode || 'equal');
+    else if (carrierKey === 'lg' && typeof computeLGOptions === 'function') options = computeLGOptions(lines, speedNum);
+    else if (carrierKey === 'sky' && typeof computeSkyOptions === 'function') options = computeSkyOptions();
+    else if ((carrierKey === 'skb' || carrierKey === 'skt') && typeof computeSKOptions === 'function') options = computeSKOptions(lines, speedNum, carrierKey);
+    const best = (options || []).filter(x => x && x.avail).reduce((b, x) => (!b || (Number(x.total) || 0) > (Number(b.total) || 0)) ? x : b, null);
+    return { ok: true, homeContractId: hid, carrierKey, lgVariant: d.lgVariant || null, speedNum, group, lines, excludedLines, options: options || [], best };
+  } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
+}
