@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<link rel="stylesheet" href="Styles.css?v=20261007a">
+<link rel="stylesheet" href="Styles.css?v=20261007c">
 </head>
 <body>
 <div class="wrap">
@@ -20,6 +20,7 @@
     <button class="tab-btn" data-tab="customers" onclick="switchTab('customers')">고객조회</button>
     <button class="tab-btn active" data-tab="cs" onclick="switchTab('cs')">고객상담</button>
     <button class="tab-btn" data-tab="customer-detail" onclick="switchTab('customer-detail')">고객상세</button>
+    <button class="tab-btn" data-tab="notice" onclick="switchTab('notice')">필수안내</button>
     <div id="auth-box" class="auth-box">
       <button class="login-trigger-btn" onclick="openLoginModal()">🔐 관리자 로그인</button>
     </div>
@@ -105,7 +106,8 @@
             <div class="cs-inline-form-group">
               <label>연락처 <span class="req-mark">*</span></label>
               <input class="cs-w-contact" type="text" id="cust-contact" placeholder="010-0000-0000" inputmode="numeric" value="010"
-                     oninput="formatContactInput(this)" onblur="updateCsSummaryPanel()">
+                     oninput="formatContactInput(this); hideDupHint()" onblur="updateCsSummaryPanel(); checkDuplicateContact()">
+              <div id="cust-dup-hint" class="cust-dup-hint" style="display:none;"></div>
             </div>
             <div class="cs-inline-form-group">
               <label>인입경로</label>
@@ -509,6 +511,128 @@
     </div>
   </div>
 
+  <!-- VIEW 4: 필수안내 (고객 동의 확인 + 전자 서명) -->
+  <div id="view-notice" class="view-container">
+    <div class="ntc-card">
+      <div class="eyebrow">TERMS &amp; AGREEMENT</div>
+      <h1 class="ntc-title">필수 안내 및 약관 동의</h1>
+      <p class="ntc-sub">가입 신청 전 필수 안내 사항을 확인하시고 동의를 진행해 주세요.</p>
+
+      <div class="ntc-container">
+        <label class="ntc-all-agree">
+          <input type="checkbox" id="ntc-agree-all" onchange="noticeToggleAll(this)">
+          <span>아래 필수 안내 및 약관 내용에 모두 동의합니다.</span>
+        </label>
+        <div class="ntc-box">
+          <p>⚠️ 1. 사은품 지급 및 환수 조건 안내</p>
+          <ul>
+            <li>지급된 사은품은 1년 유지 조건입니다. 정지, 해지, 명의변경 등 유지 안되시면 전액 환수됩니다.</li>
+            <li>동일 통신사로 사용중인 가족 명의의 인터넷, TV 회선도 1년 유지해주셔야 합니다.</li>
+          </ul>
+          <label class="ntc-item-agree">
+            <input type="checkbox" class="ntc-sub-agree" onchange="noticeCheckAll()">
+            <span>[필수] 사은품 환수 조건 및 가족 명의 유지 규정에 동의합니다.</span>
+          </label>
+        </div>
+        <div class="ntc-box">
+          <p>💻 2. 회선 수 안내</p>
+          <ul>
+            <li>가정용 인터넷은 2대까지만 무료 접속 가능합니다.</li>
+            <li>3대 이상 동시 연결 시 부가서비스 가입 필요하며, 부가서비스는 통신사를 통해 문의 부탁드립니다.</li>
+          </ul>
+          <label class="ntc-item-agree">
+            <input type="checkbox" class="ntc-sub-agree" onchange="noticeCheckAll()">
+            <span>[필수] 가정용 인터넷 회선 수 제한 안내를 확인했습니다.</span>
+          </label>
+        </div>
+        <div class="ntc-box">
+          <p>🔄 3. 기존회선 해지 안내</p>
+          <ul>
+            <li>기존에 쓰시던 인터넷과 TV는 직접 해지해 주세요. 이중부과되는 요금은 도움 드릴 수 없습니다.</li>
+            <li>설치 후 기존 통신사로 해지 문의 부탁드립니다.</li>
+          </ul>
+          <label class="ntc-item-agree">
+            <input type="checkbox" class="ntc-sub-agree" onchange="noticeCheckAll()">
+            <span>[필수] 기존회선 직접 해지 안내에 동의합니다.</span>
+          </label>
+        </div>
+        <div class="ntc-box">
+          <p>🤝 4. 결합할인 안내</p>
+          <ul>
+            <li>결합할인은 인터넷 설치 후 고객센터로 문의해 주세요. 가족 결합 시 서류가 필요할 수 있습니다.</li>
+          </ul>
+          <label class="ntc-item-agree">
+            <input type="checkbox" class="ntc-sub-agree" onchange="noticeCheckAll()">
+            <span>[필수] 결합할인 신청 방법 안내를 확인했습니다.</span>
+          </label>
+        </div>
+        <div class="ntc-box">
+          <p>📅 5. 약정 안내</p>
+          <ul>
+            <li>가입하신 인터넷, TV 모두 3년 약정입니다. 약정 기간 내에 해지 시 통신사 위약금 청구 됩니다.</li>
+          </ul>
+          <label class="ntc-item-agree">
+            <input type="checkbox" class="ntc-sub-agree" onchange="noticeCheckAll()">
+            <span>[필수] 3년 약정 및 위약금 규정에 동의합니다.</span>
+          </label>
+        </div>
+        <div class="ntc-box">
+          <p>🛠️ 6. 설치비 안내</p>
+          <ul>
+            <li>인터넷, TV 설치는 최초 1회 발생합니다.</li>
+            <li><b>인터넷 단독:</b> 기본 36,000원 / 주말·공휴일·야간 설치 시 45,000원 청구</li>
+            <li><b>인터넷+TV:</b> 기본 56,200원 / 주말·공휴일·야간 설치 시 71,250원 청구</li>
+          </ul>
+          <label class="ntc-item-agree">
+            <input type="checkbox" class="ntc-sub-agree" onchange="noticeCheckAll()">
+            <span>[필수] 설치비 부과 기준 및 요금 안내를 확인했습니다.</span>
+          </label>
+        </div>
+        <div class="ntc-box">
+          <p>🔒 7. 개인정보 수집 및 이용 동의</p>
+          <ul>
+            <li><b>수집·이용 목적:</b> 인터넷 및 TV 가입 신청 접수, 본인 확인, 개통 처리, 요금 청구 및 사은품 지급</li>
+            <li><b>수집 항목:</b> 성명, 주민등록번호, 연락처, 설치 주소, 사은품 계좌 정보, 요금 납부 정보</li>
+            <li><b>보유 및 이용 기간:</b> <b>가입일(개통일)로부터 5년</b> (관계 법령 보존 기간 준수)</li>
+            <li><b>동의 거부 권리:</b> 거부 시 가입 신청 및 사은품 지급이 제한됩니다.</li>
+          </ul>
+          <label class="ntc-item-agree">
+            <input type="checkbox" class="ntc-sub-agree" onchange="noticeCheckAll()">
+            <span>[필수] 개인정보 수집 및 이용에 동의합니다.</span>
+          </label>
+        </div>
+        <div class="ntc-box">
+          <p>🤝 8. 개인정보 제3자 제공 동의</p>
+          <ul>
+            <li><b>제공 받는 자:</b> 가입 요청 통신사(KT, SKB, LGU+ 등) 및 가입 대행 협력사</li>
+            <li><b>제공 목적:</b> 적격 여부 확인, 본인 인증, 회선 개통, 요금 수납 및 사은품 지급 처리</li>
+            <li><b>제공 항목:</b> 성명, 주민등록번호, 연락처, 설치 주소, 납부 및 사은품 계좌 정보</li>
+            <li><b>보유 및 이용 기간:</b> <b>개통 완료 후 6개월</b> 또는 법정 의무 보유 기간까지</li>
+          </ul>
+          <label class="ntc-item-agree">
+            <input type="checkbox" class="ntc-sub-agree" onchange="noticeCheckAll()">
+            <span>[필수] 개인정보 제3자 제공에 동의합니다.</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="ntc-sign">
+        <label class="ntc-sign-label">전자 서명</label>
+        <p class="ntc-sign-desc">아래 빈칸에 마우스 또는 손가락을 사용하여 서명을 입력해 주세요.</p>
+        <div class="ntc-pad-wrap">
+          <canvas id="ntc-signature-pad"></canvas>
+          <div class="ntc-pad-actions">
+            <button type="button" class="ntc-btn-clear" id="ntc-clear-sig">서명 지우기</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="ntc-submit">
+        <button type="button" class="ntc-action-btn" onclick="noticeSubmit()">동의 완료하기</button>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <div id="login-modal" class="modal-overlay">
@@ -692,6 +816,9 @@ function switchTab(tabId) {
     } else if (tabId === 'performance') {
       document.getElementById('view-performance').classList.add('active');
       loadPerformance();
+    } else if (tabId === 'notice') {
+      document.getElementById('view-notice').classList.add('active');
+      noticeResizeCanvas();
     }
   } catch (err) {
     console.error('switchTab render error:', tabId, err);
@@ -1669,6 +1796,79 @@ function buildConsultSummary(){
   return lines.join('\n');
 }
 
+// ===== 필수안내 : 약관 동의 체크 + 전자 서명 (모든 이름은 notice/ntc 접두사로 다른 코드와 분리) =====
+(function(){
+  const sig = { canvas: null, ctx: null, drawing: false, signed: false };
+  function subs(){ return document.querySelectorAll('.ntc-sub-agree'); }
+  window.noticeToggleAll = function(master){ subs().forEach(c => { c.checked = master.checked; }); };
+  window.noticeCheckAll = function(){
+    const master = document.getElementById('ntc-agree-all');
+    if (master) master.checked = Array.from(subs()).every(c => c.checked);
+  };
+  window.noticeResizeCanvas = function(){
+    const cv = sig.canvas || (sig.canvas = document.getElementById('ntc-signature-pad'));
+    if (!cv || !cv.offsetWidth) return;                         // 화면이 숨겨져 있으면 크기를 알 수 없음
+    if (!sig.ctx) sig.ctx = cv.getContext('2d');
+    if (sig.signed) return;                                     // 서명 중에는 크기를 바꾸지 않음(서명이 지워지므로)
+    const ratio = Math.max(window.devicePixelRatio || 1, 1);
+    cv.width = cv.offsetWidth * ratio; cv.height = cv.offsetHeight * ratio;
+    sig.ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    sig.ctx.lineWidth = 2; sig.ctx.lineCap = 'round'; sig.ctx.strokeStyle = '#2C2E35';
+  };
+  function pos(e){
+    const r = sig.canvas.getBoundingClientRect();
+    const p = e.touches && e.touches[0] ? e.touches[0] : e;
+    return { x: p.clientX - r.left, y: p.clientY - r.top };
+  }
+  function start(e){ if (!sig.ctx) return; sig.drawing = true; sig.signed = true; const p = pos(e); sig.ctx.beginPath(); sig.ctx.moveTo(p.x, p.y); e.preventDefault(); }
+  function move(e){ if (!sig.drawing) return; const p = pos(e); sig.ctx.lineTo(p.x, p.y); sig.ctx.stroke(); e.preventDefault(); }
+  function stop(){ sig.drawing = false; }
+  window.noticeSubmit = function(){
+    if (!Array.from(subs()).every(c => c.checked)) { alert('모든 필수 안내 및 약관 항목에 동의해 주세요.'); return; }
+    if (!sig.signed) { alert('전자 서명을 진행해 주세요.'); return; }
+    alert('모든 필수 약관 동의 및 전자 서명이 완료되었습니다.');
+  };
+  document.addEventListener('DOMContentLoaded', () => {
+    const cv = sig.canvas = document.getElementById('ntc-signature-pad');
+    if (!cv) return;
+    cv.addEventListener('mousedown', start); cv.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', stop);
+    cv.addEventListener('touchstart', start, { passive: false });
+    cv.addEventListener('touchmove', move, { passive: false });
+    cv.addEventListener('touchend', stop);
+    const clr = document.getElementById('ntc-clear-sig');
+    if (clr) clr.addEventListener('click', () => { if (sig.ctx) sig.ctx.clearRect(0, 0, cv.width, cv.height); sig.signed = false; });
+    window.addEventListener('resize', () => { if (document.getElementById('view-notice')?.classList.contains('active')) window.noticeResizeCanvas(); });
+  });
+})();
+
+// ===== 연락처 입력 직후 기존 고객 확인 : 이미 등록된 번호면 안내하고 [불러오기]로 바로 이어서 상담 =====
+let dupCheckSeq = 0;
+function hideDupHint(){ const el = document.getElementById('cust-dup-hint'); if (el) { el.style.display = 'none'; el.innerHTML = ''; } dupCheckSeq++; }
+async function checkDuplicateContact(){
+  const el = document.getElementById('cust-dup-hint');
+  if (!el || currentCustomerId || !hasValidContact()) return;     // 이미 불러온 고객이거나 번호가 덜 입력됐으면 확인하지 않음
+  const raw = elVal('cust-contact');
+  const filter = buildContactOrFilter(raw);
+  if (!filter) return;
+  const seq = ++dupCheckSeq;
+  try {
+    const { data, error } = await sb.from('customers').select('customer_id,name,contact,customer_status,consult_substatus,status_reason,funnel_status').or(filter).limit(1);
+    if (seq !== dupCheckSeq || currentCustomerId) return;         // 그사이 번호가 바뀌었거나 고객이 불러와졌으면 무시
+    if (error || !data || !data.length) { el.style.display = 'none'; return; }
+    const c = data[0];
+    const nm = String(c.name || '').replace(NAME_PREFIX, '').trim() || '(이름없음)';
+    el.innerHTML = `이미 등록된 고객입니다 · <b>${escHtml(nm)}</b> · ${escHtml(custStatusLabelText(custStatusInfo(c)))} `
+      + `<button type="button" class="mini-btn mini-btn-primary" onclick="loadDuplicateCustomer(this)">불러오기</button>`;
+    el.style.display = 'block';
+  } catch (e) { console.warn('checkDuplicateContact', e); }
+}
+function loadDuplicateCustomer(btn){
+  const digits = String(elVal('cust-contact') || '').replace(/\D/g, '');
+  hideDupHint();
+  quickTopSearch(digits, btn);          // 기존 조회와 같은 경로(작성 중 내용 확인, 고객 탭, 두 화면 채우기)를 그대로 사용
+}
+
 // ===== 특이사항 통일 : 상담 화면과 상세가 같은 날짜별 누적 방식을 쓰고, 같은 고객이 양쪽에 열려 있으면 내용을 맞춥니다 =====
 function mirrorNotes(from){
   if (!currentCustomerId || currentCustomerId !== detailCustomerId) return;
@@ -1768,6 +1968,7 @@ function updateCsCustStrip(){
   const stSel = document.getElementById('cust-funnel-status');
   const st = stSel && stSel.selectedIndex >= 0 ? (stSel.options[stSel.selectedIndex].text || '') : '';
   const carrier = elVal('cust-mobile-carrier');
+  if (currentCustomerId) { const dh = document.getElementById('cust-dup-hint'); if (dh) dh.style.display = 'none'; }
   set('cs-strip-name', name || (currentCustomerId ? '(이름없음)' : '신규 상담'));
   set('cs-strip-contact', contact.length > 3 ? formatContactDisplay(contact) : '연락처 미입력');
   set('cs-strip-status', st ? '상태 ' + st : '');
