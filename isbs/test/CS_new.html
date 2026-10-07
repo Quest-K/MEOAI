@@ -3388,7 +3388,13 @@ function customerHomeLines(c){
   // 1순위: 새 계약 구조(contracts + contract_items) — 인터넷·TV 계약 1건이 한 줄
   const cts = customerContractsMap[c.customer_id] || [];
   if (cts.length) {
-    return cts.map(({ contract: ct, items }) => {
+    // 계약에 요금·사은품·수수료가 비어 있으면 예전 구조(customer_products)의 값으로 대신 보여 줍니다. (이전된 고객 보호)
+    const legacyHomes = (customerProductsMap[c.customer_id] || []).filter(r => r.product_type === 'home');
+    const legacyFor = idx => legacyHomes.length === cts.length ? legacyHomes[idx]
+      : (cts.length === 1 && legacyHomes.length ? (legacyHomes.find(r => r.is_final) || legacyHomes[0]) : null);
+    const pick = (v, fb) => (v !== null && v !== undefined && v !== '' && Number(v) !== 0) ? v : (fb !== undefined ? fb : v);
+    return cts.map(({ contract: ct, items }, idx) => {
+      const lg = legacyFor(idx) || {};
       const live = items.filter(i => i.progress_status !== '접수취소');
       const kind = i => { const t = String(i.product_type || ''); return /tv/i.test(t) ? 'tv' : (/internet|인터넷/i.test(t) ? 'internet' : 'etc'); };
       const net = live.filter(i => kind(i) === 'internet').map(i => i.product_name).filter(Boolean);
@@ -3400,7 +3406,7 @@ function customerHomeLines(c){
       const pn = ct.proposalCount || 0;
       const text = live.length ? (label + [carrier, body].filter(Boolean).join(' ')) : (label + (pn ? `제안 ${pn}건 (최종상품 없음)` : '최종상품 없음'));
       const fee = live.length ? live.reduce((a, i) => a + (Number(i.monthly_fee) || 0), 0) : null;
-      return { text, fee, gift: ct.gift_total, comm: ct.commission_total, final: live.length > 0 };
+      return { text, fee: pick(fee, lg.monthly_fee), gift: pick(ct.gift_total, lg.gift_amount), comm: pick(ct.commission_total, lg.commission), final: live.length > 0 };
     });
   }
   // 2순위: 예전 구조(customer_products) — 이전 전의 고객
