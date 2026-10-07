@@ -631,6 +631,17 @@
       <div class="ntc-submit">
         <button type="button" class="ntc-action-btn" onclick="noticeSubmit()">동의 완료하기</button>
       </div>
+
+      <div class="ntc-auth-links" style="margin-top:28px;padding-top:20px;border-top:1px solid #e5e0d6;">
+        <div style="font-weight:700;margin-bottom:6px;">🔗 통신사별 본인 인증 링크</div>
+        <p style="font-size:13px;color:#777;margin:0 0 12px;">고객 휴대폰으로 보내거나 새 창에서 열어 인증을 진행해 주세요.</p>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">
+          <a class="secondary-btn" style="text-decoration:none;display:inline-block;" href="https://online.kt.com/itg/simple/simpleCustomerInfoPop.do?prdcId=B12CF4D4-C0DA-43BB-B415-34F3036B5BB6" target="_blank" rel="noopener noreferrer">KT 인증</a>
+          <a class="secondary-btn" style="text-decoration:none;display:inline-block;" href="https://onsalehome.uplus.co.kr/onsaleHome/" target="_blank" rel="noopener noreferrer">LG 인증</a>
+          <a class="secondary-btn" style="text-decoration:none;display:inline-block;" href="https://yes.skbroadband.com/normal.do?serviceId=S_DUMY0001&amp;viewId=V_COMM0065" target="_blank" rel="noopener noreferrer">SKB 인증</a>
+          <a class="secondary-btn" style="text-decoration:none;display:inline-block;" href="https://yes.sktelecom.com/normal.do?serviceId=S_DUMY0001&amp;viewId=V_COMM0072" target="_blank" rel="noopener noreferrer">SKT 인증</a>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -2574,6 +2585,7 @@ function emptyConsultTargets(){ return { carrierContractId: null, usimByKey: {} 
 let customerListCache = [];
 let customerViewInited = false;
 let customerViewSkipRecent = false;
+let customerContractsMap = {};  // 고객조회 목록용 : customer_id -> [{ contract, items }] (새 계약 구조)
 let customerProductsMap = {};  // 고객조회 목록용 : customer_id -> customer_products 행 배열
 let customerContactsMap = {};  // 고객조회 목록용 : customer_id -> customer_contacts 행 배열
 let detailCustomerId = null;   // 고객 상세 화면에 열려 있는 고객 ID
@@ -3373,22 +3385,63 @@ function fmtWon(v){
 // 목록용 : 날짜(위) / 시간(아래) 두 줄 표시 (컬럼 폭 절약)
 // 고객 1명의 안내상품(인터넷/TV) 목록 : customer_products의 home 행을 모두, 없으면 customers의 단일 안내상품(레거시)
 function customerHomeLines(c){
+  // 1순위: 새 계약 구조(contracts + contract_items) — 인터넷·TV 계약 1건이 한 줄
+  const cts = customerContractsMap[c.customer_id] || [];
+  if (cts.length) {
+    return cts.map(({ contract: ct, items }) => {
+      const live = items.filter(i => i.progress_status !== '접수취소');
+      const kind = i => { const t = String(i.product_type || ''); return /tv/i.test(t) ? 'tv' : (/internet|인터넷/i.test(t) ? 'internet' : 'etc'); };
+      const net = live.filter(i => kind(i) === 'internet').map(i => i.product_name).filter(Boolean);
+      const tv = live.filter(i => kind(i) === 'tv').map(i => i.product_name).filter(Boolean);
+      const carrier = (live.find(i => i.carrier) || {}).carrier || '';
+      const body = [net.join(' + '), tv.join(' + ')].filter(Boolean).join(' / ');
+      const label = ct.label ? `[${ct.label}] ` : '';
+      const text = live.length ? (label + [carrier, body].filter(Boolean).join(' ')) : (label + '최종상품 없음');
+      const fee = live.length ? live.reduce((a, i) => a + (Number(i.monthly_fee) || 0), 0) : null;
+      return { text, fee, gift: ct.gift_total, comm: ct.commission_total, final: live.length > 0 };
+    });
+  }
+  // 2순위: 예전 구조(customer_products) — 이전 전의 고객
   const all = customerProductsMap[c.customer_id] || [];
   const homes = all.filter(r => r.product_type === 'home');
   if (homes.length) {
     return homes.map(r => {
       const d = detailOf(r);
       return {
-        text: [r.carrier, d.internetLabel, d.tvLabel].filter(Boolean).join(' ') || '-',
+        text: [r.carrier, [d.internetLabel, d.tvLabel].filter(Boolean).join(' / ')].filter(Boolean).join(' ') || '-',
         fee: r.monthly_fee, gift: r.gift_amount, comm: r.commission, final: !!r.is_final
       };
     });
   }
   if (!all.length) {
-    const text = [c.guided_carrier, c.guided_internet_speed, c.guided_tv_channel].filter(Boolean).join(' ');
+    const text = [c.guided_carrier, [c.guided_internet_speed, c.guided_tv_channel].filter(Boolean).join(' / ')].filter(Boolean).join(' ');
     if (text) return [{ text, fee: c.guided_home_fee, gift: c.guided_home_gift, comm: c.guided_home_commission, final: false }];
   }
   return [];
+}
+
+// 목록에 표시할 고객들의 인터넷·TV 계약과 그 상품을 한 번에 읽어 customerContractsMap 에 담습니다. (읽기에 실패하면 예전 구조 표시로 대신함)
+async function loadListContracts(ids, reset){
+  if (reset) customerContractsMap = {};
+  if (!ids || !ids.length) return;
+  try {
+    const cRes = await sb.from('contracts')
+      .select('contract_id,customer_id,contract_type,contract_status,label,gift_total,commission_total')
+      .in('customer_id', ids).eq('contract_type', 'home').order('contract_id', { ascending: true });
+    if (cRes.error) { console.warn('목록 계약 조회 실패', cRes.error.message); return; }
+    const cts = (cRes.data || []).filter(ct => ct.contract_status !== '계약취소');
+    const byCid = {};
+    for (let i = 0; i < cts.length; i += 150) {
+      const part = cts.slice(i, i + 150).map(ct => ct.contract_id);
+      const iRes = await sb.from('contract_items')
+        .select('item_id,contract_id,product_type,carrier,product_name,monthly_fee,progress_status')
+        .in('contract_id', part).order('item_id', { ascending: true });
+      if (iRes.error) { console.warn('목록 계약상품 조회 실패', iRes.error.message); return; }
+      (iRes.data || []).forEach(it => { (byCid[it.contract_id] = byCid[it.contract_id] || []).push(it); });
+    }
+    ids.forEach(id => { delete customerContractsMap[id]; });
+    cts.forEach(ct => { (customerContractsMap[ct.customer_id] = customerContractsMap[ct.customer_id] || []).push({ contract: ct, items: byCid[ct.contract_id] || [] }); });
+  } catch (e) { console.warn('목록 계약 조회 오류', e); }
 }
 
 // 여러 상품이 같은 줄 높이로 쌓이도록 각 컬럼 셀을 같은 규칙(줄 단위 div)으로 그립니다.
@@ -3456,10 +3509,11 @@ function renderCustomerList(rows, emptyText){
 async function loadCustomerListExtras(rows){
   customerProductsMap = {};
   customerContactsMap = {};
+  customerContractsMap = {};
   const ids = (rows || []).map(r => r.customer_id).filter(v => v !== null && v !== undefined);
   if (!ids.length) return;
   await probeCustomerSchema();
-  const tasks = [];
+  const tasks = [loadListContracts(ids, true)];
   if (CUSTOMER_SCHEMA.hasProductsTable) {
     tasks.push(sb.from('customer_products')
       .select('id,customer_id,product_type,is_final,carrier,product_name,monthly_fee,gift_amount,commission,detail')
@@ -3484,7 +3538,7 @@ async function loadCustomerListExtras(rows){
 // 상세 화면에서 안내상품/컨택을 고친 뒤 목록의 해당 고객 표시만 다시 맞춥니다.
 async function refreshListRowExtras(customerId){
   await probeCustomerSchema();
-  const tasks = [];
+  const tasks = [loadListContracts([customerId], false)];
   if (CUSTOMER_SCHEMA.hasProductsTable) {
     tasks.push(sb.from('customer_products')
       .select('id,customer_id,product_type,is_final,carrier,product_name,monthly_fee,gift_amount,commission,detail')
