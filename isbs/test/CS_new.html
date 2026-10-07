@@ -419,7 +419,7 @@
       <header>
         <div class="eyebrow">CUSTOMER DATABASE</div>
         <h1>고객 조회</h1>
-        <p>연락처·이름으로 고객을 찾고, 고객을 클릭하면 [고객상세] 탭에서 계약·상품·가족·컨택·이력을 한 화면에서 볼 수 있습니다.</p>
+        <p>연락처·이름으로 고객을 찾고, 고객을 클릭하면 [고객상담] 화면으로 이동합니다. 계약·상품·가족·컨택·이력은 [고객상세] 탭에서 한 화면으로 볼 수 있습니다.</p>
       </header>
       <div id="status-banner">
         <div class="banner-header">
@@ -479,7 +479,7 @@
   <div id="view-customer-detail" class="view-container">
     <div class="cd-wrap">
       <div id="cust-detail">
-        <div class="cs-card"><div class="reflected-empty">[고객조회] 목록에서 고객을 클릭하거나 상단 고객 탭을 누르면 상세 정보가 표시됩니다.</div></div>
+        <div class="cs-card"><div class="reflected-empty">[고객조회] [고객조회]에서 고객을 선택하거나 상단 고객 탭을 누른 뒤 [고객상세] 탭을 열면 상세 정보가 표시됩니다.</div></div>
       </div>
     </div>
   </div>
@@ -3432,7 +3432,7 @@ function renderCustomerList(rows, emptyText){
       ? `<span class="cust-contact-badge" title="고객부재 재안내 ${doneCount}/${CONTACT_RULES.maxAttempts}회 진행">${doneCount}/${CONTACT_RULES.maxAttempts}</span>` : '';
     const overdue = isContactPending(sInfo) && c.next_contact_at && new Date(c.next_contact_at).getTime() < now;
     return `
-    <tr class="${c.customer_id === currentCustomerId ? 'active' : ''}" onclick="openCustomerDetail(${c.customer_id})">
+    <tr class="${c.customer_id === currentCustomerId ? 'active' : ''}" onclick="openCustomerToConsult(${c.customer_id})">
       <td class="cust-row-name cust-cell-1line" title="${escAttr(c.name || '')}">${escHtml(c.name) || '(이름없음)'}</td>
       <td class="cust-cell-1line" title="${escAttr(formatContactDisplay(c.contact))}">${escHtml(formatContactDisplay(c.contact)) || '-'}</td>
       <td class="cust-row-sub cust-lines-cell">${listLinesHtml(lines, l => l.text, true)}</td>
@@ -3991,6 +3991,14 @@ function custField(label, id, value, type, span){
 }
 
 // 목록에서 고객을 누르면 [고객상세] 탭에서 엽니다.
+// [고객조회] 목록에서 고객을 누르면 상세가 아니라 고객상담 화면으로 이동 (상세는 [고객상세] 탭이나 상담 화면의 [고객상세 보기]로)
+async function openCustomerToConsult(id){
+  if (id !== currentCustomerId && consultHasUnsavedWork()
+      && !confirm('고객상담 화면에 저장하지 않은 작성 중인 내용이 있습니다.\n다른 고객을 불러오면 그 내용이 사라집니다. 계속할까요?')) return;
+  await openCustomer(id);          // 상단 고객 탭 추가 + [고객상세] 화면 데이터 준비 (화면은 이동하지 않음)
+  await loadCustomerToConsult(id); // 고객상담 화면으로 불러오고 이동
+}
+
 async function openCustomerDetail(id){
   await openCustomer(id);
   if (detailCustomerId === id) switchTab('customer-detail');
@@ -5208,7 +5216,7 @@ async function deleteCustomer(id, btn){
     if (error) { alert('삭제 실패: ' + error.message); return; }
     if (currentCustomerId === id) currentCustomerId = null;
     if (detailCustomerId === id) detailCustomerId = null;
-    document.getElementById('cust-detail').innerHTML = `<div class="cs-card"><div class="reflected-empty">[고객조회] 목록에서 고객을 클릭하거나 상단 고객 탭을 누르면 상세 정보가 표시됩니다.</div></div>`;
+    document.getElementById('cust-detail').innerHTML = `<div class="cs-card"><div class="reflected-empty">[고객조회] [고객조회]에서 고객을 선택하거나 상단 고객 탭을 누른 뒤 [고객상세] 탭을 열면 상세 정보가 표시됩니다.</div></div>`;
     const pbox = document.getElementById('cust-products'); if (pbox) pbox.innerHTML = `<div class="js-empty">선택된 고객이 없습니다.</div>`;
     switchTab('customers');
     showToast('✓ 삭제되었습니다');
