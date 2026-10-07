@@ -984,21 +984,35 @@ async function deleteContractItem(itemId){
 }
 
 // 계약 삭제 : 작성중이고 접수 시각이 없는 계약만(D15). 하위 상품·제안은 함께 삭제되고 이력은 공통 이력으로 남습니다.
-async function deleteContract(contractId){
+// 계약 삭제.
+//   - 작성중(접수 시각 없음) 계약 : 바로 삭제합니다.
+//   - 접수 이후 계약 : opts.force === true 일 때만 삭제합니다(잘못 만든 계약 정리용). 지급·환수 상태가 있는 계약은 돈 기록이 있으므로 삭제하지 않습니다.
+//   - 삭제하는 계약에 연결된 유심 계약은 남기고 연결만 풉니다. 이력은 지우지 않고 '삭제된 계약' 표시를 붙여 공통 이력으로 남깁니다.
+async function deleteContract(contractId, opts){
   try {
     const le = s6LoginErr(); if (le) return s6Err(le);
+    const force = !!(opts && opts.force);
     const id = Number(contractId);
-    const ct = await sb.from('contracts').select('contract_id,customer_id,contract_status,received_at').eq('contract_id', id).limit(1);
+    const ct = await sb.from('contracts').select('contract_id,customer_id,contract_type,contract_status,received_at,payout_status,clawback_status').eq('contract_id', id).limit(1);
     if (ct.error) return s6Err('계약을 읽지 못했습니다: ' + ct.error.message);
     const c = (ct.data || [])[0];
     if (!c) return s6Err('계약을 찾을 수 없습니다.');
-    if (!s6IsDraft(c)) return s6Err('접수된 계약은 삭제할 수 없습니다. 상태(접수불가 등)로 처리해 주세요.');
+    const draft = s6IsDraft(c);
+    if (!draft) {
+      if (!force) return s6Err('접수된 계약은 삭제할 수 없습니다. 상태(접수불가 등)로 처리해 주세요.');
+      if (c.payout_status || c.clawback_status) return s6Err(`지급·환수 상태가 있는 계약은 삭제할 수 없습니다. (지급: ${c.payout_status || '없음'} / 환수: ${c.clawback_status || '없음'})\n상태를 정리하거나 계약취소로 처리해 주세요.`);
+    }
     const no = formatContractNo(id);
+    if (c.contract_type === 'home') {                       // 이 계약에 연결된 유심 계약은 남기고 연결만 풉니다.
+      const un = await sb.from('contracts').update({ linked_contract_id: null }).eq('linked_contract_id', id).select('contract_id');
+      if (un.error) return s6Err('연결된 유심 계약을 정리하지 못했습니다: ' + un.error.message);
+    }
     const det = await s6DetachHistory('contract_id', id, '계약 ' + no);
     if (!det.ok) return s6Err(det.error);
     const del = await sb.from('contracts').delete().eq('contract_id', id);
     if (del.error) { await s6RestoreHistory(det.saved); return s6Err('삭제에 실패했습니다: ' + del.error.message); }
-    const h = await s6WriteHistory({ customer_id: c.customer_id, target_type: 'customer', axis: null, event_type: 'contract_deleted', note: `계약 ${no} 삭제` });
+    const note = draft ? `계약 ${no} 삭제` : `계약 ${no} 삭제 (접수 이후 계약 · 삭제 당시 상태 ${c.contract_status}${c.received_at ? ' · 접수 ' + String(c.received_at).slice(0, 16).replace('T', ' ') : ''})`;
+    const h = await s6WriteHistory({ customer_id: c.customer_id, target_type: 'customer', axis: null, event_type: 'contract_deleted', note });
     return h.ok ? { ok: true } : { ok: true, historyWarning: '계약은 삭제됐지만 삭제 이력 저장에 실패했습니다: ' + h.error };
   } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
 }
