@@ -3354,15 +3354,24 @@ async function openCustomerFromContract(customerId){
   await openCustomerFromDash(customerId);
 }
 
-// 대시보드 리스트에서 고객을 누르면 [고객상세] 탭에서 상세 화면을 엽니다. (목록 탭도 함께 준비해 둠)
+// 대시보드 리스트에서 고객을 누르면 [고객상담] 화면이 열리고, 고객상담·고객상세 두 화면에 같은 고객 정보가 함께 채워집니다. (목록 탭도 함께 준비해 둠)
 async function openCustomerFromDash(id){
+  if (id !== currentCustomerId && consultHasUnsavedWork()
+      && !confirm('고객상담 화면에 저장하지 않은 작성 중인 내용이 있습니다.\n다른 고객을 불러오면 그 내용이 사라집니다. 계속할까요?')) return;
+  // 상담 화면을 채우려면 모든 칼럼이 필요하므로 이 고객만 최신 값으로 다시 읽어 둡니다.
+  try {
+    const { data } = await sb.from('customers').select('*').eq('customer_id', id).limit(1);
+    if (data && data[0]) dashRows = dashRows.map(x => x.customer_id === id ? Object.assign({}, x, data[0]) : x);
+  } catch (e) { console.warn('고객 재조회 실패', e); }
   customerListCache = dashRows.slice();   // openCustomer가 이 목록에서 고객을 찾습니다
   customerViewSkipRecent = true;
   switchTab('customers');
   customerViewSkipRecent = false;
   renderCustomerList(customerListCache);
-  await openCustomer(id);
-  switchTab('customer-detail');
+  await openCustomer(id);                 // 고객상세 화면 + 상단 고객 탭
+  const c = customerListCache.find(x => x.customer_id === id);
+  if (c) fillConsultFormFromCustomer(c);  // 고객상담 화면
+  switchTab('cs');                        // 먼저 보이는 화면은 고객상담
 }
 
 function initCustomerView(){
