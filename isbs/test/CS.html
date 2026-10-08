@@ -636,10 +636,20 @@
         <div style="font-weight:700;margin-bottom:6px;">🔗 통신사별 본인 인증 링크</div>
         <p style="font-size:13px;color:#777;margin:0 0 12px;">고객 휴대폰으로 보내거나 새 창에서 열어 인증을 진행해 주세요.</p>
         <div style="display:flex;flex-wrap:wrap;gap:8px;">
-          <a class="secondary-btn" style="text-decoration:none;display:inline-block;" href="https://online.kt.com/itg/simple/simpleCustomerInfoPop.do?prdcId=B12CF4D4-C0DA-43BB-B415-34F3036B5BB6" target="_blank" rel="noopener noreferrer">KT 인증</a>
+          <a class="secondary-btn" style="text-decoration:none;display:inline-block;" href="https://online.kt.com/itg/simple/simpleCustomerInfoPop.do?prdcId=8979305D-DEC2-465F-9A9F-D7E07E0D93D2" target="_blank" rel="noopener noreferrer">KT 인증</a>
           <a class="secondary-btn" style="text-decoration:none;display:inline-block;" href="https://onsalehome.uplus.co.kr/onsaleHome/" target="_blank" rel="noopener noreferrer">LG 인증</a>
           <a class="secondary-btn" style="text-decoration:none;display:inline-block;" href="https://yes.skbroadband.com/normal.do?serviceId=S_DUMY0001&amp;viewId=V_COMM0065" target="_blank" rel="noopener noreferrer">SKB 인증</a>
           <a class="secondary-btn" style="text-decoration:none;display:inline-block;" href="https://yes.sktelecom.com/normal.do?serviceId=S_DUMY0001&amp;viewId=V_COMM0072" target="_blank" rel="noopener noreferrer">SKT 인증</a>
+        </div>
+
+        <div class="ntc-auth-memo" style="margin-top:16px;padding:14px 16px;background:#faf7f0;border:1px solid #e5e0d6;border-radius:10px;font-size:14px;line-height:1.7;">
+          <div style="font-weight:700;margin-bottom:4px;">📝 인증 메모</div>
+          <div style="font-weight:700;color:#c8892b;margin-top:6px;">SKB</div>
+          <div>· 인단독 / 인전 - <b>e02358</b></div>
+          <div>· 인티번들 / 인티전 - <b>e02681</b></div>
+          <div style="font-weight:700;color:#c8892b;margin-top:10px;">SKT</div>
+          <div>· 휴대폰 통신사 SK - 센터인증(티인포인증)</div>
+          <div>· 휴대폰 통신사 SK 아닌 경우 / SK 알뜰폰 / 집전화 - <b>D14912</b></div>
         </div>
       </div>
     </div>
@@ -983,7 +993,7 @@ function renderRecoCards(){
           <div class="info-row main-label reco-subtotal-row"><span>인터넷</span><span>${internetSubtotal.toLocaleString()}</span></div>
           <div class="info-row sub-item-row reco-sub-lv2"><span>${SPEED_LABEL[recoState.speed] || ''}</span><span>${(price.internetFee || 0).toLocaleString()}</span></div>
           <div class="info-row sub-item-row reco-sub-lv2"><span>공유기<span class="reco-detail-sm">(${ROUTER_LABEL[recoState.router] || ''})</span></span><span>${(price.routerFee || 0).toLocaleString()}</span></div>
-          <div class="info-row sub-item-row reco-sub-lv2"><span>인터넷결합할인</span><span>${price.bundleDiscount ? '-' + price.bundleDiscount.toLocaleString() : '0'}</span></div>
+          <div class="info-row sub-item-row reco-sub-lv2"><span>${tvTier !== 'none' ? '인터넷+TV 결합할인' : '인터넷결합할인'}</span><span>${price.bundleDiscount ? '-' + price.bundleDiscount.toLocaleString() : '0'}</span></div>
         </div>
         ${tvTier !== 'none' ? `
         <div class="reco-block">
@@ -1061,8 +1071,8 @@ function reflectRecoCardToProposal(carrier){
     extraTvDetails: recoState.tv !== 'none' ? (res.extraTvDetails || []) : [],
     benefitTotal: userGiftVal,
     giftCard: gb.giftCard,
-    cash: gb.cash,
-    extraPay: gb.extraPay
+    cash: gb.cash + gb.extraPay,   // 추가지급은 현금에 합산
+    extraPay: 0
   });
 
   renderProposalLists();
@@ -1588,6 +1598,7 @@ function renderAccordionItem(opt, lines, isMax, keyPrefix){
         <div class="fam-detail-line-row fam-detail-header">
           <span class="discount-info">인터넷 할인</span><span class="discount-amount">${opt.internetDiscount.toLocaleString()}원</span>
         </div>
+        ${opt.overlap ? `<div class="fam-detail-desc">※ 인터넷+TV 결합할인 ${opt.bundleDisc.toLocaleString()}원과 중복 적용 불가 → 중복분 ${opt.overlap.toLocaleString()}원 제외</div>` : ''}
         ${lineRows}
       </div>
     `;
@@ -1609,11 +1620,23 @@ function renderAccordionItem(opt, lines, isMax, keyPrefix){
   `;
 }
 
-function computeComboOptionsFor(carrierKey, lines, speedNum){
-  if (carrierKey === 'kt') return computeKTOptions(lines, speedNum, state.tcDistMode);
-  if (carrierKey === 'lg') return computeLGOptions(lines, speedNum);
-  if (carrierKey === 'sky') return computeSkyOptions();     // SKY : 휴대폰 결합할인 계산 안 함
-  return computeSKOptions(lines, speedNum, carrierKey);
+// bundleDisc : 인터넷+TV 결합할인(상품에 이미 반영된 인터넷 쪽 할인). 휴대폰 결합의 인터넷 할인과는 중복 적용되지 않고 큰 쪽만 적용됩니다.
+function computeComboOptionsFor(carrierKey, lines, speedNum, bundleDisc){
+  let opts;
+  if (carrierKey === 'kt') opts = computeKTOptions(lines, speedNum, state.tcDistMode);
+  else if (carrierKey === 'lg') opts = computeLGOptions(lines, speedNum);
+  else if (carrierKey === 'sky') return computeSkyOptions();     // SKY : 휴대폰 결합할인 계산 안 함
+  else opts = computeSKOptions(lines, speedNum, carrierKey);
+  const bd = Number(bundleDisc) || 0;
+  if (!bd) return opts;
+  return opts.map(o => {
+    const idisc = Number(o.internetDiscount) || 0;
+    const overlap = Math.min(idisc, bd);
+    if (!o.avail || overlap <= 0) return o;
+    const sumLines = (o.lineShares || []).reduce((a, b) => a + (Number(b) || 0), 0);
+    const totalHasInternet = Number(o.total) === sumLines + idisc;   // 합계에 인터넷 할인이 들어 있을 때만 합계에서 뺍니다
+    return Object.assign({}, o, { internetDiscount: idisc - overlap, total: totalHasInternet ? o.total - overlap : o.total, overlap, bundleDisc: bd });
+  });
 }
 
 // 제안상품(유심)에 담긴 회선 중 해당 통신사 그룹과 매칭되는 회선만 추출
@@ -1627,7 +1650,7 @@ function getProposalComboLines(carrierKey){
 // 결합할인 : 통신사 4분할 + 제안상품에 담긴 인터넷/TV 상품 기준으로 계산
 function buildComboCardForProposal(item){
   const lines = getProposalComboLines(item.carrierKey);
-  const options = computeComboOptionsFor(item.carrierKey, lines, item.speedNum);
+  const options = computeComboOptionsFor(item.carrierKey, lines, item.speedNum, item.tvTier !== 'none' ? item.bundleDiscount : 0);
   const availOptions = options.filter(o => o.avail);
   const maxTotal = availOptions.length ? Math.max(...availOptions.map(o => o.total)) : null;
   const maxKey = maxTotal !== null ? (availOptions.find(o => o.total === maxTotal) || {}).key : null;
@@ -1702,6 +1725,9 @@ function computeGiftBreakdown(carrier, giftTotal){
   return { giftCard, cash, extraPay, noticeTotal };
 }
 
+// 제안상품 이후에는 추가지급을 현금에 합산해서 보여 줍니다. (예전에 저장된 상품도 동일하게 처리)
+function giftCashOf(item){ return (Number(item && item.cash) || 0) + (Number(item && item.extraPay) || 0); }
+
 function handleGiftInputChange(carrier, rawVal) {
   const numVal = parseInt(rawVal.replace(/[^0-9]/g, ''), 10);
   customGiftValues[carrier] = !isNaN(numVal) ? numVal : 0;
@@ -1729,7 +1755,7 @@ function buildProductSummaryLines(p){
     lines.push(`TV(${p.tvName}/${p.tvChannels}채널)+셋탑(${p.settopLabel})`);
   }
   lines.push(`월요금 ${p.totalFee.toLocaleString()}원`);
-  lines.push(`사은품 ${p.benefitTotal.toLocaleString()}원 (상 ${p.giftCard.toLocaleString()}원,현 ${p.cash.toLocaleString()}원${p.extraPay ? `,추가지급 ${p.extraPay.toLocaleString()}원` : ''})`);
+  lines.push(`사은품 ${p.benefitTotal.toLocaleString()}원 (상 ${(p.giftCard || 0).toLocaleString()}원,현 ${giftCashOf(p).toLocaleString()}원)`);
   if (isLoggedIn) {
     const comm = lookupCommission(p.carrierKey, p.speedNum, p.tvTier, p.lgVariant);
     lines.push(`수수료 ${comm.totalComm.toLocaleString()}원${comm.agency ? ` (${comm.agency})` : ''}`);
@@ -2059,14 +2085,12 @@ function buildProposalHomeRow(item){
       <div class="info-row"><span>월요금</span><span>${item.totalFee.toLocaleString()}원</span></div>
       <div class="info-row"><span>사은품</span><span>${item.benefitTotal.toLocaleString()}원</span></div>
       <div class="info-row sub-item-row"><span>상품권</span><span>${(item.giftCard || 0).toLocaleString()}원</span></div>
-      <div class="info-row sub-item-row"><span>현금</span><span>${(item.cash || 0).toLocaleString()}원</span></div>
-      <div class="info-row sub-item-row"><span>추가지급</span><span>${(item.extraPay || 0).toLocaleString()}원</span></div>
+      <div class="info-row sub-item-row"><span>현금</span><span>${giftCashOf(item).toLocaleString()}원</span></div>
       ${isLoggedIn ? `
       <div class="info-row"><span>수수료${agBadgeHtml(comm.agency, comm.agencies)}</span><span>${comm.totalComm.toLocaleString()}원</span></div>
       <div class="info-row sub-item-row"><span>인터넷</span><span>${comm.internetComm.toLocaleString()}원</span></div>
       ${item.tvTier !== 'none' ? `<div class="info-row sub-item-row"><span>TV</span><span>${comm.tvComm.toLocaleString()}원</span></div>` : ''}
-      ${agOthersRowsHtml(comm, true)}
-      <div class="info-row sub-item-row"><span>추가지급</span><span>${(item.extraPay || 0).toLocaleString()}원</span></div>` : ''}
+      ${agOthersRowsHtml(comm, true)}` : ''}
       <div class="usim-line-actions">
         <button type="button" class="mini-btn mini-btn-primary" onclick="moveProposalToFinal('${item.id}')">➕ 최종반영</button>
       </div>
@@ -2133,7 +2157,7 @@ function computeFinalCombo(homeItem, usimItems){
     .map((p, idx) => ({ carrier: p.carrier, fee: Number(p.fee) || 0, teen: !!p.teen, idx, planName: p.planName }));
   if (!lines.length) return null;
 
-  const options = computeComboOptionsFor(homeItem.carrierKey, lines, homeItem.speedNum);
+  const options = computeComboOptionsFor(homeItem.carrierKey, lines, homeItem.speedNum, homeItem.tvTier !== 'none' ? homeItem.bundleDiscount : 0);
   const availOptions = options.filter(o => o.avail);
   if (!availOptions.length) return null;
 
@@ -2178,6 +2202,7 @@ function buildFinalComboBlock(homeItem, usimItems){
     <div class="fc-sec">
       ${fcRow(`가족 결합할인 · ${best.name}`, `-${best.total.toLocaleString()}원`, 'fc-strong fc-green')}
       ${best.internetDiscount ? fcRow('인터넷 할인', `-${best.internetDiscount.toLocaleString()}원`, 'fc-sub') : ''}
+      ${best.overlap ? `<div class="fc-note">인터넷+TV 결합할인 ${best.bundleDisc.toLocaleString()}원과 중복 적용 불가 · 중복분 ${best.overlap.toLocaleString()}원 제외</div>` : ''}
       ${lineRows}
       ${fcRow('결합 적용 후 월요금', `${homeAfter.toLocaleString()}원`, 'fc-strong')}
     </div>
@@ -2185,7 +2210,6 @@ function buildFinalComboBlock(homeItem, usimItems){
 }
 
 function buildFinalHomeCard(item, usimItems){
-  const extraPay = item.extraPay || 0;
   return `
     <div class="final-card fc-simple">
       <div class="final-card-head">
@@ -2198,7 +2222,7 @@ function buildFinalHomeCard(item, usimItems){
       <div class="fc-sec">
         ${fcRow(`인터넷 ${item.internetLabel}`, `${item.internetFee.toLocaleString()}원`, 'fc-strong')}
         ${fcRow(`공유기 (${item.routerLabel})`, `${item.routerFee.toLocaleString()}원`, 'fc-sub')}
-        ${item.bundleDiscount ? fcRow('인터넷 결합할인', `-${item.bundleDiscount.toLocaleString()}원`, 'fc-sub') : ''}
+        ${item.bundleDiscount ? fcRow('인터넷+TV 결합할인', `-${item.bundleDiscount.toLocaleString()}원`, 'fc-sub') : ''}
         ${item.tvTier !== 'none' ? `
           ${fcRow(`TV ${item.tvName} (${item.tvChannels}채널)`, `${item.tvFee.toLocaleString()}원`, 'fc-strong fc-gap')}
           ${fcRow(`셋톱박스 (${item.settopLabel})`, `${item.settopFee.toLocaleString()}원`, 'fc-sub')}
@@ -2215,8 +2239,7 @@ function buildFinalHomeCard(item, usimItems){
       <div class="fc-sec">
         ${fcRow('지급 사은품', `${item.benefitTotal.toLocaleString()}원`, 'fc-strong fc-gold')}
         ${fcRow('상품권', `${(item.giftCard || 0).toLocaleString()}원`, 'fc-sub')}
-        ${fcRow('현금', `${(item.cash || 0).toLocaleString()}원`, 'fc-sub')}
-        ${extraPay > 0 ? fcRow('추가지급', `${extraPay.toLocaleString()}원`, 'fc-sub') : ''}
+        ${fcRow('현금', `${giftCashOf(item).toLocaleString()}원`, 'fc-sub')}
       </div>
     </div>
   `;
@@ -2295,7 +2318,6 @@ function renderCommissionPanels(homeItem, usimItems){
   } else {
     const comm = lookupCommission(homeItem.carrierKey, homeItem.speedNum, homeItem.tvTier, homeItem.lgVariant);
     const margin = comm.totalComm - homeItem.benefitTotal;
-    const extraPay = homeItem.extraPay || 0;
     homePanel.innerHTML = `
       <div class="final-card fc-simple">
         <div class="fc-sec">
@@ -2307,8 +2329,7 @@ function renderCommissionPanels(homeItem, usimItems){
         <div class="fc-sec">
           ${fcRow('지급 사은품', `-${homeItem.benefitTotal.toLocaleString()}원`, 'fc-strong')}
           ${fcRow('상품권', `${(homeItem.giftCard || 0).toLocaleString()}원`, 'fc-sub')}
-          ${fcRow('현금', `${(homeItem.cash || 0).toLocaleString()}원`, 'fc-sub')}
-          ${extraPay > 0 ? fcRow('추가지급', `${extraPay.toLocaleString()}원`, 'fc-sub') : ''}
+          ${fcRow('현금', `${giftCashOf(homeItem).toLocaleString()}원`, 'fc-sub')}
         </div>
         <div class="fc-hero fc-hero-margin"><span>마진</span><strong style="color:${margin >= 0 ? '#1E7E34' : '#D9534F'};">${margin.toLocaleString()}원</strong></div>
       </div>
@@ -3343,15 +3364,24 @@ async function openCustomerFromContract(customerId){
   await openCustomerFromDash(customerId);
 }
 
-// 대시보드 리스트에서 고객을 누르면 [고객상세] 탭에서 상세 화면을 엽니다. (목록 탭도 함께 준비해 둠)
+// 대시보드 리스트에서 고객을 누르면 [고객상담] 화면이 열리고, 고객상담·고객상세 두 화면에 같은 고객 정보가 함께 채워집니다. (목록 탭도 함께 준비해 둠)
 async function openCustomerFromDash(id){
+  if (id !== currentCustomerId && consultHasUnsavedWork()
+      && !confirm('고객상담 화면에 저장하지 않은 작성 중인 내용이 있습니다.\n다른 고객을 불러오면 그 내용이 사라집니다. 계속할까요?')) return;
+  // 상담 화면을 채우려면 모든 칼럼이 필요하므로 이 고객만 최신 값으로 다시 읽어 둡니다.
+  try {
+    const { data } = await sb.from('customers').select('*').eq('customer_id', id).limit(1);
+    if (data && data[0]) dashRows = dashRows.map(x => x.customer_id === id ? Object.assign({}, x, data[0]) : x);
+  } catch (e) { console.warn('고객 재조회 실패', e); }
   customerListCache = dashRows.slice();   // openCustomer가 이 목록에서 고객을 찾습니다
   customerViewSkipRecent = true;
   switchTab('customers');
   customerViewSkipRecent = false;
   renderCustomerList(customerListCache);
-  await openCustomer(id);
-  switchTab('customer-detail');
+  await openCustomer(id);                 // 고객상세 화면 + 상단 고객 탭
+  const c = customerListCache.find(x => x.customer_id === id);
+  if (c) fillConsultFormFromCustomer(c);  // 고객상담 화면
+  switchTab('cs');                        // 먼저 보이는 화면은 고객상담
 }
 
 function initCustomerView(){
@@ -3628,7 +3658,8 @@ function exportCustomerListCsv(){
 let perfData = null;
 let perfLoadSeq = 0;
 const perfOpenGroups = new Set();   // 펼쳐 둔 고객 상태 key (기본: 모두 접힘)
-const PERF_DETAIL_STATUSES = ['상담중', '이탈', '제외'];   // 부가표시·사유로 나눠 보여 줄 고객 상태
+const PERF_ACQUIRED_STATUS = '상담완료';   // 화면 이름은 '유치' — 하위에 유치 계약 현황의 계약상태를 보여 줍니다
+const PERF_DETAIL_STATUSES = ['상담중', PERF_ACQUIRED_STATUS, '이탈', '제외'];   // 부가표시·사유(유치는 계약상태)로 나눠 보여 줄 고객 상태
 
 function resetPerfFilter(btn){
   document.getElementById('perf-from').value = '';
@@ -3697,7 +3728,7 @@ function computePerfStats(data){
     const info = custStatusInfo(c);
     const g = groups[info.status] || (groups[info.status] = { total: 0, items: {} });
     g.total++;
-    if (PERF_DETAIL_STATUSES.includes(info.status)) {
+    if (PERF_DETAIL_STATUSES.includes(info.status) && info.status !== PERF_ACQUIRED_STATUS) {
       const key = custStatusDetail(info) || PERF_CUSTOMER_DETAIL_EMPTY[info.status];
       g.items[key] = (g.items[key] || 0) + 1;
     }
@@ -3792,6 +3823,16 @@ function buildPerfFunnelHtml(st){
       : `<tr class="perf-group"><td colspan="2"><span class="perf-caret"></span> ${escHtml(label)}</td>`;
     const row = head + `<td class="num">${g.total.toLocaleString()}</td><td class="num">${perfPct(g.total, total)}</td></tr>`;
     if (!hasItems) return row;
+    if (status === PERF_ACQUIRED_STATUS) {
+      const hide = open(status) ? '' : ' style="display:none"';
+      const cs = Object.keys(st.byStatus).map(k => {
+        const n = st.byStatus[k] || 0;
+        const chip = `<span class="cust-status-chip stage-${CONTRACT_STATUS_STAGE[k] || 0}">${escHtml(k)}</span>`;
+        return `<tr class="perf-item"${hide}><td></td><td>${chip}</td><td class="num">${n.toLocaleString()}</td><td class="num">${perfPct(n, total)}</td></tr>`;
+      }).join('');
+      const note = `<tr class="perf-item"${hide}><td></td><td colspan="3" style="color:#888;font-size:12px">↳ 계약 건수 기준 · 유치 계약 현황의 계약상태와 같은 값 (접수 시각 기준, 합계 ${st.contractCount.toLocaleString()}건)</td></tr>`;
+      return row + cs + note;
+    }
     const order = status === '상담중' ? CONSULT_SUBSTATUSES : (STATUS_REASONS[status] || []);
     const emptyKey = PERF_CUSTOMER_DETAIL_EMPTY[status];
     const keys = [...order, ...(g.items[emptyKey] ? [emptyKey] : []), ...Object.keys(g.items).filter(k => !order.includes(k) && k !== emptyKey)];
