@@ -712,7 +712,6 @@ let COMMISSION_DATA = {};
 let RAW_COMMISSION_DATA = [];
 let PROMOTION_DATA = {};
 let customGiftValues = {};
-let customGiftCardValues = {};   // 통신사별 상품권 입력값 (현금 = 지급 사은품 - 상품권)
 let customUsimGiftValues = {}; // key: `${carrier}|${planName}` (추천상품 단계에서 상담원이 직접 고친 유심 사은품)
 
 function showToast(message){
@@ -876,7 +875,7 @@ function setupRecoSeg(id, key){
       }
       el.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
       if (key === 'speed' || key === 'tv') {
-        customGiftValues = {}; customGiftCardValues = {};
+        customGiftValues = {};
         document.querySelectorAll('.reco-preset-btn').forEach(b => b.classList.remove('active'));
         await loadFinanceData();
       }
@@ -999,15 +998,16 @@ function renderRecoCards(){
         </div>` : ''}
         <div class="reco-block">
           <div class="info-row main-label reco-gift-row">
-            <span>지급 사은품</span><span>${userGiftVal.toLocaleString()}</span>
+            <span>지급 사은품</span>
+            <span>
+              <input type="text" inputmode="numeric" pattern="[0-9]*" class="gift-input" value="${userGiftVal.toLocaleString()}"
+                     onchange="handleGiftInputChange('${c}', this.value)" onfocus="this.select()">
+            </span>
           </div>
-          <div class="reco-detail-sm reco-notice-hint">경품고시제 한도 ${gb.noticeTotal.toLocaleString()} · 추가지급은 현금에 합산</div>
-          <div class="info-row sub-item-row"><span>상품권</span><span>
-            <input type="text" inputmode="numeric" pattern="[0-9]*" class="gift-input" value="${gb.giftCard.toLocaleString()}"
-                   onchange="handleGiftCardInput('${c}', this.value)" onfocus="this.select()"></span></div>
-          <div class="info-row sub-item-row"><span>현금</span><span>
-            <input type="text" inputmode="numeric" pattern="[0-9]*" class="gift-input" value="${gb.cash.toLocaleString()}"
-                   onchange="handleGiftCashInput('${c}', this.value)" onfocus="this.select()"></span></div>
+          <div class="reco-detail-sm reco-notice-hint">경품고시제 한도 ${gb.noticeTotal.toLocaleString()}</div>
+          <div class="info-row sub-item-row"><span>상품권</span><span>${gb.giftCard.toLocaleString()}</span></div>
+          <div class="info-row sub-item-row"><span>현금</span><span>${gb.cash.toLocaleString()}</span></div>
+          ${gb.extraPay > 0 ? `<div class="info-row sub-item-row reco-extra-pay-row"><span>추가지급</span><span>${gb.extraPay.toLocaleString()}</span></div>` : ''}
           ${properGiftRowHtml}
         </div>
         ${commHtml}
@@ -1061,8 +1061,8 @@ function reflectRecoCardToProposal(carrier){
     extraTvDetails: recoState.tv !== 'none' ? (res.extraTvDetails || []) : [],
     benefitTotal: userGiftVal,
     giftCard: gb.giftCard,
-    cash: gb.cash,
-    extraPay: gb.extraPay
+    cash: gb.cash + gb.extraPay,   // 추가지급은 현금에 합산
+    extraPay: 0
   });
 
   renderProposalLists();
@@ -1331,7 +1331,7 @@ async function applyRecoPreset(speed, tv, btnEl){
   recoState.speed = speed;
   recoState.tv = tv;
   lastRecoTvTier = tv;
-  customGiftValues = {}; customGiftCardValues = {};
+  customGiftValues = {};
 
   document.querySelectorAll('#reco-seg-speed button').forEach(b => b.classList.toggle('active', b.dataset.value === speed));
   syncRecoControlsUI();
@@ -1357,7 +1357,7 @@ async function toggleRecoTvOnOff(isOn){
     if (recoState.tv !== 'none') lastRecoTvTier = recoState.tv;
     recoState.tv = 'none';
   }
-  customGiftValues = {}; customGiftCardValues = {};
+  customGiftValues = {};
   document.querySelectorAll('.reco-preset-btn').forEach(b => b.classList.remove('active'));
   syncRecoControlsUI();
   await loadFinanceData();
@@ -1702,37 +1702,22 @@ function renderFamilyDiscountAccordion(){
   if (secondaryContainer) secondaryContainer.innerHTML = html;
 }
 
-// 지급 사은품 = 상품권 + 현금. 경품고시제 한도를 넘는 금액(예전의 추가지급)은 따로 나누지 않고 현금에 합산합니다.
-function giftTotalOf(carrier){
-  const promo = PROMOTION_DATA[carrier] || { giftCard: 60000, cash: 340000 };
-  return customGiftValues[carrier] !== undefined ? customGiftValues[carrier] : (promo.maxLimit || (promo.giftCard + promo.cash));
-}
+// 지급 사은품을 경품고시제 한도 안에서 상품권 -> 현금 순으로 채우고, 한도를 넘는 금액은 추가지급으로 분리합니다.
 function computeGiftBreakdown(carrier, giftTotal){
   const promo = PROMOTION_DATA[carrier] || { giftCard: 60000, cash: 340000 };
   const noticeGiftCard = promo.giftCard || 0;
   const noticeTotal = promo.maxLimit || (noticeGiftCard + (promo.cash || 0));
+  const noticeCash = Math.max(0, noticeTotal - noticeGiftCard);
   const total = Math.max(0, Number(giftTotal) || 0);
-  const cardBase = customGiftCardValues[carrier] !== undefined ? customGiftCardValues[carrier] : noticeGiftCard;
-  const giftCard = Math.min(total, Math.max(0, Number(cardBase) || 0));
-  const cash = total - giftCard;
-  return { giftCard, cash, extraPay: 0, noticeTotal };
+  const giftCard = Math.min(total, noticeGiftCard);
+  const cash = Math.min(Math.max(0, total - giftCard), noticeCash);
+  const extraPay = Math.max(0, total - noticeTotal);
+  return { giftCard, cash, extraPay, noticeTotal };
 }
-// 예전에 저장된 상품(추가지급이 따로 있는 것)도 현금에 합산해서 보여 줍니다.
+
+// 제안상품 이후에는 추가지급을 현금에 합산해서 보여 줍니다. (예전에 저장된 상품도 동일하게 처리)
 function giftCashOf(item){ return (Number(item && item.cash) || 0) + (Number(item && item.extraPay) || 0); }
 
-function handleGiftCardInput(carrier, rawVal){
-  const v = Math.max(0, parseInt(String(rawVal).replace(/[^0-9]/g, ''), 10) || 0);
-  const cur = computeGiftBreakdown(carrier, giftTotalOf(carrier));
-  customGiftCardValues[carrier] = v;
-  customGiftValues[carrier] = v + cur.cash;
-  renderRecoCards();
-}
-function handleGiftCashInput(carrier, rawVal){
-  const v = Math.max(0, parseInt(String(rawVal).replace(/[^0-9]/g, ''), 10) || 0);
-  const cur = computeGiftBreakdown(carrier, giftTotalOf(carrier));
-  customGiftValues[carrier] = cur.giftCard + v;
-  renderRecoCards();
-}
 function handleGiftInputChange(carrier, rawVal) {
   const numVal = parseInt(rawVal.replace(/[^0-9]/g, ''), 10);
   customGiftValues[carrier] = !isNaN(numVal) ? numVal : 0;
