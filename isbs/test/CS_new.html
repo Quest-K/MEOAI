@@ -712,6 +712,7 @@ let COMMISSION_DATA = {};
 let RAW_COMMISSION_DATA = [];
 let PROMOTION_DATA = {};
 let customGiftValues = {};
+let customGiftCardValues = {};   // 통신사별 상품권 입력값 (현금 = 지급 사은품 - 상품권)
 let customUsimGiftValues = {}; // key: `${carrier}|${planName}` (추천상품 단계에서 상담원이 직접 고친 유심 사은품)
 
 function showToast(message){
@@ -875,7 +876,7 @@ function setupRecoSeg(id, key){
       }
       el.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
       if (key === 'speed' || key === 'tv') {
-        customGiftValues = {};
+        customGiftValues = {}; customGiftCardValues = {};
         document.querySelectorAll('.reco-preset-btn').forEach(b => b.classList.remove('active'));
         await loadFinanceData();
       }
@@ -983,7 +984,7 @@ function renderRecoCards(){
           <div class="info-row main-label reco-subtotal-row"><span>인터넷</span><span>${internetSubtotal.toLocaleString()}</span></div>
           <div class="info-row sub-item-row reco-sub-lv2"><span>${SPEED_LABEL[recoState.speed] || ''}</span><span>${(price.internetFee || 0).toLocaleString()}</span></div>
           <div class="info-row sub-item-row reco-sub-lv2"><span>공유기<span class="reco-detail-sm">(${ROUTER_LABEL[recoState.router] || ''})</span></span><span>${(price.routerFee || 0).toLocaleString()}</span></div>
-          <div class="info-row sub-item-row reco-sub-lv2"><span>인터넷결합할인</span><span>${price.bundleDiscount ? '-' + price.bundleDiscount.toLocaleString() : '0'}</span></div>
+          <div class="info-row sub-item-row reco-sub-lv2"><span>${tvTier !== 'none' ? '인터넷+TV 결합할인' : '인터넷결합할인'}</span><span>${price.bundleDiscount ? '-' + price.bundleDiscount.toLocaleString() : '0'}</span></div>
         </div>
         ${tvTier !== 'none' ? `
         <div class="reco-block">
@@ -998,16 +999,15 @@ function renderRecoCards(){
         </div>` : ''}
         <div class="reco-block">
           <div class="info-row main-label reco-gift-row">
-            <span>지급 사은품</span>
-            <span>
-              <input type="text" inputmode="numeric" pattern="[0-9]*" class="gift-input" value="${userGiftVal.toLocaleString()}"
-                     onchange="handleGiftInputChange('${c}', this.value)" onfocus="this.select()">
-            </span>
+            <span>지급 사은품</span><span>${userGiftVal.toLocaleString()}</span>
           </div>
-          <div class="reco-detail-sm reco-notice-hint">경품고시제 한도 ${gb.noticeTotal.toLocaleString()}</div>
-          <div class="info-row sub-item-row"><span>상품권</span><span>${gb.giftCard.toLocaleString()}</span></div>
-          <div class="info-row sub-item-row"><span>현금</span><span>${gb.cash.toLocaleString()}</span></div>
-          ${gb.extraPay > 0 ? `<div class="info-row sub-item-row reco-extra-pay-row"><span>추가지급</span><span>${gb.extraPay.toLocaleString()}</span></div>` : ''}
+          <div class="reco-detail-sm reco-notice-hint">경품고시제 한도 ${gb.noticeTotal.toLocaleString()} · 추가지급은 현금에 합산</div>
+          <div class="info-row sub-item-row"><span>상품권</span><span>
+            <input type="text" inputmode="numeric" pattern="[0-9]*" class="gift-input" value="${gb.giftCard.toLocaleString()}"
+                   onchange="handleGiftCardInput('${c}', this.value)" onfocus="this.select()"></span></div>
+          <div class="info-row sub-item-row"><span>현금</span><span>
+            <input type="text" inputmode="numeric" pattern="[0-9]*" class="gift-input" value="${gb.cash.toLocaleString()}"
+                   onchange="handleGiftCashInput('${c}', this.value)" onfocus="this.select()"></span></div>
           ${properGiftRowHtml}
         </div>
         ${commHtml}
@@ -1331,7 +1331,7 @@ async function applyRecoPreset(speed, tv, btnEl){
   recoState.speed = speed;
   recoState.tv = tv;
   lastRecoTvTier = tv;
-  customGiftValues = {};
+  customGiftValues = {}; customGiftCardValues = {};
 
   document.querySelectorAll('#reco-seg-speed button').forEach(b => b.classList.toggle('active', b.dataset.value === speed));
   syncRecoControlsUI();
@@ -1357,7 +1357,7 @@ async function toggleRecoTvOnOff(isOn){
     if (recoState.tv !== 'none') lastRecoTvTier = recoState.tv;
     recoState.tv = 'none';
   }
-  customGiftValues = {};
+  customGiftValues = {}; customGiftCardValues = {};
   document.querySelectorAll('.reco-preset-btn').forEach(b => b.classList.remove('active'));
   syncRecoControlsUI();
   await loadFinanceData();
@@ -1588,6 +1588,7 @@ function renderAccordionItem(opt, lines, isMax, keyPrefix){
         <div class="fam-detail-line-row fam-detail-header">
           <span class="discount-info">인터넷 할인</span><span class="discount-amount">${opt.internetDiscount.toLocaleString()}원</span>
         </div>
+        ${opt.overlap ? `<div class="fam-detail-desc">※ 인터넷+TV 결합할인 ${opt.bundleDisc.toLocaleString()}원과 중복 적용 불가 → 중복분 ${opt.overlap.toLocaleString()}원 제외</div>` : ''}
         ${lineRows}
       </div>
     `;
@@ -1609,11 +1610,23 @@ function renderAccordionItem(opt, lines, isMax, keyPrefix){
   `;
 }
 
-function computeComboOptionsFor(carrierKey, lines, speedNum){
-  if (carrierKey === 'kt') return computeKTOptions(lines, speedNum, state.tcDistMode);
-  if (carrierKey === 'lg') return computeLGOptions(lines, speedNum);
-  if (carrierKey === 'sky') return computeSkyOptions();     // SKY : 휴대폰 결합할인 계산 안 함
-  return computeSKOptions(lines, speedNum, carrierKey);
+// bundleDisc : 인터넷+TV 결합할인(상품에 이미 반영된 인터넷 쪽 할인). 휴대폰 결합의 인터넷 할인과는 중복 적용되지 않고 큰 쪽만 적용됩니다.
+function computeComboOptionsFor(carrierKey, lines, speedNum, bundleDisc){
+  let opts;
+  if (carrierKey === 'kt') opts = computeKTOptions(lines, speedNum, state.tcDistMode);
+  else if (carrierKey === 'lg') opts = computeLGOptions(lines, speedNum);
+  else if (carrierKey === 'sky') return computeSkyOptions();     // SKY : 휴대폰 결합할인 계산 안 함
+  else opts = computeSKOptions(lines, speedNum, carrierKey);
+  const bd = Number(bundleDisc) || 0;
+  if (!bd) return opts;
+  return opts.map(o => {
+    const idisc = Number(o.internetDiscount) || 0;
+    const overlap = Math.min(idisc, bd);
+    if (!o.avail || overlap <= 0) return o;
+    const sumLines = (o.lineShares || []).reduce((a, b) => a + (Number(b) || 0), 0);
+    const totalHasInternet = Number(o.total) === sumLines + idisc;   // 합계에 인터넷 할인이 들어 있을 때만 합계에서 뺍니다
+    return Object.assign({}, o, { internetDiscount: idisc - overlap, total: totalHasInternet ? o.total - overlap : o.total, overlap, bundleDisc: bd });
+  });
 }
 
 // 제안상품(유심)에 담긴 회선 중 해당 통신사 그룹과 매칭되는 회선만 추출
@@ -1627,7 +1640,7 @@ function getProposalComboLines(carrierKey){
 // 결합할인 : 통신사 4분할 + 제안상품에 담긴 인터넷/TV 상품 기준으로 계산
 function buildComboCardForProposal(item){
   const lines = getProposalComboLines(item.carrierKey);
-  const options = computeComboOptionsFor(item.carrierKey, lines, item.speedNum);
+  const options = computeComboOptionsFor(item.carrierKey, lines, item.speedNum, item.tvTier !== 'none' ? item.bundleDiscount : 0);
   const availOptions = options.filter(o => o.avail);
   const maxTotal = availOptions.length ? Math.max(...availOptions.map(o => o.total)) : null;
   const maxKey = maxTotal !== null ? (availOptions.find(o => o.total === maxTotal) || {}).key : null;
@@ -1689,19 +1702,37 @@ function renderFamilyDiscountAccordion(){
   if (secondaryContainer) secondaryContainer.innerHTML = html;
 }
 
-// 지급 사은품을 경품고시제 한도 안에서 상품권 -> 현금 순으로 채우고, 한도를 넘는 금액은 추가지급으로 분리합니다.
+// 지급 사은품 = 상품권 + 현금. 경품고시제 한도를 넘는 금액(예전의 추가지급)은 따로 나누지 않고 현금에 합산합니다.
+function giftTotalOf(carrier){
+  const promo = PROMOTION_DATA[carrier] || { giftCard: 60000, cash: 340000 };
+  return customGiftValues[carrier] !== undefined ? customGiftValues[carrier] : (promo.maxLimit || (promo.giftCard + promo.cash));
+}
 function computeGiftBreakdown(carrier, giftTotal){
   const promo = PROMOTION_DATA[carrier] || { giftCard: 60000, cash: 340000 };
   const noticeGiftCard = promo.giftCard || 0;
   const noticeTotal = promo.maxLimit || (noticeGiftCard + (promo.cash || 0));
-  const noticeCash = Math.max(0, noticeTotal - noticeGiftCard);
   const total = Math.max(0, Number(giftTotal) || 0);
-  const giftCard = Math.min(total, noticeGiftCard);
-  const cash = Math.min(Math.max(0, total - giftCard), noticeCash);
-  const extraPay = Math.max(0, total - noticeTotal);
-  return { giftCard, cash, extraPay, noticeTotal };
+  const cardBase = customGiftCardValues[carrier] !== undefined ? customGiftCardValues[carrier] : noticeGiftCard;
+  const giftCard = Math.min(total, Math.max(0, Number(cardBase) || 0));
+  const cash = total - giftCard;
+  return { giftCard, cash, extraPay: 0, noticeTotal };
 }
+// 예전에 저장된 상품(추가지급이 따로 있는 것)도 현금에 합산해서 보여 줍니다.
+function giftCashOf(item){ return (Number(item && item.cash) || 0) + (Number(item && item.extraPay) || 0); }
 
+function handleGiftCardInput(carrier, rawVal){
+  const v = Math.max(0, parseInt(String(rawVal).replace(/[^0-9]/g, ''), 10) || 0);
+  const cur = computeGiftBreakdown(carrier, giftTotalOf(carrier));
+  customGiftCardValues[carrier] = v;
+  customGiftValues[carrier] = v + cur.cash;
+  renderRecoCards();
+}
+function handleGiftCashInput(carrier, rawVal){
+  const v = Math.max(0, parseInt(String(rawVal).replace(/[^0-9]/g, ''), 10) || 0);
+  const cur = computeGiftBreakdown(carrier, giftTotalOf(carrier));
+  customGiftValues[carrier] = cur.giftCard + v;
+  renderRecoCards();
+}
 function handleGiftInputChange(carrier, rawVal) {
   const numVal = parseInt(rawVal.replace(/[^0-9]/g, ''), 10);
   customGiftValues[carrier] = !isNaN(numVal) ? numVal : 0;
@@ -1729,7 +1760,7 @@ function buildProductSummaryLines(p){
     lines.push(`TV(${p.tvName}/${p.tvChannels}채널)+셋탑(${p.settopLabel})`);
   }
   lines.push(`월요금 ${p.totalFee.toLocaleString()}원`);
-  lines.push(`사은품 ${p.benefitTotal.toLocaleString()}원 (상 ${p.giftCard.toLocaleString()}원,현 ${p.cash.toLocaleString()}원${p.extraPay ? `,추가지급 ${p.extraPay.toLocaleString()}원` : ''})`);
+  lines.push(`사은품 ${p.benefitTotal.toLocaleString()}원 (상 ${(p.giftCard || 0).toLocaleString()}원,현 ${giftCashOf(p).toLocaleString()}원)`);
   if (isLoggedIn) {
     const comm = lookupCommission(p.carrierKey, p.speedNum, p.tvTier, p.lgVariant);
     lines.push(`수수료 ${comm.totalComm.toLocaleString()}원${comm.agency ? ` (${comm.agency})` : ''}`);
@@ -2059,14 +2090,12 @@ function buildProposalHomeRow(item){
       <div class="info-row"><span>월요금</span><span>${item.totalFee.toLocaleString()}원</span></div>
       <div class="info-row"><span>사은품</span><span>${item.benefitTotal.toLocaleString()}원</span></div>
       <div class="info-row sub-item-row"><span>상품권</span><span>${(item.giftCard || 0).toLocaleString()}원</span></div>
-      <div class="info-row sub-item-row"><span>현금</span><span>${(item.cash || 0).toLocaleString()}원</span></div>
-      <div class="info-row sub-item-row"><span>추가지급</span><span>${(item.extraPay || 0).toLocaleString()}원</span></div>
+      <div class="info-row sub-item-row"><span>현금</span><span>${giftCashOf(item).toLocaleString()}원</span></div>
       ${isLoggedIn ? `
       <div class="info-row"><span>수수료${agBadgeHtml(comm.agency, comm.agencies)}</span><span>${comm.totalComm.toLocaleString()}원</span></div>
       <div class="info-row sub-item-row"><span>인터넷</span><span>${comm.internetComm.toLocaleString()}원</span></div>
       ${item.tvTier !== 'none' ? `<div class="info-row sub-item-row"><span>TV</span><span>${comm.tvComm.toLocaleString()}원</span></div>` : ''}
-      ${agOthersRowsHtml(comm, true)}
-      <div class="info-row sub-item-row"><span>추가지급</span><span>${(item.extraPay || 0).toLocaleString()}원</span></div>` : ''}
+      ${agOthersRowsHtml(comm, true)}` : ''}
       <div class="usim-line-actions">
         <button type="button" class="mini-btn mini-btn-primary" onclick="moveProposalToFinal('${item.id}')">➕ 최종반영</button>
       </div>
@@ -2133,7 +2162,7 @@ function computeFinalCombo(homeItem, usimItems){
     .map((p, idx) => ({ carrier: p.carrier, fee: Number(p.fee) || 0, teen: !!p.teen, idx, planName: p.planName }));
   if (!lines.length) return null;
 
-  const options = computeComboOptionsFor(homeItem.carrierKey, lines, homeItem.speedNum);
+  const options = computeComboOptionsFor(homeItem.carrierKey, lines, homeItem.speedNum, homeItem.tvTier !== 'none' ? homeItem.bundleDiscount : 0);
   const availOptions = options.filter(o => o.avail);
   if (!availOptions.length) return null;
 
@@ -2178,6 +2207,7 @@ function buildFinalComboBlock(homeItem, usimItems){
     <div class="fc-sec">
       ${fcRow(`가족 결합할인 · ${best.name}`, `-${best.total.toLocaleString()}원`, 'fc-strong fc-green')}
       ${best.internetDiscount ? fcRow('인터넷 할인', `-${best.internetDiscount.toLocaleString()}원`, 'fc-sub') : ''}
+      ${best.overlap ? `<div class="fc-note">인터넷+TV 결합할인 ${best.bundleDisc.toLocaleString()}원과 중복 적용 불가 · 중복분 ${best.overlap.toLocaleString()}원 제외</div>` : ''}
       ${lineRows}
       ${fcRow('결합 적용 후 월요금', `${homeAfter.toLocaleString()}원`, 'fc-strong')}
     </div>
@@ -2185,7 +2215,6 @@ function buildFinalComboBlock(homeItem, usimItems){
 }
 
 function buildFinalHomeCard(item, usimItems){
-  const extraPay = item.extraPay || 0;
   return `
     <div class="final-card fc-simple">
       <div class="final-card-head">
@@ -2198,7 +2227,7 @@ function buildFinalHomeCard(item, usimItems){
       <div class="fc-sec">
         ${fcRow(`인터넷 ${item.internetLabel}`, `${item.internetFee.toLocaleString()}원`, 'fc-strong')}
         ${fcRow(`공유기 (${item.routerLabel})`, `${item.routerFee.toLocaleString()}원`, 'fc-sub')}
-        ${item.bundleDiscount ? fcRow('인터넷 결합할인', `-${item.bundleDiscount.toLocaleString()}원`, 'fc-sub') : ''}
+        ${item.bundleDiscount ? fcRow('인터넷+TV 결합할인', `-${item.bundleDiscount.toLocaleString()}원`, 'fc-sub') : ''}
         ${item.tvTier !== 'none' ? `
           ${fcRow(`TV ${item.tvName} (${item.tvChannels}채널)`, `${item.tvFee.toLocaleString()}원`, 'fc-strong fc-gap')}
           ${fcRow(`셋톱박스 (${item.settopLabel})`, `${item.settopFee.toLocaleString()}원`, 'fc-sub')}
@@ -2215,8 +2244,7 @@ function buildFinalHomeCard(item, usimItems){
       <div class="fc-sec">
         ${fcRow('지급 사은품', `${item.benefitTotal.toLocaleString()}원`, 'fc-strong fc-gold')}
         ${fcRow('상품권', `${(item.giftCard || 0).toLocaleString()}원`, 'fc-sub')}
-        ${fcRow('현금', `${(item.cash || 0).toLocaleString()}원`, 'fc-sub')}
-        ${extraPay > 0 ? fcRow('추가지급', `${extraPay.toLocaleString()}원`, 'fc-sub') : ''}
+        ${fcRow('현금', `${giftCashOf(item).toLocaleString()}원`, 'fc-sub')}
       </div>
     </div>
   `;
@@ -2295,7 +2323,6 @@ function renderCommissionPanels(homeItem, usimItems){
   } else {
     const comm = lookupCommission(homeItem.carrierKey, homeItem.speedNum, homeItem.tvTier, homeItem.lgVariant);
     const margin = comm.totalComm - homeItem.benefitTotal;
-    const extraPay = homeItem.extraPay || 0;
     homePanel.innerHTML = `
       <div class="final-card fc-simple">
         <div class="fc-sec">
@@ -2307,8 +2334,7 @@ function renderCommissionPanels(homeItem, usimItems){
         <div class="fc-sec">
           ${fcRow('지급 사은품', `-${homeItem.benefitTotal.toLocaleString()}원`, 'fc-strong')}
           ${fcRow('상품권', `${(homeItem.giftCard || 0).toLocaleString()}원`, 'fc-sub')}
-          ${fcRow('현금', `${(homeItem.cash || 0).toLocaleString()}원`, 'fc-sub')}
-          ${extraPay > 0 ? fcRow('추가지급', `${extraPay.toLocaleString()}원`, 'fc-sub') : ''}
+          ${fcRow('현금', `${giftCashOf(homeItem).toLocaleString()}원`, 'fc-sub')}
         </div>
         <div class="fc-hero fc-hero-margin"><span>마진</span><strong style="color:${margin >= 0 ? '#1E7E34' : '#D9534F'};">${margin.toLocaleString()}원</strong></div>
       </div>
