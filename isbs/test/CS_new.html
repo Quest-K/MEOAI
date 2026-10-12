@@ -1126,6 +1126,7 @@ function renderRecoCards(){
 }
 
 function reflectRecoCardToProposal(carrier){
+  markConsultDirty();
   const res = computePrice(carrier, recoState);
   if (!res.available) { alert('선택하신 조합으로는 가입 가능한 상품 정보가 없습니다.'); return; }
 
@@ -1308,6 +1309,7 @@ function applyUsimScrollLimit(){
 }
 
 function reflectRecoUsimPlan(poolIdx){
+  markConsultDirty();
   const plan = recoUsimPlanPool[poolIdx];
   if (!plan) return;
 
@@ -1492,6 +1494,7 @@ function toggleFamilyLineSection(isOn){
 }
 
 function addFamilyLine(type){
+  markConsultDirty();
   const line = { id: 'fam-' + Date.now() + '-' + Math.floor(Math.random()*1000), type };
   if (type === 'internet') {
     line.carrier = 'KT';
@@ -1510,12 +1513,14 @@ function addFamilyLine(type){
 
 function updateFamilyLine(idx, field, value){
   if (!familyLines[idx]) return;
+  markConsultDirty();
   familyLines[idx][field] = (field === 'feeValue') ? (value === '' ? null : Number(value)) : value;
   updateCsSummaryPanel();
 }
 
 function removeFamilyLine(idx){
   if (!confirm('해당 가족회선을 삭제할까요?')) return;
+  markConsultDirty();
   familyLines.splice(idx, 1);
   renderFamilyLines();
   updateCsSummaryPanel();
@@ -1651,6 +1656,7 @@ function updateAddedUsimLine(id, field, value){
 }
 
 function removeAddedUsimLine(id){
+  markConsultDirty();
   addedUsimLines = addedUsimLines.filter(l => l.id !== id);
   reflectedProducts = reflectedProducts.filter(p => p.id !== id);
   renderAddedUsimLines();
@@ -2308,12 +2314,14 @@ function renderProposalLists(){
 }
 
 function removeProposal(id){
+  markConsultDirty();
   reflectedProducts = reflectedProducts.filter(p => p.id !== id);
   renderProposalLists();
   updateCsSummaryPanel();
 }
 
 function moveProposalToFinal(id){
+  markConsultDirty();
   const item = reflectedProducts.find(p => p.id === id);
   if (!item) return;
 
@@ -2331,6 +2339,7 @@ function moveProposalToFinal(id){
 }
 
 function removeFinalProduct(id){
+  markConsultDirty();
   finalProducts = finalProducts.filter(p => p.id !== id);
   renderFinalProducts();
 }
@@ -3180,6 +3189,7 @@ function setConsultSaveState(text, saved){
   if (!el) return;
   el.textContent = text;
   el.classList.toggle('saved', !!saved);
+  if (saved) consultDirty = false;
   try { updateCsCustStrip(); } catch (e) {}   // 저장 직후 요약줄의 [고객상세 보기] 활성 상태 갱신
 }
 
@@ -3188,8 +3198,69 @@ function resetConsultation(){
   startNewConsultWithContact('010');
 }
 
+/* ---- 고객이 바뀔 때 이전 고객의 값이 남지 않게 하는 공통 처리 ---- */
+let consultDirty = false;   // 불러오기/저장 이후 사용자가 입력·상품을 바꿨는지 (탭 이동·닫기 때 경고 판단용)
+function markConsultDirty(){ consultDirty = true; }
+
+function setSelectIfExists(id, v){
+  const el = document.getElementById(id);
+  if (!el || v === null || v === undefined) return;
+  const s = String(v);
+  if (Array.from(el.options).some(o => o.value === s)) el.value = s;
+}
+
+function setFamilyToggle(on){
+  const t = document.getElementById('family-line-toggle');
+  if (t) t.checked = !!on;
+  toggleFamilyLineSection(!!on);
+}
+// 가족회선 목록·토글을 현재 familyLines 값에 맞춥니다 (회선이 있으면 켬, 없으면 끔)
+function syncFamilyLinesUI(){
+  setFamilyToggle(familyLines.length > 0);
+  renderFamilyLines();
+}
+
+// 휴대폰 요금에 맞는 유심 추천 구간으로 맞춥니다 (구간이 달라질 때만 다시 조회)
+function syncRecoUsimTierToFee(){
+  try {
+    const t = getUsimTierForFee(document.getElementById('cust-mobile-fee')?.value);
+    if (t !== recoUsimTier) initRecoUsimTierDefault();
+  } catch (e) {}
+}
+
+// 상담 화면의 고객별 부가 입력값(가족회선·본인회선·기존 인터넷·추천 설정)을 기본값으로 되돌립니다.
+// 고객을 바꾸거나 신규 상담을 시작할 때 먼저 호출한 뒤, 불러올 값이 있으면 그 위에 채웁니다.
+function resetConsultCustomerExtras(){
+  familyLines = [];
+  syncFamilyLinesUI();
+  setVal('cust-mobile-carrier', '확인안됨');
+  setVal('cust-mobile-fee', '');
+  const oldToggle = document.getElementById('old-internet-toggle');
+  if (oldToggle) { oldToggle.checked = false; toggleOldInternetSection(false); }
+  setVal('old-isp', 'KT'); setVal('old-tv-count', '1'); setVal('old-internet-fee', '3만원대'); setVal('old-contract-end', '');
+  // 추천상품 설정(속도·공유기·TV·셋톱·서브TV·사은품 조정·결합할인 선택)도 새 고객 기준 기본값으로
+  const before = JSON.stringify(recoState);
+  recoState = { speed:'500', tv:'basic', settopTier:'basic', router:'Y', extraTVs:[] };
+  lastRecoTvTier = 'basic';
+  customGiftValues = {}; recoComboSel = {}; openDiscountItems.clear();
+  [['reco-seg-speed','speed'], ['reco-seg-router','router'], ['reco-seg-tv','tv'], ['reco-seg-settop','settopTier']].forEach(([id, key]) => {
+    document.querySelectorAll('#' + id + ' button').forEach(b => b.classList.toggle('active', b.dataset.value === String(recoState[key])));
+  });
+  document.querySelectorAll('.reco-preset-btn').forEach(b => b.classList.remove('active'));
+  syncRecoControlsUI();
+  if (before !== JSON.stringify(recoState)) { try { loadFinanceData().then(() => renderRecoCards()).catch(() => {}); } catch (e) {} }
+  hideDupHint();
+}
+
+// 상단 검색칸이 지금 화면에 열린 고객의 연락처를 보여주도록 맞춥니다 (이전에 조회한 번호가 남아 혼동되지 않게)
+function syncTopSearchBox(contact){
+  const d = String(contact || '').replace(/\D/g, '');
+  setVal('top-quick-contact', d.length > 3 ? formatContactDisplay(contact) : '');
+}
+
 // 고객상담 화면을 빈 신규 상담으로 초기화 (연락처만 미리 채워둘 수 있음)
 function startNewConsultWithContact(contact){
+  consultDirty = false;
   currentCustomerId = null;
   consultLoadedContact = '';
   consultTargets = emptyConsultTargets();
@@ -3203,24 +3274,27 @@ function startNewConsultWithContact(contact){
   setVal('cust-inflow', '');
   setVal('cust-next-contact', getDefaultNextContactValue());
   setConsultStatusSelect(null);
-  const oldToggleReset = document.getElementById('old-internet-toggle');
-  if (oldToggleReset) { oldToggleReset.checked = false; toggleOldInternetSection(false); }
+  resetConsultCustomerExtras();
+  syncTopSearchBox(contact);
   selectedCustomerTags = new Set();
   renderCustomerTags();
   reflectedProducts = [];
   finalProducts = [];
   addedUsimLines = [];
   syncToDesignPhones();
+  syncRecoUsimTierToFee();
   renderProposalLists();
   renderFinalProducts();
   updateCsSummaryPanel();
   setConsultSaveState('신규 상담', false);
+  consultDirty = false;
   goCsStep(1);
 }
 
 // 고객상담 화면에 "저장되지 않은 작성 중 내용"이 있는지 대략적으로 판단합니다.
 // (필드별 변경 감지까지는 하지 않고, 저장/불러오기 직후의 '정돈된 상태'인지만 봅니다 — 저장/불러온 뒤 값을 추가로 고친 경우는 감지하지 못할 수 있습니다)
 function consultHasUnsavedWork(){
+  if (consultDirty) return true;
   const stateEl = document.getElementById('consult-save-state');
   if (stateEl && stateEl.classList.contains('saved')) return false;
   const contact = (elVal('cust-contact') || '').trim();
@@ -5590,6 +5664,9 @@ async function deleteCustomer(id, btn){
 function fillConsultFormFromCustomer(c){
   currentCustomerId = c.customer_id;
   consultLoadedContact = normalizeContact(c.contact);
+  consultDirty = false;
+  resetConsultCustomerExtras();          // 이전 고객의 가족회선·본인회선·기존 인터넷·추천 설정이 남지 않게 먼저 비움
+  syncTopSearchBox(c.contact);
   setVal('cust-name', c.name || NAME_PREFIX);
   setVal('cust-contact', formatContactDisplay(c.contact));
   setVal('cust-notes', c.notes || '');
@@ -5597,7 +5674,7 @@ function fillConsultFormFromCustomer(c){
   setVal('cust-inflow', c.inflow_route || '');
   setConsultStatusSelect(custStatusInfo(c));   // S7-6: 새 고객 상태(없으면 구 상태값을 변환해 표시)
   setVal('cust-next-contact', toLocalInputValue(c.next_contact_at));
-  if (c.telecom) setVal('cust-mobile-carrier', c.telecom);
+  if (c.telecom) setSelectIfExists('cust-mobile-carrier', c.telecom);
 
   const oldToggle = document.getElementById('old-internet-toggle');
   if (oldToggle) {
@@ -5616,27 +5693,36 @@ function fillConsultFormFromCustomer(c){
   const seq = ++consultLoadSeq;
   const snap = c.proposal_snapshot;
   if (snap && typeof snap === 'object') {
-    applyConsultProducts(snap.proposals, snap.finals, snap.customerInfo?.familyLines);
+    applyConsultProducts(snap.proposals, snap.finals, snap.customerInfo?.familyLines, snap.customerInfo);
   } else {
-    applyConsultProducts([], [], null);
+    applyConsultProducts([], [], null, null);
   }
 
   syncToDesignPhones();
+  syncRecoUsimTierToFee();
   renderProposalLists();
   renderFinalProducts();
   updateCsSummaryPanel();
   setConsultSaveState(`불러옴 · 고객ID ${c.customer_id}`, true);
+  consultDirty = false;
   goCsStep(1);
   consultLoadPromise = loadConsultFromContracts(c.customer_id, seq);
 }
 
 // 상담 화면의 제안·최종상품·유심 회선·가족회선 값을 한 번에 채웁니다.
-function applyConsultProducts(proposals, finals, fam){
+function applyConsultProducts(proposals, finals, fam, ci){
   reflectedProducts = Array.isArray(proposals) ? proposals : [];
   finalProducts = Array.isArray(finals) ? finals : [];
   addedUsimLines = reflectedProducts.filter(p => p.type === 'usim')
     .map(p => ({ id: p.id, carrier: p.carrier, planName: p.planName, fee: p.fee, teen: false }));
-  if (Array.isArray(fam)) familyLines = fam;
+  familyLines = Array.isArray(fam) ? fam : [];     // 값이 없으면 이전 고객의 가족회선을 남기지 않고 비웁니다
+  syncFamilyLinesUI();
+  // 스냅샷에 남은 본인 회선 정보(요금 구간·통신사)로 입력칸 복원 (customers.telecom 이 있으면 그 값을 우선)
+  if (ci && typeof ci === 'object') {
+    if (ci.mobileFee != null && ci.mobileFee !== '') setSelectIfExists('cust-mobile-fee', ci.mobileFee);
+    const curCarrier = elVal('cust-mobile-carrier');
+    if (ci.mobileCarrier && (!curCarrier || curCarrier === '확인안됨')) setSelectIfExists('cust-mobile-carrier', ci.mobileCarrier);
+  }
 }
 
 // 새 구조에서 상담 내용 읽기 : 대표 계약의 상담 스냅샷이 있으면 제안·최종상품을 그 값으로 바꾸고 계약을 기억합니다.
@@ -5651,8 +5737,9 @@ async function loadConsultFromContracts(customerId, seq){
   consultLoadState = 'ok';
   if (!r.found) return;
   consultTargets = { carrierContractId: r.carrierContractId, usimByKey: r.usimByKey || {} };
-  applyConsultProducts(r.proposals, r.finals, r.familyLines);
+  applyConsultProducts(r.proposals, r.finals, r.familyLines, r.customerInfo);
   syncToDesignPhones();
+  syncRecoUsimTierToFee();
   renderProposalLists();
   renderFinalProducts();
   updateCsSummaryPanel();
@@ -5805,7 +5892,8 @@ function custTabShowScreen(){
 
 async function activateCustTab(i){
   const t = custTabs[i];
-  if (!t || custTabBusy) return;
+  if (!t) return;
+  if (custTabBusy) { showToast('고객 정보를 불러오는 중입니다. 잠시 후 다시 눌러주세요'); return; }
   if (i === custTabActive) { custTabShowScreen(); return; }
   if (consultHasUnsavedWork() && !confirm('고객상담 화면에 저장하지 않은 작성 중인 내용이 있습니다.\n다른 고객 탭으로 이동하면 그 내용이 사라집니다. 계속할까요?')) return;
 
@@ -5912,6 +6000,12 @@ async function quickTopSearch(rawContact, btn){
     clearBtnLoading(btn);
   }
 }
+
+// 고객상담 화면(또는 고객정보 수정 패널)에서 값을 직접 고치면 '저장 전 변경'으로 표시 → 탭 이동·닫기 때 경고
+['input', 'change'].forEach(evt => document.addEventListener(evt, e => {
+  const t = e.target;
+  if (t && t.closest && t.closest('#view-cs, #cs-edit-drawer')) markConsultDirty();
+}));
 
 (async function init(){
   displayLastModified();
