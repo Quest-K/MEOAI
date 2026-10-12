@@ -299,6 +299,8 @@
             <div id="reco-extra-tv-list" class="extra-tv-col"></div>
           </div>
 
+          <div id="reco-combo-panel" class="reco-combo-panel"></div>
+
           <div id="reco-carrier-cards" class="reco-cards cols-3">
             <div class="reflected-empty">상품 데이터 로딩 중입니다.</div>
           </div>
@@ -337,12 +339,6 @@
         </div>
       </div>
 
-      <div class="cs-wiz-subsection">
-      <div class="cs-card">
-        <h3>결합할인</h3>
-        <div id="final-combo-discount" style="overflow-x:auto;"></div>
-      </div>
-      </div>
         </div>
 
         <div class="cs-wiz-panel" id="cs-wiz-panel-4">
@@ -755,6 +751,8 @@ function clearBtnLoading(btn){
 }
 
 let openDiscountItems = new Set();
+// 추천상품에서 통신사별로 선택한 휴대폰 결합할인 { 통신사키: 결합할인 key } (없으면 적용 안 함)
+let recoComboSel = {};
 let state = { speed:'500', tv:'basic', settopTier:'basic', router:'Y', tcDistMode:'equal' };
 let lastTvTier = 'basic';
 let addedUsimLines = []; 
@@ -915,9 +913,9 @@ function renderRecoCards(){
     return;
   }
 
-  const oldOn = document.getElementById('old-internet-toggle')?.checked;
-  const oldIsp = document.getElementById('old-isp')?.value || '';
-  const excluded = oldOn ? (ISP_HOME_CARRIER_MAP[oldIsp] || []) : [];
+  renderRecoComboPanel();   // 카드 위 결합할인 선택 영역
+
+  const excluded = recoExcludedCarriers();
 
   const mobileCarrierRaw = document.getElementById('cust-mobile-carrier')?.value || '';
   const isMvno = mobileCarrierRaw.includes('알뜰');
@@ -948,8 +946,12 @@ function renderRecoCards(){
     const tvName = price.tvInfo ? price.tvInfo.name : '기본형';
     const tvChannels = price.tvInfo ? (price.tvInfo.channels || 200) : 200;
     const settopName = price.settopInfo ? price.settopInfo.name : '기본셋톱';
-    const internetSubtotal = (price.internetFee || 0) + (price.routerFee || 0) - (price.bundleDiscount || 0);
-    const tvSubtotal = tvTier !== 'none' ? (price.tvFee || 0) + (price.settopFee || 0) - (price.tvBundleDiscount || 0) + (price.extraTvFee || 0) : 0;
+    const combo = getRecoAppliedCombo(c, price);   // 선택한 휴대폰 결합할인(없으면 null)
+    const comboInet = combo ? combo.internetDiscount : 0;
+    const comboTv = combo ? (combo.tvDiscount || 0) : 0;
+    const homeTotal = (price.total || 0) - comboInet - comboTv;
+    const internetSubtotal = (price.internetFee || 0) + (price.routerFee || 0) - (price.bundleDiscount || 0) - comboInet;
+    const tvSubtotal = tvTier !== 'none' ? (price.tvFee || 0) + (price.settopFee || 0) - (price.tvBundleDiscount || 0) + (price.extraTvFee || 0) - comboTv : 0;
 
     const promo = PROMOTION_DATA[c] || { giftCard: 60000, cash: 340000 };
     const userGiftVal = customGiftValues[c] !== undefined ? customGiftValues[c] : (promo.maxLimit || (promo.giftCard + promo.cash));
@@ -987,13 +989,16 @@ function renderRecoCards(){
     return `
       <div class="reco-product-card">
         <div class="reco-product-card-title reco-title-2row carrier-${c}">
-          ${carrierTitleHtml(c, `<span class="reco-product-total">${(price.total || 0).toLocaleString()}</span>`)}
+          ${carrierTitleHtml(c, `<span class="reco-product-total">${homeTotal.toLocaleString()}</span>`)}
         </div>
         <div class="reco-block first">
           <div class="info-row main-label reco-subtotal-row"><span>인터넷</span><span>${internetSubtotal.toLocaleString()}</span></div>
           <div class="info-row sub-item-row reco-sub-lv2"><span>${SPEED_LABEL[recoState.speed] || ''}</span><span>${(price.internetFee || 0).toLocaleString()}</span></div>
           <div class="info-row sub-item-row reco-sub-lv2"><span>공유기<span class="reco-detail-sm">(${ROUTER_LABEL[recoState.router] || ''})</span></span><span>${(price.routerFee || 0).toLocaleString()}</span></div>
           <div class="info-row sub-item-row reco-sub-lv2"><span>${tvTier !== 'none' ? '인터넷+TV 결합할인' : '인터넷결합할인'}</span><span>${price.bundleDiscount ? '-' + price.bundleDiscount.toLocaleString() : '0'}</span></div>
+          ${combo ? `
+          <div class="info-row sub-item-row reco-sub-lv2"><span>휴대폰 결합할인<span class="reco-detail-sm">(${combo.name})</span></span><span>${combo.internetDiscount ? '-' + combo.internetDiscount.toLocaleString() : '0'}</span></div>
+          ${combo.phoneDiscount ? `<div class="reco-detail-sm reco-notice-hint">+ 휴대폰 요금 할인 -${combo.phoneDiscount.toLocaleString()} (휴대폰 요금에서 차감 · 위 월요금에는 미포함)</div>` : ''}` : ''}
         </div>
         ${tvTier !== 'none' ? `
         <div class="reco-block">
@@ -1001,6 +1006,7 @@ function renderRecoCards(){
           <div class="info-row sub-item-row reco-sub-lv2"><span>${tvName}/${tvChannels}채널</span><span>${(price.tvFee || 0).toLocaleString()}</span></div>
           <div class="info-row sub-item-row reco-sub-lv2"><span>셋탑박스<span class="reco-detail-sm">(${settopName})</span></span><span>${(price.settopFee || 0).toLocaleString()}</span></div>
           ${price.tvBundleDiscount ? `<div class="info-row sub-item-row reco-sub-lv2"><span>TV결합할인</span><span>-${price.tvBundleDiscount.toLocaleString()}</span></div>` : ''}
+          ${comboTv ? `<div class="info-row sub-item-row reco-sub-lv2"><span>휴대폰 결합 IPTV 할인<span class="reco-detail-sm">(${combo.name})</span></span><span>-${comboTv.toLocaleString()}</span></div>` : ''}
           ${(price.extraTvDetails || []).map(ex => `
           <div class="info-row sub-item-row reco-sub-lv2"><span>${ex.tvName}/${ex.tvChannels}채널</span><span>${ex.tvHalfFee.toLocaleString()}</span></div>
           <div class="info-row sub-item-row reco-sub-lv2"><span>셋탑박스<span class="reco-detail-sm">(${ex.settopName})</span></span><span>${ex.settopFee.toLocaleString()}</span></div>
@@ -1039,6 +1045,7 @@ function reflectRecoCardToProposal(carrier){
     return;
   }
 
+  const combo = getRecoAppliedCombo(carrier, res);   // 추천상품에서 고른 휴대폰 결합할인
   const promo = PROMOTION_DATA[carrier] || { maxLimit: 450000, giftCard: 60000, cash: 390000 };
   const userGiftVal = customGiftValues[carrier] !== undefined ? customGiftValues[carrier] : (promo.maxLimit || (promo.giftCard + promo.cash));
   const gb = computeGiftBreakdown(carrier, userGiftVal);
@@ -1066,6 +1073,11 @@ function reflectRecoCardToProposal(carrier){
     settopFee: recoState.tv === 'none' ? 0 : res.settopFee,
     tvBundleDiscount: recoState.tv !== 'none' ? res.tvBundleDiscount : 0,
     totalFee: res.total,
+    comboKey: combo ? combo.key : null,            // null = 결합할인 적용 안 함 (값이 없는 옛 데이터는 최종상품에서 최대 할인을 자동 계산)
+    comboName: combo ? combo.name : '',
+    comboInternetDiscount: combo ? combo.internetDiscount : 0,
+    comboTvDiscount: combo ? (combo.tvDiscount || 0) : 0,
+    comboPhoneDiscount: combo ? combo.phoneDiscount : 0,
     extraTVs: recoState.tv !== 'none' ? JSON.parse(JSON.stringify(recoState.extraTVs || [])) : [],
     extraTvFee: recoState.tv !== 'none' ? (res.extraTvFee || 0) : 0,
     extraTvDetails: recoState.tv !== 'none' ? (res.extraTvDetails || []) : [],
@@ -1565,7 +1577,7 @@ function updateTcDistMode(mode){
   renderFamilyDiscountAccordion();
 }
 
-function renderAccordionItem(opt, lines, isMax, keyPrefix){
+function renderAccordionItem(opt, lines, isMax, keyPrefix, selInfo){
   const itemKey = (keyPrefix || '') + opt.key;
   const isOpen = openDiscountItems.has(itemKey);
   const badgeClass = opt.avail ? 'badge-avail' : 'badge-unavail';
@@ -1598,22 +1610,36 @@ function renderAccordionItem(opt, lines, isMax, keyPrefix){
         <div class="fam-detail-line-row fam-detail-header">
           <span class="discount-info">인터넷 할인</span><span class="discount-amount">${opt.internetDiscount.toLocaleString()}원</span>
         </div>
+        ${opt.tvDiscount ? `<div class="fam-detail-line-row fam-detail-header"><span class="discount-info">IPTV 할인</span><span class="discount-amount">${Number(opt.tvDiscount).toLocaleString()}원</span></div>` : ''}
         ${opt.overlap ? `<div class="fam-detail-desc">※ 인터넷+TV 결합할인 ${opt.bundleDisc.toLocaleString()}원과 중복 적용 불가 → 중복분 ${opt.overlap.toLocaleString()}원 제외</div>` : ''}
         ${lineRows}
       </div>
     `;
   }
 
+  // 추천상품에서 쓰는 경우(selInfo) : 이름 앞에 선택 버튼, 이름 아래에 인터넷/휴대폰 할인 내역을 보여줍니다.
+  const canPick = !!(selInfo && opt.avail && !opt.disabled);
+  const isSel = !!(selInfo && canPick && selInfo.selectedKey === opt.key);
+  const radioHtml = selInfo
+    ? `<span class="combo-radio${isSel ? ' on' : ''}${canPick ? '' : ' off'}" ${canPick ? `onclick="event.stopPropagation(); selectRecoCombo('${selInfo.carrier}','${opt.key}')" title="이 결합할인 적용"` : ''}></span>`
+    : '';
+  let row2Text = opt.reason || '';
+  if (selInfo && opt.avail) {
+    const sumLines = (opt.lineShares || []).reduce((a, b) => a + (Number(b) || 0), 0);
+    const brk = `인터넷 -${(Number(opt.internetDiscount) || 0).toLocaleString()}${opt.tvDiscount ? ` · TV -${Number(opt.tvDiscount).toLocaleString()}` : ''} · 휴대폰 -${sumLines.toLocaleString()}`;
+    row2Text = row2Text ? `${brk} · ${row2Text}` : brk;
+  }
+
   return `
-    <div class="fam-accordion-item${opt.disabled ? ' disabled' : ''}${isMax ? ' max-discount' : ''}">
+    <div class="fam-accordion-item${opt.disabled ? ' disabled' : ''}${isMax ? ' max-discount' : ''}${isSel ? ' combo-selected' : ''}">
       <div class="fam-accordion-header" ${opt.disabled ? '' : `onclick="toggleDiscountItem('${itemKey}')"`}>
         <div class="fam-accordion-row1">
-          <span class="fam-accordion-name">${opt.name}</span>
+          ${radioHtml}<span class="fam-accordion-name">${opt.name}</span>
           <span class="fam-badge ${badgeClass}">${opt.availText}</span>
           <span class="fam-accordion-total">${totalDisplay}</span>
           ${opt.disabled ? '' : `<span class="fam-accordion-chevron">${isOpen ? '▾' : '▸'}</span>`}
         </div>
-        ${opt.reason ? `<div class="fam-accordion-row2">${opt.reason}</div>` : ''}
+        ${row2Text ? `<div class="fam-accordion-row2">${row2Text}</div>` : ''}
       </div>
       ${detailHtml}
     </div>
@@ -1621,12 +1647,12 @@ function renderAccordionItem(opt, lines, isMax, keyPrefix){
 }
 
 // bundleDisc : 인터넷+TV 결합할인(상품에 이미 반영된 인터넷 쪽 할인). 휴대폰 결합의 인터넷 할인과는 중복 적용되지 않고 큰 쪽만 적용됩니다.
-function computeComboOptionsFor(carrierKey, lines, speedNum, bundleDisc){
+function computeComboOptionsFor(carrierKey, lines, speedNum, bundleDisc, hasTv){
   let opts;
   if (carrierKey === 'kt') opts = computeKTOptions(lines, speedNum, state.tcDistMode);
   else if (carrierKey === 'lg') opts = computeLGOptions(lines, speedNum);
   else if (carrierKey === 'sky') return computeSkyOptions();     // SKY : 휴대폰 결합할인 계산 안 함
-  else opts = computeSKOptions(lines, speedNum, carrierKey);
+  else opts = computeSKOptions(lines, speedNum, carrierKey, !!hasTv);
   const bd = Number(bundleDisc) || 0;
   if (!bd) return opts;
   return opts.map(o => {
@@ -1634,7 +1660,7 @@ function computeComboOptionsFor(carrierKey, lines, speedNum, bundleDisc){
     const overlap = Math.min(idisc, bd);
     if (!o.avail || overlap <= 0) return o;
     const sumLines = (o.lineShares || []).reduce((a, b) => a + (Number(b) || 0), 0);
-    const totalHasInternet = Number(o.total) === sumLines + idisc;   // 합계에 인터넷 할인이 들어 있을 때만 합계에서 뺍니다
+    const totalHasInternet = Number(o.total) === sumLines + idisc + (Number(o.tvDiscount) || 0);   // 합계에 인터넷 할인이 들어 있을 때만 합계에서 뺍니다
     return Object.assign({}, o, { internetDiscount: idisc - overlap, total: totalHasInternet ? o.total - overlap : o.total, overlap, bundleDisc: bd });
   });
 }
@@ -1647,69 +1673,94 @@ function getProposalComboLines(carrierKey){
     .filter(p => p.carrier === matchLabel);
 }
 
-// 결합할인 : 통신사 4분할 + 제안상품에 담긴 인터넷/TV 상품 기준으로 계산
-function buildComboCardForProposal(item){
-  const lines = getProposalComboLines(item.carrierKey);
-  const options = computeComboOptionsFor(item.carrierKey, lines, item.speedNum, item.tvTier !== 'none' ? item.bundleDiscount : 0);
-  const availOptions = options.filter(o => o.avail);
-  const maxTotal = availOptions.length ? Math.max(...availOptions.map(o => o.total)) : null;
-  const maxKey = maxTotal !== null ? (availOptions.find(o => o.total === maxTotal) || {}).key : null;
-  const specText = `${item.internetLabel}${item.tvTier !== 'none' ? ' + TV' : ' 단독'}`;
-
-  const body = item.carrierKey === 'sky'
-    ? `<div class="proposal-col-empty">SKY는 휴대폰 결합할인을 계산하지 않습니다.</div>`
-    : lines.length
-      ? options.map(opt => renderAccordionItem(opt, lines, opt.key === maxKey, item.id + '-')).join('')
-      : `<div class="proposal-col-empty">제안상품에 담긴 ${MOBILE_GROUP_MAP[item.carrierKey]} 유심 회선이 없습니다.</div>`;
-
-  return `
-    <div class="fam-accordion-card">
-      <div class="fam-accordion-card-header carrier-${item.carrierKey}">
-        ${CARRIER_LABEL[item.carrierKey]}<span class="fam-card-spec">${specText}</span>
-      </div>
-      <div class="fam-accordion-items">${body}</div>
-    </div>
-  `;
+// ─────────────────────────────────────────────────────────────
+// 추천상품 : 휴대폰 결합할인 선택
+//  - 통신사 열(추천상품 카드와 같은 3분할) 위쪽에 결합할인 목록과 할인액을 보여주고,
+//  - 고른 결합할인은 아래 각 통신사 카드(월요금)와 [상품반영] 제안상품에 그대로 적용됩니다.
+//  - 결합 대상 휴대폰 회선 : 고객 본인 회선(상담정보 연동) + 제안상품에 담긴 유심 회선
+// ─────────────────────────────────────────────────────────────
+function recoExcludedCarriers(){
+  const oldOn = document.getElementById('old-internet-toggle')?.checked;
+  const oldIsp = document.getElementById('old-isp')?.value || '';
+  return oldOn ? (ISP_HOME_CARRIER_MAP[oldIsp] || []) : [];
 }
 
+// 해당 통신사 카드(c)의 결합할인 후보. 인터넷+TV 결합할인과 중복되는 인터넷 할인은 큰 쪽만 적용(computeComboOptionsFor)
+function getRecoComboOptions(c, price){
+  const lines = getProposalComboLines(c);
+  if (c === 'sky' || !price || !price.available || !lines.length) return { lines, options: [] };
+  const bd = recoState.tv !== 'none' ? (Number(price.bundleDiscount) || 0) : 0;
+  return { lines, options: computeComboOptionsFor(c, lines, Number(recoState.speed), bd, recoState.tv !== 'none') };
+}
+
+// 선택된 결합할인(없으면 null) : 인터넷 할인은 월요금에서, 휴대폰 할인은 휴대폰 요금에서 차감됩니다.
+function getRecoAppliedCombo(c, price){
+  const key = recoComboSel[c];
+  if (!key) return null;
+  const o = getRecoComboOptions(c, price).options.find(x => x.key === key && x.avail && !x.disabled);
+  if (!o) return null;
+  const internetDiscount = Number(o.internetDiscount) || 0;
+  const tvDiscount = Number(o.tvDiscount) || 0;
+  const phoneDiscount = (o.lineShares || []).reduce((a, b) => a + (Number(b) || 0), 0);
+  return { key: o.key, name: o.name, internetDiscount, tvDiscount, phoneDiscount, total: internetDiscount + tvDiscount + phoneDiscount };
+}
+
+function selectRecoCombo(c, key){
+  recoComboSel[c] = (key && recoComboSel[c] !== key) ? key : null;   // 같은 항목을 다시 누르면 해제
+  renderRecoCards();
+}
+
+function renderRecoComboPanel(){
+  const box = document.getElementById('reco-combo-panel');
+  if (!box) return;
+  if (!DATA) { box.innerHTML = ''; return; }
+
+  const excluded = recoExcludedCarriers();
+  const specText = `${SPEED_LABEL[recoState.speed] || ''}${recoState.tv !== 'none' ? ' + TV' : ' 단독'}`;
+
+  const cols = recoVisibleCarriers().map(c => {
+    const head = `<div class="fam-accordion-card-header carrier-${c}">${CARRIER_LABEL[c]}<span class="fam-card-spec">${specText}</span></div>`;
+    let body;
+    if (excluded.includes(c)) {
+      body = `<div class="proposal-col-empty">가입불가</div>`;
+    } else if (c === 'sky') {
+      body = `<div class="proposal-col-empty">SKY는 휴대폰 결합할인을 계산하지 않습니다.</div>`;
+    } else {
+      const price = computePrice(c, recoState);
+      const { lines, options } = getRecoComboOptions(c, price);
+      if (!price.available) {
+        body = `<div class="proposal-col-empty">해당 스펙의 상품 정보가 없습니다.</div>`;
+      } else if (!lines.length) {
+        body = `<div class="proposal-col-empty">${MOBILE_GROUP_MAP[c]} 휴대폰 회선이 없어 결합할인을 계산할 수 없습니다.<br>아래 [2. 유심]에서 ${MOBILE_GROUP_MAP[c]} 요금제를 [상품반영]하면 계산됩니다.</div>`;
+      } else {
+        const availOptions = options.filter(o => o.avail);
+        const maxTotal = availOptions.length ? Math.max(...availOptions.map(o => o.total)) : null;
+        const maxKey = maxTotal !== null ? (availOptions.find(o => o.total === maxTotal) || {}).key : null;
+        const applied = getRecoAppliedCombo(c, price);
+        const selInfo = { carrier: c, selectedKey: applied ? applied.key : null };
+        const noneRow = `
+          <div class="combo-none-row${applied ? '' : ' combo-selected'}" onclick="selectRecoCombo('${c}','')">
+            <span class="combo-radio${applied ? '' : ' on'}"></span><span>결합할인 적용 안 함</span>
+          </div>`;
+        body = noneRow + options.map(opt => renderAccordionItem(opt, lines, opt.key === maxKey, c + '-', selInfo)).join('');
+      }
+    }
+    return `<div class="fam-accordion-card">${head}<div class="fam-accordion-items">${body}</div></div>`;
+  }).join('');
+
+  box.innerHTML = `
+    <div class="reco-combo-title">📎 휴대폰 결합할인 선택 <span class="reco-detail-sm">고른 결합할인이 아래 통신사별 월요금에 적용됩니다</span></div>
+    <div class="reco-cards cols-3">${cols}</div>
+    <div class="fam-table-note">
+      · 고객 본인 휴대폰과 [제안상품]에 담긴 유심 회선을 기준으로 계산됩니다. 인터넷 속도는 위에서 고른 속도를 사용합니다.
+      <br>· 인터넷 할인은 인터넷 월요금에서, 휴대폰 할인은 휴대폰 요금에서 차감됩니다.
+      <br>· SK브로드밴드/SK텔레콤은 동일한 SK 모바일 회선을 기준으로 계산됩니다(실제로는 인터넷을 SK브로드밴드로 가입할 때만 적용).
+    </div>`;
+}
+
+// 예전에는 제안상품 화면의 결합할인 표를 다시 그렸으나, 지금은 추천상품(결합할인 선택 + 카드)을 다시 그립니다.
 function renderFamilyDiscountAccordion(){
-  const primaryContainer = document.getElementById('family-discount-table');
-  const secondaryContainer = document.getElementById('final-combo-discount');
-  if (!primaryContainer && !secondaryContainer) return;
-
-  const homeItems = reflectedProducts.filter(p => p.type === 'home');
-
-  let html;
-  if (!homeItems.length) {
-    html = `<div class="reflected-empty">제안상품에 인터넷/TV 상품이 담기면 해당 상품 기준으로 결합할인이 계산됩니다.</div>`;
-  } else {
-    const colsHtml = HOME_CARRIERS.map(c => {
-      const items = homeItems.filter(p => p.carrierKey === c);
-      return `
-        <div class="fam-col-stack">
-          ${items.length
-            ? items.map(buildComboCardForProposal).join('')
-            : `<div class="fam-accordion-card">
-                 <div class="fam-accordion-card-header carrier-${c}">${CARRIER_LABEL[c]}</div>
-                 <div class="fam-accordion-items"><div class="proposal-col-empty">제안상품 없음</div></div>
-               </div>`}
-        </div>
-      `;
-    }).join('');
-
-    html = `
-      <div class="fam-accordion-grid cols-5">${colsHtml}</div>
-      <div class="fam-table-note">
-        · [제안상품]에 담긴 인터넷/TV 상품과 유심 회선을 기준으로 통신사별로 계산됩니다.
-        <br>· 인터넷 속도는 각 제안상품에 반영된 속도를 그대로 사용합니다.
-        <br>· SK브로드밴드/SK텔레콤은 동일한 SK 모바일 회선을 기준으로 계산됩니다(실제로는 인터넷을 SK브로드밴드로 가입할 때만 적용).
-        <br>· SKY는 휴대폰 결합할인을 계산하지 않습니다.
-      </div>
-    `;
-  }
-
-  if (primaryContainer) primaryContainer.innerHTML = html;
-  if (secondaryContainer) secondaryContainer.innerHTML = html;
+  renderRecoCards();
 }
 
 // 지급 사은품을 경품고시제 한도 안에서 상품권 -> 현금 순으로 채우고, 한도를 넘는 금액은 추가지급으로 분리합니다.
@@ -2083,6 +2134,10 @@ function buildProposalHomeRow(item){
         <button type="button" class="phone-remove-btn" onclick="removeProposal('${item.id}')">삭제</button>
       </div>
       <div class="info-row"><span>월요금</span><span>${item.totalFee.toLocaleString()}원</span></div>
+      ${item.comboKey ? `
+      <div class="info-row sub-item-row"><span>결합할인<span class="reco-detail-sm">(${item.comboName})</span></span><span>-${((item.comboInternetDiscount || 0) + (item.comboTvDiscount || 0) + (item.comboPhoneDiscount || 0)).toLocaleString()}원</span></div>
+      <div class="info-row sub-item-row"><span>인터넷${item.comboTvDiscount ? ' / TV' : ''} / 휴대폰</span><span>-${(item.comboInternetDiscount || 0).toLocaleString()}${item.comboTvDiscount ? ' / -' + item.comboTvDiscount.toLocaleString() : ''} / -${(item.comboPhoneDiscount || 0).toLocaleString()}원</span></div>
+      <div class="info-row"><span>결합 적용 월요금</span><span>${Math.max(0, item.totalFee - (item.comboInternetDiscount || 0) - (item.comboTvDiscount || 0)).toLocaleString()}원</span></div>` : ''}
       <div class="info-row"><span>사은품</span><span>${item.benefitTotal.toLocaleString()}원</span></div>
       <div class="info-row sub-item-row"><span>상품권</span><span>${(item.giftCard || 0).toLocaleString()}원</span></div>
       <div class="info-row sub-item-row"><span>현금</span><span>${giftCashOf(item).toLocaleString()}원</span></div>
@@ -2151,17 +2206,20 @@ function removeFinalProduct(id){
 // 최종상품 기준 최적 가족 결합할인 계산
 function computeFinalCombo(homeItem, usimItems){
   if (!homeItem) return null;
+  if (homeItem.comboKey === null) return null;   // 추천상품에서 '결합할인 적용 안 함'을 고른 경우
   const matchLabel = MOBILE_GROUP_MAP[homeItem.carrierKey];
   const lines = (usimItems || [])
     .filter(p => p.carrier === matchLabel)
     .map((p, idx) => ({ carrier: p.carrier, fee: Number(p.fee) || 0, teen: !!p.teen, idx, planName: p.planName }));
   if (!lines.length) return null;
 
-  const options = computeComboOptionsFor(homeItem.carrierKey, lines, homeItem.speedNum, homeItem.tvTier !== 'none' ? homeItem.bundleDiscount : 0);
+  const options = computeComboOptionsFor(homeItem.carrierKey, lines, homeItem.speedNum, homeItem.tvTier !== 'none' ? homeItem.bundleDiscount : 0, homeItem.tvTier !== 'none');
   const availOptions = options.filter(o => o.avail);
   if (!availOptions.length) return null;
 
-  const best = availOptions.reduce((a, b) => (b.total > a.total ? b : a));
+  // 추천상품에서 고른 결합할인이 있으면 그대로 사용(더 이상 쓸 수 없는 경우에만 최대 할인으로 대체)
+  const picked = homeItem.comboKey ? availOptions.find(o => o.key === homeItem.comboKey) : null;
+  const best = picked || availOptions.reduce((a, b) => (b.total > a.total ? b : a));
   return { best, lines };
 }
 
@@ -2180,6 +2238,13 @@ function buildFinalComboBlock(homeItem, usimItems){
     `;
   }
   const combo = computeFinalCombo(homeItem, usimItems);
+  if (!combo && homeItem.comboKey === null) {
+    return `
+      <div class="fc-sec">
+        ${fcRow('가족 결합할인', '적용 안 함', 'fc-strong')}
+      </div>
+    `;
+  }
   if (!combo) {
     return `
       <div class="fc-sec">
@@ -2196,12 +2261,13 @@ function buildFinalComboBlock(homeItem, usimItems){
     .map(r => fcRow(`${r.line.carrier} ${r.line.planName || '휴대폰'} (${r.line.fee.toLocaleString()}원)`, `-${r.share.toLocaleString()}원`, 'fc-sub'))
     .join('');
 
-  const homeAfter = Math.max(0, homeItem.totalFee - (best.internetDiscount || 0));
+  const homeAfter = Math.max(0, homeItem.totalFee - (best.internetDiscount || 0) - (best.tvDiscount || 0));
 
   return `
     <div class="fc-sec">
       ${fcRow(`가족 결합할인 · ${best.name}`, `-${best.total.toLocaleString()}원`, 'fc-strong fc-green')}
       ${best.internetDiscount ? fcRow('인터넷 할인', `-${best.internetDiscount.toLocaleString()}원`, 'fc-sub') : ''}
+      ${best.tvDiscount ? fcRow('IPTV 할인', `-${best.tvDiscount.toLocaleString()}원`, 'fc-sub') : ''}
       ${best.overlap ? `<div class="fc-note">인터넷+TV 결합할인 ${best.bundleDisc.toLocaleString()}원과 중복 적용 불가 · 중복분 ${best.overlap.toLocaleString()}원 제외</div>` : ''}
       ${lineRows}
       ${fcRow('결합 적용 후 월요금', `${homeAfter.toLocaleString()}원`, 'fc-strong')}
@@ -2825,7 +2891,7 @@ function buildComboSnapshot(){
   const usimItems = finalProducts.filter(p => p.type === 'usim');
   const combo = computeFinalCombo(homeItem, usimItems);
   if (!combo) return null;
-  return { name: combo.best.name, total: combo.best.total, internetDiscount: combo.best.internetDiscount };
+  return { name: combo.best.name, total: combo.best.total, internetDiscount: combo.best.internetDiscount, tvDiscount: combo.best.tvDiscount || 0 };
 }
 
 async function probeCustomerSchema(){
