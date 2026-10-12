@@ -34,6 +34,18 @@
                 onclick="quickTopSearch(document.getElementById('top-quick-contact').value, this)">🔍 조회</button>
       </div>
       <div class="cust-tabs" id="cust-tab-bar"></div>
+      <div class="sys-status" id="sys-status">
+        <button type="button" class="sys-status-btn" id="sys-status-btn" onclick="toggleSysStatus()" aria-expanded="false">
+          🔍 시스템 연동 <span class="sys-status-badge" id="sys-status-badge">확인중</span><span class="sys-status-chev" id="sys-status-chev">▾</span>
+        </button>
+        <div class="sys-status-panel" id="sys-status-panel" style="display:none;">
+          <div class="banner-header">
+            <div class="title">시스템 연동 및 데이터 상태</div>
+            <div class="last-modified" id="cs-last-updated">최종 수정: -</div>
+          </div>
+          <div id="cs-banner-logs">데이터 연동을 대기 중입니다...</div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -56,22 +68,6 @@
 
   <!-- VIEW 1: CS.html (고객 상담 및 정보 탐색) -->
   <div id="view-cs" class="view-container active">
-    <div class="top-grid">
-      <header>
-        <div class="eyebrow">CONSULTATION RECORD MANAGEMENT</div>
-        <h1>상담 정보 탐색</h1>
-        <p>고객의 휴대폰 정보 및 기존 사용 중인 홈상품을 등록하고, 상품조회 화면에서 반영한 제안상품과 최종상품·결합할인 내역을 한 화면에서 확인합니다.</p>
-      </header>
-
-      <div id="status-banner">
-        <div class="banner-header">
-          <div class="title">🔍 시스템 연동 및 데이터 상태</div>
-          <div class="last-modified" id="cs-last-updated">최종 수정: -</div>
-        </div>
-        <div id="cs-banner-logs">데이터 연동을 대기 중입니다...</div>
-      </div>
-    </div>
-
     <div class="cs-layout">
       <div class="cs-main-col">
 
@@ -866,11 +862,39 @@ function displayLastModified() {
   }
 }
 
+const logOk = {};   // 조회 항목별 성공 여부
+function updateSysStatusBadge(){
+  const badge = document.getElementById('sys-status-badge');
+  if (!badge) return;
+  const keys = Object.keys(logOk);
+  const errors = keys.filter(k => !logOk[k]).length;
+  badge.classList.remove('ok', 'err');
+  if (!keys.length) { badge.textContent = '확인중'; return; }
+  if (errors) { badge.textContent = `오류 ${errors}건`; badge.classList.add('err'); }
+  else { badge.textContent = '정상'; badge.classList.add('ok'); }
+}
+function toggleSysStatus(force){
+  const panel = document.getElementById('sys-status-panel');
+  const btn = document.getElementById('sys-status-btn');
+  const chev = document.getElementById('sys-status-chev');
+  if (!panel) return;
+  const open = (typeof force === 'boolean') ? force : panel.style.display === 'none';
+  panel.style.display = open ? '' : 'none';
+  if (btn) btn.setAttribute('aria-expanded', String(open));
+  if (chev) chev.textContent = open ? '▴' : '▾';
+}
+document.addEventListener('click', e => {   // 바깥을 누르면 닫기
+  const box = document.getElementById('sys-status');
+  if (box && !box.contains(e.target)) toggleSysStatus(false);
+});
+
 function addLog(tableName, isSuccess, message) {
+  logOk[tableName] = !!isSuccess;
   const statusClass = isSuccess ? 'success' : 'error';
   logs[tableName] = `<div class="log-item ${statusClass}">${isSuccess ? '✅' : '❌'} [${tableName}] : ${message}</div>`;
   const bannerLogs = document.getElementById('cs-banner-logs');
   if (bannerLogs) bannerLogs.innerHTML = Object.values(logs).join('');
+  updateSysStatusBadge();
 }
 
 function setupRecoSeg(id, key){
