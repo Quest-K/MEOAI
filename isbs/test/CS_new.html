@@ -9,6 +9,23 @@
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <link rel="stylesheet" href="Styles.css?v=20261007c">
+<style id="reco-align-override">
+/* 추천상품 : 속도·공유기·TV채널·셋탑 버튼의 높이와 시작 위치를 같게 맞춤 */
+.reco-controls{align-items:flex-start;}
+.reco-controls .control-group{display:flex;flex-direction:column;justify-content:flex-start;}
+.reco-controls .control-group > .group-label,
+.reco-controls .control-group > .group-label-row{min-height:28px;margin:0 0 6px;display:flex;align-items:center;box-sizing:border-box;}
+.reco-controls .seg{display:flex;align-items:stretch;}
+.reco-controls .seg button{height:36px;min-height:36px;box-sizing:border-box;padding-top:0;padding-bottom:0;display:inline-flex;align-items:center;justify-content:center;line-height:1;}
+/* 결합할인 선택 : KT·LG·SK 카드 높이 통일 */
+.reco-combo-panel .reco-cards{align-items:stretch;}
+.reco-combo-panel .fam-accordion-card{display:flex;flex-direction:column;height:100%;box-sizing:border-box;}
+.reco-combo-panel .fam-accordion-card-header{min-height:36px;box-sizing:border-box;display:flex;align-items:center;}
+.reco-combo-panel .fam-accordion-items{flex:1;}
+/* 추천상품 카드 제목(KT·LG·SK) 높이 통일 */
+#reco-carrier-cards{align-items:stretch;}
+#reco-carrier-cards .reco-product-card-title.reco-title-2row{min-height:76px;box-sizing:border-box;}
+</style>
 </head>
 <body>
 <div class="wrap">
@@ -1822,7 +1839,7 @@ function renderRecoComboPanel(){
   }).join('');
 
   box.innerHTML = `
-    <div class="reco-combo-title">📎 휴대폰 결합할인 선택 <span class="reco-detail-sm">[적용]을 누르면 아래 통신사별 카드에 반영됩니다</span></div>
+    <div class="reco-combo-title">📎 휴대폰 결합할인 선택</div>
     <div class="reco-combo-now">
       <label>기존 휴대폰 ${recoSelectHtml('cust-mobile-carrier', 'setRecoMobileCarrier', document.getElementById('cust-mobile-carrier')?.value || '확인안됨')}</label>
       <label>기존 인터넷 ${recoSelectHtml('old-isp', 'setRecoOldInternet', document.getElementById('old-internet-toggle')?.checked ? (document.getElementById('old-isp')?.value || '') : '', '없음')}</label>
@@ -2092,6 +2109,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCustEdi
 async function saveCustomerOnlyFromConsult(btn){
   if (!currentCustomerId) { alert('저장된 고객이 아닙니다. [상담저장]을 이용해 주세요.'); return; }
   if (!hasValidContact()) { alert('연락처를 정확히 입력해주세요.'); document.getElementById('cust-contact')?.focus(); return; }
+  if (!confirmContactChangeOnSave()) return;
   setBtnLoading(btn, '저장 중...');
   try {
     const cid = currentCustomerId;
@@ -2100,6 +2118,7 @@ async function saveCustomerOnlyFromConsult(btn){
     delete payload.desired_product;             // 상품 정보로 정해지는 값이라 여기서는 바꾸지 않음
     const { error } = await sb.from('customers').update(payload).eq('customer_id', cid);
     if (error) { alert('저장 실패: ' + error.message); return; }
+    consultLoadedContact = normalizeContact(elVal('cust-contact'));
     let statusMsg = '';
     const wantStatus = consultStatusChange();
     if (wantStatus) {
@@ -2741,6 +2760,16 @@ let consultTargets = { carrierContractId: null, usimByKey: {} };
 let consultLoadSeq = 0;      // 불러오기 요청 번호 : 고객을 바꾸거나 신규 상담을 시작하면 이전 요청의 결과를 무시합니다
 let consultLoadPromise = null;   // 진행 중인 새 구조 읽기(저장 전에 끝날 때까지 기다림)
 let consultLoadState = 'none';   // 'none'(읽을 고객 없음/아직) · 'ok'(읽음·없음 포함) · 'failed'(읽기 실패 → 저장 전 한 번 더 시도)
+let consultLoadedContact = '';   // 상담 화면에 불러온(저장된) 고객의 연락처(숫자만). 저장 때 연락처가 달라졌는지 비교해 기존 고객이 덮어써지는 사고를 막습니다.
+
+// 불러온 기존 고객인데 연락처 입력칸이 다른 번호로 바뀌어 있으면, 저장 전에 한 번 더 확인합니다. (취소하면 저장하지 않음)
+function confirmContactChangeOnSave(){
+  if (!currentCustomerId || !consultLoadedContact) return true;
+  const now = normalizeContact(elVal('cust-contact'));
+  if (!now || now === consultLoadedContact) return true;
+  const nm = String(elVal('cust-name') || '').replace(NAME_PREFIX, '').trim() || '(이름없음)';
+  return confirm(`⚠ 현재 화면에는 기존 고객 [${nm}] (${formatContactDisplay(consultLoadedContact)})이(가) 열려 있습니다.\n연락처를 ${formatContactDisplay(now)}(으)로 바꾸면 그 고객의 정보가 이 번호로 덮어써집니다.\n\n새 고객으로 등록하려면 [취소] 후 [🆕 신규상담]을 눌러 시작해 주세요.\n기존 고객의 연락처를 정말 바꾸려면 [확인]을 누르세요.`);
+}
 function emptyConsultTargets(){ return { carrierContractId: null, usimByKey: {} }; }
 let customerListCache = [];
 let customerViewInited = false;
@@ -2989,6 +3018,7 @@ async function saveConsultation(btn){
   if (typeof COMMISSION_MOCK_ON !== 'undefined' && COMMISSION_MOCK_ON) { alert('수수료 에이전시 테스트 모드(?commMock=1)에서는 상담을 저장할 수 없습니다.\n주소의 ?commMock=1 을 빼고 다시 열어 주세요.'); return; }
   const contact = normalizeContact(elVal('cust-contact'));
   if (!hasValidContact()) { alert('연락처를 정확히 입력해주세요.'); document.getElementById('cust-contact')?.focus(); return; }
+  if (!confirmContactChangeOnSave()) return;
   if (!reflectedProducts.length && !confirm('제안상품이 없습니다. 고객 정보만 저장할까요?')) return;
 
   setBtnLoading(btn, '저장 중...');
@@ -3030,6 +3060,7 @@ async function saveConsultation(btn){
     if (res.error) { alert('저장 실패: ' + res.error.message); return; }
     customerId = (res.data && res.data[0]) ? res.data[0].customer_id : customerId;
     currentCustomerId = customerId;
+    consultLoadedContact = contact;
     if (consultLoadState === 'none') consultLoadState = 'ok';
 
     // 1-b) 상태값 (S7-6) : 선택칸을 바꾼 경우에만 changeStatus 로 저장 (이력 1건). 실패해도 아래 상담 내용 저장은 계속합니다.
@@ -3120,6 +3151,7 @@ function resetConsultation(){
 // 고객상담 화면을 빈 신규 상담으로 초기화 (연락처만 미리 채워둘 수 있음)
 function startNewConsultWithContact(contact){
   currentCustomerId = null;
+  consultLoadedContact = '';
   consultTargets = emptyConsultTargets();
   consultLoadSeq++;
   consultLoadPromise = null;
@@ -5485,6 +5517,7 @@ async function deleteCustomer(id, btn){
 // 고객 1건의 데이터로 [고객상담] 화면의 입력 필드를 채웁니다 (탭 전환·토스트는 호출부에서 필요할 때만 처리)
 function fillConsultFormFromCustomer(c){
   currentCustomerId = c.customer_id;
+  consultLoadedContact = normalizeContact(c.contact);
   setVal('cust-name', c.name || NAME_PREFIX);
   setVal('cust-contact', formatContactDisplay(c.contact));
   setVal('cust-notes', c.notes || '');
@@ -5649,11 +5682,26 @@ function custTabOnConsultSaved(customerId){
   custTabsSave(); renderCustTabs();
 }
 
-function closeCustTab(i){
-  if (!custTabs[i]) return;
+function closeCustTab(i, silent){
+  const t = custTabs[i];
+  if (!t) return;
+  // 지금 상담 화면에 열려 있는 고객의 탭(또는 활성 신규 탭)을 닫으면, 화면에 남은 고객 정보도 함께 비웁니다.
+  // (예전에는 탭만 닫히고 입력칸·고객ID가 남아, 새 번호를 입력해 저장하면 기존 고객 정보가 새 번호로 덮어써졌습니다)
+  const showsThis = (t.id != null && (t.id === currentCustomerId || t.id === detailCustomerId))
+    || (t.id == null && i === custTabActive && !currentCustomerId);
+  if (showsThis && !silent && (t.id === currentCustomerId || t.id == null) && consultHasUnsavedWork()
+      && !confirm('이 고객 탭에 저장하지 않은 작성 중인 내용이 있습니다.\n탭을 닫으면 그 내용이 사라집니다. 계속할까요?')) return;
   custTabs.splice(i, 1);
   if (custTabActive === i) custTabActive = -1; else if (custTabActive > i) custTabActive--;
   custTabsSave(); renderCustTabs();
+  if (!showsThis) return;
+  if (t.id != null && t.id === detailCustomerId) {
+    detailCustomerId = null;
+    const det = document.getElementById('cust-detail');
+    if (det) det.innerHTML = `<div class="cs-card"><div class="reflected-empty">[고객조회]에서 고객을 선택하거나 상단 고객 탭을 누른 뒤 [고객상세] 탭을 열면 상세 정보가 표시됩니다.</div></div>`;
+    detailBundle = null;
+  }
+  if (t.id == null || t.id === currentCustomerId) startNewConsultWithContact('010');   // 상담 화면을 빈 신규 상담으로
 }
 
 function custTabShowScreen(){
