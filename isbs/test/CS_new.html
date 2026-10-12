@@ -41,6 +41,24 @@
 .cs-strip2 .cs2-status-text{display:flex;align-items:center;height:34px;font-size:13px;font-weight:600;color:#2C2E35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .cs-strip2 .cs2-btn-row{display:flex;gap:6px;height:34px;align-items:center;}
 .cs-strip2 .cust-dup-hint{margin-top:8px;}
+/* 단계 탭 오른쪽 끝 : 고객정보 수정 / 고객상세 보기 */
+.cs-wiz-nav{display:flex;align-items:center;}
+.cs-wiz-nav .cs-wiz-step{flex:1 1 0;min-width:0;}
+.cs-wiz-nav .cs-wiz-tools{flex:0 0 auto;display:flex;gap:6px;margin-left:14px;padding-left:14px;border-left:1px solid #e5e0d6;}
+/* 상담요약 위 : 신규상담 / 상담저장 (2글자 2줄) + 저장 상태는 아래 한 줄 */
+.cs-save2{display:flex;flex-direction:column;align-items:stretch;gap:8px;}
+.cs-save2 .cs-save2-btns{display:flex;gap:8px;}
+.cs-save2 .cs-save2-btns button{flex:1 1 0;min-width:0;padding:8px 4px;line-height:1.3;font-weight:700;text-align:center;white-space:normal;word-break:keep-all;}
+.cs-save2 .consult-save-state{display:block;writing-mode:horizontal-tb;width:100%;text-align:left;white-space:normal;word-break:keep-all;font-size:12px;line-height:1.4;}
+/* 대시보드 리스트 : 상담이력 아코디언 */
+.dash-hist-cell{text-align:left;}
+.dash-hist-btn{white-space:nowrap;}
+.dash-hist-btn.is-open{background:#fbf3e4;border-color:#c8892b;color:#8a5a12;}
+.dash-hist-row td{background:#faf7f0;padding:0 !important;border-top:0;cursor:default;}
+.dash-hist-body{max-height:240px;overflow-y:auto;padding:10px 16px;font-size:12.5px;line-height:1.6;color:#2C2E35;}
+.dash-hist-line{display:flex;gap:10px;padding:2px 0;}
+.dash-hist-date{flex:0 0 96px;color:#8a8f98;font-variant-numeric:tabular-nums;}
+.dash-hist-empty{color:#8a8f98;}
 </style>
 </head>
 <body>
@@ -157,13 +175,6 @@
               <label>상태</label>
               <span id="cs-strip-status" class="cs2-status-text">-</span>
             </div>
-            <div class="cs2-cell cs2-btns">
-              <label>&nbsp;</label>
-              <span class="cs2-btn-row">
-                <button type="button" class="mini-btn mini-btn-primary" id="cs-strip-edit-btn" onclick="openCustEditDrawer()">✏️ 고객정보 수정</button>
-                <button type="button" class="mini-btn" id="cs-strip-detail-btn" onclick="openDetailFromConsult()" title="저장된 고객만 열 수 있습니다">📂 고객상세 보기</button>
-              </span>
-            </div>
           </div>
           <div id="cust-dup-hint" class="cust-dup-hint" style="display:none;"></div>
         </div>
@@ -176,6 +187,10 @@
           <div class="cs-wiz-step"><button type="button" class="cs-wiz-btn" data-step="3" onclick="goCsStep(3)">제안상품</button></div>
           <div class="cs-wiz-arrow">→</div>
           <div class="cs-wiz-step"><button type="button" class="cs-wiz-btn" data-step="4" onclick="goCsStep(4)">최종상품</button></div>
+          <div class="cs-wiz-tools">
+            <button type="button" class="mini-btn mini-btn-primary" id="cs-strip-edit-btn" onclick="openCustEditDrawer()">✏️ 고객정보 수정</button>
+            <button type="button" class="mini-btn" id="cs-strip-detail-btn" onclick="openDetailFromConsult()" title="저장된 고객만 열 수 있습니다">📂 고객상세 보기</button>
+          </div>
         </div>
 
         <div class="cs-wiz-panel active" id="cs-wiz-panel-1">
@@ -419,10 +434,12 @@
 
       <!-- 상담요약 -->
       <div class="cs-summary-panel">
-        <div class="consult-save-row consult-save-row-top">
+        <div class="consult-save-row consult-save-row-top cs-save2">
+          <div class="cs-save2-btns">
+            <button type="button" class="secondary-btn" onclick="resetConsultation()">신규<br>상담</button>
+            <button type="button" class="primary-btn" onclick="saveConsultation(this)">상담<br>저장</button>
+          </div>
           <span class="consult-save-state" id="consult-save-state">신규 상담</span>
-          <button type="button" class="secondary-btn" onclick="resetConsultation()">🆕 신규상담</button>
-          <button type="button" class="primary-btn" onclick="saveConsultation(this)">💾 상담저장</button>
         </div>
         <div class="js-header-row">
           <h3>상담요약</h3>
@@ -3498,20 +3515,52 @@ function renderDashList(title, totalCount){
       <td class="cust-cell-1line" title="${escAttr(formatContactDisplay(c.contact))}">${escHtml(formatContactDisplay(c.contact)) || '-'}</td>
       <td class="cust-row-sub cust-lines-cell">${listLinesHtml(lines, l => l.text, true)}</td>
       <td class="cust-cell-1line${overdue ? ' is-overdue' : ''}" title="${overdue ? '예정 시각이 지났습니다' : ''}">${formatDateShort(c.next_contact_at)}</td>
-      <td class="cust-cell-1line">${formatDateShort(c.updated_at)}</td>
       <td>${custStatusChipHtml(info)}${ovText ? `<div class="cust-ov-sub">${escHtml(ovText)}</div>` : ''}</td>
+      <td class="cust-cell-1line">${formatDateShort(c.updated_at)}</td>
+      <td class="dash-hist-cell"><button type="button" class="mini-btn dash-hist-btn" onclick="event.stopPropagation(); toggleDashHistory(this, ${c.customer_id})" title="${escAttr(String(c.notes || '').trim().split('\n').slice(0, 5).join('\n').slice(0, 500) || '눌러서 상담이력 펼치기')}">상담이력 <span class="dash-hist-chev">▾</span></button></td>
     </tr>`;
-  }).join('') : `<tr><td colspan="6"><div class="reflected-empty">해당 상태의 고객이 없습니다.</div></td></tr>`;
+  }).join('') : `<tr><td colspan="7"><div class="reflected-empty">해당 상태의 고객이 없습니다.</div></td></tr>`;
 
   box.innerHTML = `
     <div class="dash-list-head"><h3>${escHtml(title)}</h3><span class="funnel-dash-total">${countText}</span></div>
     <div class="cust-list-wrap">
       <table class="cust-list-table dash-list-table">
-        <colgroup><col style="width:12%"><col style="width:13%"><col style="width:27%"><col style="width:13%"><col style="width:13%"><col style="width:22%"></colgroup>
-        <thead><tr><th class="no-sort">이름</th><th class="no-sort">연락처</th><th class="no-sort">상품(인터넷/TV)</th><th class="no-sort">상담예약<br>일시</th><th class="no-sort">최종수정</th><th class="no-sort">상태값</th></tr></thead>
+        <colgroup><col style="width:11%"><col style="width:12%"><col style="width:17%"><col style="width:12%"><col style="width:18%"><col style="width:12%"><col style="width:18%"></colgroup>
+        <thead><tr><th class="no-sort">이름</th><th class="no-sort">연락처</th><th class="no-sort">상품(인터넷/TV)</th><th class="no-sort">상담예약<br>일시</th><th class="no-sort">상태값</th><th class="no-sort">최종수정</th><th class="no-sort">상담이력</th></tr></thead>
         <tbody>${body}</tbody>
       </table>
     </div>`;
+}
+
+// 대시보드 리스트 [상담이력] : 버튼을 누르면 그 고객의 특이사항(날짜별 상담·컨택 기록, 최신순)이 행 아래로 펼쳐집니다.
+async function toggleDashHistory(btn, customerId){
+  const tr = btn.closest('tr');
+  if (!tr) return;
+  const next = tr.nextElementSibling;
+  if (next && next.classList.contains('dash-hist-row')) {          // 이미 펼쳐져 있으면 접기
+    next.remove(); btn.classList.remove('is-open');
+    const ch = btn.querySelector('.dash-hist-chev'); if (ch) ch.textContent = '▾';
+    return;
+  }
+  const cols = tr.children.length;
+  const row = document.createElement('tr');
+  row.className = 'dash-hist-row';
+  row.innerHTML = `<td colspan="${cols}"><div class="dash-hist-body">불러오는 중...</div></td>`;
+  tr.after(row);
+  btn.classList.add('is-open');
+  const ch = btn.querySelector('.dash-hist-chev'); if (ch) ch.textContent = '▴';
+  const body = row.querySelector('.dash-hist-body');
+  const { data, error } = await sb.from('customers').select('notes').eq('customer_id', customerId).limit(1);
+  if (!row.isConnected) return;                                    // 불러오는 사이 접었거나 목록이 다시 그려짐
+  if (error) { body.textContent = '조회 실패: ' + error.message; return; }
+  const lines = String((data && data[0] && data[0].notes) || '').split('\n').map(x => x.trim()).filter(Boolean);
+  body.innerHTML = lines.length
+    ? lines.map(l => {
+        const m = l.match(/^\[([^\]]+)\]\s*(.*)$/);
+        return m ? `<div class="dash-hist-line"><span class="dash-hist-date">${escHtml(m[1])}</span><span>${escHtml(m[2])}</span></div>`
+                 : `<div class="dash-hist-line"><span class="dash-hist-date"></span><span>${escHtml(l)}</span></div>`;
+      }).join('')
+    : '<div class="dash-hist-empty">등록된 상담이력(특이사항)이 없습니다.</div>';
 }
 
 // 계약 칩을 눌렀을 때의 계약 리스트 (고객이 아니라 계약 1건이 한 줄)
