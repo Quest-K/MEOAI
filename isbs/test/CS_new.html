@@ -997,8 +997,7 @@ function renderRecoCards(){
           <div class="info-row sub-item-row reco-sub-lv2"><span>공유기<span class="reco-detail-sm">(${ROUTER_LABEL[recoState.router] || ''})</span></span><span>${(price.routerFee || 0).toLocaleString()}</span></div>
           <div class="info-row sub-item-row reco-sub-lv2"><span>${tvTier !== 'none' ? '인터넷+TV 결합할인' : '인터넷결합할인'}</span><span>${price.bundleDiscount ? '-' + price.bundleDiscount.toLocaleString() : '0'}</span></div>
           ${combo ? `
-          <div class="info-row sub-item-row reco-sub-lv2"><span>휴대폰 결합할인<span class="reco-detail-sm">(${combo.name})</span></span><span>${combo.internetDiscount ? '-' + combo.internetDiscount.toLocaleString() : '0'}</span></div>
-          ${combo.phoneDiscount ? `<div class="reco-detail-sm reco-notice-hint">+ 휴대폰 요금 할인 -${combo.phoneDiscount.toLocaleString()} (휴대폰 요금에서 차감 · 위 월요금에는 미포함)</div>` : ''}` : ''}
+          <div class="info-row sub-item-row reco-sub-lv2"><span>휴대폰 결합할인<span class="reco-detail-sm">(${combo.name})</span></span><span>${combo.internetDiscount ? '-' + combo.internetDiscount.toLocaleString() : '0'}</span></div>` : ''}
         </div>
         ${tvTier !== 'none' ? `
         <div class="reco-block">
@@ -1011,6 +1010,14 @@ function renderRecoCards(){
           <div class="info-row sub-item-row reco-sub-lv2"><span>${ex.tvName}/${ex.tvChannels}채널</span><span>${ex.tvHalfFee.toLocaleString()}</span></div>
           <div class="info-row sub-item-row reco-sub-lv2"><span>셋탑박스<span class="reco-detail-sm">(${ex.settopName})</span></span><span>${ex.settopFee.toLocaleString()}</span></div>
           `).join('')}
+        </div>` : ''}
+        ${combo ? `
+        <div class="reco-block reco-combo-block">
+          <div class="info-row main-label"><span>결합할인 합계<span class="reco-detail-sm">(${combo.name})</span></span><span>-${combo.total.toLocaleString()}</span></div>
+          ${combo.internetDiscount ? `<div class="info-row sub-item-row"><span>인터넷 할인</span><span>-${combo.internetDiscount.toLocaleString()}</span></div>` : ''}
+          ${combo.tvDiscount ? `<div class="info-row sub-item-row"><span>IPTV 할인</span><span>-${combo.tvDiscount.toLocaleString()}</span></div>` : ''}
+          ${combo.phoneDiscount ? `<div class="info-row sub-item-row reco-combo-phone"><span>휴대폰 요금 할인</span><span>-${combo.phoneDiscount.toLocaleString()}</span></div>` : ''}
+          <div class="reco-detail-sm reco-notice-hint">인터넷·IPTV 할인은 위 월요금에 반영, 휴대폰 할인은 휴대폰 요금에서 차감됩니다.</div>
         </div>` : ''}
         <div class="reco-block">
           <div class="info-row main-label reco-gift-row">
@@ -1620,8 +1627,8 @@ function renderAccordionItem(opt, lines, isMax, keyPrefix, selInfo){
   // 추천상품에서 쓰는 경우(selInfo) : 이름 앞에 선택 버튼, 이름 아래에 인터넷/휴대폰 할인 내역을 보여줍니다.
   const canPick = !!(selInfo && opt.avail && !opt.disabled);
   const isSel = !!(selInfo && canPick && selInfo.selectedKey === opt.key);
-  const radioHtml = selInfo
-    ? `<span class="combo-radio${isSel ? ' on' : ''}${canPick ? '' : ' off'}" ${canPick ? `onclick="event.stopPropagation(); selectRecoCombo('${selInfo.carrier}','${opt.key}')" title="이 결합할인 적용"` : ''}></span>`
+  const applyBtnHtml = (selInfo && canPick)
+    ? `<button type="button" class="combo-apply-btn${isSel ? ' on' : ''}" onclick="event.stopPropagation(); selectRecoCombo('${selInfo.carrier}','${opt.key}')" title="${isSel ? '다시 누르면 해제됩니다' : '아래 통신사 카드에 이 결합할인을 적용합니다'}">${isSel ? '적용됨' : '적용'}</button>`
     : '';
   let row2Text = opt.reason || '';
   if (selInfo && opt.avail) {
@@ -1634,9 +1641,10 @@ function renderAccordionItem(opt, lines, isMax, keyPrefix, selInfo){
     <div class="fam-accordion-item${opt.disabled ? ' disabled' : ''}${isMax ? ' max-discount' : ''}${isSel ? ' combo-selected' : ''}">
       <div class="fam-accordion-header" ${opt.disabled ? '' : `onclick="toggleDiscountItem('${itemKey}')"`}>
         <div class="fam-accordion-row1">
-          ${radioHtml}<span class="fam-accordion-name">${opt.name}</span>
+          <span class="fam-accordion-name">${opt.name}</span>
           <span class="fam-badge ${badgeClass}">${opt.availText}</span>
           <span class="fam-accordion-total">${totalDisplay}</span>
+          ${applyBtnHtml}
           ${opt.disabled ? '' : `<span class="fam-accordion-chevron">${isOpen ? '▾' : '▸'}</span>`}
         </div>
         ${row2Text ? `<div class="fam-accordion-row2">${row2Text}</div>` : ''}
@@ -1679,6 +1687,22 @@ function getProposalComboLines(carrierKey){
 //  - 고른 결합할인은 아래 각 통신사 카드(월요금)와 [상품반영] 제안상품에 그대로 적용됩니다.
 //  - 결합 대상 휴대폰 회선 : 고객 본인 회선(상담정보 연동) + 제안상품에 담긴 유심 회선
 // ─────────────────────────────────────────────────────────────
+// 기존 휴대폰·인터넷 기준으로 통신사별 태그를 붙입니다 : 가입불가(기존 인터넷과 같은 통신사) / 기존유지(기존 휴대폰과 같은 통신사) / 번호이동
+function recoMobileTag(c){
+  if (recoExcludedCarriers().includes(c)) return { text: '가입불가', cls: 'tag-no', tip: '기존 인터넷과 같은 통신사라 신규 가입이 불가합니다' };
+  if (c === 'sky') return null;
+  const raw = document.getElementById('cust-mobile-carrier')?.value || '';
+  if (!raw || raw === '확인안됨') return { text: '휴대폰 확인필요', cls: 'tag-unk', tip: '고객정보에서 휴대폰 통신사를 선택하면 구분됩니다' };
+  const isMvno = raw.includes('알뜰');
+  const group = raw.replace('알뜰', '');
+  if (!isMvno && MOBILE_GROUP_MAP[c] === group) return { text: '기존유지', cls: 'tag-keep', tip: '기존 휴대폰 통신사와 같아 번호이동 없이 결합합니다' };
+  return { text: '번호이동', cls: 'tag-move', tip: isMvno ? '알뜰폰에서 통신 3사로 이동(유심 가입)이 필요합니다' : '휴대폰을 이 통신사로 옮겨야 합니다(유심 가입)' };
+}
+function recoMobileTagHtml(c){
+  const t = recoMobileTag(c);
+  return t ? `<span class="reco-mtag ${t.cls}" title="${t.tip}">${t.text}</span>` : '';
+}
+
 function recoExcludedCarriers(){
   const oldOn = document.getElementById('old-internet-toggle')?.checked;
   const oldIsp = document.getElementById('old-isp')?.value || '';
@@ -1710,6 +1734,8 @@ function selectRecoCombo(c, key){
   renderRecoCards();
 }
 
+function escHtmlSafe(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
+
 function renderRecoComboPanel(){
   const box = document.getElementById('reco-combo-panel');
   if (!box) return;
@@ -1719,7 +1745,7 @@ function renderRecoComboPanel(){
   const specText = `${SPEED_LABEL[recoState.speed] || ''}${recoState.tv !== 'none' ? ' + TV' : ' 단독'}`;
 
   const cols = recoVisibleCarriers().map(c => {
-    const head = `<div class="fam-accordion-card-header carrier-${c}">${CARRIER_LABEL[c]}<span class="fam-card-spec">${specText}</span></div>`;
+    const head = `<div class="fam-accordion-card-header carrier-${c}">${CARRIER_LABEL[c]}${recoMobileTagHtml(c)}<span class="fam-card-spec">${specText}</span></div>`;
     let body;
     if (excluded.includes(c)) {
       body = `<div class="proposal-col-empty">가입불가</div>`;
@@ -1738,10 +1764,9 @@ function renderRecoComboPanel(){
         const maxKey = maxTotal !== null ? (availOptions.find(o => o.total === maxTotal) || {}).key : null;
         const applied = getRecoAppliedCombo(c, price);
         const selInfo = { carrier: c, selectedKey: applied ? applied.key : null };
-        const noneRow = `
-          <div class="combo-none-row${applied ? '' : ' combo-selected'}" onclick="selectRecoCombo('${c}','')">
-            <span class="combo-radio${applied ? '' : ' on'}"></span><span>결합할인 적용 안 함</span>
-          </div>`;
+        const noneRow = applied
+          ? `<div class="combo-none-row"><span>적용 중 : ${applied.name}</span><button type="button" class="combo-apply-btn" onclick="selectRecoCombo('${c}','')">해제</button></div>`
+          : `<div class="combo-none-row combo-none-idle"><span>결합할인 미적용 · 원하는 항목의 [적용]을 누르세요</span></div>`;
         body = noneRow + options.map(opt => renderAccordionItem(opt, lines, opt.key === maxKey, c + '-', selInfo)).join('');
       }
     }
@@ -1749,7 +1774,8 @@ function renderRecoComboPanel(){
   }).join('');
 
   box.innerHTML = `
-    <div class="reco-combo-title">📎 휴대폰 결합할인 선택 <span class="reco-detail-sm">고른 결합할인이 아래 통신사별 월요금에 적용됩니다</span></div>
+    <div class="reco-combo-title">📎 휴대폰 결합할인 선택 <span class="reco-detail-sm">[적용]을 누르면 아래 통신사별 카드에 반영됩니다</span></div>
+    <div class="reco-combo-now">기존 휴대폰 <b>${escHtmlSafe(document.getElementById('cust-mobile-carrier')?.value || '확인안됨')}</b> · 기존 인터넷 <b>${document.getElementById('old-internet-toggle')?.checked ? escHtmlSafe(document.getElementById('old-isp')?.value || '') : '없음'}</b></div>
     <div class="reco-cards cols-3">${cols}</div>
     <div class="fam-table-note">
       · 고객 본인 휴대폰과 [제안상품]에 담긴 유심 회선을 기준으로 계산됩니다. 인터넷 속도는 위에서 고른 속도를 사용합니다.
