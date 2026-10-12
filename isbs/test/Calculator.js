@@ -369,7 +369,11 @@ function computeSkyOptions(){ return []; }
 
 // ---- SKB / SKT ----
 
-function computeSKOptions(lines, speedNum, groupKey){
+// 요즘가족결합 : 인터넷+IPTV 결합 시 인터넷 회선당 IPTV 할인 1,100원이 인터넷 할인과 별도로 붙습니다.
+const SK_IPTV_DISCOUNT = 1100;
+
+// hasTv : 선택한 상품에 TV가 포함되어 있으면 true (IPTV 할인은 TV 포함일 때만 적용)
+function computeSKOptions(lines, speedNum, groupKey, hasTv){
   const count = lines.length;
   const internetMap = { 100:4400, 500:11000, 1000:13200 };
   const internetDiscount = count > 0 ? (internetMap[speedNum] || 0) : 0;
@@ -381,13 +385,14 @@ function computeSKOptions(lines, speedNum, groupKey){
   else if (count >= 4) mobileTotal = 18000;
 
   const lineShares = distributeAmount(lines, mobileTotal, 'equal');
+  const tvDiscount = (count > 0 && hasTv) ? SK_IPTV_DISCOUNT : 0;
 
   return [
     {
       key:`sk-${groupKey}`, name:'요즘가족결합', avail: count > 0,
       availText: basicAvailText(count),
-      internetDiscount, lineShares, total: internetDiscount + mobileTotal,
-      desc: 'SK 매칭 회선 수와 인터넷 속도 구간에 따라 인터넷 할인이 정해지고, 모바일 할인 총액은 회선 수 기준으로 산정됩니다(회선별 금액은 이해를 돕기 위한 균등 배분 표시입니다).'
+      internetDiscount, tvDiscount, lineShares, total: internetDiscount + tvDiscount + mobileTotal,
+      desc: 'SK 매칭 회선 수와 인터넷 속도 구간에 따라 인터넷 할인이 정해지고(TV 포함 시 IPTV 할인 1,100원 추가), 모바일 할인 총액은 회선 수 기준으로 산정됩니다(회선별 금액은 이해를 돕기 위한 균등 배분 표시입니다).'
     }
   ];
 }
