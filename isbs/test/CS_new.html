@@ -157,7 +157,7 @@
               <div class="form-row">
                 <div class="form-group">
                   <label>기존 홈상품 통신사</label>
-                  <select id="old-isp">
+                  <select id="old-isp" onchange="updateCsSummaryPanel(); renderRecoCards();">
                     <option value="KT">KT</option>
                     <option value="LG">LG</option>
                     <option value="SK">SK</option>
@@ -854,6 +854,7 @@ function goCsStep(n) {
   document.querySelectorAll('.cs-wiz-panel').forEach(p => {
     p.classList.toggle('active', p.id === 'cs-wiz-panel-' + n);
   });
+  if (n === 2) { try { renderRecoCards(); } catch (e) { console.error('renderRecoCards', e); } }   // 고객정보에서 바꾼 기존 휴대폰·인터넷을 추천상품 선택 칸에 반영
 }
 
 function displayLastModified() {
@@ -1736,6 +1737,29 @@ function selectRecoCombo(c, key){
 
 function escHtmlSafe(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
 
+// 고객정보 화면의 선택 칸(원본 select)과 같은 선택지로 만든 <select> : 여기서 바꾸면 고객정보 화면 값도 함께 바뀝니다.
+function recoSelectHtml(srcId, handler, current, emptyLabel){
+  const src = document.getElementById(srcId);
+  let opts = src ? Array.from(src.options).map(o => ({ v: o.value, t: o.textContent })) : [];
+  if (emptyLabel) opts = [{ v: '', t: emptyLabel }].concat(opts.filter(o => o.v !== ''));
+  return `<select class="reco-now-select" onchange="${handler}(this.value)">${opts.map(o => `<option value="${escHtmlSafe(o.v)}"${o.v === current ? ' selected' : ''}>${escHtmlSafe(o.t)}</option>`).join('')}</select>`;
+}
+function setRecoMobileCarrier(v){
+  const el = document.getElementById('cust-mobile-carrier');
+  if (!el) return;
+  el.value = v;
+  syncToDesignPhones();        // 본인 회선 연동 + 결합할인·카드 다시 계산
+  updateCsSummaryPanel();
+}
+function setRecoOldInternet(v){
+  const toggle = document.getElementById('old-internet-toggle');
+  const isp = document.getElementById('old-isp');
+  if (!toggle || !isp) return;
+  if (v) isp.value = v;
+  toggle.checked = !!v;
+  toggleOldInternetSection(!!v);   // 접힘 상태·요약·추천상품 다시 그리기
+}
+
 function renderRecoComboPanel(){
   const box = document.getElementById('reco-combo-panel');
   if (!box) return;
@@ -1775,13 +1799,12 @@ function renderRecoComboPanel(){
 
   box.innerHTML = `
     <div class="reco-combo-title">📎 휴대폰 결합할인 선택 <span class="reco-detail-sm">[적용]을 누르면 아래 통신사별 카드에 반영됩니다</span></div>
-    <div class="reco-combo-now">기존 휴대폰 <b>${escHtmlSafe(document.getElementById('cust-mobile-carrier')?.value || '확인안됨')}</b> · 기존 인터넷 <b>${document.getElementById('old-internet-toggle')?.checked ? escHtmlSafe(document.getElementById('old-isp')?.value || '') : '없음'}</b></div>
+    <div class="reco-combo-now">
+      <label>기존 휴대폰 ${recoSelectHtml('cust-mobile-carrier', 'setRecoMobileCarrier', document.getElementById('cust-mobile-carrier')?.value || '확인안됨')}</label>
+      <label>기존 인터넷 ${recoSelectHtml('old-isp', 'setRecoOldInternet', document.getElementById('old-internet-toggle')?.checked ? (document.getElementById('old-isp')?.value || '') : '', '없음')}</label>
+    </div>
     <div class="reco-cards cols-3">${cols}</div>
-    <div class="fam-table-note">
-      · 고객 본인 휴대폰과 [제안상품]에 담긴 유심 회선을 기준으로 계산됩니다. 인터넷 속도는 위에서 고른 속도를 사용합니다.
-      <br>· 인터넷 할인은 인터넷 월요금에서, 휴대폰 할인은 휴대폰 요금에서 차감됩니다.
-      <br>· SK브로드밴드/SK텔레콤은 동일한 SK 모바일 회선을 기준으로 계산됩니다(실제로는 인터넷을 SK브로드밴드로 가입할 때만 적용).
-    </div>`;
+`;
 }
 
 // 예전에는 제안상품 화면의 결합할인 표를 다시 그렸으나, 지금은 추천상품(결합할인 선택 + 카드)을 다시 그립니다.
