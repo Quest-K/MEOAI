@@ -9,7 +9,15 @@
 function getSettopByTier(carrier, tier) {
   const list = DATA[carrier]?.settopList || [];
   if (!list.length) return { name:'기본 셋톱박스', fee:3300 };
-  if (tier === 'basic') return list.find(s => s.fee <= 4400) || list[0];
+  if (tier === 'basic') {
+    // SK(SKB/SKT) 기본형 셋톱박스는 '스마트3'(미니 제외)를 기본으로 노출합니다. 이름이 없으면 기존 요금 기준으로 대체.
+    if (carrier === 'skb' || carrier === 'skt') {
+      const smart3 = list.filter(s => /스마트\s*3/.test(String(s.name || '')) && !/미니/.test(String(s.name || '')))
+        .sort((a, b) => String(a.name).length - String(b.name).length)[0];
+      if (smart3) return smart3;
+    }
+    return list.find(s => s.fee <= 4400) || list[0];
+  }
   if (tier === 'advanced') return list.find(s => s.fee > 4400 && s.fee <= 7700) || list[1] || list[0];
   return list.find(s => s.fee >= 8800) || list[list.length - 1];
 }
