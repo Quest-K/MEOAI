@@ -51,6 +51,7 @@
                 onclick="quickTopSearch(document.getElementById('top-quick-contact').value, this)">🔍 조회</button>
       </div>
       <div class="cust-tabs" id="cust-tab-bar"></div>
+      <button type="button" class="mini-btn cust-tab-closeall" id="cust-tab-closeall" onclick="closeAllCustTabs()" title="열려 있는 고객 탭을 모두 닫고 상담 화면을 신규 상담으로 비웁니다" disabled>✕ 모두 닫기</button>
       <div class="sys-status" id="sys-status">
         <button type="button" class="sys-status-btn" id="sys-status-btn" onclick="toggleSysStatus()" aria-expanded="false">
           🔍 시스템 연동 <span class="sys-status-badge" id="sys-status-badge">확인중</span><span class="sys-status-chev" id="sys-status-chev">▾</span>
@@ -5643,6 +5644,8 @@ function renderCustTabs(){
     }
   }
   box.innerHTML = html;
+  const allBtn = document.getElementById('cust-tab-closeall');
+  if (allBtn) allBtn.disabled = !custTabs.length;
 }
 
 function focusCustSearch(){ const el = document.getElementById('top-quick-contact'); if (el) { el.focus(); el.select(); } }
@@ -5702,6 +5705,24 @@ function closeCustTab(i, silent){
     detailBundle = null;
   }
   if (t.id == null || t.id === currentCustomerId) startNewConsultWithContact('010');   // 상담 화면을 빈 신규 상담으로
+}
+
+// 열려 있는 고객 탭을 한 번에 모두 닫고, 상담·상세 화면에 남은 고객 정보도 함께 비웁니다.
+function closeAllCustTabs(){
+  if (!custTabs.length) return;
+  const n = custTabs.length;
+  const warn = consultHasUnsavedWork() ? '\n※ 고객상담 화면에 저장하지 않은 작성 중인 내용이 있으면 사라집니다.' : '';
+  if (!confirm(`열려 있는 고객 ${n}명을 모두 닫을까요?${warn}`)) return;
+  custTabs = [];
+  custTabActive = -1;
+  custTabsSave(); renderCustTabs();
+  detailCustomerId = null; detailBundle = null;
+  const det = document.getElementById('cust-detail');
+  if (det) det.innerHTML = `<div class="cs-card"><div class="reflected-empty">[고객조회]에서 고객을 선택하거나 상단 고객 탭을 누른 뒤 [고객상세] 탭을 열면 상세 정보가 표시됩니다.</div></div>`;
+  startNewConsultWithContact('010');
+  const cur = document.querySelector('.view-container.active');
+  if (cur && cur.id === 'view-customer-detail') switchTab('cs');
+  showToast(`✓ 고객 ${n}명을 모두 닫았습니다`);
 }
 
 function custTabShowScreen(){
