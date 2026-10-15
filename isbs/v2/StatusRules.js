@@ -1,5 +1,5 @@
 /* StatusRules.js — 고객·상품 상태 규칙 엔진 (ST-B)
- * 기준 문서: 상태사전_v2.md
+ * 기준 문서: 상태개편_통합.md (상태사전 v2 + 2026-10-16 확정 사항: 지급제외 유지, 환수요청은 지급완료 상품만, 부재 3회 확인 후 제외)
  *
  * - 화면·DB에 의존하지 않는 순수 모듈입니다. 브라우저에서는 window.StatusRules, Node에서는 require() 로 씁니다.
  * - 모든 이벤트 함수는 (customer, ...인자, cfg) 를 받아 새 고객 객체를 돌려줍니다. 원본은 바꾸지 않습니다.
@@ -11,7 +11,7 @@
  *
  * 고객 객체:  { id, name, agent, status, seg, reserve, exclReason, exclMemo, absenceCount, contracts:[{id,name,products:[...]}], history:[] }
  * 상품 객체:  { id, name, type('internet'|'tv'|'mobile'...), pstatus, reason, memo,
- *              pay, payDone, settle, invoiceDate, invoiceAmount, collectDate, collectAmount,
+ *              pay, payDone, openedAt, proposedAt, settle, invoiceDate, invoiceAmount, collectDate, collectAmount,
  *              refund, refundDone, changedFrom, firstReceivedAt }
  */
 (function (root, factory) {
@@ -26,12 +26,12 @@
     seg: ['가망', '잠재', '제외'],
     excl: ['타사가입', '기존유지', '장기부재', '신용불량', '설치불가', '오인입', '타부서', '기타'],
     pstatus: ['상품제안', '접수대기', '접수보류', '접수완료', '개통완료', '접수불가', '접수취소'],
-    pay: ['지급요청', '지급보류', '지급완료'],
+    pay: ['지급요청', '지급보류', '지급완료', '지급제외'],
     settle: ['발행예정', '발행완료', '수금완료'],
     refund: ['환수요청', '환수완료'],
-    reasonByStatus: { '접수불가': ['신용불량', '설치불가', '기타'], '접수취소': ['고객변심', '상품변경', '기타'], '접수보류': null }   // 접수보류 사유 목록은 O-04(미정): 자유 입력
+    reasonByStatus: { '접수불가': ['신용불량', '설치불가', '기타'], '접수취소': ['고객변심', '상품변경', '기타'], '접수보류': ['서류 대기', '고객 확인 대기', '일정 조율', '기타'] }   // O-04 확정(2026-10-16)
   };
-  var DEFAULT_CONFIG = { today: '', months: 3, absenceLimit: 3, now: '' };
+  var DEFAULT_CONFIG = { today: '', months: 3, absenceLimit: 3, staleDays: 7, now: '' };   // staleDays: 제안 방치 일수(O-05, crm_settings 값)
   var AFTER_RECEIPT = ['접수대기', '접수보류', '접수완료', '개통완료'];
 
   /* ---------- 날짜 ---------- */
@@ -51,12 +51,12 @@
   /* ---------- 공통 ---------- */
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
   function conf(cfg) { var c = Object.assign({}, DEFAULT_CONFIG, cfg || {}); if (!c.today) c.today = fmt(new Date()); return c; }
-  function makeCtx(c, cfg) { return { c: clone(c), cfg: conf(cfg), msgs: [] }; }
+  function makeCtx(c, cfg) { return { c: clone(c), cfg: conf(cfg), msgs: [], prompt: null }; }
   function say(x, code, text) { x.msgs.push({ code: code, text: text }); }
   function err(code, text) { return { code: code, text: text }; }
-  function okRes(x) { return { ok: true, customer: x.c, messages: x.msgs, error: null, needs: null }; }
-  function fail(orig, e) { return { ok: false, customer: orig, messages: [], error: e, needs: null }; }
-  function need(orig, code, info) { return { ok: false, customer: orig, messages: [], error: null, needs: Object.assign({ code: code }, info || {}) }; }
+  function okRes(x) { return { ok: true, customer: x.c, messages: x.msgs, error: null, needs: null, prompt: x.prompt }; }   // prompt: 저장은 됐고 사용자 확인을 한 번 더 받을 일 (예: 부재 3회 제외 확인)
+  function fail(orig, e) { return { ok: false, customer: orig, messages: [], error: e, needs: null, prompt: null }; }
+  function need(orig, code, info) { return { ok: false, customer: orig, messages: [], error: null, needs: Object.assign({ code: code }, info || {}), prompt: null }; }
   function limitDate(x) { return addMonths(x.cfg.today, x.cfg.months); }
   function log(x, target, item, before, after, o) {
     o = o || {};
@@ -83,13 +83,15 @@
     return null;
   }
   function isDead(p) { return p.pstatus === '접수불가' || p.pstatus === '접수취소'; }
-  function isDone(p) { return (p.pay === '지급완료' && p.refund !== '환수요청') || p.refund === '환수완료'; }
+  // 지급제외 상품은 개통완료되면 처리가 끝난 것으로 본다 (v1.4 R3·R4)
+  function isDone(p) { return (p.pay === '지급완료' && p.refund !== '환수요청') || p.refund === '환수완료' || (p.pay === '지급제외' && p.pstatus === '개통완료' && p.refund !== '환수요청'); }
   function activeProducts(c) { return allProducts(c).filter(function (p) { return !isDead(p); }); }
   function blockers(c) { return activeProducts(c).filter(function (p) { return !isDone(p); }); }
   function hardBlockers(c) { return blockers(c).filter(function (p) { return p.pstatus !== '상품제안'; }); }
   function canEnd(c) { var b = blockers(c); return { ok: b.length === 0, blockers: b }; }
   function inProg(p) {
-    return !isDead(p) && ((AFTER_RECEIPT.indexOf(p.pstatus) > -1 && p.pay !== '지급완료') || p.pay === '지급요청' || p.pay === '지급보류');
+    var exemptDone = (p.pay === '지급제외' && p.pstatus === '개통완료');
+    return !isDead(p) && ((AFTER_RECEIPT.indexOf(p.pstatus) > -1 && p.pay !== '지급완료' && !exemptDone) || p.pay === '지급요청' || p.pay === '지급보류');
   }
   function contractState(k) {
     var ps = k.products || [];
@@ -99,14 +101,14 @@
     if (r.length) return { s: '환수', why: '환수 상태 상품 ' + r.length + '건' };
     var g = ps.filter(inProg);
     if (g.length) return { s: '진행', why: '지급완료 전 접수 이후 상품 ' + g.length + '건' };
-    var d = ps.filter(function (p) { return p.pay === '지급완료'; });
-    if (d.length) return { s: '완료', why: '지급완료 상품 ' + d.length + '건' };
+    var d = ps.filter(function (p) { return p.pay === '지급완료' || (p.pay === '지급제외' && p.pstatus === '개통완료'); });
+    if (d.length) return { s: '완료', why: '지급완료·지급제외 상품 ' + d.length + '건' };
     return { s: '제안', why: '상품제안 상태' };
   }
   function newProduct(o) {
     return Object.assign({
       id: null, name: '', type: '', pstatus: '상품제안', reason: '', memo: '',
-      pay: '-', payDone: '', settle: '-', invoiceDate: '', invoiceAmount: null, collectDate: '', collectAmount: null,
+      pay: '-', payDone: '', openedAt: '', proposedAt: '', settle: '-', invoiceDate: '', invoiceAmount: null, collectDate: '', collectAmount: null,
       refund: '-', refundDone: '', changedFrom: null, firstReceivedAt: ''
     }, o || {});
   }
@@ -124,13 +126,15 @@
     var cf = conf(cfg);
     return (!reserve || reserve <= addMonths(cf.today, cf.months)) ? '가망' : '잠재';
   }
-  // 재영업 기준일: 활성 인터넷 상품 중 지급완료일이 가장 빠른 날짜 (인터넷이 없으면 활성 상품 중 가장 빠른 지급완료일)
+  // 재영업 기준일: 활성 인터넷 상품 중 지급완료일이 가장 빠른 날짜 (인터넷이 없으면 활성 상품 중 가장 빠른 날짜)
+  // 지급제외 상품은 개통완료일(openedAt)을 기준일로 쓴다.
+  function baseDateOf(p) { return p.pay === '지급제외' ? (p.openedAt || '') : (p.payDone || ''); }
   function reengageBase(c) {
-    var act = activeProducts(c).filter(function (p) { return p.payDone; });
+    var act = activeProducts(c).filter(function (p) { return baseDateOf(p); });
     var net = act.filter(function (p) { return p.type === 'internet'; });
     var pool = net.length ? net : act;
     if (!pool.length) return '';
-    return pool.map(function (p) { return p.payDone; }).sort()[0];
+    return pool.map(baseDateOf).sort()[0];
   }
   function reengageDate(c, years, cfg) {
     var cf = conf(cfg), base = reengageBase(c) || cf.today;
@@ -234,6 +238,21 @@
     return err('BAD_CHOICE', '종료 방식을 선택해 주세요.');
   }
 
+  // 지급이 모두 끝났을 때(지급완료·지급제외 개통완료) 상담종료 + 재영업 예약. 입력이 더 필요하면 need, 실패하면 fail 을 돌려주고, 정상이면 null.
+  function endByPayoutX(c, x, o, why) {
+    if (x.c.status === '상담종료') return null;
+    if (blockers(x.c).length) { if (why === 'payout') say(x, 'payout-partial', '지급완료만 기록했습니다. 남은 상품의 지급이 끝나면 상담이 종료됩니다.'); return null; }
+    if (o.years !== 1 && o.years !== 3) {
+      return need(c, 'years', { options: [1, 3], suggest: { 1: reengageDate(x.c, 1, x.cfg), 3: reengageDate(x.c, 3, x.cfg) } });
+    }
+    var rd = reengageDate(x.c, o.years, x.cfg);
+    var e = applyEndPotential(x, rd.date, { auto: true, note: why === 'payout' ? '고객지급 지급완료' : '지급제외 상품 개통완료', noteReserve: '인터넷 최초 상품 기준일(' + rd.base + ') 기준 ' + o.years + '년 뒤 재영업 예약' });
+    if (e) return fail(c, e);
+    say(x, 'ended-by-payout', '지급이 모두 완료되어 상담종료, ' + o.years + '년 뒤(' + rd.date + ') 재영업 예약(잠재고객)이 등록되었습니다.');
+    if (rd.adjusted) say(x, 'reserve-adjusted', '계산된 예약일(' + rd.raw + ')이 가망 기준 이내라서 ' + rd.date + '(으)로 보정했습니다.');
+    return null;
+  }
+
   /* ---------- 고객 이벤트 ---------- */
   function endConsult(c, choice, cfg) {
     var x = makeCtx(c, cfg);
@@ -307,6 +326,7 @@
   }
 
   // 고객부재 기록 (R-07): connected=true 이면 횟수 초기화
+  // 연속 3회에 도달하면 바로 제외하지 않고 prompt('absence-exclude')를 돌려준다. 확인되면 confirmAbsenceExclude 를 호출한다. (2026-10-16 확정)
   function recordAbsence(c, connected, cfg) {
     var x = makeCtx(c, cfg);
     if (x.c.status === '상담종료') return fail(c, err('NOT_ACTIVE', '상담종료 고객에게는 부재를 기록할 수 없습니다.'));
@@ -320,11 +340,20 @@
     log(x, '고객', '고객부재 횟수', before, n, {});
     ensureActiveX(x, '고객부재 재안내');
     if (n >= x.cfg.absenceLimit) {
-      var snap = clone(x.c);
-      var e = applyEndExcluded(x, '장기부재', '고객부재 연속 ' + n + '회', { auto: true, note: '고객부재 연속 ' + n + '회' });
-      if (e) { x.c = snap; say(x, 'absence-blocked', '고객부재 ' + n + '회이지만 진행 중인 상품이 있어 제외하지 않았습니다. 상품을 정리해 주세요.'); }
-      else say(x, 'absence-excluded', '고객부재 연속 ' + n + '회로 제외(장기부재) 처리되었습니다.');
+      if (hardBlockers(x.c).length) say(x, 'absence-blocked', '고객부재 ' + n + '회이지만 진행 중인 상품이 있어 제외할 수 없습니다. 상품을 정리해 주세요.');
+      else { x.prompt = { code: 'absence-exclude', count: n }; say(x, 'absence-limit', '고객부재 연속 ' + n + '회입니다. 제외(장기부재) 처리할까요?'); }
     }
+    return okRes(x);
+  }
+  // 부재 3회 제외 확인 후 호출
+  function confirmAbsenceExclude(c, cfg) {
+    var x = makeCtx(c, cfg);
+    var n = x.c.absenceCount || 0;
+    if (x.c.status === '상담종료') return fail(c, err('NOT_ACTIVE', '이미 상담종료된 고객입니다.'));
+    if (n < x.cfg.absenceLimit) return fail(c, err('ABSENCE_NOT_REACHED', '고객부재가 ' + x.cfg.absenceLimit + '회에 도달하지 않았습니다.'));
+    var e = applyEndExcluded(x, '장기부재', '고객부재 연속 ' + n + '회', { auto: false, note: '고객부재 연속 ' + n + '회 (담당자 확인)' });
+    if (e) return fail(c, e);
+    say(x, 'absence-excluded', '고객부재 연속 ' + n + '회로 제외(장기부재) 처리되었습니다.');
     return okRes(x);
   }
 
@@ -349,6 +378,7 @@
     if (needsReason) { p.reason = o.reason; p.memo = o.memo || ''; } else { p.reason = ''; p.memo = ''; }
     log(x, '상품', '상품상태', p.name + ': ' + prev, p.name + ': ' + v, { note: needsReason ? '사유: ' + o.reason + (o.memo ? ' · ' + o.memo : '') : '' });
     if ((v === '접수완료' || v === '개통완료') && !p.firstReceivedAt) p.firstReceivedAt = x.cfg.today;
+    if (v === '개통완료' && !p.openedAt) p.openedAt = x.cfg.today;
     if (v === '개통완료' && p.pay === '-') {
       p.pay = '지급요청';
       log(x, '상품', '고객지급', p.name + ': 해당 없음', p.name + ': 지급요청', { auto: true, note: '개통완료' });
@@ -356,6 +386,9 @@
     }
     if ((v === '접수불가' || v === '접수취소') && hadMoney) say(x, 'refund-check', '개통·지급이 진행된 상품입니다. 환수 대상인지 확인해 주세요.');
     syncOpenX(x, '상품 상태 변경');
+    if (v === '개통완료' && p.pay === '지급제외') {                                      // 지급제외 상품이 개통완료 → 지급 대기 상품이 없으면 종료
+      var ee = endByPayoutX(c, x, o, 'exempt'); if (ee) return ee;
+    }
     return okRes(x);
   }
 
@@ -374,23 +407,31 @@
       if (!DATE_RE.test(d)) return fail(c, err('BAD_DATE', '지급완료일 형식이 올바르지 않습니다.'));
       p.pay = v; p.payDone = d;
       log(x, '상품', '고객지급', p.name + ': ' + (before === '-' ? '해당 없음' : before), p.name + ': 지급완료', { note: '지급완료일 ' + d });
-      if (x.c.status !== '상담종료' && blockers(x.c).length === 0) {      // R-04
-        if (o.years !== 1 && o.years !== 3) {
-          return need(c, 'years', { options: [1, 3], suggest: { 1: reengageDate(x.c, 1, x.cfg), 3: reengageDate(x.c, 3, x.cfg) } });
-        }
-        var rd = reengageDate(x.c, o.years, x.cfg);
-        var e = applyEndPotential(x, rd.date, { auto: true, note: '고객지급 지급완료', noteReserve: '인터넷 최초 상품 지급일(' + rd.base + ') 기준 ' + o.years + '년 뒤 재영업 예약' });
-        if (e) return fail(c, e);
-        say(x, 'ended-by-payout', '지급이 모두 완료되어 상담종료, ' + o.years + '년 뒤(' + rd.date + ') 재영업 예약(잠재고객)이 등록되었습니다.');
-        if (rd.adjusted) say(x, 'reserve-adjusted', '계산된 예약일(' + rd.raw + ')이 가망 기준 이내라서 ' + rd.date + '(으)로 보정했습니다.');
-      } else if (x.c.status !== '상담종료') {
-        say(x, 'payout-partial', '지급완료만 기록했습니다. 남은 상품의 지급이 끝나면 상담이 종료됩니다.');
-      }
+      var e = endByPayoutX(c, x, o, 'payout');                                          // R-04
+      if (e) return e;
       return okRes(x);
     }
     p.pay = v; p.payDone = '';
+    if (v === '지급제외' && p.pstatus === '개통완료' && !p.openedAt) p.openedAt = x.cfg.today;
     log(x, '상품', '고객지급', p.name + ': ' + (before === '-' ? '해당 없음' : before), p.name + ': ' + (v === '-' ? '해당 없음' : v), {});
     syncOpenX(x, '지급 상태 변경');
+    if (v === '지급제외' && p.pstatus === '개통완료') { var ee = endByPayoutX(c, x, o, 'exempt'); if (ee) return ee; }
+    return okRes(x);
+  }
+
+  // 지급완료일 수정 (2026-10-16 확정: 수정 가능)
+  function setPayDate(c, pid, date, cfg) {
+    var x = makeCtx(c, cfg);
+    var f = findProduct(x.c, pid);
+    if (!f) return fail(c, err('NOT_FOUND', '상품을 찾을 수 없습니다.'));
+    var p = f.product;
+    if (p.pay !== '지급완료') return fail(c, err('NOT_PAID', '지급완료 상품만 지급완료일을 수정할 수 있습니다.'));
+    if (!date || !DATE_RE.test(date)) return fail(c, err('BAD_DATE', '지급완료일 형식이 올바르지 않습니다.'));
+    if (date === p.payDone) return okRes(x);
+    var before = p.payDone;
+    p.payDone = date;
+    log(x, '상품', '지급완료일', p.name + ': ' + before, p.name + ': ' + date, {});
+    if (x.c.status === '상담종료') say(x, 'reserve-keep', '이미 상담종료된 고객입니다. 재영업 예약일은 자동으로 바뀌지 않으니 필요하면 상담예약일을 수정해 주세요.');
     return okRes(x);
   }
 
@@ -402,13 +443,16 @@
     var p = f.product;
     if (v !== '-' && OPT.refund.indexOf(v) < 0) return fail(c, err('BAD_VALUE', '알 수 없는 환수 상태입니다.'));
     if (v === p.refund) return okRes(x);
+    if (v === '환수요청' && p.pay !== '지급완료') return fail(c, err('REFUND_NOT_PAID', '환수요청은 지급완료 상품에만 할 수 있습니다.'));   // 2026-10-16 확정
     var before = p.refund;
     p.refund = v;
     if (v !== '환수완료') p.refundDone = '';
     log(x, '상품', '환수', p.name + ': ' + (before === '-' ? '해당 없음' : before), p.name + ': ' + (v === '-' ? '해당 없음' : v), {});
     if (v === '환수요청') { ensureActiveX(x, '환수요청'); return okRes(x); }          // R-03
     if (v === '환수완료') {
-      p.refundDone = x.cfg.today;
+      var rdn = o.doneDate || x.cfg.today;
+      if (!DATE_RE.test(rdn)) return fail(c, err('BAD_DATE', '환수완료일 형식이 올바르지 않습니다.'));
+      p.refundDone = rdn;
       if (x.c.status === '상담중' && blockers(x.c).length === 0) {                     // R-05
         var validReserve = x.c.reserve && classify(x.c.reserve, x.cfg) === '잠재';
         if (validReserve) {
@@ -468,6 +512,7 @@
     var p = newProduct(prod);
     if (!p.name) return fail(c, err('NAME_REQUIRED', '상품명을 입력해 주세요.'));
     if (!p.id) p.id = nextProductId(x.c);
+    if (!p.proposedAt) p.proposedAt = x.cfg.today;
     k.products = k.products || [];
     k.products.push(p);
     log(x, '상품', '상품 추가', '', p.name + ' (상품제안)', {});
@@ -489,11 +534,18 @@
     log(x, '상품', '상품상태', old.name + ': ' + prev, old.name + ': 접수취소', { note: '사유: 상품변경' });
     var np = newProduct(Object.assign({ type: old.type }, prod, { pstatus: '상품제안', changedFrom: old.id }));
     if (!np.id) np.id = nextProductId(x.c);
+    np.proposedAt = x.cfg.today;
     f.contract.products.push(np);
     log(x, '상품', '상품 변경', old.name, np.name + ' (상품제안)', { note: '변경 전 상품 ' + old.id });
     ensureActiveX(x, '상품 변경');                                                      // R-02
     if (hadMoney) say(x, 'refund-check', '개통·지급이 진행된 상품입니다. 환수 대상인지 확인해 주세요.');
     return okRes(x);
+  }
+
+  // R-12: 제안만 하고 진행하지 않은 상품 (staleDays 이상). 업무 목록용
+  function staleProposals(c, cfg) {
+    var cf = conf(cfg), limit = addDays(cf.today, -cf.staleDays);
+    return activeProducts(c).filter(function (p) { return p.pstatus === '상품제안' && p.proposedAt && p.proposedAt <= limit; });
   }
 
   return {
@@ -504,9 +556,9 @@
     reengageBase: reengageBase, reengageDate: reengageDate, newProduct: newProduct, newCustomer: newCustomer,
     // 고객 이벤트
     setConsultStatus: setConsultStatus, setSeg: setSeg, setReserve: setReserve, reevaluate: reevaluate,
-    endConsult: endConsult, recordAbsence: recordAbsence,
+    endConsult: endConsult, recordAbsence: recordAbsence, confirmAbsenceExclude: confirmAbsenceExclude,
     // 상품 이벤트
-    setProductStatus: setProductStatus, setPay: setPay, setRefund: setRefund, setSettle: setSettle,
+    setProductStatus: setProductStatus, setPay: setPay, setRefund: setRefund, setSettle: setSettle, setPayDate: setPayDate, staleProposals: staleProposals,
     addProduct: addProduct, changeProduct: changeProduct
   };
 });
