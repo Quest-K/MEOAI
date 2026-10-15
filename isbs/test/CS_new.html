@@ -3909,6 +3909,13 @@ function refreshCustomerListView(){
   if (customerViewInited && customerListCache.length) renderCustomerList(customerListCache);
 }
 
+// 가족회선 연락처로 조회된 고객이면 어떤 가족 번호로 걸렸는지 표시
+function famHitBadgeHtml(c){
+  if (!c || !Array.isArray(c._famHit) || !c._famHit.length) return '';
+  const tip = c._famHit.map(h => `${formatContactDisplay(h.family_contact || '')}${h.relation ? ' (' + h.relation + ')' : ''}`).join(', ');
+  return ` <span title="가족회선에 저장된 번호로 조회됨: ${escAttr(tip)}" style="display:inline-block;margin-left:4px;padding:1px 6px;border-radius:8px;font-size:11px;background:#eef2ff;color:#4338ca;white-space:nowrap;">가족번호</span>`;
+}
+
 function renderCustomerList(rows, emptyText){
   customerListCache = rows || [];
   const el = document.getElementById('cust-list');
@@ -3937,7 +3944,7 @@ function renderCustomerList(rows, emptyText){
     return `
     <tr class="${c.customer_id === currentCustomerId ? 'active' : ''}" onclick="openCustomerToConsult(${c.customer_id})">
       <td class="cust-row-name cust-cell-1line" title="${escAttr(c.name || '')}">${escHtml(c.name) || '(이름없음)'}</td>
-      <td class="cust-cell-1line" title="${escAttr(formatContactDisplay(c.contact))}">${escHtml(formatContactDisplay(c.contact)) || '-'}</td>
+      <td class="cust-cell-1line" title="${escAttr(formatContactDisplay(c.contact))}">${escHtml(formatContactDisplay(c.contact)) || '-'}${famHitBadgeHtml(c)}</td>
       <td class="cust-row-sub cust-lines-cell">${listLinesHtml(lines, l => l.text, true)}</td>
       <td class="num">${listLinesHtml(lines, l => fmtWon(l.fee), false)}</td>
       <td class="num">${listLinesHtml(lines, l => fmtWon(l.gift), false)}</td>
@@ -4454,6 +4461,30 @@ function buildContactOrFilter(raw){
   return `contact.ilike.%${digits}%`;
 }
 
+// 가족회선(상담 때 입력한 가족 연락처)에 저장된 번호로도 고객을 찾습니다.
+// 가족 연락처는 계약의 상담 스냅샷(JSON) 안에 들어 있어 DB 함수(search_customers_by_family_contact)로 조회합니다.
+// 번호가 너무 짧으면(4자리 미만) 거의 모든 고객이 걸리므로 가족 조회는 건너뜁니다.
+let familySearchWarned = false;
+async function findFamilyContactMatches(raw){
+  const digits = normalizeContact(raw);
+  if (!digits || digits.length < 4) return [];
+  try {
+    const { data, error } = await sb.rpc('search_customers_by_family_contact', { p_digits: digits });
+    if (error) {
+      console.warn('가족 연락처 조회 실패', error.message);
+      if (!familySearchWarned) { familySearchWarned = true; showToast('⚠ 가족 연락처 조회 함수가 없어 본인 연락처만 검색했습니다 (DB 함수 설치 필요)'); }
+      return [];
+    }
+    return (data || []).filter(r => r && r.customer_id !== null && r.customer_id !== undefined);
+  } catch (e) { console.warn('가족 연락처 조회 오류', e); return []; }
+}
+// 조회된 고객 행에 '가족 연락처로 걸린 이유'를 붙입니다 (목록에 가족번호 표시용)
+function attachFamilyHits(rows, fam){
+  const byId = {};
+  (fam || []).forEach(f => { (byId[f.customer_id] = byId[f.customer_id] || []).push(f); });
+  (rows || []).forEach(c => { if (byId[c.customer_id]) c._famHit = byId[c.customer_id]; });
+}
+
 // 고객검색 조건(연락처·이름·상태값) 중 하나라도 입력되어 있는지
 function hasCustSearchCondition(){
   return !!((elVal('cust-search-contact') || '').trim() || (elVal('cust-search-name') || '').trim() || elVal('cust-search-status'));
@@ -4464,21 +4495,26 @@ async function searchCustomers(btn){
   const raw = (elVal('cust-search-contact') || '').trim();
   const nameRaw = (elVal('cust-search-name') || '').trim();
   const status = elVal('cust-search-status');
-  let query = sb.from('customers').select('*');
-
-  if (raw) {
-    const orFilter = buildContactOrFilter(raw);
-    if (orFilter) query = query.or(orFilter);
-    else query = query.ilike('contact', `%${raw}%`);
-  }
-  // 이름 : 일부만 입력해도 검색 (연락처와 함께 입력하면 두 조건을 모두 만족하는 고객만 조회)
-  if (nameRaw) query = query.ilike('name', `%${nameRaw}%`);
-  if (status) query = query.eq('customer_status', status);   // S5: 새 고객 상태 기준
-
   setBtnLoading(btn, '조회 중...');
   try {
+    let query = sb.from('customers').select('*');
+    let fam = [];
+    if (raw) {
+      const orFilter = buildContactOrFilter(raw);
+      if (orFilter) {
+        // 본인 연락처 OR 가족회선 연락처 (다른 고객의 가족회선에 저장된 번호도 함께 조회)
+        fam = await findFamilyContactMatches(raw);
+        const famIds = [...new Set(fam.map(f => f.customer_id))];
+        query = query.or(famIds.length ? `${orFilter},customer_id.in.(${famIds.join(',')})` : orFilter);
+      } else query = query.ilike('contact', `%${raw}%`);
+    }
+    // 이름 : 일부만 입력해도 검색 (연락처와 함께 입력하면 두 조건을 모두 만족하는 고객만 조회)
+    if (nameRaw) query = query.ilike('name', `%${nameRaw}%`);
+    if (status) query = query.eq('customer_status', status);   // S5: 새 고객 상태 기준
+
     const { data, error } = await query.order(custListSortColumn, { ascending: custListSortAscending }).limit(100);
     if (error) { renderCustomerList([], '조회 실패: ' + error.message); return; }
+    attachFamilyHits(data, fam);
     await loadCustomerListExtras(data);
     renderCustomerList(data, '검색 조건에 맞는 고객이 없습니다.');
   } finally {
@@ -6030,6 +6066,7 @@ async function quickTopSearch(rawContact, btn){
     // 숫자·하이픈·공백만 있으면 연락처, 글자가 하나라도 있으면 이름으로 조회
     const isNameSearch = /[^0-9\-\s]/.test(contact);
     let data, error;
+    let familyHit = null;
     if (isNameSearch) {
       ({ data, error } = await sb.from('customers').select('*')
         .ilike('name', `%${contact}%`).order('updated_at', { ascending: false }).limit(100));
@@ -6038,8 +6075,41 @@ async function quickTopSearch(rawContact, btn){
       if (!orFilter) { alert('연락처는 숫자로 입력해주세요.'); return; }
       ({ data, error } = await sb.from('customers').select('*')
         .or(orFilter).order('updated_at', { ascending: false }).limit(1));
+      // 본인 연락처로 없으면 다른 고객의 가족회선에 저장된 번호인지 확인
+      if (!error && (!data || !data.length)) {
+        const fam = await findFamilyContactMatches(contact);
+        if (fam.length) familyHit = fam;
+      }
     }
     if (error) { alert('조회 실패: ' + error.message); return; }
+
+    // 가족회선으로만 걸린 경우 : 고객조회 목록에 띄워 직접 고르게 함 (취소하면 기존처럼 새 상담 시작)
+    if (!isNameSearch && familyHit && (!data || !data.length)) {
+      const famIds = [...new Set(familyHit.map(f => f.customer_id))];
+      const r = await sb.from('customers').select('*').in('customer_id', famIds).order('updated_at', { ascending: false }).limit(100);
+      if (r.error) { alert('조회 실패: ' + r.error.message); return; }
+      const rows = r.data || [];
+      if (rows.length) {
+        const first = rows[0];
+        const hit = familyHit.find(h => h.customer_id === first.customer_id) || {};
+        const who = first.name || formatContactDisplay(first.contact);
+        const msg = rows.length === 1
+          ? `이 번호는 [${who}] 고객의 가족회선${hit.relation ? '(' + hit.relation + ')' : ''}에 등록되어 있습니다.\n고객조회 목록에서 확인할까요?\n\n[취소]를 누르면 새 고객으로 상담을 시작합니다.`
+          : `이 번호는 ${rows.length}명 고객의 가족회선에 등록되어 있습니다.\n고객조회 목록에서 확인할까요?\n\n[취소]를 누르면 새 고객으로 상담을 시작합니다.`;
+        if (confirm(msg)) {
+          attachFamilyHits(rows, familyHit);
+          customerListCache = rows;
+          await loadCustomerListExtras(customerListCache);
+          renderCustomerList(customerListCache);
+          setVal('cust-search-contact', formatContactDisplay(contact));
+          setVal('cust-search-name', '');
+          setVal('cust-search-status', '');
+          switchTab('customers');
+          showToast(`✓ 가족회선에 등록된 번호로 ${rows.length}명이 조회되었습니다`);
+          return;
+        }
+      }
+    }
 
     // 이름 조회 결과가 여러 명이면 고객조회 목록에 모두 띄우고 그 탭으로 이동 (한 명을 임의로 고르지 않음)
     if (isNameSearch && data && data.length > 1) {
