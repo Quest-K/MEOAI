@@ -1,1 +1,1076 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>고객상담 v2</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<link rel="stylesheet" href="Styles.css?v=20261007c">
+<style>
+.v2-pick-list{display:flex;flex-direction:column;gap:6px;margin-top:10px;align-items:flex-start}
+.v2-meta{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px 16px;margin:10px 0;font-size:13px}
+.v2-meta span{color:#6b6f7a;margin-right:6px}
+.v2-sub-title{font-weight:600;font-size:12px;color:#6b6f7a;margin:10px 0 4px}
+.v2-link-row,.v2-combo{margin-top:10px;font-size:13px}
+.v2-link-row select{margin-left:8px}
+.v2-memos{margin-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="tab-nav">
+    <div class="cd-title" style="margin-right:12px"><span class="cd-name">고객상담 v2</span></div>
+    <div id="auth-box" class="auth-box"><button class="login-trigger-btn" onclick="openLoginModal()">🔐 관리자 로그인</button></div>
+    <div class="cust-bar">
+      <div class="quick-search-box">
+        <input type="text" id="top-quick-contact" placeholder="고객 이름 또는 연락처" autocomplete="off"
+               onkeydown="if(event.key==='Enter'){event.preventDefault(); quickSearchV2(document.getElementById('top-quick-search-btn'));}">
+        <button type="button" class="mini-btn mini-btn-primary" id="top-quick-search-btn" onclick="quickSearchV2(this)">🔍 조회</button>
+      </div>
+    </div>
+  </div>
+  <div class="view-container active">
+    <div class="cd-wrap">
+      <div id="cust-detail"><div class="cs-card"><div class="reflected-empty">상단에서 고객 이름 또는 연락처로 조회하세요. 연락처가 없으면 신규 고객으로 등록할 수 있습니다.</div></div></div>
+    </div>
+  </div>
+</div>
+<div id="login-modal" class="modal-overlay">
+  <div class="modal-box" style="max-width:360px;">
+    <h3>관리자 로그인</h3>
+    <p class="modal-desc">수수료 · 마진 정보는 로그인한 관리자/상담원만 확인할 수 있습니다.</p>
+    <label class="login-label">Email</label>
+    <input type="email" id="login-email" class="login-input" autocomplete="username">
+    <label class="login-label">Password</label>
+    <input type="password" id="login-password" class="login-input" autocomplete="current-password">
+    <div class="login-error" id="login-error"></div>
+    <div class="modal-actions">
+      <button class="secondary-btn" onclick="closeLoginModal()">취소</button>
+      <button class="primary-btn" onclick="handleLogin()">로그인</button>
+    </div>
+  </div>
+</div>
+<div id="toast-container" class="toast-container" aria-live="polite"></div>
 
+<script src="config.js?v=20261006b"></script>
+<script src="Calculator.js?v=20261006a"></script>
+<script src="Supabaseservice.js?v=20261015a"></script>
+<script>
+(function checkModules(){
+  var missing = [];
+  if (typeof supabase === 'undefined') missing.push('supabase-js (CDN)');
+  if (typeof CARRIERS === 'undefined') missing.push('config.js');
+  if (typeof computePrice !== 'function') missing.push('Calculator.js');
+  if (typeof loadData !== 'function') missing.push('Supabaseservice.js');
+  if (!missing.length) return;
+  console.error('[모듈 로드 실패]', missing);
+  var bar = document.createElement('div');
+  bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#B3261E;color:#fff;padding:10px 14px;font-size:13px;font-weight:600;text-align:center;';
+  bar.textContent = '파일 로드 실패: ' + missing.join(', ') + ' - 파일 내용/경로/캐시를 확인하세요.';
+  document.body.appendChild(bar);
+})();
+</script>
+<script>
+let DATA = null, COMMISSION_DATA = {}, RAW_COMMISSION_DATA = [], PROMOTION_DATA = {};
+let recoState = { speed:'500', tv:'basic', settopTier:'basic', router:'Y', extraTVs:[] };
+let recoUsimTier = null;
+let logs = {};
+let isLoggedIn = false;
+
+
+function showToast(message){
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = message;
+  container.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('toast-visible'));
+  setTimeout(() => {
+    toast.classList.remove('toast-visible');
+    setTimeout(() => toast.remove(), 250);
+  }, 2200);
+}
+
+// 저장/삭제/조회 등 비동기 버튼의 중복 클릭 방지 + 진행 상태 표시 공용 헬퍼
+function setBtnLoading(btn, loadingLabel){
+  if (!btn || btn.disabled) return;
+  btn.dataset.originalLabel = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = loadingLabel;
+}
+function clearBtnLoading(btn){
+  if (!btn) return;
+  btn.disabled = false;
+  if (btn.dataset.originalLabel !== undefined) {
+    btn.innerHTML = btn.dataset.originalLabel;
+    delete btn.dataset.originalLabel;
+  }
+}
+
+function elVal(id){ const el = document.getElementById(id); return el ? el.value : ''; }
+function setVal(id, v){ const el = document.getElementById(id); if (el) el.value = (v === null || v === undefined) ? '' : v; }
+
+function escHtml(v){
+  if (v === null || v === undefined) return '';
+  return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function escAttr(v){
+  if (v === null || v === undefined) return '';
+  return String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
+
+function custField(label, id, value, type, span){
+  return `
+    <div class="form-group ${span || ''}">
+      <label>${label}</label>
+      <input type="${type || 'text'}" id="${id}" value="${value === null || value === undefined ? '' : String(value).replace(/"/g, '&quot;')}">
+    </div>
+  `;
+}
+
+
+const CUSTOMER_STATUS_STAGE = { '상담대기': 1, '상담중': 2, '상담완료': 3, '제외': 5, '이탈': 6 };   // 기존 칩 색(stage-N) 재사용
+const CONTRACT_STATUS_STAGE = { '작성중': 1, '접수대기': 2, '접수완료': 3, '접수보류': 4, '접수불가': 6, '계약취소': 1 };
+const CONTRACT_TYPE_LABEL = { home: '인터넷·TV', usim: '유심' };
+
+function custStatusInfo(c){
+  if (c && c.customer_status) return { status: c.customer_status, substatus: c.consult_substatus || '', reason: c.status_reason || '', legacy: false };
+  const m = FUNNEL_TO_NEW_STRUCTURE[normalizeFunnelStatus((c && c.funnel_status) || DEFAULT_FUNNEL_STATUS)];
+  const cu = (m && m.customer) || { status: DEFAULT_CUSTOMER_STATUS };
+  return { status: cu.status, substatus: cu.substatus || '', reason: cu.reason || '', legacy: true };
+}
+function custStatusDetail(info){
+  return info.status === '상담중' ? info.substatus : (info.status === '이탈' || info.status === '제외') ? info.reason : '';
+}
+function custStatusLabelText(info){
+  const d = custStatusDetail(info);
+  return (CUSTOMER_STATUS_LABEL[info.status] || info.status) + (d ? ' · ' + d : '');
+}
+function custStatusChipHtml(info){
+  const t = info.legacy ? ' title="새 상태값이 아직 없어 구 상태값을 변환해 표시합니다"' : '';
+  return `<span class="cust-status-chip stage-${CUSTOMER_STATUS_STAGE[info.status] || 0}"${t}>${escHtml(custStatusLabelText(info))}${info.legacy ? '*' : ''}</span>`;
+}
+
+function formatDateShort(iso){
+  if (!iso) return '-';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '-';
+  const pad = n => String(n).padStart(2, '0');
+  return `${String(d.getFullYear()).slice(2)}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function toLocalInputValue(iso){
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function renderTagChips(containerId, tagSet, toggleFnName){
+  const body = document.getElementById(containerId);
+  if (!body) return;
+  body.innerHTML = CUSTOMER_TAG_GROUPS.map(group => `
+    <div class="cust-tag-group">
+      <div class="cust-tag-group-label">${group.label}</div>
+      <div class="cust-tag-chip-row">
+        ${group.tags.map(t => `
+          <span class="cust-tag-chip ${tagSet.has(t.key) ? 'active' : ''}"
+                title="${escAttr(t.desc)}"
+                onclick="${toggleFnName}('${t.key.replace(/'/g, "\\'")}')">#${t.key}</span>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+// 설명(desc) 중 "참고:" 이후 문구만 추출 (툴팁과 동일한 내용을 재사용)
+function tagStrategyText(desc){
+  const parts = String(desc || '').split('참고:');
+  return (parts.length > 1 ? parts[1] : desc).trim();
+}
+
+// 선택된 태그 기반 상담 전략 박스를 그려주는 공용 함수
+function renderTagStrategyBox(boxId, tagSet){
+  const box = document.getElementById(boxId);
+  if (!box) return;
+
+  const allTags = CUSTOMER_TAG_GROUPS.flatMap(g => g.tags);
+  const selected = allTags.filter(t => tagSet.has(t.key));
+
+  if (!selected.length) {
+    box.style.display = 'none';
+    box.innerHTML = '';
+    return;
+  }
+
+  box.style.display = '';
+  box.innerHTML = `
+    <div class="cust-tag-strategy-title">📌 선택된 태그 기반 상담 전략</div>
+    <ul class="cust-tag-strategy-list">
+      ${selected.map(t => `<li><b>#${t.key}</b> — ${tagStrategyText(t.desc)}</li>`).join('')}
+    </ul>
+  `;
+}
+
+// 태그 선택/해제 로직 (단일선택 그룹은 같은 그룹 내 기존 선택을 자동 해제)
+function toggleTagInSet(tagSet, tagKey){
+  const group = CUSTOMER_TAG_GROUPS.find(g => g.tags.some(t => t.key === tagKey));
+  if (group && group.single) {
+    if (tagSet.has(tagKey)) tagSet.delete(tagKey);
+    else { group.tags.forEach(t => tagSet.delete(t.key)); tagSet.add(tagKey); }
+  } else {
+    if (tagSet.has(tagKey)) tagSet.delete(tagKey);
+    else tagSet.add(tagKey);
+  }
+}
+
+function renderDetailCustomerTags(){
+  renderTagChips('detail-tags-body', detailCustomerTags, 'toggleDetailCustomerTag');
+  renderTagStrategyBox('detail-tags-strategy', detailCustomerTags);
+}
+function toggleDetailCustomerTag(tagKey){
+  toggleTagInSet(detailCustomerTags, tagKey);
+  renderDetailCustomerTags();
+}
+function toggleDetailTagsBody(){
+  const body = document.getElementById('detail-tags-body');
+  const chevron = document.getElementById('detail-tags-chevron');
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : '';
+  if (chevron) chevron.textContent = isOpen ? '▾' : '▴';
+}
+
+async function probeCustomerSchema(){
+  if (CUSTOMER_SCHEMA.checked) return CUSTOMER_SCHEMA;
+  const snap = await sb.from('customers').select('proposal_snapshot').limit(1);
+  CUSTOMER_SCHEMA.hasSnapshot = !snap.error;
+  const prod = await sb.from('customer_products').select('customer_id').limit(1);
+  CUSTOMER_SCHEMA.hasProductsTable = !prod.error;
+  const tags = await sb.from('customers').select('customer_tags').limit(1);
+  CUSTOMER_SCHEMA.hasTags = !tags.error;
+  const inflow = await sb.from('customers').select('inflow_route').limit(1);
+  CUSTOMER_SCHEMA.hasInflow = !inflow.error;
+  const contacts = await sb.from('customer_contacts').select('customer_id').limit(1);
+  CUSTOMER_SCHEMA.hasContactsTable = !contacts.error;
+  const statusLogs = await sb.from('customer_status_logs').select('customer_id').limit(1);
+  CUSTOMER_SCHEMA.hasStatusLogsTable = !statusLogs.error;
+  CUSTOMER_SCHEMA.checked = true;
+  return CUSTOMER_SCHEMA;
+}
+
+function buildContactOrFilter(raw){
+  const digits = normalizeContact(raw);
+  if (!digits) return null;
+  return `contact.ilike.%${digits}%`;
+}
+
+
+function formatNoteStamp(d){
+  const pad = n => String(n).padStart(2, '0');
+  return `${String(d.getFullYear()).slice(2)}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// 특이사항 맨 위에 한 줄 추가하고 DB에 즉시 저장. 성공 시 합쳐진 전체 텍스트, 실패 시 null
+async function prependNoteLine(customerId, line, baseText, syncConsult){
+  let base = baseText;
+  if (base === undefined) {
+    const logEl = document.getElementById('cf-notes');
+    if (logEl && detailCustomerId === customerId) {
+      base = logEl.value;   // 화면에서 고치던 내용(미저장 포함)을 그대로 이어서 저장
+    } else {
+      const { data, error } = await sb.from('customers').select('notes').eq('customer_id', customerId).limit(1);
+      if (error) { alert('특이사항 조회 실패: ' + error.message); return null; }
+      base = (data && data[0] && data[0].notes) || '';
+    }
+  }
+  const merged = (base && base.trim()) ? `${line}\n${base}` : line;
+  const { error } = await sb.from('customers').update({ notes: merged }).eq('customer_id', customerId);
+  if (error) { alert('특이사항 저장 실패: ' + error.message); return null; }
+
+  const c = customerListCache.find(x => x.customer_id === customerId);
+  if (c) c.notes = merged;
+  const logEl = document.getElementById('cf-notes');
+  if (logEl && detailCustomerId === customerId) logEl.value = merged;
+  if (syncConsult && currentCustomerId === customerId) setVal('cust-notes', merged);
+  return merged;
+}
+
+async function addCustomerNote(customerId, btn){
+  const input = document.getElementById('cf-note-input');
+  const text = (input ? input.value : '').trim();
+  if (!text) { alert('추가할 안내 내용을 입력해주세요.'); if (input) input.focus(); return; }
+  setBtnLoading(btn, '추가 중...');
+  try {
+    const merged = await prependNoteLine(customerId, `[${formatNoteStamp(new Date())}] ${text}`);
+    if (merged === null) return;
+    if (input) input.value = '';
+    showToast('✓ 특이사항이 추가되었습니다');
+  } finally {
+    clearBtnLoading(btn);
+  }
+}
+
+/* =========================================================================
+   고객부재 재안내(컨택) 관리 — 1·2·3차 컨택 일시 / 방법 / 결과 / 안내 내용
+   - 테이블: customer_contacts (customer_contacts.sql 참고). 없으면 이 기능만 건너뜁니다.
+   - 일정 계산 규칙은 config.js(CONTACT_RULES, KOREAN_HOLIDAYS), 계산 함수는 Calculator.js
+     (computeFirstContactTime / computeNextContactTime)에 있습니다.
+   - 흐름: 컨택 기록(결과=부재) → 다음 회차 자동 예약(상담예약일시에도 반영)
+           결과=연결 → 재안내 중단 / 3회 모두 부재 → 안내 후 담당자가 상태값을 '이탈(고객부재)'로 직접 변경(자동 전환 없음)
+   ========================================================================= */
+async function currentUserEmail(){
+  try {
+    const { data } = await sb.auth.getSession();
+    return (data && data.session && data.session.user && data.session.user.email) || null;
+  } catch (e) { return null; }
+}
+
+// 고객 정보(다음 컨택일시 등)를 DB와 화면(목록/상세/상담화면)에 함께 반영
+// S7-8: 고객 상태는 여기서 바꾸지 않습니다. 상태는 changeStatus 로 따로 바꿔야 status_history 에 이력이 남습니다(applyContactCycle 참고).
+async function setCustomerPatch(customerId, patch){
+  const { error } = await sb.from('customers').update(patch).eq('customer_id', customerId);
+  if (error) { alert('고객 정보 갱신 실패: ' + error.message); return false; }
+  syncCustomerLocal(customerId, patch);
+  return true;
+}
+
+function syncCustomerLocal(customerId, patch){
+  const c = customerListCache.find(x => x.customer_id === customerId);
+  if (c) Object.assign(c, patch);
+  if (detailCustomerId === customerId) {
+    if ('next_contact_at' in patch) setVal('cf-next-contact', toLocalInputValue(patch.next_contact_at));
+  }
+  // 상담화면에 같은 고객이 열려 있으면 저장 시 옛 값으로 되돌리지 않도록 함께 맞춤
+  if (currentCustomerId === customerId) {
+    // 상태 선택칸은 상태가 바뀐 뒤 refreshAfterConsultStatus 가 맞춥니다(S7-6·S7-8).
+    if ('next_contact_at' in patch) setVal('cust-next-contact', toLocalInputValue(patch.next_contact_at));
+  }
+  renderCustomerList(customerListCache);
+  loadFunnelDashboard();
+}
+
+function buildContactCard(customerId, n, rows, connectedNo){
+  const row = rows.find(r => r.attempt_no === n) || null;
+  const recorded = !!(row && row.contacted_at);
+  const prevOk = n === 1 || rows.some(r => r.attempt_no === n - 1 && r.contacted_at);
+  const ended = connectedNo !== null && connectedNo < n;
+  const enabled = recorded || (prevOk && !ended);
+
+  let chip = '대기', cls = 'off';
+  if (recorded) { chip = row.result || '기록됨'; cls = row.result === CONTACT_RESULT_CONNECTED ? 'ok' : 'absent'; }
+  else if (ended) { chip = '종료'; cls = 'off'; }
+  else if (row && row.scheduled_at) { chip = '예약'; cls = 'wait'; }
+  else if (enabled) { chip = '기록 대기'; cls = 'wait'; }
+
+  let sched;
+  if (row && row.scheduled_at) sched = `예정 ${formatDateShort(row.scheduled_at)}`;
+  else if (ended) sched = '통화 연결로 재안내 종료';
+  else if (n === 1) sched = '기록하면 다음 회차가 자동 예약됩니다';
+  else sched = `${n - 1}차 컨택 기록 후 자동 예약`;
+
+  const atVal = enabled ? toLocalInputValue(recorded ? row.contacted_at : new Date().toISOString()) : '';
+  const dis = enabled ? '' : 'disabled';
+  const result = (row && row.result) || '';
+  return `
+    <div class="cust-contact-card${enabled ? '' : ' is-off'}">
+      <div class="cust-contact-head"><strong>${n}차 컨택</strong><span class="cust-contact-chip ${cls}">${chip}</span></div>
+      <div class="cust-contact-sched">${sched}</div>
+      <label>실제 컨택 일시</label>
+      <input type="datetime-local" id="ct-${n}-at" value="${atVal}" ${dis}>
+      <label>방법</label>
+      <select id="ct-${n}-method" ${dis}>${CONTACT_METHODS.map(m => `<option ${row && row.method === m ? 'selected' : ''}>${m}</option>`).join('')}</select>
+      <label>결과</label>
+      <select id="ct-${n}-result" ${dis}>
+        <option value="">선택</option>
+        <option value="${CONTACT_RESULT_ABSENT}" ${result === CONTACT_RESULT_ABSENT ? 'selected' : ''}>${CONTACT_RESULT_ABSENT} (미연결·무응답)</option>
+        <option value="${CONTACT_RESULT_CONNECTED}" ${result === CONTACT_RESULT_CONNECTED ? 'selected' : ''}>${CONTACT_RESULT_CONNECTED} (통화·응답)</option>
+      </select>
+      <label>안내 내용</label>
+      <textarea id="ct-${n}-content" rows="2" placeholder="어떤 안내를 했는지 입력" ${dis}>${escHtml(row && row.content)}</textarea>
+      <button type="button" class="mini-btn mini-btn-primary" onclick="saveContactAttempt(${customerId}, ${n}, this)" ${dis}>${recorded ? '수정 저장' : '컨택 기록'}</button>
+    </div>`;
+}
+
+async function renderContactSection(customerId){
+  const box = document.getElementById('contact-section');
+  if (!box) return;
+  const prog = document.getElementById('contact-progress');
+  await probeCustomerSchema();
+  if (!CUSTOMER_SCHEMA.hasContactsTable) {
+    box.innerHTML = `<div class="wide-table-empty">customer_contacts 테이블이 없어 컨택 이력을 사용할 수 없습니다. 안내드린 SQL(customer_contacts.sql)을 Supabase에서 실행해주세요.</div>`;
+    return;
+  }
+  const { data, error } = await sb.from('customer_contacts').select('*').eq('customer_id', customerId).order('attempt_no', { ascending: true });
+  if (detailCustomerId !== customerId) return;   // 조회하는 동안 다른 고객을 열었으면 중단
+  if (error) { box.innerHTML = `<div class="wide-table-empty">조회 실패: ${escHtml(error.message)}</div>`; return; }
+  const rows = data || [];
+  const recorded = rows.filter(r => r.contacted_at);
+  const connected = recorded.find(r => r.result === CONTACT_RESULT_CONNECTED);
+  const connectedNo = connected ? connected.attempt_no : null;
+
+  if (prog) prog.innerHTML = recorded.length
+    ? `<span class="cust-contact-badge">${recorded.length}/${CONTACT_RULES.maxAttempts}${connected ? ' · 연결' : ''}</span>` : '';
+
+  let cards = '';
+  for (let n = 1; n <= CONTACT_RULES.maxAttempts; n++) cards += buildContactCard(customerId, n, rows, connectedNo);
+  box.innerHTML = `<div class="cust-contact-grid">${cards}</div>`;
+}
+
+// 저장된 컨택 이력을 기준으로 다음 회차 예약 / 중단 / 종결 여부를 다시 계산해 반영합니다. (여러 번 실행해도 결과가 같음)
+async function applyContactCycle(customerId){
+  const { data: rows, error } = await sb.from('customer_contacts').select('*').eq('customer_id', customerId).order('attempt_no', { ascending: true });
+  if (error) { alert('컨택 이력 조회 실패: ' + error.message); return null; }
+  const list = rows || [];
+  const recorded = list.filter(r => r.contacted_at);
+  const last = recorded.length ? recorded[recorded.length - 1] : null;
+
+  // 현재 고객 상태(새 구조). 상태 변경이 필요하면 아래에서 statusChange 로 모아 마지막에 changeStatus 로 한 번 바꿉니다. (S7-8)
+  const { data: cd, error: cde } = await sb.from('customers').select('customer_status,consult_substatus,status_reason,funnel_status').eq('customer_id', customerId).limit(1);
+  if (cde || !cd || !cd[0]) { alert('고객 상태 조회 실패: ' + (cde ? cde.message : '고객을 찾을 수 없습니다.')); return null; }
+  const info = custStatusInfo(cd[0]);
+  const inCycle = info.status === CONTACT_CYCLE_NEW.status && info.substatus === CONTACT_CYCLE_NEW.substatus;
+  const canStartCycle = !inCycle && (
+    (CONTACT_START_FROM_NEW.statuses.includes(info.status)) ||
+    (info.status === '상담중' && CONTACT_START_FROM_NEW.consultSubstatuses.includes(info.substatus || '')));
+  let statusChange = null;   // { substatus } : 상담중 으로, 부가표시를 substatus 로
+
+  const patch = {};
+  let exhausted = false, connected = false, nextAt = null, nextNo = null;
+
+  if (!last) {
+    const pending = list.find(r => !r.contacted_at && r.scheduled_at);
+    if (pending) { patch.next_contact_at = pending.scheduled_at; nextAt = pending.scheduled_at; nextNo = pending.attempt_no; }
+  } else if (last.result === CONTACT_RESULT_CONNECTED) {
+    connected = true;
+    const stale = list.filter(r => !r.contacted_at).map(r => r.id);   // 예약만 되어 있던 회차는 취소
+    if (stale.length) await sb.from('customer_contacts').delete().in('id', stale);
+    patch.next_contact_at = null;
+    if (inCycle) statusChange = { substatus: CONTACT_CONNECTED_NEW.substatus };   // 통화 연결 → 상담중 (재안내 중일 때만)
+  } else if (last.attempt_no < CONTACT_RULES.maxAttempts) {
+    nextNo = last.attempt_no + 1;
+    const sched = computeNextContactTime(new Date(last.contacted_at));
+    const nextRow = list.find(r => r.attempt_no === nextNo);
+    if (!nextRow) {
+      const { error: ie } = await sb.from('customer_contacts').insert({ customer_id: customerId, attempt_no: nextNo, scheduled_at: sched.toISOString() });
+      if (ie) { alert('다음 컨택 예약 실패: ' + ie.message); return null; }
+    } else if (!nextRow.contacted_at) {
+      await sb.from('customer_contacts').update({ scheduled_at: sched.toISOString() }).eq('id', nextRow.id);
+    }
+    if (!nextRow || !nextRow.contacted_at) { patch.next_contact_at = sched.toISOString(); nextAt = patch.next_contact_at; }
+    if (canStartCycle) statusChange = { substatus: CONTACT_CYCLE_NEW.substatus };   // 부재 기록 → 상담중 · 고객부재
+    if (isBeyondHolidayCoverage(sched)) showToast(`⚠ 공휴일 목록이 ${KOREAN_HOLIDAYS_LAST_YEAR}년까지라 이후 일정은 주말만 제외하고 계산했습니다`);
+  } else {
+    exhausted = true;   // 마지막 회차까지 부재
+    patch.next_contact_at = null;
+  }
+
+  if (Object.keys(patch).length) await setCustomerPatch(customerId, patch);
+
+  // 상태 변경(changeStatus) : status_history 에 1건 남습니다. 실패해도 컨택 기록·예약은 이미 저장되었으므로 statusError 로 알립니다.
+  let statusError = null, statusChanged = false;
+  if (statusChange) {
+    const r = (info.status === '상담중' && !info.legacy)
+      ? await changeStatus({ target: 'customer', id: customerId, axis: 'substatus', to: statusChange.substatus })   // 상담중 안에서는 부가표시만 바꿈
+      : await changeStatus({ target: 'customer', id: customerId, to: '상담중', substatus: statusChange.substatus });
+    if (!r.ok) statusError = r.error || r.userMessage || '알 수 없는 오류';
+    else statusChanged = !!r.changed;
+    if (r.ok && r.autoError) statusError = r.userMessage;
+    if (statusChanged) await refreshAfterConsultStatus(customerId);
+  }
+  return { exhausted, connected, nextAt, nextNo, last, statusError, statusChanged };
+}
+
+async function saveContactAttempt(customerId, n, btn){
+  const at = elVal(`ct-${n}-at`);
+  const method = elVal(`ct-${n}-method`) || CONTACT_METHODS[0];
+  const result = elVal(`ct-${n}-result`);
+  const content = (elVal(`ct-${n}-content`) || '').trim();
+  if (!at) { alert('실제 컨택 일시를 입력해주세요.'); return; }
+  if (!result) { alert('결과(부재/연결)를 선택해주세요.'); return; }
+
+  setBtnLoading(btn, '저장 중...');
+  try {
+    const { data: exist, error: se } = await sb.from('customer_contacts').select('*').eq('customer_id', customerId).eq('attempt_no', n).limit(1);
+    if (se) { alert('컨택 이력 조회 실패: ' + se.message); return; }
+    const prev = exist && exist[0];
+    const wasRecorded = !!(prev && prev.contacted_at);
+    const contactedIso = new Date(at).toISOString();
+    const payload = {
+      customer_id: customerId, attempt_no: n,
+      scheduled_at: (prev && prev.scheduled_at) || contactedIso,
+      contacted_at: contactedIso, method, result, content: content || null,
+      created_by: (prev && prev.created_by) || await currentUserEmail()
+    };
+    const { error } = prev
+      ? await sb.from('customer_contacts').update(payload).eq('id', prev.id)
+      : await sb.from('customer_contacts').insert(payload);
+    if (error) { alert('컨택 기록 실패: ' + error.message); return; }
+
+    if (!wasRecorded) {   // 처음 기록할 때만 특이사항에 날짜별 한 줄 누적
+      await prependNoteLine(customerId, `[${formatNoteStamp(new Date(at))}] ${n}차 컨택(${method}·${result})${content ? ' ' + content : ''}`);
+    }
+
+    const out = await applyContactCycle(customerId);
+    if (out && out.connected) {
+      showToast(`✓ ${n}차 컨택이 기록되었습니다 (연결 · 재안내 종료)`);
+    } else if (out && out.nextAt) {
+      showToast(`✓ ${n}차 컨택이 기록되고 ${out.nextNo}차가 ${formatDateShort(out.nextAt)}로 예약되었습니다`);
+    } else {
+      showToast(`✓ ${n}차 컨택이 기록되었습니다`);
+    }
+    if (out && out.statusError) {
+      alert(`컨택은 기록되었지만 고객 상태는 바뀌지 않았습니다.\n${out.statusError}\n\n고객 상태는 고객조회 상세에서 직접 바꿔 주세요.`);
+    }
+    if (out && out.exhausted) {   // 자동 전환하지 않고, 담당자가 직접 변경하도록 안내만 합니다
+      alert(`${CONTACT_RULES.maxAttempts}회 모두 부재입니다.\n재안내를 더 진행하지 않으려면 고객 상태를 '${CONTACT_CLOSED_NEW.status} · ${CONTACT_CLOSED_NEW.reason}'로 직접 변경해주세요.`);
+    }
+    await renderContactSection(customerId);
+    await refreshListRowExtras(customerId);
+  } finally {
+    clearBtnLoading(btn);
+  }
+}
+
+// 고객 상태가 '상담중 · 고객부재'가 되는 시점(상담 저장 / 목록·상세 상태 변경)에 컨택 이력이 아직 없으면 1차 컨택을 자동 반영합니다. (S7-8 : 새 상태 구조 기준)
+//  - 근무시간 안: 지금을 1차 컨택(부재)으로 기록하고 3시간 뒤(규칙 적용)를 2차로 자동 예약
+//  - 근무시간 밖: 다음 영업일 10:00를 1차 예약으로 저장
+async function autoStartContactCycle(customerId, opts){
+  opts = opts || {};
+  await probeCustomerSchema();
+  if (!CUSTOMER_SCHEMA.hasContactsTable) return null;
+  const { data: exist, error } = await sb.from('customer_contacts').select('id').eq('customer_id', customerId).limit(1);
+  if (error || (exist && exist.length)) return null;   // 이미 컨택 이력이 있으면 자동 시작하지 않음
+
+  const now = new Date(); now.setSeconds(0, 0);
+  const inHours = isWithinWorkHours(now);
+  const row = inHours
+    ? { customer_id: customerId, attempt_no: 1, scheduled_at: now.toISOString(), contacted_at: now.toISOString(),
+        method: CONTACT_METHODS[0], result: CONTACT_RESULT_ABSENT, content: '상담 저장 시 자동 반영 (고객부재)',
+        created_by: await currentUserEmail() }
+    : { customer_id: customerId, attempt_no: 1, scheduled_at: computeFirstContactTime(now).toISOString() };
+  const { error: ie } = await sb.from('customer_contacts').insert(row);
+  if (ie) { console.warn('1차 컨택 자동 반영 실패', ie.message); return null; }
+
+  if (inHours) {
+    await prependNoteLine(customerId, `[${formatNoteStamp(now)}] 1차 컨택(${row.method}·${row.result}) ${row.content}`, undefined, !!opts.syncConsult);
+  }
+  const out = await applyContactCycle(customerId);
+  if (out && out.nextAt) {
+    showToast(inHours
+      ? `✓ 1차 컨택이 자동 반영되고 ${out.nextNo}차가 ${formatDateShort(out.nextAt)}로 예약되었습니다`
+      : `✓ 근무시간 외라 1차 컨택이 ${formatDateShort(out.nextAt)}로 예약되었습니다`);
+  }
+  if (document.getElementById('contact-section') && detailCustomerId === customerId) renderContactSection(customerId);
+  refreshListRowExtras(customerId);
+  return out;
+}
+
+async function resetContactHistory(customerId){
+  await probeCustomerSchema();
+  if (!CUSTOMER_SCHEMA.hasContactsTable) { alert('customer_contacts 테이블이 없습니다.'); return; }
+  if (!confirm('이 고객의 컨택 이력(1~3차)을 모두 삭제하고 처음부터 다시 시작할까요?\n(특이사항에 남은 기록은 그대로 유지됩니다)')) return;
+  const { error } = await sb.from('customer_contacts').delete().eq('customer_id', customerId);
+  if (error) { alert('초기화 실패: ' + error.message); return; }
+  showToast('✓ 컨택 이력이 초기화되었습니다');
+  await renderContactSection(customerId);
+  await refreshListRowExtras(customerId);
+}
+
+function renderDetailSummary(){
+  const box = document.getElementById('cd-summary');
+  if (!box || !detailBundle) return;
+  const s = detailBundle.summary || {};
+  const cts = (detailBundle.contracts || []).filter(c => c.effective_status !== '계약취소');
+  let fee = 0, gift = 0, comm = 0;
+  cts.forEach(c => {
+    (c.items || []).filter(i => i.progress_status !== '접수취소').forEach(i => { fee += Number(i.monthly_fee) || 0; });
+    gift += Number(c.gift_total) || 0; comm += Number(c.commission_total) || 0;
+  });
+  const canceled = (detailBundle.contracts || []).length - cts.length;
+  box.innerHTML = cts.length || canceled
+    ? `<span>계약 <b>${cts.length}</b>건${canceled ? ` (계약취소 ${canceled}건 제외)` : ''}</span>
+       <span>접수 이력 <b>${s.acquired_contract_count || 0}</b>건</span>
+       <span>월요금 합 <b>${fee.toLocaleString()}</b>원</span>
+       <span>사은품 합 <b>${gift.toLocaleString()}</b>원</span>
+       <span>수수료 합 <b>${comm.toLocaleString()}</b>원</span>`
+    : '<span>등록된 계약이 없습니다.</span>';
+}
+
+let detailBundle = null;               // 현재 열린 고객의 loadCustomerBundle 결과
+let detailHistoryFilter = 'all';       // 'all' | 'common' | 계약 ID(숫자)
+let detailBundleSeq = 0;
+let ctOpenMap = {};                    // 계약 ID -> 펼침 여부(사용자가 바꾼 값). 없으면 ctIsOpen 의 기본 규칙
+const CT_OPEN_STATUSES = ['작성중', '접수대기', '접수보류'];   // 처리할 일이 남은 계약은 기본으로 펼침
+// 계약의 수수료를 준 에이전시(상품 detail 에 저장된 이름). 없으면 빈 문자열.
+function ctAgencyText(ct){
+  const names = [];
+  (ct.items || []).forEach(i => { const a = i.detail && i.detail.commissionAgency; if (a && !names.includes(a)) names.push(a); });
+  return names.length ? ` · ${escHtml(names.join(', '))}` : '';
+}
+function ctIsOpen(ct){
+  if (Object.prototype.hasOwnProperty.call(ctOpenMap, ct.contract_id)) return !!ctOpenMap[ct.contract_id];
+  return CT_OPEN_STATUSES.includes(ct.contract_status) && ct.effective_status !== '계약취소';
+}
+function toggleCtCard(cid){
+  const el = document.getElementById('ct-card-' + cid);
+  if (!el) return;
+  ctOpenMap[cid] = el.classList.toggle('is-open');
+}
+
+const HISTORY_AXIS_LABEL = { status: '상태', substatus: '부가표시', progress: '진행', payout: '지급', clawback: '환수' };
+const CONTRACT_STATUS_OPTIONS = CONTRACT_STATUSES;
+
+function fmtMoney(v){ return v === null || v === undefined || v === '' ? '' : Number(v).toLocaleString(); }
+
+async function refreshDetailBundle(customerId){
+  const cBox = document.getElementById('contract-section');
+  const hBox = document.getElementById('status-log-section');
+  if (!cBox && !hBox) return;
+  const seq = ++detailBundleSeq;
+  const res = await loadCustomerBundle(customerId);
+  if (seq !== detailBundleSeq || detailCustomerId !== customerId) return;   // 조회하는 동안 다른 고객을 열었으면 중단
+  if (!res.ok) {
+    detailBundle = null;
+    const msg = `<div class="wide-table-empty">조회 실패: ${escHtml(res.error)}</div>`;
+    if (cBox) cBox.innerHTML = msg;
+    if (hBox) hBox.innerHTML = msg;
+    const sBox = document.getElementById('cd-summary'); if (sBox) sBox.innerHTML = '<span>계약 정보를 불러오지 못했습니다.</span>';
+    renderDetailFamily();
+    return;
+  }
+  detailBundle = res;
+  renderDetailSummary();
+  renderDetailFamily();
+  renderContractSection();
+  renderStatusLogSection(customerId, true);
+}
+
+function ctItemsAllInstalled(ct){
+  const live = ct.items.filter(i => i.progress_status !== '접수취소');
+  return live.length > 0 && live.every(i => i.progress_status === '설치완료');
+}
+
+function historyChip(row, value){
+  if (value === null || value === undefined || value === '') return '';
+  const stage = row.target_type === 'customer' && row.axis === 'status' ? CUSTOMER_STATUS_STAGE[value]
+    : row.target_type === 'contract' && row.axis === 'status' ? CONTRACT_STATUS_STAGE[value] : 0;
+  return `<span class="cust-status-chip stage-${stage || 0}">${escHtml(value)}</span>`;
+}
+
+function historyTargetLabel(r){
+  if (r.target_type === 'contract' && r.contract_id) return formatContractNo(r.contract_id) + ' 계약';
+  if (r.target_type === 'item' && r.item_id) return formatItemNo(r.item_id) + ' 상품';
+  return '고객';
+}
+
+async function renderStatusLogSection(customerId, fromBundle){
+  if (!fromBundle) { await refreshDetailBundle(customerId); return; }   // 다른 곳에서 이력을 다시 그리라고 부르면 데이터를 새로 읽음
+  const box = document.getElementById('status-log-section');
+  if (!box || !detailBundle) return;
+  const f = detailHistoryFilter;
+  const all = detailBundle.history;
+  const rows = all.filter(r => f === 'all' ? true : f === 'common' ? !r.contract_id : r.contract_id === f).slice(0, 100);
+  const btn = (key, label) => `<button type="button" class="fd-sub ${f === key ? 'is-active' : ''}" onclick="setHistoryFilter(${typeof key === 'number' ? key : `'${key}'`})">${escHtml(label)}</button>`;
+  const filters = `<div class="fd-subs fd-subs-flat">${btn('all', '전체')}${btn('common', '공통')}${detailBundle.contracts.map(c => btn(c.contract_id, formatContractNo(c.contract_id))).join('')}</div>`;
+  const list = rows.length ? `<div class="status-log-list">${rows.map(r => `
+    <div class="status-log-row">
+      <span class="status-log-time">${formatDateShort(r.changed_at)}</span>
+      <span class="status-log-target">${escHtml(historyTargetLabel(r))}${r.axis ? ` · ${escHtml(HISTORY_AXIS_LABEL[r.axis] || r.axis)}` : ''}</span>
+      <span class="status-log-change">
+        ${r.from_value ? `${historyChip(r, r.from_value)}<span class="status-log-arrow">→</span>` : (r.to_value ? `<span class="status-log-new">신규</span>` : '')}
+        ${historyChip(r, r.to_value)}
+        ${r.reason ? `<span class="cust-ov-sub">${escHtml(r.reason)}</span>` : ''}
+        ${r.note ? `<span class="cust-ov-sub">${escHtml(r.note)}</span>` : ''}
+      </span>
+      <span class="status-log-by">${r.changed_by ? escHtml(r.changed_by) : '-'}</span>
+    </div>`).join('')}</div>` : `<div class="wide-table-empty">해당하는 변경 이력이 없습니다.</div>`;
+  box.innerHTML = filters + list + (all.length >= 500 ? `<div class="fd-note">최근 500건까지만 읽었습니다.</div>` : '');
+}
+
+function setHistoryFilter(f){ detailHistoryFilter = f; renderStatusLogSection(detailCustomerId, true); }
+
+
+/* =========================================================================
+   CS v2 · 고객상담(고객상세 흡수) 화면 — 2단계
+   - 앞부분(공용 유틸·태그·컨택 이력·특이사항·이력 타임라인)은 CS_new.html 에서 그대로 옮긴 코드입니다.
+   - 아래는 이 화면 전용 코드: 고객 검색, 헤더, 기본정보 저장, 읽기 전용 계약 카드(+유심 연결, 결합할인).
+   - 계약·상품·고객 상태 편집은 상태 개편(ST-E)에서 새 규칙(StatusRules.js)으로 붙입니다. 이 화면에서는 바꾸지 않습니다.
+   ========================================================================= */
+
+/* ---------- 이 화면에서 쓰지 않는 구 화면 함수의 빈 자리(공용 JS·옮겨 온 코드가 이름으로 부름) ---------- */
+function addLog(){}
+function renderRecoCards(){}
+function renderProposalLists(){}
+function renderFinalProducts(){}
+function renderCustomerList(){}
+function loadFunnelDashboard(){}
+function refreshListRowExtras(){ return Promise.resolve(); }
+
+/* ---------- 상태 ---------- */
+let CUSTOMER_SCHEMA = { hasProductsTable: false, hasSnapshot: false, hasTags: false, hasInflow: false, hasContactsTable: false, hasStatusLogsTable: false, checked: false };
+let currentCustomerId = null;
+let detailCustomerId = null;
+let customerListCache = [];
+let detailCustomerTags = new Set();
+const HOME_CARRIERS = (typeof CARRIERS !== 'undefined') ? CARRIERS : [];
+
+/* ---------- 상태 칩 변경 반영(컨택 이력 코드가 부름) ---------- */
+function syncDetailStatusSelect(c){
+  const chip = document.getElementById('cd-status-chip');
+  if (chip && c) chip.innerHTML = custStatusChipHtml(custStatusInfo(c));
+}
+async function refreshAfterConsultStatus(customerId){
+  const { data } = await sb.from('customers').select('*').eq('customer_id', customerId).limit(1);
+  const row = data && data[0];
+  if (!row) return;
+  const c0 = customerListCache.find(x => x.customer_id === customerId);
+  if (c0) Object.assign(c0, row);
+  if (detailCustomerId === customerId) syncDetailStatusSelect(row);
+}
+
+/* ---------- 로그인 UI ---------- */
+function updateAuthUI(email){
+  const box = document.getElementById('auth-box');
+  if (!box) return;
+  if (isLoggedIn) box.innerHTML = `<span class="whoami">${escHtml(email || '')}</span><button class="logout-btn" onclick="handleLogout()">로그아웃</button>`;
+  else box.innerHTML = `<button class="login-trigger-btn" onclick="openLoginModal()">🔐 관리자 로그인</button>`;
+}
+function openLoginModal(){
+  document.getElementById('login-error').textContent = '';
+  document.getElementById('login-modal').style.display = 'flex';
+}
+function closeLoginModal(){ document.getElementById('login-modal').style.display = 'none'; }
+
+/* ---------- 고객 검색 · 열기 ---------- */
+function showV2Message(html){
+  const el = document.getElementById('cust-detail');
+  if (el) el.innerHTML = `<div class="cs-card"><div class="reflected-empty">${html}</div></div>`;
+}
+
+async function quickSearchV2(btn){
+  const raw = (elVal('top-quick-contact') || '').trim();
+  if (!raw) { alert('고객 이름 또는 연락처를 입력해 주세요.'); return; }
+  setBtnLoading(btn, '조회 중...');
+  try {
+    await probeCustomerSchema();
+    const isName = /[^0-9\-\s]/.test(raw);
+    let q = sb.from('customers').select('*');
+    if (isName) q = q.ilike('name', `%${raw}%`);
+    else {
+      const f = buildContactOrFilter(raw);
+      if (!f) { alert('연락처는 숫자로 입력해 주세요.'); return; }
+      q = q.or(f);
+    }
+    const { data, error } = await q.order('updated_at', { ascending: false }).limit(30);
+    if (error) { alert('조회 실패: ' + error.message); return; }
+    const rows = data || [];
+    if (rows.length === 1) { await openCustomerV2(rows[0].customer_id, rows[0]); return; }
+    if (rows.length > 1) {
+      customerListCache = rows;
+      showV2Message(`<b>${rows.length}명</b>이 조회되었습니다. 고객을 선택해 주세요.<div class="v2-pick-list">${rows.map(r =>
+        `<button type="button" class="secondary-btn" onclick="openCustomerV2(${r.customer_id})">${escHtml(r.name || '(이름 없음)')} · ${escHtml(formatContactDisplay(r.contact))} · ${custStatusChipHtml(custStatusInfo(r))}</button>`).join('')}</div>`);
+      return;
+    }
+    // 없음: 연락처이면 신규 등록 제안
+    const digits = normalizeContact(raw);
+    if (!isName && isValidContactDigits(digits)) {
+      if (!confirm(`${formatContactDisplay(digits)} 번호의 고객이 없습니다.\n신규 고객으로 등록할까요?`)) return;
+      if (typeof isLoggedIn !== 'undefined' && !isLoggedIn) { alert('로그인 후 등록할 수 있습니다.'); return; }
+      const ins = await sb.from('customers').insert({ contact: digits, customer_status: DEFAULT_CUSTOMER_STATUS, funnel_status: DEFAULT_FUNNEL_STATUS }).select('*');
+      if (ins.error) { alert('신규 등록 실패: ' + ins.error.message); return; }
+      showToast('✓ 신규 고객으로 등록했습니다');
+      await openCustomerV2(ins.data[0].customer_id, ins.data[0]);
+      return;
+    }
+    alert(isName ? `"${raw}" 이름으로 등록된 고객이 없습니다.` : '조회된 고객이 없습니다. 연락처를 숫자 9~11자리로 입력하면 신규 등록할 수 있습니다.');
+  } finally { clearBtnLoading(btn); }
+}
+
+async function openCustomerV2(id, row){
+  let c = row || customerListCache.find(x => x.customer_id === id);
+  if (!c) {
+    const r = await sb.from('customers').select('*').eq('customer_id', id).limit(1);
+    if (r.error || !r.data || !r.data[0]) { alert('고객을 불러오지 못했습니다.' + (r.error ? ' ' + r.error.message : '')); return; }
+    c = r.data[0];
+  }
+  if (!customerListCache.some(x => x.customer_id === id)) customerListCache.push(c);
+  await probeCustomerSchema();
+  const prev = detailCustomerId;
+  currentCustomerId = id; detailCustomerId = id;
+  if (prev !== id) ctOpenMap = {};
+  detailHistoryFilter = 'all';
+  detailBundle = null;
+  const el = document.getElementById('cust-detail');
+  el.innerHTML = `
+    <div class="cd-headbar">
+      <div class="cd-title">
+        <span class="cd-name">${escHtml(c.name || '(이름 없음)')}</span>
+        <span class="cd-contact">${escHtml(formatContactDisplay(c.contact))}</span>
+        <span id="cd-status-chip">${custStatusChipHtml(custStatusInfo(c))}</span>
+      </div>
+      <div class="cd-actions">
+        <button type="button" class="primary-btn" onclick="updateCustomerV2(${c.customer_id}, this)">💾 기본정보 저장</button>
+      </div>
+    </div>
+    <div class="cd-summary" id="cd-summary">계약 정보를 불러오는 중...</div>
+    <div class="cd-grid">
+      <div class="cd-main">
+        <section class="cd-card">
+          <h4><span>계약 · 상품 <span class="cust-note-hint">계약을 누르면 펼쳐집니다 · 이 화면에서는 보기만 합니다(상태·상품 편집은 상태 개편 단계에서 추가)</span></span></h4>
+          <div id="contract-section"><div class="wide-table-empty">불러오는 중...</div></div>
+        </section>
+      </div>
+      <div class="cd-side">
+        <section class="cd-card">
+          <h4>기본 정보</h4>
+          <div class="cust-form-grid">
+            ${custField('이름', 'cf-name', c.name)}
+            ${custField('연락처', 'cf-contact', formatContactDisplay(c.contact))}
+            <div class="form-group"><label>인입경로</label>
+              <select id="cf-inflow"><option value="">선택</option>${INFLOW_ROUTES.map(o => `<option ${o === c.inflow_route ? 'selected' : ''}>${o}</option>`).join('')}</select></div>
+            <div class="form-group"><label>휴대폰 통신사</label>
+              <select id="cf-telecom">${MOBILE_CARRIER_OPTIONS.map(o => `<option ${o === c.telecom ? 'selected' : ''}>${o}</option>`).join('')}</select></div>
+            <div class="form-group"><label>기존 인터넷</label>
+              <select id="cf-old-isp"><option value=""></option>${HOME_CARRIER_OPTIONS.map(o => `<option ${o === c.old_isp ? 'selected' : ''}>${o}</option>`).join('')}</select></div>
+            ${custField('기존 TV 대수', 'cf-old-tv', c.old_tv_count, 'number')}
+            ${custField('희망상품', 'cf-desired', c.desired_product)}
+            ${custField('추가컨택일시', 'cf-next-contact', toLocalInputValue(c.next_contact_at), 'datetime-local')}
+          </div>
+        </section>
+        <section class="cd-card">
+          <h4>가족 · 연결</h4>
+          <div id="cd-family"><div class="wide-table-empty">불러오는 중...</div></div>
+        </section>
+        <section class="cd-card">
+          <h4><span>컨택 이력 <span class="cust-note-hint">고객부재 재안내 · 최대 ${CONTACT_RULES.maxAttempts}회 · ${CONTACT_RULES.intervalHours}시간 간격</span></span>
+            <span class="mini-btn-row"><span id="contact-progress"></span><button type="button" class="mini-btn" onclick="resetContactHistory(${c.customer_id})">이력 초기화</button></span></h4>
+          <div id="contact-section"><div class="wide-table-empty">불러오는 중...</div></div>
+        </section>
+        <section class="cd-card">
+          <div class="info-subsection" id="detail-tags-subsection">
+            <div class="info-subsection-title cust-tag-accordion-header" onclick="toggleDetailTagsBody()">
+              <span>🏷️ 고객 태그</span><span class="accordion-chevron" id="detail-tags-chevron">▾</span>
+            </div>
+            <div class="info-subsection-body" id="detail-tags-body" style="display:none;"></div>
+          </div>
+          <div class="cust-tag-strategy-box" id="detail-tags-strategy" style="display:none;"></div>
+        </section>
+        <section class="cd-card">
+          <h4><span>특이사항 <span class="cust-note-hint">날짜별 안내 내용이 최신순으로 누적됩니다</span></span></h4>
+          <div class="cust-note-add">
+            <textarea id="cf-note-input" rows="2" placeholder="오늘 고객에게 안내한 내용을 입력하고 [+ 추가]를 누르세요 (Ctrl+Enter로도 추가)"
+              onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();addCustomerNote(${c.customer_id}, document.getElementById('cf-note-add-btn'));}"></textarea>
+            <button type="button" id="cf-note-add-btn" class="mini-btn mini-btn-primary" onclick="addCustomerNote(${c.customer_id}, this)">+ 추가</button>
+          </div>
+          <div class="cust-form-grid"><div class="form-group span-4">
+            <textarea id="cf-notes" class="cust-note-log" rows="6">${escHtml(c.notes)}</textarea>
+          </div></div>
+        </section>
+        <div class="cust-meta">고객ID ${c.customer_id} · 최초저장 ${formatDateShort(c.created_at)} · 최종수정 ${formatDateShort(c.updated_at)}</div>
+      </div>
+    </div>
+    <section class="cd-card cd-bottom">
+      <h4><span>변경 이력 <span class="cust-note-hint">최근 변경순 · 고객 상태, 계약, 상품</span></span></h4>
+      <div id="status-log-section"><div class="wide-table-empty">불러오는 중...</div></div>
+    </section>`;
+  renderContactSection(c.customer_id);
+  detailCustomerTags = new Set(Array.isArray(c.customer_tags) ? c.customer_tags : []);
+  renderDetailCustomerTags();
+  refreshDetailBundle(c.customer_id);
+}
+
+async function updateCustomerV2(id, btn){
+  const contact = normalizeContact(elVal('cf-contact'));
+  if (!contact) { alert('연락처는 필수 입력값입니다.'); return; }
+  if (!isValidContactDigits(contact)) { alert('연락처는 숫자 9~11자리로 입력해주세요.'); return; }
+  const nextContact = elVal('cf-next-contact');
+  const payload = {
+    name: elVal('cf-name') || null, contact,
+    telecom: elVal('cf-telecom') || null, old_isp: elVal('cf-old-isp') || null,
+    old_tv_count: Number(elVal('cf-old-tv') || 0), desired_product: elVal('cf-desired') || null,
+    notes: elVal('cf-notes') || null,
+    next_contact_at: nextContact ? new Date(nextContact).toISOString() : null
+  };
+  if (CUSTOMER_SCHEMA.hasTags) payload.customer_tags = Array.from(detailCustomerTags);
+  if (CUSTOMER_SCHEMA.hasInflow) payload.inflow_route = elVal('cf-inflow') || null;
+  setBtnLoading(btn, '저장 중...');
+  try {
+    const { data, error } = await sb.from('customers').update(payload).eq('customer_id', id).select('*');
+    if (error) { alert('수정 실패: ' + error.message); return; }
+    const row = data && data[0];
+    if (row) { const c0 = customerListCache.find(x => x.customer_id === id); if (c0) Object.assign(c0, row); else customerListCache.push(row); }
+    showToast('✓ 고객 정보가 수정되었습니다');
+    await openCustomerV2(id, row);
+  } finally { clearBtnLoading(btn); }
+}
+
+/* ---------- 가족 (상담 작업본 → 구 스냅샷 순서로 찾음) ---------- */
+function renderDetailFamily(){
+  const box = document.getElementById('cd-family');
+  if (!box) return;
+  let lines = [];
+  try {
+    const cu = (detailBundle && detailBundle.customer) || customerListCache.find(x => x.customer_id === detailCustomerId) || {};
+    const pick = o => (o && o.customerInfo && Array.isArray(o.customerInfo.familyLines)) ? o.customerInfo.familyLines : null;
+    lines = pick(cu.consult_draft) || [];
+    if (!lines.length) for (const ct of ((detailBundle && detailBundle.contracts) || [])) { const f = pick(ct.consult_snapshot); if (f && f.length) { lines = f; break; } }
+    if (!lines.length) lines = pick(cu.proposal_snapshot) || [];
+  } catch (e) { lines = []; }
+  const rows = lines.map(f => f && f.type === 'internet'
+    ? `<div class="cd-family-row"><span class="cd-family-tag">인터넷</span><span>${escHtml(f.carrier || '')}</span><span>${escHtml(f.feeLabel || '')}</span></div>`
+    : `<div class="cd-family-row"><span class="cd-family-tag">모바일</span><span>${escHtml((f && f.carrier) || '')}</span><span>${f && f.feeValue != null ? Number(f.feeValue).toLocaleString() + '원' : '요금 확인안됨'}</span>${f && f.relation ? `<span>${escHtml(f.relation)}</span>` : ''}</div>`).join('');
+  box.innerHTML = (rows || `<div class="wide-table-empty">입력된 가족 회선이 없습니다.</div>`)
+    + `<div class="cd-note">상품상담(가족결합)에 입력한 가족 회선입니다.</div>`;
+}
+
+/* ---------- 계약 카드 (읽기 전용) ---------- */
+function v2Won(v){ return (v === null || v === undefined || v === '') ? '-' : Number(v).toLocaleString() + '원'; }
+
+function v2ContractMemos(ct){
+  const rows = ((detailBundle && detailBundle.history) || []).filter(r => r.contract_id === ct.contract_id && r.event_type === 'memo').slice(0, 5);
+  if (!rows.length) return '';
+  return `<div class="v2-memos"><div class="v2-sub-title">최근 변경 메모</div>${rows.map(r => `
+    <div class="status-log-row"><span class="status-log-time">${formatDateShort(r.changed_at)}</span>
+    <span class="status-log-target">${escHtml(historyTargetLabel(r))}</span>
+    <span class="status-log-change">${escHtml(r.note || '')}</span>
+    <span class="status-log-by">${r.changed_by ? escHtml(r.changed_by) : '-'}</span></div>`).join('')}</div>`;
+}
+
+function v2UsimLinkHtml(ct, all){
+  const homes = all.filter(h => h.contract_type === 'home' && h.effective_status !== '계약취소');
+  const cur = ct.linked_contract_id || '';
+  const opts = homes.map(h => `<option value="${h.contract_id}" ${h.contract_id === cur ? 'selected' : ''}>${formatContractNo(h.contract_id)}${h.label ? ' · ' + escHtml(h.label) : ''}</option>`).join('');
+  const missing = cur && !homes.some(h => h.contract_id === cur) ? `<option value="${cur}" selected>${formatContractNo(cur)}</option>` : '';
+  return `<div class="v2-link-row"><label>연결된 인터넷·TV 계약
+    <select onchange="linkUsimUi(this, ${ct.contract_id})"><option value="">연결 안 함</option>${missing}${opts}</select></label>
+    <span class="cust-ov-sub">같은 통신사 그룹의 계약에만 연결됩니다</span></div>`;
+}
+
+function renderContractCardV2(ct, all){
+  const cid = ct.contract_id, isHome = ct.contract_type === 'home';
+  const typeLabel = CONTRACT_TYPE_LABEL[ct.contract_type] || ct.contract_type;
+  const linked = ct.linked_contract_id ? all.find(x => x.contract_id === ct.linked_contract_id) : null;
+  const usimBack = isHome ? all.filter(x => x.linked_contract_id === cid) : [];
+  const live = ct.items.filter(i => i.progress_status !== '접수취소');
+  const feeSum = live.reduce((a, i) => a + (Number(i.monthly_fee) || 0), 0);
+  const stageCls = CONTRACT_STATUS_STAGE[ct.contract_status] || 0;
+  const chips = `<span class="cust-status-chip stage-${stageCls}">${escHtml(ct.contract_status)}</span>`
+    + (ct.payout_status ? `<span class="ct-badge">${escHtml(ct.payout_status)}</span>` : '')
+    + (ct.clawback_status ? `<span class="ct-badge ct-badge-cancel">${escHtml(ct.clawback_status)}</span>` : '')
+    + (ct.effective_status === '계약취소' ? `<span class="ct-badge ct-badge-cancel">계약취소</span>` : '')
+    + (ctItemsAllInstalled(ct) ? `<span class="ct-badge ct-badge-ok">개통완료</span>` : '');
+  const items = ct.items.length ? ct.items.map(it => `
+    <tr>
+      <td class="ct-no">${formatItemNo(it.item_id)}</td>
+      <td>${escHtml(S6_ITEM_TYPE_LABEL[it.product_type] || it.product_type)}</td>
+      <td>${escHtml(it.carrier || '')}</td>
+      <td>${escHtml(it.product_name || '')}</td>
+      <td>${escHtml(v2Won(it.monthly_fee))}</td>
+      <td>${isLoggedIn ? escHtml(v2Won(it.commission)) : '-'}</td>
+      <td>${escHtml(it.progress_status || '')}${it.progress_status === '접수취소' && it.cancel_reason ? `<div class="cust-ov-sub">${escHtml(it.cancel_reason)}</div>` : ''}</td>
+    </tr>`).join('') : `<tr><td colspan="7"><div class="wide-table-empty">상품이 없습니다.</div></td></tr>`;
+  const meta = [
+    ['계약자', ct.contractor_name], ['관계', ct.contractor_relation], ['납부 방법', ct.payment_method],
+    [isHome ? '설치 주소' : '배송 주소', [ct.address, ct.address_detail].filter(Boolean).join(' ')],
+    ['설치 예정일', isHome ? ct.install_scheduled_at : null], ['접수번호', ct.external_ref],
+    ['사은품', Number(ct.gift_total) > 0 ? `${v2Won(ct.gift_total)} (상품권 ${v2Won(ct.gift_card)} · 현금 ${v2Won(ct.gift_cash)} · 추가 ${v2Won(ct.gift_extra)})` : null],
+    ['수수료 합계', isLoggedIn && ct.commission_total != null ? v2Won(ct.commission_total) : null],
+    ['환수', ct.clawback_amount != null ? `${v2Won(ct.clawback_amount)}${ct.clawback_reason ? ' · ' + ct.clawback_reason : ''}` : null],
+    ['메모', ct.memo]
+  ].filter(m => m[1] !== null && m[1] !== undefined && m[1] !== '');
+  const metaHtml = meta.length ? `<div class="v2-meta">${meta.map(m => `<div><span>${escHtml(m[0])}</span><b>${escHtml(m[1])}</b></div>`).join('')}</div>` : '';
+  return `
+  <div class="ct-card ${ct.effective_status === '계약취소' ? 'is-canceled' : ''} ${ctIsOpen(ct) ? 'is-open' : ''}" id="ct-card-${cid}">
+    <div class="ct-head" onclick="toggleCtCard(${cid})" title="눌러서 펼치기·접기">
+      <span class="ct-chev">▸</span>
+      <span class="ct-no-big">${formatContractNo(cid)}</span>
+      <span class="ct-type">${escHtml(typeLabel)}${ct.label ? ` · ${escHtml(ct.label)}` : ''}</span>
+      ${chips}
+      ${ct.received_at ? `<span class="ct-badge" title="접수 시각이 한 번 기록되면 지워지지 않습니다">접수 이력 ${escHtml(formatDateShort(ct.received_at))}</span>` : ''}
+      ${linked ? `<span class="ct-link">↔ 연결: ${formatContractNo(linked.contract_id)}</span>` : ''}
+      ${usimBack.length ? `<span class="ct-link">↔ 유심 ${usimBack.map(u => formatContractNo(u.contract_id)).join(', ')}</span>` : ''}
+      <span class="ct-head-sum"><span>상품 ${live.length}건</span><span>월 ${feeSum.toLocaleString()}원</span><span>사은품 ${(Number(ct.gift_total) || 0).toLocaleString()}원</span>${isLoggedIn ? `<span>수수료 ${(Number(ct.commission_total) || 0).toLocaleString()}원${ctAgencyText(ct)}</span>` : ''}</span>
+    </div>
+    <div class="ct-body">
+      <div class="ct-items-wrap">
+        <table class="cust-wide-table ct-items">
+          <colgroup><col style="width:9%"><col style="width:8%"><col style="width:14%"><col style="width:31%"><col style="width:13%"><col style="width:13%"><col style="width:12%"></colgroup>
+          <thead><tr><th>번호</th><th>구분</th><th>통신사</th><th>상품명</th><th>월요금</th><th>수수료</th><th>설치 진행</th></tr></thead>
+          <tbody>${items}</tbody>
+        </table>
+      </div>
+      ${metaHtml}
+      ${ct.contract_type === 'usim' ? v2UsimLinkHtml(ct, all) : ''}
+      ${isHome ? `<div class="v2-combo" id="ct-combo-${cid}"><span class="cust-ov-sub">결합할인 계산 중...</span></div>` : ''}
+      ${v2ContractMemos(ct)}
+    </div>
+  </div>`;
+}
+
+function renderContractSection(){
+  const box = document.getElementById('contract-section');
+  if (!box || !detailBundle) return;
+  const b = detailBundle, s = b.summary || {}, cts = b.contracts;
+  const sumText = cts.length
+    ? `계약 ${cts.length}건 · 접수 이력 ${s.acquired_contract_count || 0}건${s.open_payout_count ? ` · 지급 남음 ${s.open_payout_count}` : ''}${s.open_clawback_count ? ` · 환수 진행 ${s.open_clawback_count}` : ''}`
+    : '계약 없음';
+  box.innerHTML = `<div class="ct-summary"><span>${escHtml(sumText)}</span></div>`
+    + (cts.length ? cts.map(c => renderContractCardV2(c, cts)).join('') : `<div class="wide-table-empty">등록된 계약이 없습니다. 상품상담에서 [계약등록]으로 만듭니다.</div>`);
+  fillContractCombos();
+}
+
+/* ---------- 계약 단위 결합할인 (computeContractCombo) ---------- */
+async function fillContractCombos(){
+  const cid0 = detailCustomerId;
+  const homes = ((detailBundle && detailBundle.contracts) || []).filter(c => c.contract_type === 'home' && c.effective_status !== '계약취소');
+  for (const ct of homes) {
+    const r = await computeContractCombo(ct.contract_id, 'equal');
+    if (detailCustomerId !== cid0) return;                       // 계산하는 동안 다른 고객을 열었으면 중단
+    const el = document.getElementById('ct-combo-' + ct.contract_id);
+    if (!el) continue;
+    if (!r.ok) { el.innerHTML = `<span class="cust-ov-sub">결합할인: ${escHtml(r.error)}</span>`; continue; }
+    if (!r.lines.length) { el.innerHTML = `<span class="cust-ov-sub">결합할인: 연결된 유심 계약이 없습니다.</span>`
+      + (r.excludedLines.length ? `<span class="cust-ov-sub"> (통신사 그룹이 달라 제외된 회선 ${r.excludedLines.length}건)</span>` : ''); continue; }
+    const best = r.best;
+    el.innerHTML = best
+      ? `<div class="v2-sub-title">결합할인 (연결된 유심 ${r.lines.length}회선 기준)</div>
+         <div><b>${escHtml(best.name)}</b> · 월 ${Number(best.total).toLocaleString()}원 할인
+         <span class="cust-ov-sub">인터넷 ${Number(best.internetDiscount || 0).toLocaleString()}원 + 모바일 ${(best.lineShares || []).reduce((a, b2) => a + (Number(b2) || 0), 0).toLocaleString()}원</span></div>`
+        + (r.excludedLines.length ? `<div class="cust-ov-sub">통신사 그룹이 달라 제외된 회선 ${r.excludedLines.length}건</div>` : '')
+      : `<span class="cust-ov-sub">결합할인: 가능한 결합 옵션이 없습니다.</span>`;
+  }
+}
+
+async function linkUsimUi(selectEl, usimId){
+  const ct = detailBundle && detailBundle.contracts.find(c => c.contract_id === usimId);
+  const prev = ct && ct.linked_contract_id ? String(ct.linked_contract_id) : '';
+  const to = selectEl.value === '' ? null : Number(selectEl.value);
+  selectEl.disabled = true;
+  const r = await linkUsimContract(usimId, to);
+  selectEl.disabled = false;
+  if (!r.ok) { alert('연결 변경 실패: ' + r.error); selectEl.value = prev; return; }
+  showToast(r.changed ? '✓ 연결이 변경되었습니다' : '변경 사항이 없습니다');
+  await refreshDetailBundle(detailCustomerId);
+}
+
+/* ---------- 시작 ---------- */
+(async function init(){
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session) { isLoggedIn = true; updateAuthUI(session.user.email); } else updateAuthUI();
+  } catch (e) { updateAuthUI(); }
+  sb.auth.onAuthStateChange(() => { if (detailCustomerId) setTimeout(() => refreshDetailBundle(detailCustomerId), 400); });
+  const m = /[?&]customer=(\d+)/.exec(location.search);
+  if (m) openCustomerV2(Number(m[1]));
+})();
+
+</script>
+</body>
+</html>
