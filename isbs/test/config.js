@@ -308,3 +308,52 @@ const PERF_CONTRACT_TYPE_LABEL = { home: '인터넷·TV', usim: '유심' };
 const PERF_ITEM_TYPE_LABEL = { internet: '인터넷', tv: 'TV', usim: '유심' };
 // 부가표시·사유가 비어 있는 고객을 표에서 부르는 이름
 const PERF_CUSTOMER_DETAIL_EMPTY = { '상담중': '(부가표시 없음)', '이탈': '(사유 없음)', '제외': '(사유 없음)' };
+
+/* ---------- 10. v1.4 신규 상태 사전 (CRM 개편) ---------- */
+// 정의서 v1.4(state.html) 기준 상태 목록입니다. 추가만 했고 위 5·9장의 기존 상수는 바꾸지 않았습니다.
+// 값(DB에 저장되는 문자열)은 supabase_step1_add_columns.sql 의 CHECK 제약과 동일해야 합니다.
+// 신규 칼럼은 마이그레이션 전까지 비어 있으므로, 화면은 값이 없으면 구 상태값(9장)을 변환해 보여 주는 호환 처리를 유지합니다.
+
+// 상담 상태 : customers.consult_state
+const CONSULT_STATES = ['상담대기', '상담중', '상담종료'];
+const DEFAULT_CONSULT_STATE = '상담대기';
+
+// 고객 구분 : customers.customer_segment (가망·잠재는 상담예약일 reserve_at 기준 자동 분류, 제외는 담당자가 사유와 함께 지정)
+const CUSTOMER_SEGMENTS = ['가망고객', '잠재고객', '제외고객'];
+const SEGMENT_MONTHS_DEFAULT = 3;          // 실제 기준은 crm_settings.segment_months (이 값은 읽기 실패 시 대비용)
+const RESALE_OFFSET_YEARS = [1, 3];        // 지급완료 후 재영업 예약 선택지(년)
+
+// 제외 사유 : customers.exclude_reason ('기타' 선택 시 exclude_memo 필수)
+const EXCLUDE_REASONS = ['타사가입', '기존유지', '장기부재', '신용불량', '설치불가', '오인입', '타부서', '기타'];
+const EXCLUDE_MEMO_REQUIRED_REASON = '기타';
+
+// 상품 단위 5개 관리 항목 : contract_items 의 칼럼
+//  상품상태 item_status / 고객지급 pay_status / 지급계산서발행 pay_invoice_status / 환수 refund_status / 환수계산서발행 refund_invoice_status
+const ITEM_STATUSES = ['상품제안', '접수대기', '접수보류', '접수완료', '변경요청', '변경완료', '개통완료', '접수불가', '접수취소'];
+const ITEM_DEAD_STATUSES = ['접수불가', '접수취소'];                                   // 계약 상태 진행·완료 판정에서 제외
+const ITEM_PRE_OPEN_STATUSES = ['접수대기', '접수보류', '접수완료', '변경요청', '변경완료']; // 개통완료 전 = 계약 상태 '진행'
+const ITEM_REASON_STATUSES = ['접수보류', '접수불가', '접수취소'];                     // 사유·메모를 받는 상태
+const ITEM_STATUS_REASONS = ['신용불량', '설치불가', '고객변심', '상품변경', '기타'];   // item_status_reason
+const PAY_STATUSES = ['지급요청', '지급보류', '지급완료', '지급제외'];                   // 개통완료 시 자동 지급요청(지급제외 상품 제외)
+const PAY_INVOICE_STATUSES = ['계산서발행완료', '수금예정', '수금완료'];                 // 계산서 발행 후 수금예정 → 수금완료
+const REFUND_STATUSES = ['환수요청', '환수완료'];                                       // 지급완료 상품에만 발생
+const REFUND_INVOICE_STATUSES = ['계산서발행완료', '지급예정', '지급완료'];
+
+// 계약 상태(저장하지 않고 v_contract_state_v2 로 계산) : 우선순위 취소 > 환수 > 진행 > 완료 > 제안
+const CONTRACT_STATES = ['제안', '진행', '완료', '환수', '취소'];
+
+// changeStatus() 에 붙일 신규 축 목록 (S4 s4Spec 확장용) : target → axis → { col, values, nullable }
+const V2_STATUS_AXES = {
+  customer: {
+    consult_state:    { col: 'consult_state',    values: CONSULT_STATES },
+    customer_segment: { col: 'customer_segment', values: CUSTOMER_SEGMENTS, nullable: true },
+    exclude_reason:   { col: 'exclude_reason',   values: EXCLUDE_REASONS,    nullable: true }
+  },
+  item: {
+    item_status:           { col: 'item_status',           values: ITEM_STATUSES, nullable: true },
+    pay_status:            { col: 'pay_status',            values: PAY_STATUSES, nullable: true },
+    pay_invoice_status:    { col: 'pay_invoice_status',    values: PAY_INVOICE_STATUSES, nullable: true },
+    refund_status:         { col: 'refund_status',         values: REFUND_STATUSES, nullable: true },
+    refund_invoice_status: { col: 'refund_invoice_status', values: REFUND_INVOICE_STATUSES, nullable: true }
+  }
+};
