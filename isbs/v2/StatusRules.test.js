@@ -313,13 +313,20 @@ test('연결되면 횟수 초기화', function () {
   var c = cust({ status: '상담중', seg: '가망', absenceCount: 2 }, []);
   assert.equal(R.recordAbsence(c, true, CFG).customer.absenceCount, 0);
 });
-test('3회 → 제외(장기부재) 자동, 제안 상품은 접수불가', function () {
+test('3회 도달 → 바로 제외하지 않고 확인 요청(prompt), 확인하면 제외(장기부재) + 제안 상품 접수불가', function () {
   var c = cust({ status: '상담중', seg: '가망', absenceCount: 2 }, [P({ id: 'p1' })]);
   var r = R.recordAbsence(c, false, CFG);
-  assert.equal(r.customer.status, '상담종료'); assert.equal(r.customer.seg, '제외'); assert.equal(r.customer.exclReason, '장기부재');
-  assert.equal(prod(r.customer, 'p1').pstatus, '접수불가');
-  assert.ok(hasMsg(r, 'absence-excluded'));
-  assert.equal(lastLog(r.customer, '상담 상태').who, '시스템');
+  assert.equal(r.customer.status, '상담중'); assert.equal(r.customer.absenceCount, 3);
+  assert.equal(r.prompt.code, 'absence-exclude'); assert.ok(hasMsg(r, 'absence-limit'));
+  var r2 = R.confirmAbsenceExclude(r.customer, CFG);
+  assert.ok(r2.ok);
+  assert.equal(r2.customer.status, '상담종료'); assert.equal(r2.customer.seg, '제외'); assert.equal(r2.customer.exclReason, '장기부재');
+  assert.equal(prod(r2.customer, 'p1').pstatus, '접수불가');
+  assert.ok(hasMsg(r2, 'absence-excluded'));
+});
+test('3회에 도달하지 않았으면 제외 확인 불가', function () {
+  var c = cust({ status: '상담중', seg: '가망', absenceCount: 1 }, []);
+  assert.equal(R.confirmAbsenceExclude(c, CFG).error.code, 'ABSENCE_NOT_REACHED');
 });
 test('3회여도 접수 이후 상품이 있으면 제외하지 않고 안내만', function () {
   var c = cust({ status: '상담중', seg: '가망', absenceCount: 2 }, [P({ id: 'p1', pstatus: '접수완료' })]);
@@ -328,7 +335,9 @@ test('3회여도 접수 이후 상품이 있으면 제외하지 않고 안내만
 });
 test('설정값 absenceLimit 변경 반영', function () {
   var c = cust({ status: '상담중', seg: '가망', absenceCount: 1 }, []);
-  assert.equal(R.recordAbsence(c, false, { today: '2026-10-15', absenceLimit: 2 }).customer.seg, '제외');
+  var r = R.recordAbsence(c, false, { today: '2026-10-15', absenceLimit: 2 });
+  assert.equal(r.prompt.code, 'absence-exclude');
+  assert.equal(R.recordAbsence(c, false, CFG).prompt, null);
 });
 
 /* ================================================================ */
@@ -430,6 +439,71 @@ test('c5 최유진: 환수 → 상담중 → 환수완료 → 종료 방식 선�
 });
 
 /* ================================================================ */
+/* ================================================================ */
+group('12. 2026-10-16 확정 사항 (지급제외 · 환수 제한 · 사유 목록 · 지급완료일 · 제안 방치)');
+test('지급제외 상품: 개통완료되면 고객지급을 자동 요청하지 않음', function () {
+  var c = cust({ status: '상담중', seg: '가망' }, [P({ id: 'p1', type: 'tv', pstatus: '접수완료', pay: '지급제외' }), P({ id: 'p2', type: 'internet', pstatus: '접수완료' })]);
+  var r = R.setProductStatus(c, 'p1', '개통완료', {}, CFG);
+  assert.equal(prod(r.customer, 'p1').pay, '지급제외'); assert.equal(prod(r.customer, 'p1').openedAt, '2026-10-15');
+  assert.equal(r.customer.status, '상담중');
+});
+test('지급제외만 있는 고객: 모두 개통완료 → 년수 선택(needs) → 상담종료 + 잠재, 기준일은 개통완료일', function () {
+  var c = cust({ status: '상담중', seg: '가망' }, [P({ id: 'p1', type: 'tv', pstatus: '접수완료', pay: '지급제외' })]);
+  var n = R.setProductStatus(c, 'p1', '개통완료', {}, CFG);
+  assert.equal(n.needs.code, 'years');
+  var r = R.setProductStatus(c, 'p1', '개통완료', { years: 3 }, CFG);
+  assert.ok(r.ok); assert.equal(r.customer.status, '상담종료'); assert.equal(r.customer.seg, '잠재');
+  assert.equal(r.customer.reserve, '2029-10-15');
+});
+test('혼합(지급 대상 + 지급제외): 지급 대상이 끝나기 전에는 종료 안 됨, 끝나면 가장 빠른 기준일 사용', function () {
+  var c = cust({ status: '상담중', seg: '가망' }, [
+    P({ id: 'p1', type: 'internet', pstatus: '개통완료', pay: '지급요청', openedAt: '2026-09-20' }),
+    P({ id: 'p2', type: 'tv', pstatus: '접수완료', pay: '지급제외' })]);
+  var a = R.setProductStatus(c, 'p2', '개통완료', { years: 1 }, CFG);
+  assert.equal(a.customer.status, '상담중');
+  var b = R.setPay(a.customer, 'p1', '지급완료', { doneDate: '2026-10-10', years: 1 }, CFG);
+  assert.equal(b.customer.status, '상담종료'); assert.equal(b.customer.reserve, '2027-10-10');
+});
+test('계약 상태: 지급제외 + 개통완료는 완료', function () {
+  assert.equal(R.contractState({ products: [P({ pstatus: '개통완료', pay: '지급제외' })] }).s, '완료');
+  assert.equal(R.contractState({ products: [P({ pstatus: '접수완료', pay: '지급제외' })] }).s, '진행');
+});
+test('환수요청은 지급완료 상품만 가능', function () {
+  var c = cust({ status: '상담중', seg: '가망' }, [P({ id: 'p1', pstatus: '개통완료', pay: '지급요청' })]);
+  assert.equal(R.setRefund(c, 'p1', '환수요청', {}, CFG).error.code, 'REFUND_NOT_PAID');
+});
+test('환수완료일 직접 입력 / 형식 검증', function () {
+  var c = cust({ status: '상담중', seg: '가망' }, [P({ id: 'p1', pstatus: '개통완료', pay: '지급완료', payDone: '2026-09-01', refund: '환수요청' }), P({ id: 'p2', pstatus: '접수완료' })]);
+  var r = R.setRefund(c, 'p1', '환수완료', { doneDate: '2026-10-01' }, CFG);
+  assert.equal(prod(r.customer, 'p1').refundDone, '2026-10-01');
+  assert.equal(R.setRefund(c, 'p1', '환수완료', { doneDate: '10/01' }, CFG).error.code, 'BAD_DATE');
+});
+test('접수보류 사유 목록(O-04): 목록 밖 값 거부, 기타는 메모 필수', function () {
+  var c = cust({ status: '상담중', seg: '가망' }, [P({ id: 'p1', pstatus: '접수대기' })]);
+  assert.deepEqual(R.setProductStatus(c, 'p1', '접수보류', {}, CFG).needs.options, ['서류 대기', '고객 확인 대기', '일정 조율', '기타']);
+  assert.equal(R.setProductStatus(c, 'p1', '접수보류', { reason: '모름' }, CFG).error.code, 'BAD_REASON');
+  assert.equal(R.setProductStatus(c, 'p1', '접수보류', { reason: '기타' }, CFG).error.code, 'MEMO_REQUIRED');
+  assert.ok(R.setProductStatus(c, 'p1', '접수보류', { reason: '서류 대기' }, CFG).ok);
+});
+test('지급완료일 수정: 지급완료 상품만, 형식 검증, 이력 기록', function () {
+  var c = cust({ status: '상담중', seg: '가망' }, [P({ id: 'p1', pstatus: '개통완료', pay: '지급완료', payDone: '2026-09-01' }), P({ id: 'p2', pstatus: '접수완료' })]);
+  var r = R.setPayDate(c, 'p1', '2026-09-05', CFG);
+  assert.equal(prod(r.customer, 'p1').payDone, '2026-09-05'); assert.ok(lastLog(r.customer, '지급완료일').after.indexOf('2026-09-05') > -1);
+  assert.equal(R.setPayDate(c, 'p2', '2026-09-05', CFG).error.code, 'NOT_PAID');
+  assert.equal(R.setPayDate(c, 'p1', '9/5', CFG).error.code, 'BAD_DATE');
+});
+test('제안 방치(R-12, O-05): 7일 이상 상품제안 상태 상품만', function () {
+  var c = cust({ status: '상담중', seg: '가망' }, [P({ id: 'p1', proposedAt: '2026-10-08' }), P({ id: 'p2', proposedAt: '2026-10-09' }), P({ id: 'p3', pstatus: '접수대기', proposedAt: '2026-09-01' })]);
+  var s7 = R.staleProposals(c, CFG).map(function (p) { return p.id; });
+  assert.deepEqual(s7, ['p1']);
+  assert.deepEqual(R.staleProposals(c, { today: '2026-10-15', staleDays: 3 }).map(function (p) { return p.id; }), ['p1', 'p2']);
+});
+test('상품 추가 시 제안일 기록', function () {
+  var c = cust({ status: '상담중', seg: '가망' }, []);
+  var r = R.addProduct(c, 'k1', { name: '인터넷', type: 'internet' }, CFG);
+  assert.equal(r.customer.contracts[0].products[0].proposedAt, '2026-10-15');
+});
+
 console.log('\n' + '='.repeat(60));
 console.log('통과 ' + passed + ' / 실패 ' + failed + ' / 전체 ' + (passed + failed));
 if (failed) { console.log('\n실패 목록:'); failures.forEach(function (f) { console.log(' - ' + f); }); process.exit(1); }
