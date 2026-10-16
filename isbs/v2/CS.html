@@ -59,6 +59,14 @@
 .dash-hist-line{display:flex;gap:10px;padding:2px 0;}
 .dash-hist-date{flex:0 0 96px;color:#8a8f98;font-variant-numeric:tabular-nums;}
 .dash-hist-empty{color:#8a8f98;}
+/* CS v2 추가 스타일 */
+.v2-pick-list{display:flex;flex-direction:column;gap:6px;margin-top:10px;align-items:flex-start}
+.v2-meta{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px 16px;margin:10px 0;font-size:13px}
+.v2-meta span{color:#6b6f7a;margin-right:6px}
+.v2-sub-title{font-weight:600;font-size:12px;color:#6b6f7a;margin:10px 0 4px}
+.v2-link-row,.v2-combo{margin-top:10px;font-size:13px}
+.v2-link-row select{margin-left:8px}
+.v2-memos{margin-top:8px}
 </style>
 </head>
 <body>
@@ -811,7 +819,8 @@ PASS 앱 → 전체 → 명의도용방지 → 해당 통신사 해제
 
 <script src="config.js?v=20261006b"></script>
 <script src="Calculator.js?v=20261006a"></script>
-<script src="Supabaseservice.js?v=20261006c"></script>
+<script src="StatusRules.js?v=20261016a"></script>
+<script src="Supabaseservice.js?v=20261016a"></script>
 <script>
 // 인터넷/TV 통신사 열 목록: KT·LG·SKB·SKT·SKY 5개(config.js 의 CARRIERS)
 const HOME_CARRIERS = (typeof CARRIERS !== 'undefined') ? CARRIERS : [];
@@ -2770,13 +2779,10 @@ async function submitReservation(btn){
 
 function updateAuthUI(email){
   const box = document.getElementById('auth-box');
-  if (isLoggedIn) {
-    box.innerHTML = `<span class="whoami">${email || ''}</span><button class="logout-btn" onclick="handleLogout()">로그아웃</button>`;
-  } else {
-    box.innerHTML = `<button class="login-trigger-btn" onclick="openLoginModal()">🔐 관리자 로그인</button>`;
-  }
+  if (!box) return;
+  if (isLoggedIn) box.innerHTML = `<span class="whoami">${escHtml(email || '')}</span><button class="logout-btn" onclick="handleLogout()">로그아웃</button>`;
+  else box.innerHTML = `<button class="login-trigger-btn" onclick="openLoginModal()">🔐 관리자 로그인</button>`;
 }
-
 function jsRow(label, value) {
   if (!value) return '';
   return `<div class="js-row"><span>${label}</span><span>${value}</span></div>`;
@@ -4572,21 +4578,17 @@ function renderDetailFamily(){
   if (!box) return;
   let lines = [];
   try {
-    const cts = (detailBundle && detailBundle.contracts) || [];
-    for (const ct of cts) {
-      const f = ct.consult_snapshot && ct.consult_snapshot.customerInfo && ct.consult_snapshot.customerInfo.familyLines;
-      if (Array.isArray(f) && f.length) { lines = f; break; }
-    }
-    if (!lines.length && detailBundle && detailBundle.customer && detailBundle.customer.proposal_snapshot) {
-      const f = detailBundle.customer.proposal_snapshot.customerInfo && detailBundle.customer.proposal_snapshot.customerInfo.familyLines;
-      if (Array.isArray(f)) lines = f;
-    }
+    const cu = (detailBundle && detailBundle.customer) || customerListCache.find(x => x.customer_id === detailCustomerId) || {};
+    const pick = o => (o && o.customerInfo && Array.isArray(o.customerInfo.familyLines)) ? o.customerInfo.familyLines : null;
+    lines = pick(cu.consult_draft) || [];
+    if (!lines.length) for (const ct of ((detailBundle && detailBundle.contracts) || [])) { const f = pick(ct.consult_snapshot); if (f && f.length) { lines = f; break; } }
+    if (!lines.length) lines = pick(cu.proposal_snapshot) || [];
   } catch (e) { lines = []; }
   const rows = lines.map(f => f && f.type === 'internet'
     ? `<div class="cd-family-row"><span class="cd-family-tag">인터넷</span><span>${escHtml(f.carrier || '')}</span><span>${escHtml(f.feeLabel || '')}</span></div>`
     : `<div class="cd-family-row"><span class="cd-family-tag">모바일</span><span>${escHtml((f && f.carrier) || '')}</span><span>${f && f.feeValue != null ? Number(f.feeValue).toLocaleString() + '원' : '요금 확인안됨'}</span>${f && f.relation ? `<span>${escHtml(f.relation)}</span>` : ''}</div>`).join('');
   box.innerHTML = (rows || `<div class="wide-table-empty">입력된 가족 회선이 없습니다.</div>`)
-    + `<div class="cd-note">상담 화면(가족결합)에 입력한 가족 회선입니다. 가족을 별도 고객으로 연결하는 기능은 S11에서 추가됩니다.</div>`;
+    + `<div class="cd-note">상품상담(가족결합)에 입력한 가족 회선입니다.</div>`;
 }
 
 async function openCustomer(id){
@@ -5400,6 +5402,99 @@ function ctMetaField(cid, label, key, value, type, span){
     <input type="${type || 'text'}" id="ct-${cid}-${key}" value="${escAttr(v)}"></div>`;
 }
 
+function v2Won(v){ return (v === null || v === undefined || v === '') ? '-' : Number(v).toLocaleString() + '원'; }
+
+function v2ContractMemos(ct){
+  const rows = ((detailBundle && detailBundle.history) || []).filter(r => r.contract_id === ct.contract_id && r.event_type === 'memo').slice(0, 5);
+  if (!rows.length) return '';
+  return `<div class="v2-memos"><div class="v2-sub-title">최근 변경 메모</div>${rows.map(r => `
+    <div class="status-log-row"><span class="status-log-time">${formatDateShort(r.changed_at)}</span>
+    <span class="status-log-target">${escHtml(historyTargetLabel(r))}</span>
+    <span class="status-log-change">${escHtml(r.note || '')}</span>
+    <span class="status-log-by">${r.changed_by ? escHtml(r.changed_by) : '-'}</span></div>`).join('')}</div>`;
+}
+
+
+function v2UsimLinkHtml(ct, all){
+  const homes = all.filter(h => h.contract_type === 'home' && h.effective_status !== '계약취소');
+  const cur = ct.linked_contract_id || '';
+  const opts = homes.map(h => `<option value="${h.contract_id}" ${h.contract_id === cur ? 'selected' : ''}>${formatContractNo(h.contract_id)}${h.label ? ' · ' + escHtml(h.label) : ''}</option>`).join('');
+  const missing = cur && !homes.some(h => h.contract_id === cur) ? `<option value="${cur}" selected>${formatContractNo(cur)}</option>` : '';
+  return `<div class="v2-link-row"><label>연결된 인터넷·TV 계약
+    <select onchange="linkUsimUi(this, ${ct.contract_id})"><option value="">연결 안 함</option>${missing}${opts}</select></label>
+    <span class="cust-ov-sub">같은 통신사 그룹의 계약에만 연결됩니다</span></div>`;
+}
+
+
+/* 계약 카드 추가 영역 (CS v2): 계약 정보 요약 · 유심↔인터넷 연결 변경 · 결합할인 · 최근 변경 메모 */
+function v2CardExtras(ct, all){
+  const isHome = ct.contract_type === 'home';
+  const meta = [
+    ['계약자', ct.contractor_name], ['관계', ct.contractor_relation], ['납부 방법', ct.payment_method],
+    [isHome ? '설치 주소' : '배송 주소', [ct.address, ct.address_detail].filter(Boolean).join(' ')],
+    ['설치 예정일', isHome ? ct.install_scheduled_at : null], ['접수번호', ct.external_ref],
+    ['사은품', Number(ct.gift_total) > 0 ? `${v2Won(ct.gift_total)} (상품권 ${v2Won(ct.gift_card)} · 현금 ${v2Won(ct.gift_cash)} · 추가 ${v2Won(ct.gift_extra)})` : null],
+    ['수수료 합계', isLoggedIn && ct.commission_total != null ? v2Won(ct.commission_total) : null],
+    ['환수', ct.clawback_amount != null ? `${v2Won(ct.clawback_amount)}${ct.clawback_reason ? ' · ' + ct.clawback_reason : ''}` : null],
+    ['메모', ct.memo]
+  ].filter(m => m[1] !== null && m[1] !== undefined && m[1] !== '');
+  const metaHtml = meta.length ? `<div class="v2-meta">${meta.map(m => `<div><span>${escHtml(m[0])}</span><b>${escHtml(m[1])}</b></div>`).join('')}</div>` : '';
+  return `<div class="v2-extras">${metaHtml}`
+    + `${ct.contract_type === 'usim' ? v2UsimLinkHtml(ct, all) : ''}`
+    + `${isHome ? `<div class="v2-combo" id="ct-combo-${ct.contract_id}"><span class="cust-ov-sub">결합할인 계산 중...</span></div>` : ''}`
+    + `${v2ContractMemos(ct)}</div>`;
+}
+
+/* ---------- 계약 단위 결합할인 (computeContractCombo) ---------- */
+async function fillContractCombos(){
+  if (typeof computeContractCombo !== 'function') return;     // 서비스 파일이 옛 버전이면 건너뜀
+  const cid0 = detailCustomerId;
+  const homes = ((detailBundle && detailBundle.contracts) || []).filter(c => c.contract_type === 'home' && c.effective_status !== '계약취소');
+  for (const ct of homes) {
+    const r = await computeContractCombo(ct.contract_id, 'equal');
+    if (detailCustomerId !== cid0) return;                       // 계산하는 동안 다른 고객을 열었으면 중단
+    const el = document.getElementById('ct-combo-' + ct.contract_id);
+    if (!el) continue;
+    if (!r.ok) { el.innerHTML = `<span class="cust-ov-sub">결합할인: ${escHtml(r.error)}</span>`; continue; }
+    if (!r.lines.length) { el.innerHTML = `<span class="cust-ov-sub">결합할인: 연결된 유심 계약이 없습니다.</span>`
+      + (r.excludedLines.length ? `<span class="cust-ov-sub"> (통신사 그룹이 달라 제외된 회선 ${r.excludedLines.length}건)</span>` : ''); continue; }
+    const best = r.best;
+    el.innerHTML = best
+      ? `<div class="v2-sub-title">결합할인 (연결된 유심 ${r.lines.length}회선 기준)</div>
+         <div><b>${escHtml(best.name)}</b> · 월 ${Number(best.total).toLocaleString()}원 할인
+         <span class="cust-ov-sub">인터넷 ${Number(best.internetDiscount || 0).toLocaleString()}원 + 모바일 ${(best.lineShares || []).reduce((a, b2) => a + (Number(b2) || 0), 0).toLocaleString()}원</span></div>`
+        + (r.excludedLines.length ? `<div class="cust-ov-sub">통신사 그룹이 달라 제외된 회선 ${r.excludedLines.length}건</div>` : '')
+      : `<span class="cust-ov-sub">결합할인: 가능한 결합 옵션이 없습니다.</span>`;
+  }
+}
+
+
+async function linkUsimUi(selectEl, usimId){
+  if (typeof linkUsimContract !== 'function') { alert('유심 연결 기능을 쓰려면 Supabaseservice.js를 최신으로 올려 주세요.'); return; }
+  const ct = detailBundle && detailBundle.contracts.find(c => c.contract_id === usimId);
+  const prev = ct && ct.linked_contract_id ? String(ct.linked_contract_id) : '';
+  const to = selectEl.value === '' ? null : Number(selectEl.value);
+  selectEl.disabled = true;
+  const r = await linkUsimContract(usimId, to);
+  selectEl.disabled = false;
+  if (!r.ok) { alert('연결 변경 실패: ' + r.error); selectEl.value = prev; return; }
+  showToast(r.changed ? '✓ 연결이 변경되었습니다' : '변경 사항이 없습니다');
+  await refreshDetailBundle(detailCustomerId);
+}
+
+
+/* ?customer=번호 로 열면 해당 고객의 상세를 바로 엽니다 (CS v2) */
+async function openCustomerByIdV2(id){
+  let c = customerListCache.find(x => x.customer_id === id);
+  if (!c) {
+    const r = await sb.from('customers').select('*').eq('customer_id', id).limit(1);
+    if (r.error || !r.data || !r.data[0]) { alert('고객을 불러오지 못했습니다.' + (r.error ? ' ' + r.error.message : '')); return; }
+    c = r.data[0];
+    customerListCache.push(c);
+  }
+  await openCustomerDetail(id);
+}
+
 function renderContractCard(ct, all){
   const cid = ct.contract_id;
   const draft = ct.contract_status === '작성중' && !ct.received_at;
@@ -5468,6 +5563,7 @@ function renderContractCard(ct, all){
         <tbody>${items}</tbody>
       </table>
     </div>
+    ${v2CardExtras(ct, all)}
     <details class="ct-edit">
       <summary>+ 상품 추가</summary>
       <div class="ct-add-row">
@@ -5528,8 +5624,8 @@ function renderContractSection(){
       <button type="button" class="mini-btn" onclick="toggleNewContractForm()">취소</button>
     </div>
     ${cts.length ? cts.map(c => renderContractCard(c, cts)).join('') : `<div class="wide-table-empty">등록된 계약이 없습니다. [+ 신규 계약 접수]로 만들어 주세요.</div>`}`;
+  fillContractCombos();
 }
-
 function toggleNewContractForm(){
   const f = document.getElementById('new-contract-form');
   if (f) f.style.display = f.style.display === 'none' ? '' : 'none';
@@ -6218,6 +6314,9 @@ try { const nav = document.querySelector('.tab-nav'); if (nav && window.ResizeOb
     renderRecoCards();
   }
   renderFinalProducts();
+
+  const deepLink = /[?&]customer=(\d+)/.exec(location.search);   // CS v2: 주소로 고객 바로 열기
+  if (deepLink) openCustomerByIdV2(Number(deepLink[1]));
 })();
 </script>
 
