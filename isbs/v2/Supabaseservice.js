@@ -1839,11 +1839,11 @@ async function findRegisteredByProposal(customerId){
     const le = s6LoginErr(); if (le) return s6Err(le);
     const cid = Number(customerId);
     if (!Number.isFinite(cid)) return s6Err('고객 ID가 올바르지 않습니다.');
-    const r = await sb.from('contract_items').select('contract_id,item_id,progress_status,detail').eq('customer_id', cid);
+    const r = await sb.from('contract_items').select('contract_id,item_id,progress_status,item_status,detail').eq('customer_id', cid);
     if (r.error) return s6Err('등록 내역을 읽지 못했습니다: ' + r.error.message);
     const map = {};
     (r.data || []).forEach(it => {
-      if (it.progress_status === '접수취소') return;
+      if ((it.item_status || it.progress_status) === '접수취소') return;      // 새 상태값 우선, 없으면 옛 값
       const k = s7ItemKey(it); if (!k) return;
       (map[k] = map[k] || []);
       if (!map[k].includes(it.contract_id)) map[k].push(it.contract_id);
@@ -1909,7 +1909,8 @@ async function registerContract(opts){
 
     const itemRows = plan.items.map(it => ({
       contract_id: createdId, customer_id: customerId, product_type: it.productType, carrier: it.carrier || null, product_name: it.productName || null,
-      monthly_fee: s6Int(it.monthlyFee), commission: s6Int(it.commission), progress_status: '설치대기', source: 'app', detail: it.detail || null
+      monthly_fee: s6Int(it.monthlyFee), commission: s6Int(it.commission), progress_status: '설치대기', source: 'app', detail: it.detail || null,
+      item_status: '상품제안', proposed_at: new Date().toISOString()      // 상태 개편: 새 용어(옛 칼럼은 옛 화면 호환용으로 함께 기록)
     }));
     if (itemRows.some(r => Number.isNaN(r.monthly_fee) || Number.isNaN(r.commission))) return fail('상품 금액이 숫자가 아닙니다.' + await rollback());
     const ins = await sb.from('contract_items').insert(itemRows).select('*');
@@ -1935,6 +1936,12 @@ async function registerContract(opts){
       out.statusChange = sc.ok ? { from: '상담대기', to: '상담중' } : { error: sc.error };
       if (!sc.ok) out.warnings.push('고객 상태를 상담중으로 바꾸지 못했습니다: ' + sc.error);
     }
+    // 상태 개편: 새 상담 상태(consult_state) — 상담대기 → 상담중, 상담종료 고객이면 상담중으로(R-14). StatusRules.js 가 없으면 건너뜀
+    if (typeof StatusRules !== 'undefined') {
+      const st = await statusAfterProductAdded(customerId);
+      if (st.ok) out.stateMessages = st.messages || [];
+      else out.warnings.push('상담 상태 규칙을 적용하지 못했습니다: ' + (st.error || ''));
+    }
     out.ok = true;
     return out;
   } catch (e) { return fail((e && e.message ? e.message : String(e)) + await rollback()); }
@@ -1948,13 +1955,13 @@ async function findHomeCandidatesForUsim(customerId, usimCarrier){
     if (!Number.isFinite(cid)) return s6Err('고객 ID가 올바르지 않습니다.');
     const cs = await sb.from('contracts').select('contract_id,label,contract_status,contract_type').eq('customer_id', cid).eq('contract_type', 'home');
     if (cs.error) return s6Err('계약을 읽지 못했습니다: ' + cs.error.message);
-    const its = await sb.from('contract_items').select('contract_id,progress_status,detail').eq('customer_id', cid);
+    const its = await sb.from('contract_items').select('contract_id,progress_status,item_status,detail').eq('customer_id', cid);
     if (its.error) return s6Err('상품을 읽지 못했습니다: ' + its.error.message);
     const ug = v2GroupOfCarrier(usimCarrier);
     const candidates = [];
     (cs.data || []).forEach(c => {
       const mine = (its.data || []).filter(i => i.contract_id === c.contract_id);
-      if (mine.length && mine.every(i => i.progress_status === '접수취소')) return;
+      if (mine.length && mine.every(i => (i.item_status || i.progress_status) === '접수취소')) return;
       let group = null;
       mine.forEach(i => { const k = i.detail && i.detail.carrierKey; if (!group && k && MOBILE_GROUP_MAP[k]) group = MOBILE_GROUP_MAP[k]; });
       if (ug && group && group !== ug) return;
@@ -2003,6 +2010,18 @@ async function linkUsimContract(usimContractId, homeContractId, opts){
   } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
 }
 
+// 계약 수정 단계 : 상품 상태(item_status) 기준. 상태가 아직 없는 옛 데이터는 계약 상태로 판단합니다.
+//   draft = 모두 상품제안 · pre = 접수대기/접수보류까지(접수 이력 없음) · post = 그 외(접수 이력이 있거나 접수완료 이후)
+function v2StageOf(c, items){
+  const list = items || [];
+  if (!list.some(i => i.item_status)) return s6IsDraft(c) ? 'draft' : (s7IsEditable(c) ? 'pre' : 'post');
+  if (c.received_at || list.some(i => i.first_received_at)) return 'post';
+  const sts = list.map(i => i.item_status || '상품제안');
+  if (sts.every(x => x === '상품제안')) return 'draft';
+  if (sts.every(x => ['상품제안', '접수대기', '접수보류'].includes(x))) return 'pre';
+  return 'post';
+}
+
 // 계약 수정(R7·R8·R9).
 //   opts: { contractId, itemEdits:{ [itemId]:{carrier,product_name,monthly_fee,commission} }, metaEdits:{...}, reason, confirmPayout }
 //   단계: draft(작성중·접수 시각 없음) → 메모·사유 불필요 / pre(접수대기·접수보류) → 메모 기록, 사유는 선택 / post(그 외) → 사유 필수
@@ -2024,7 +2043,10 @@ async function editContractWithReason(opts){
     if (cr.error) return s6Err('계약을 읽지 못했습니다: ' + cr.error.message);
     const c = (cr.data || [])[0];
     if (!c) return s6Err('계약을 찾을 수 없습니다.');
-    const stage = s6IsDraft(c) ? 'draft' : (s7IsEditable(c) ? 'pre' : 'post');
+    const allIt = await sb.from('contract_items').select('item_id,item_status,pay_status,first_received_at').eq('contract_id', cid);
+    if (allIt.error) return s6Err('상품을 읽지 못했습니다: ' + allIt.error.message);
+    const stage = v2StageOf(c, allIt.data || []);
+    const payNow = c.payout_status || ((allIt.data || []).map(i => i.pay_status).find(v => v === '지급완료' || v === '지급요청' || v === '지급보류') || null);   // 상품별 지급 상태도 확인
 
     const itemEdits = o.itemEdits || {};
     const itemIds = Object.keys(itemEdits).map(Number);
@@ -2052,10 +2074,10 @@ async function editContractWithReason(opts){
     const reason = (o.reason || '').trim();
     if (stage === 'post' && !reason) return s6Err('접수 이후 계약을 수정하려면 사유를 입력해야 합니다.');
 
-    const payoutWarning = c.payout_status ? `지급 상태가 '${c.payout_status}'인 계약입니다. 수정해도 사은품·수수료는 자동으로 다시 계산되지 않습니다.` : null;
+    const payoutWarning = payNow ? `지급 상태가 '${payNow}'인 계약입니다. 수정해도 사은품·수수료는 자동으로 다시 계산되지 않습니다.` : null;
     if (payoutWarning && !o.confirmPayout) return { ok: false, needsConfirm: true, payoutWarning, stage, error: payoutWarning };
 
-    const suffix = (payoutWarning ? ` [지급 상태: ${c.payout_status}]` : '');
+    const suffix = (payoutWarning ? ` [지급 상태: ${payNow}]` : '');
     const prefix = reason ? `[사유: ${reason}] ` : '';
     if (stage !== 'draft') {
       for (const { row, d } of itemDiffs) {
@@ -2155,3 +2177,244 @@ async function computeContractCombo(homeContractId, tcDistMode){
     return { ok: true, homeContractId: hid, carrierKey, lgVariant: d.lgVariant || null, speedNum, group, lines, excludedLines, options: options || [], best };
   } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
 }
+
+
+// ============================================================
+// 상태 개편 5-1 : 상태 저장 어댑터 (StatusRules.js ↔ DB)   — 2026-10-16
+// ------------------------------------------------------------
+//  - 규칙은 StatusRules.js(화면·DB와 무관한 순수 모듈)가 정하고, 이 블록은 "읽어서 → 규칙 적용 → 바뀐 칼럼만 저장 + 이력"만 합니다.
+//  - 호출: statusApply({ customerId, event, args, absenceCount })  또는 아래 statusSet* 함수. StatusRules.js 를 먼저 불러와야 합니다.
+//  - 저장 순서(StatusV2.js 와 같음): 이력 먼저 → 값 갱신(낙관적: updated_at 이 그대로일 때만) → 실패하면 앞선 갱신과 이력을 되돌림.
+//  - 결과: { ok, changed, customer, messages, confirm, absenceCount, historyIds }
+//          ok:false 이고 needs 가 있으면 사용자 입력(모달)이 더 필요한 것 → 값을 채워 같은 이벤트를 다시 호출
+//          ok:false 이고 error 가 있으면 규칙 위반 또는 저장 실패
+//  - 이력은 status_history 에만 남깁니다(crm_status_logs 는 쓰지 않음). from_value 에 이전 값을 기록합니다.
+//  - 옛 칼럼(customer_status, contract_status, progress_status 등)은 건드리지 않습니다(G4까지 보존, 옛 화면 호환은 registerContract 가 맡음).
+//  - 부재 횟수는 DB 칼럼이 없어 호출하는 쪽이 컨택 이력에서 연속 부재를 세어 absenceCount 로 넘깁니다.
+// ============================================================
+const ST_SEG_APP = { '가망고객': '가망', '잠재고객': '잠재', '제외고객': '제외' };
+const ST_SEG_DB = { '가망': '가망고객', '잠재': '잠재고객', '제외': '제외고객' };
+// 이벤트 이름 → 고객·cfg 를 뺀 인자 개수 (모자라면 undefined 로 채워 cfg 위치를 맞춤)
+const ST_ARITY = {
+  setConsultStatus: 2, setSeg: 2, setReserve: 2, reevaluate: 1, endConsult: 1, recordAbsence: 1,
+  confirmAbsenceExclude: 0, onProductAdded: 0,
+  setProductStatus: 3, setPay: 3, setPayDate: 2, setRefund: 3, setSettle: 3
+};
+const ST_PID_EVENTS = ['setProductStatus', 'setPay', 'setPayDate', 'setRefund', 'setSettle'];
+const ST_AXIS = {
+  '상담 상태': 'consult_state', '고객 구분': 'customer_segment', '상담예약일': 'next_contact_at',
+  '상품상태': 'item_status', '고객지급': 'pay_status', '지급완료일': 'paid_at', '환수': 'refund_status', '수수료 정산': 'pay_invoice_status'
+};
+const ST_MEMO_LABELS = ['고객부재 횟수', '상품 추가', '상품 변경'];
+const ST_LEGACY_STATE = { '상담대기': '상담대기', '상담중': '상담중', '상담완료': '상담중' };   // consult_state 가 비어 있는 고객의 임시 해석
+
+function stKst(){ return new Date(Date.now() + 9 * 3600 * 1000); }
+function stToday(){ return stKst().toISOString().slice(0, 10); }
+function stClock(){ return stKst().toISOString().slice(11, 16); }
+// date 또는 timestamptz → 한국 날짜 'YYYY-MM-DD'
+function stDate(v){
+  if (!v) return '';
+  const s = String(v);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? '' : new Date(d.getTime() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+}
+function stTs(dateStr){ return dateStr ? dateStr + 'T00:00:00+09:00' : null; }
+function stNum(v){ return (v === null || v === undefined || v === '') ? null : Number(v); }
+
+async function stLoadCfg(){
+  const cfg = { today: stToday(), now: stClock(), months: 3, absenceLimit: 3, staleDays: 7 };
+  try {
+    const r = await sb.from('crm_settings').select('key,value');
+    if (!r.error) (r.data || []).forEach(x => {
+      const n = parseInt(x.value, 10);
+      if (!(n > 0)) return;
+      if (x.key === 'segment_months') cfg.months = n;
+      if (x.key === 'proposal_stale_days') cfg.staleDays = n;
+    });
+  } catch (e) { /* 설정을 못 읽으면 기본값 */ }
+  return cfg;
+}
+
+function stProductFromRow(i){
+  return {
+    id: i.item_id, name: i.product_name || '', type: i.product_type || '',
+    pstatus: i.item_status || '상품제안', reason: i.item_status_reason || '', memo: i.item_status_memo || '',
+    pay: i.pay_status || '-', payDone: stDate(i.paid_at),
+    settle: i.pay_invoice_status || '-', invoiceDate: stDate(i.pay_invoice_date), invoiceAmount: stNum(i.pay_invoice_amount),
+    collectDate: stDate(i.pay_collect_date), collectAmount: stNum(i.pay_collect_amount),
+    refund: i.refund_status || '-', refundDone: stDate(i.refund_done_at),
+    changedFrom: i.change_from_item_id || null,
+    firstReceivedAt: stDate(i.first_received_at), installedAt: stDate(i.installed_at), proposedAt: stDate(i.proposed_at)
+  };
+}
+// 규칙 객체 → DB 칼럼 값 (읽을 때와 같은 변환을 거치므로, 바뀌지 않은 값은 비교 시 같게 나옵니다)
+function stItemCols(p){
+  return {
+    item_status: p.pstatus, item_status_reason: p.reason || null, item_status_memo: p.memo || null,
+    pay_status: p.pay === '-' ? null : p.pay, paid_at: p.payDone || null,
+    pay_invoice_status: p.settle === '-' ? null : p.settle, pay_invoice_date: p.invoiceDate || null, pay_invoice_amount: stNum(p.invoiceAmount),
+    pay_collect_date: p.collectDate || null, pay_collect_amount: stNum(p.collectAmount),
+    refund_status: p.refund === '-' ? null : p.refund, refund_done_at: p.refundDone || null,
+    first_received_at: stTs(p.firstReceivedAt), installed_at: stTs(p.installedAt)
+  };
+}
+function stCustomerCols(c){
+  return {
+    consult_state: c.status, customer_segment: c.seg ? (ST_SEG_DB[c.seg] || null) : null,
+    next_contact_at: stTs(c.reserve), exclude_reason: c.exclReason || null, exclude_memo: c.exclMemo || null
+  };
+}
+function stDiff(before, after){
+  const d = {};
+  Object.keys(after).forEach(k => { if (before[k] !== after[k]) d[k] = after[k]; });
+  return d;
+}
+
+// 고객 1명을 규칙 모듈이 쓰는 모양으로 읽습니다.  → { ok, customer, cfg, raw:{ customer, items } }
+async function stLoad(customerId, opts){
+  const cid = Number(customerId);
+  if (!Number.isFinite(cid)) return s6Err('고객 ID가 올바르지 않습니다.');
+  const cr = await sb.from('customers').select('*').eq('customer_id', cid).limit(1);
+  if (cr.error) return s6Err('고객을 읽지 못했습니다: ' + cr.error.message);
+  const row = (cr.data || [])[0];
+  if (!row) return s6Err('고객을 찾을 수 없습니다.');
+  const kr = await sb.from('contracts').select('contract_id,label,contract_type').eq('customer_id', cid).order('contract_id');
+  if (kr.error) return s6Err('계약을 읽지 못했습니다: ' + kr.error.message);
+  const ir = await sb.from('contract_items').select('*').eq('customer_id', cid).order('item_id');
+  if (ir.error) return s6Err('상품을 읽지 못했습니다: ' + ir.error.message);
+  const cfg = await stLoadCfg();
+  const items = ir.data || [];
+  const contracts = (kr.data || []).map(k => ({
+    id: k.contract_id, name: k.label || ('계약 ' + k.contract_id),
+    products: items.filter(i => i.contract_id === k.contract_id).map(stProductFromRow)
+  }));
+  const customer = {
+    id: row.customer_id, name: row.name || '', agent: row.manager || '',
+    status: row.consult_state || ST_LEGACY_STATE[row.customer_status] || '상담종료',
+    seg: ST_SEG_APP[row.customer_segment] || '',
+    reserve: stDate(row.next_contact_at), exclReason: row.exclude_reason || '', exclMemo: row.exclude_memo || '',
+    absenceCount: Number(opts && opts.absenceCount) || 0, contracts, history: []
+  };
+  return { ok: true, customer, cfg, raw: { customer: row, items } };
+}
+
+// 화면이 상태 화면을 그릴 때 쓰는 읽기 함수: 규칙 모양의 고객 + 설정 + 제안 방치 목록
+async function statusLoad(customerId, opts){
+  const l = await stLoad(customerId, opts);
+  if (!l.ok) return l;
+  const stale = (typeof StatusRules !== 'undefined') ? StatusRules.staleProposals(l.customer, l.cfg) : [];
+  return { ok: true, customer: l.customer, cfg: l.cfg, staleProposals: stale };
+}
+
+function stHistoryRows(after, rawItems, changedBy){
+  const prodById = {}, contractOf = {};
+  (after.contracts || []).forEach(k => (k.products || []).forEach(p => { prodById[p.id] = p; contractOf[p.id] = k.id; }));
+  const segVal = v => (v === '구분 없음' || v === '' || v == null) ? null : (ST_SEG_DB[v] || v);
+  return (after.history || []).slice().reverse().map(e => {
+    const isItem = e.target === '상품' && e.pid != null;
+    const p = isItem ? prodById[e.pid] : null;
+    const strip = v => {
+      if (v == null || v === '') return null;
+      const t = String(v);
+      return (p && t.startsWith(p.name + ': ')) ? t.slice(p.name.length + 2) : t;
+    };
+    let from = strip(e.before), to = strip(e.after);
+    const base = {
+      customer_id: after.id, contract_id: isItem ? (contractOf[e.pid] || null) : null, item_id: isItem ? e.pid : null,
+      target_type: isItem ? 'item' : 'customer', source: 'app', changed_by: e.auto ? '시스템' : changedBy
+    };
+    if (ST_MEMO_LABELS.includes(e.item)) {
+      return Object.assign(base, { event_type: 'memo', axis: null, from_value: null, to_value: null,
+        note: e.item + ': ' + (e.before === '' || e.before == null ? '' : e.before + ' → ') + e.after + (e.note ? ' · ' + e.note : '') });
+    }
+    const axis = ST_AXIS[e.item] || e.item;
+    if (axis === 'customer_segment') { from = segVal(from); to = segVal(to); }
+    if (from === '해당 없음' || from === '해제') from = null;
+    if (to === '해당 없음' || to === '해제') to = null;
+    return Object.assign(base, { event_type: 'status_change', axis, from_value: from, to_value: to, note: e.note || null });
+  });
+}
+
+// 규칙 결과(after)와 읽어 온 값(l)을 비교해 바뀐 칼럼만 저장합니다.
+async function stSave(l, after){
+  const rawC = l.raw.customer;
+  const before = l.customer;
+  const cDiff = stDiff(stCustomerCols(before), stCustomerCols(after));
+  const iDiffs = [];   // { id, patch, row }
+  const beforeP = {};
+  (before.contracts || []).forEach(k => (k.products || []).forEach(p => { beforeP[p.id] = p; }));
+  (after.contracts || []).forEach(k => (k.products || []).forEach(p => {
+    const b = beforeP[p.id];
+    if (!b) return;                       // 새 상품은 이 어댑터가 만들지 않습니다(registerContract 가 만듦)
+    const d = stDiff(stItemCols(b), stItemCols(p));
+    if (Object.keys(d).length) iDiffs.push({ id: p.id, patch: d, row: l.raw.items.find(r => r.item_id === p.id) });
+  }));
+  const histRows = stHistoryRows(after, l.raw.items, await s4ChangedBy());
+  if (!Object.keys(cDiff).length && !iDiffs.length && !histRows.length) return { ok: true, changed: false, historyIds: [] };
+
+  // 1) 이력 먼저
+  let historyIds = [];
+  if (histRows.length) {
+    const hr = await sb.from('status_history').insert(histRows).select('history_id');
+    if (hr.error) return s6Err('이력 저장에 실패해 상태를 바꾸지 않았습니다: ' + hr.error.message);
+    historyIds = (hr.data || []).map(r => r.history_id);
+  }
+  // 2) 값 갱신 (updated_at 이 읽은 그대로일 때만)
+  const applied = [];
+  const undo = async () => {
+    for (const a of applied.reverse()) await sb.from(a.table).update(a.prev).eq(a.idCol, a.id);
+    if (historyIds.length) await sb.from('status_history').delete().in('history_id', historyIds);
+  };
+  const conflict = '다른 곳에서 먼저 변경되어 적용하지 않았습니다. 새로고침 후 다시 시도해 주세요.';
+  const run = async (table, idCol, id, rawRow, patch) => {
+    const prev = {}; Object.keys(patch).forEach(k => { prev[k] = rawRow[k] === undefined ? null : rawRow[k]; });
+    let q = sb.from(table).update(patch).eq(idCol, id);
+    if (rawRow.updated_at) q = q.eq('updated_at', rawRow.updated_at);
+    const r = await q.select(idCol);
+    if (r.error) { await undo(); return s6Err('상태 저장에 실패해 되돌렸습니다: ' + r.error.message); }
+    if (!r.data || !r.data.length) { await undo(); return s6Err(conflict); }
+    applied.push({ table, idCol, id, prev });
+    return null;
+  };
+  if (Object.keys(cDiff).length) { const e = await run('customers', 'customer_id', after.id, rawC, cDiff); if (e) return e; }
+  for (const d of iDiffs) { const e = await run('contract_items', 'item_id', d.id, d.row, d.patch); if (e) return e; }
+  return { ok: true, changed: true, historyIds };
+}
+
+// 상태 이벤트 1건 적용.  o: { customerId, event, args:[...], absenceCount }
+//   event 는 ST_ARITY 의 이름(StatusRules 함수). args 는 customer·cfg 를 뺀 인자(상품 이벤트의 첫 인자는 item_id).
+async function statusApply(o){
+  try {
+    o = o || {};
+    const le = s6LoginErr(); if (le) return s6Err(le);
+    if (typeof StatusRules === 'undefined') return s6Err('StatusRules.js 가 불러와지지 않았습니다.');
+    if (!(o.event in ST_ARITY)) return s6Err('지원하지 않는 상태 이벤트입니다: ' + o.event);
+    const l = await stLoad(o.customerId, o);
+    if (!l.ok) return l;
+    const args = (o.args || []).slice();
+    if (ST_PID_EVENTS.includes(o.event) && args.length) args[0] = Number(args[0]);
+    while (args.length < ST_ARITY[o.event]) args.push(undefined);
+    const res = StatusRules[o.event].apply(null, [l.customer].concat(args, [l.cfg]));
+    if (res.error) return { ok: false, error: res.error.text, code: res.error.code, userMessage: res.error.text };
+    if (res.needs) return { ok: false, needs: res.needs, messages: res.messages || [] };
+    const sv = await stSave(l, res.customer);
+    if (!sv.ok) return sv;
+    return { ok: true, changed: sv.changed, customer: res.customer, messages: res.messages, confirm: res.confirm || null,
+             absenceCount: res.customer.absenceCount, historyIds: sv.historyIds };
+  } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
+}
+
+// 자주 쓰는 호출의 짧은 이름 (opts 는 StatusRules 함수의 o 와 같음: reason, memo, years, doneDate, endChoice …)
+const statusSetProduct  = (customerId, itemId, status, opts) => statusApply({ customerId, event: 'setProductStatus', args: [itemId, status, opts || {}] });
+const statusSetPay      = (customerId, itemId, value, opts)  => statusApply({ customerId, event: 'setPay', args: [itemId, value, opts || {}] });
+const statusSetPayDate  = (customerId, itemId, date)         => statusApply({ customerId, event: 'setPayDate', args: [itemId, date] });
+const statusSetRefund   = (customerId, itemId, value, opts)  => statusApply({ customerId, event: 'setRefund', args: [itemId, value, opts || {}] });
+const statusSetSettle   = (customerId, itemId, value, opts)  => statusApply({ customerId, event: 'setSettle', args: [itemId, value, opts || {}] });
+const statusSetConsult  = (customerId, value, opts)          => statusApply({ customerId, event: 'setConsultStatus', args: [value, opts || {}] });
+const statusSetSeg      = (customerId, value, opts)          => statusApply({ customerId, event: 'setSeg', args: [value, opts || {}] });
+const statusSetReserve  = (customerId, date)                 => statusApply({ customerId, event: 'setReserve', args: [date, {}] });
+const statusEndConsult  = (customerId, choice)               => statusApply({ customerId, event: 'endConsult', args: [choice] });
+const statusRecordAbsence = (customerId, connected, absenceCount) => statusApply({ customerId, event: 'recordAbsence', args: [!!connected], absenceCount });
+const statusConfirmAbsence = (customerId, absenceCount)     => statusApply({ customerId, event: 'confirmAbsenceExclude', args: [], absenceCount });
+const statusAfterProductAdded = customerId                   => statusApply({ customerId, event: 'onProductAdded', args: [] });
