@@ -504,6 +504,16 @@ test('상품 추가·변경 시 제안 시각(proposedAt) 기록', function () {
   assert.equal(prod(r.customer, 'p2').proposedAt, '2026-10-15');
 });
 
+test('상품이 새로 생기면: 상담대기 → 상담중, 상담종료(잠재) → 상담중(구분 유지)', function () {
+  var c1 = cust({ status: '상담대기', seg: '가망' }, [P({ id: 'p1' })]);
+  assert.equal(R.onProductAdded(c1, CFG).customer.status, '상담중');
+  var c2 = cust({ status: '상담종료', seg: '잠재', reserve: '2027-10-15' }, [P({ id: 'p1', pstatus: '개통완료', pay: '지급완료', payDone: '2026-09-01' }), P({ id: 'p2' })]);
+  var r2 = R.onProductAdded(c2, CFG);
+  assert.equal(r2.customer.status, '상담중'); assert.equal(r2.customer.seg, '잠재');
+  var c3 = cust({ status: '상담종료', seg: '잠재', reserve: '2027-10-15' }, [P({ id: 'p1', pstatus: '개통완료', pay: '지급완료', payDone: '2026-09-01' })]);
+  assert.equal(R.onProductAdded(c3, CFG).customer.status, '상담종료');
+});
+
 /* ================================================================ */
 console.log('\n' + '='.repeat(60));
 console.log('통과 ' + passed + ' / 실패 ' + failed + ' / 전체 ' + (passed + failed));
