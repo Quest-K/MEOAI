@@ -67,6 +67,18 @@
 .v2-link-row,.v2-combo{margin-top:10px;font-size:13px}
 .v2-link-row select{margin-left:8px}
 .v2-memos{margin-top:8px}
+.sc-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:10px 0 4px;}
+@media(max-width:900px){.sc-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+.sc-card{background:#fff;border:1px solid #e4e0d6;border-radius:8px;padding:10px 12px;min-width:0;}
+.sc-label{font-size:11.5px;color:#8a8f98;margin-bottom:4px;}
+.sc-value{font-size:15px;font-weight:700;color:#2C2E35;display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+.sc-sub{font-size:11.5px;color:#8a8f98;margin-top:3px;line-height:1.5;word-break:keep-all;}
+.sc-chip{display:inline-block;padding:2px 10px;border-radius:12px;font-size:13px;font-weight:700;}
+.sc-wait{background:#eef2f7;color:#47607e;}.sc-prog{background:#e6f1ea;color:#2f7d4f;}.sc-end{background:#efeeea;color:#6a6d74;}
+.sc-hope{background:#e7f0fb;color:#2b6cb0;}.sc-latent{background:#f3ecfa;color:#7b4fa8;}.sc-excl{background:#fbe9e7;color:#c0392b;}
+.sc-none{background:#f3f1ec;color:#8a8f98;}.sc-none-text{color:#8a8f98;font-weight:400;font-size:13px;}
+.sc-due{background:#fff3d6;color:#8a5a12;font-size:12px;font-weight:700;padding:1px 8px;border-radius:10px;}
+.sc-note{font-size:11.5px;color:#8a8f98;margin:0 0 8px;}
 </style>
 </head>
 <body>
@@ -4551,6 +4563,44 @@ async function openCustomerDetail(id){
   if (detailCustomerId === id) switchTab('customer-detail');
 }
 
+/* 상태 요약 카드 4개 (CS v2 · 보기 전용): 상담 상태 · 고객 구분 · 상담예약일 · 제외 사유
+   새 상태 구조 칼럼: consult_state, customer_segment(가망고객/잠재고객/제외고객), next_contact_at(상담예약일), exclude_reason, exclude_memo */
+function v2SegLabel(v){ return v ? String(v).replace(/고객$/, '') : ''; }
+function v2TodayStr(){ const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function renderDetailStatusCards(){
+  const box = document.getElementById('cd-status-cards');
+  if (!box) return;
+  // 상세 데이터에 새 칼럼이 들어 있으면 그것을, 아니면 목록에서 읽어 둔 고객 행을 씁니다 (다른 고객의 남은 데이터는 쓰지 않음)
+  const bc = detailBundle && detailBundle.customer && detailBundle.customer.customer_id === detailCustomerId ? detailBundle.customer : null;
+  const lc = customerListCache.find(x => x.customer_id === detailCustomerId) || null;
+  const cu = (bc && 'consult_state' in bc) ? bc : (lc || bc);
+  if (!cu) { box.innerHTML = ''; return; }
+  const state = cu.consult_state || '';
+  const seg = v2SegLabel(cu.customer_segment);
+  const reserve = cu.next_contact_at ? String(cu.next_contact_at).slice(0, 10) : '';
+  const today = v2TodayStr();
+  const due = !!reserve && reserve <= today && state !== '상담종료';
+  const days = reserve ? Math.round((new Date(reserve + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000) : null;
+  const none = '<span class="sc-none-text">미설정</span>';
+  const chip = (cls, text) => `<span class="sc-chip ${cls}">${escHtml(text)}</span>`;
+  const stateCls = { '상담대기': 'sc-wait', '상담중': 'sc-prog', '상담종료': 'sc-end' }[state] || 'sc-none';
+  const segCls = { '가망': 'sc-hope', '잠재': 'sc-latent', '제외': 'sc-excl' }[seg] || 'sc-none';
+  const stateSub = { '상담대기': '상담 시작 전', '상담중': '접수·지급·환수 진행 중', '상담종료': '처리할 상품 없음 (잠재 또는 제외)' }[state] || '새 상태 값이 아직 없습니다';
+  const segSub = { '가망': '바로 영업 대상', '잠재': '나중에 다시 영업', '제외': '영업 대상 아님' }[seg] || '';
+  const reserveSub = due ? '재컨택 시기 도래' : (days === null ? '예약 없음' : (days >= 0 ? `D-${days}` : `${-days}일 지남`));
+  const card = (label, body, sub) => `<div class="sc-card"><div class="sc-label">${label}</div><div class="sc-value">${body}</div>${sub ? `<div class="sc-sub">${sub}</div>` : ''}</div>`;
+  const exclBody = seg === '제외'
+    ? (cu.exclude_reason ? chip('sc-excl', cu.exclude_reason) : '<span class="sc-none-text">사유 미기록</span>')
+    : '<span class="sc-none-text">-</span>';
+  const exclSub = seg === '제외' ? escHtml(cu.exclude_memo || '') : '제외 고객이 아닙니다';
+  box.innerHTML = `<div class="sc-grid">`
+    + card('상담 상태', state ? chip(stateCls, state) : none, escHtml(stateSub))
+    + card('고객 구분', seg ? chip(segCls, seg) : none, escHtml(segSub))
+    + card('상담예약일', reserve ? `${escHtml(reserve)}${due ? ' <span class="sc-due">도래</span>' : ''}` : '<span class="sc-none-text">-</span>', escHtml(reserveSub))
+    + card('제외 사유', exclBody, exclSub)
+    + `</div><div class="sc-note">새 상태 구조 기준입니다. 지금은 보기만 하며, 변경은 다음 단계에서 추가됩니다.</div>`;
+}
+
 // 상세 상단 요약 줄 (계약 수·월요금·사은품·수수료 합계, 계약취소 제외)
 function renderDetailSummary(){
   const box = document.getElementById('cd-summary');
@@ -4617,6 +4667,7 @@ async function openCustomer(id){
       </div>
     </div>
     <div class="cd-summary" id="cd-summary">계약 정보를 불러오는 중...</div>
+    <div id="cd-status-cards"></div>
 
     <div class="cd-grid">
       <div class="cd-main">
@@ -4645,7 +4696,7 @@ async function openCustomer(id){
         <select id="cf-telecom">${MOBILE_CARRIER_OPTIONS.map(o => `<option ${o === c.telecom ? 'selected' : ''}>${o}</option>`).join('')}</select>
       </div>
       <div class="form-group">
-        <label>고객 상태 <span class="cust-note-hint">선택하면 바로 저장됩니다</span></label>
+        <label>고객 상태(기존 방식) <span class="cust-note-hint">선택하면 바로 저장됩니다</span></label>
         <select id="cf-status" onchange="quickUpdateCustomerStatus(this, ${c.customer_id})">${customerStatusOptionsHtml(custStatusInfo(c))}</select>
       </div>
       <div class="form-group">
@@ -5355,6 +5406,7 @@ async function refreshDetailBundle(customerId){
   }
   detailBundle = res;
   renderDetailSummary();
+  renderDetailStatusCards();
   renderDetailFamily();
   renderContractSection();
   renderStatusLogSection(customerId, true);
