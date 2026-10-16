@@ -64,7 +64,7 @@
     x.c.history.unshift({
       d: x.cfg.today, t: x.cfg.now || '', target: target, item: item,
       before: before == null ? '' : before, after: after == null ? '' : after,
-      note: o.note || '', who: o.auto ? '시스템' : (x.c.agent || ''), auto: !!o.auto
+      note: o.note || '', who: o.auto ? '시스템' : (x.c.agent || ''), auto: !!o.auto, pid: o.pid == null ? null : o.pid
     });
   }
 
@@ -215,7 +215,7 @@
         var before = p.pstatus;
         p.pstatus = '접수불가'; p.reason = mapReason(reason);
         p.memo = reason === '기타' ? memo : '상담 단계 제외(' + reason + ')';
-        log(x, '상품', '상품상태', p.name + ': ' + before, p.name + ': 접수불가', { auto: true, note: '상담 단계 불가' });
+        log(x, '상품', '상품상태', p.name + ': ' + before, p.name + ': 접수불가', { pid: p.id, auto: true, note: '상담 단계 불가' });
         n++;
       }
     });
@@ -362,6 +362,14 @@
     return okRes(x);
   }
 
+  // 계약 등록 등으로 처리할 상품이 새로 생겼을 때: 상담대기 → 상담중(R-02), 상담종료 → 상담중(R-14)
+  function onProductAdded(c, cfg) {
+    var x = makeCtx(c, cfg);
+    if (x.c.status === '상담대기') ensureActiveX(x, '상품 추가');
+    else syncOpenX(x, '상품 추가');
+    return okRes(x);
+  }
+
   /* ---------- 상품 이벤트 ---------- */
   function setProductStatus(c, pid, v, o, cfg) {
     o = o || {};
@@ -381,12 +389,12 @@
     var prev = p.pstatus, hadMoney = (prev === '개통완료' || p.pay !== '-' || p.refund !== '-');
     p.pstatus = v;
     if (needsReason) { p.reason = o.reason; p.memo = o.memo || ''; } else { p.reason = ''; p.memo = ''; }
-    log(x, '상품', '상품상태', p.name + ': ' + prev, p.name + ': ' + v, { note: needsReason ? '사유: ' + o.reason + (o.memo ? ' · ' + o.memo : '') : '' });
+    log(x, '상품', '상품상태', p.name + ': ' + prev, p.name + ': ' + v, { pid: p.id, note: needsReason ? '사유: ' + o.reason + (o.memo ? ' · ' + o.memo : '') : '' });
     if ((v === '접수완료' || v === '개통완료') && !p.firstReceivedAt) p.firstReceivedAt = x.cfg.today;
     if (v === '개통완료' && !p.installedAt) p.installedAt = x.cfg.today;
     if (v === '개통완료' && p.pay === '-') {
       p.pay = '지급요청';
-      log(x, '상품', '고객지급', p.name + ': 해당 없음', p.name + ': 지급요청', { auto: true, note: '개통완료' });
+      log(x, '상품', '고객지급', p.name + ': 해당 없음', p.name + ': 지급요청', { pid: p.id, auto: true, note: '개통완료' });
       say(x, 'pay-auto', '개통완료 → 고객지급 \'지급요청\'이 자동 설정되었습니다.');
     }
     if ((v === '접수불가' || v === '접수취소') && hadMoney) say(x, 'refund-check', '개통·지급이 진행된 상품입니다. 환수 대상인지 확인해 주세요.');
@@ -412,13 +420,13 @@
       var d = o.doneDate || x.cfg.today;
       if (!DATE_RE.test(d)) return fail(c, err('BAD_DATE', '지급완료일 형식이 올바르지 않습니다.'));
       p.pay = v; p.payDone = d;
-      log(x, '상품', '고객지급', p.name + ': ' + (before === '-' ? '해당 없음' : before), p.name + ': 지급완료', { note: '지급완료일 ' + d });
+      log(x, '상품', '고객지급', p.name + ': ' + (before === '-' ? '해당 없음' : before), p.name + ': 지급완료', { pid: p.id, note: '지급완료일 ' + d });
       var fin = finishPayoutX(x, c, o, '지급완료만 기록했습니다. 남은 상품의 지급이 끝나면 상담이 종료됩니다.');
       if (fin) return fin;
       return okRes(x);
     }
     p.pay = v; p.payDone = '';
-    log(x, '상품', '고객지급', p.name + ': ' + (before === '-' ? '해당 없음' : before), p.name + ': ' + (v === '-' ? '해당 없음' : v), {});
+    log(x, '상품', '고객지급', p.name + ': ' + (before === '-' ? '해당 없음' : before), p.name + ': ' + (v === '-' ? '해당 없음' : v), { pid: p.id });
     syncOpenX(x, '지급 상태 변경');
     if (v === '지급제외' && p.pstatus === '개통완료') {
       var fin2 = finishPayoutX(x, c, o, '지급제외로 기록했습니다. 남은 상품 처리가 끝나면 상담이 종료됩니다.');
@@ -438,7 +446,7 @@
     if (date === p.payDone) return okRes(x);
     var before = p.payDone;
     p.payDone = date;
-    log(x, '상품', '지급완료일', p.name + ': ' + before, p.name + ': ' + date, {});
+    log(x, '상품', '지급완료일', p.name + ': ' + before, p.name + ': ' + date, { pid: p.id });
     if (x.c.status === '상담종료' && x.c.seg === '잠재') say(x, 'reserve-recheck', '지급완료일이 바뀌었습니다. 재영업 예약일은 자동으로 바뀌지 않으니 필요하면 상담예약일을 수정해 주세요.');
     return okRes(x);
   }
@@ -457,7 +465,7 @@
     var before = p.refund;
     p.refund = v;
     if (v !== '환수완료') p.refundDone = '';
-    log(x, '상품', '환수', p.name + ': ' + (before === '-' ? '해당 없음' : before), p.name + ': ' + (v === '-' ? '해당 없음' : v), {});
+    log(x, '상품', '환수', p.name + ': ' + (before === '-' ? '해당 없음' : before), p.name + ': ' + (v === '-' ? '해당 없음' : v), { pid: p.id });
     if (v === '환수요청') { ensureActiveX(x, '환수요청'); return okRes(x); }          // R-03
     if (v === '환수완료') {
       p.refundDone = rdate;
@@ -509,7 +517,7 @@
       if (o.amount !== p.invoiceAmount) say(x, 'collect-mismatch', '수금 금액(' + o.amount + '원)이 발행 금액(' + p.invoiceAmount + '원)과 다릅니다.');
     }
     p.settle = v;
-    log(x, '상품', '수수료 정산', p.name + ': ' + (before === '-' ? '해당 없음' : before), p.name + ': ' + (v === '-' ? '해당 없음' : v), { note: note });
+    log(x, '상품', '수수료 정산', p.name + ': ' + (before === '-' ? '해당 없음' : before), p.name + ': ' + (v === '-' ? '해당 없음' : v), { pid: p.id, note: note });
     return okRes(x);
   }
 
@@ -536,7 +544,7 @@
     if (!p.proposedAt) p.proposedAt = x.cfg.today;
     k.products = k.products || [];
     k.products.push(p);
-    log(x, '상품', '상품 추가', '', p.name + ' (상품제안)', {});
+    log(x, '상품', '상품 추가', '', p.name + ' (상품제안)', { pid: p.id });
     syncOpenX(x, '상품 추가');
     return okRes(x);
   }
@@ -552,12 +560,12 @@
     var hadMoney = (old.pstatus === '개통완료' || old.pay !== '-' || old.refund !== '-');
     var prev = old.pstatus;
     old.pstatus = '접수취소'; old.reason = '상품변경'; old.memo = '';
-    log(x, '상품', '상품상태', old.name + ': ' + prev, old.name + ': 접수취소', { note: '사유: 상품변경' });
+    log(x, '상품', '상품상태', old.name + ': ' + prev, old.name + ': 접수취소', { pid: old.id, note: '사유: 상품변경' });
     var np = newProduct(Object.assign({ type: old.type }, prod, { pstatus: '상품제안', changedFrom: old.id }));
     if (!np.id) np.id = nextProductId(x.c);
     if (!np.proposedAt) np.proposedAt = x.cfg.today;
     f.contract.products.push(np);
-    log(x, '상품', '상품 변경', old.name, np.name + ' (상품제안)', { note: '변경 전 상품 ' + old.id });
+    log(x, '상품', '상품 변경', old.name, np.name + ' (상품제안)', { pid: old.id, note: '변경 전 상품 ' + old.id });
     ensureActiveX(x, '상품 변경');                                                      // R-02
     if (hadMoney) say(x, 'refund-check', '개통·지급이 진행된 상품입니다. 환수 대상인지 확인해 주세요.');
     return okRes(x);
@@ -571,7 +579,7 @@
     reengageBase: reengageBase, reengageDate: reengageDate, newProduct: newProduct, newCustomer: newCustomer,
     // 고객 이벤트
     setConsultStatus: setConsultStatus, setSeg: setSeg, setReserve: setReserve, reevaluate: reevaluate,
-    endConsult: endConsult, recordAbsence: recordAbsence, confirmAbsenceExclude: confirmAbsenceExclude,
+    endConsult: endConsult, recordAbsence: recordAbsence, onProductAdded: onProductAdded, confirmAbsenceExclude: confirmAbsenceExclude,
     // 상품 이벤트
     setProductStatus: setProductStatus, setPay: setPay, setPayDate: setPayDate, setRefund: setRefund, setSettle: setSettle,
     staleProposals: staleProposals,
