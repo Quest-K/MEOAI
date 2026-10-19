@@ -79,6 +79,12 @@
 .sc-none{background:#f3f1ec;color:#8a8f98;}.sc-none-text{color:#8a8f98;font-weight:400;font-size:13px;}
 .sc-due{background:#fff3d6;color:#8a5a12;font-size:12px;font-weight:700;padding:1px 8px;border-radius:10px;}
 .sc-note{font-size:11.5px;color:#8a8f98;margin:0 0 8px;}
+.v2-item-st{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;}
+.v2-chip{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;line-height:1.6;background:#f3f1ec;color:#6a6d74;white-space:nowrap;}
+.v2-chip b{font-weight:700;color:inherit;}
+.v2-chip.ok{background:#e6f1ea;color:#2f7d4f;}.v2-chip.go{background:#e7f0fb;color:#2b6cb0;}
+.v2-chip.hold{background:#fff3d6;color:#8a5a12;}.v2-chip.bad{background:#fbe9e7;color:#c0392b;}
+.v2-chip.none{background:#f3f1ec;color:#a0a4ab;}
 </style>
 </head>
 <body>
@@ -5478,6 +5484,25 @@ function v2UsimLinkHtml(ct, all){
 }
 
 
+/* 상품 행의 새 상태 표시 (CS v2 · 보기 전용): 상품 상태 · 지급 · 정산 · 환수
+   칼럼: item_status, item_status_reason, pay_status, is_pay_exempt, paid_at, pay_invoice_status, refund_status, change_from_item_id
+   상세 데이터에 새 칼럼이 아예 없으면(옛 서비스 파일) 아무것도 그리지 않습니다. */
+function v2ItemStatusHtml(it){
+  if (!it || !('item_status' in it)) return '';
+  const chip = (cls, label, val, sub) => `<span class="v2-chip ${cls}">${escHtml(label)} <b>${escHtml(val)}</b>${sub ? ' · ' + escHtml(sub) : ''}</span>`;
+  const out = [];
+  const st = it.item_status;
+  const stCls = { '상품제안': '', '접수대기': 'go', '접수보류': 'hold', '접수완료': 'ok', '개통완료': 'ok', '접수불가': 'bad', '접수취소': 'bad' }[st];
+  if (st) out.push(chip(stCls || '', '상품', st, ['접수보류', '접수불가', '접수취소'].includes(st) ? it.item_status_reason : ''));
+  else out.push(chip('none', '상품', '미설정'));
+  if (it.is_pay_exempt || it.pay_status === '지급제외') out.push(chip('', '지급', '지급제외'));
+  else if (it.pay_status) out.push(chip({ '지급요청': 'go', '지급보류': 'hold', '지급완료': 'ok' }[it.pay_status] || '', '지급', it.pay_status, it.pay_status === '지급완료' && it.paid_at ? String(it.paid_at).slice(0, 10) : ''));
+  if (it.pay_invoice_status) out.push(chip({ '발행예정': '', '발행완료': 'go', '수금완료': 'ok' }[it.pay_invoice_status] || '', '정산', it.pay_invoice_status));
+  if (it.refund_status) out.push(chip('bad', '환수', it.refund_status));
+  if (it.change_from_item_id) out.push(chip('', '변경 전', formatItemNo(it.change_from_item_id)));
+  return `<div class="v2-item-st">${out.join('')}</div>`;
+}
+
 /* 계약 카드 추가 영역 (CS v2): 계약 정보 요약 · 유심↔인터넷 연결 변경 · 결합할인 · 최근 변경 메모 */
 function v2CardExtras(ct, all){
   const isHome = ct.contract_type === 'home';
@@ -5569,7 +5594,7 @@ function renderContractCard(ct, all){
       <td><input type="text" inputmode="numeric" id="it-${it.item_id}-fee" value="${escAttr(fmtMoney(it.monthly_fee))}"></td>
       <td><input type="text" inputmode="numeric" id="it-${it.item_id}-comm" value="${escAttr(fmtMoney(it.commission))}">${it.detail && it.detail.commissionAgency ? `<span class="ag-sub" title="상담 저장 당시 수수료를 준 에이전시">${escHtml(it.detail.commissionAgency)}</span>` : ''}</td>
       <td>${ctSelectHtml(ITEM_PROGRESS, it.progress_status, `changeItemProgress(this, ${it.item_id}, ${cid})`, false)}
-          ${it.progress_status === '접수취소' && it.cancel_reason ? `<div class="cust-ov-sub">${escHtml(it.cancel_reason)}</div>` : ''}</td>
+          ${it.progress_status === '접수취소' && it.cancel_reason ? `<div class="cust-ov-sub">${escHtml(it.cancel_reason)}</div>` : ''}${v2ItemStatusHtml(it)}</td>
       <td class="ct-row-actions"><span class="mini-btn-row">
         <button type="button" class="mini-btn" onclick="saveItemUi(${it.item_id}, this)">저장</button>
         ${draft ? `<button type="button" class="mini-btn" onclick="deleteItemUi(${it.item_id}, this)">삭제</button>` : ''}
