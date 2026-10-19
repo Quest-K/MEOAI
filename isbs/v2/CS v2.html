@@ -92,6 +92,7 @@
 .v2-dlg-row{margin:8px 0;}.v2-dlg-row label{display:block;font-size:12px;color:#555;margin-bottom:3px;}
 .v2-dlg-row input,.v2-dlg-row select,.v2-dlg-row textarea{width:100%;box-sizing:border-box;}
 .v2-dlg-err{color:#c0392b;font-size:12px;min-height:16px;}
+.v3-reg-badge{margin:6px 0 0;padding:3px 8px;border-radius:6px;background:#e8f5e9;color:#1b5e20;font-size:12px;display:inline-block;}
 </style>
 </head>
 <body>
@@ -806,6 +807,27 @@ PASS 앱 → 전체 → 명의도용방지 → 해당 통신사 해제
 
 </div>
 
+<div id="reg-modal" class="modal-overlay">
+  <div class="modal-box" style="max-width:440px;">
+    <h3>📝 계약등록</h3>
+    <p class="modal-desc" id="reg-desc"></p>
+    <div class="v2-dlg-row"><label for="reg-label">구분 이름 <span id="reg-label-req"></span></label><input type="text" id="reg-label" maxlength="30" placeholder="예: A집, 본가"></div>
+    <div id="reg-home-fields">
+      <div class="v2-dlg-row"><label for="reg-zip">우편번호</label><input type="text" id="reg-zip" maxlength="10"></div>
+      <div class="v2-dlg-row"><label for="reg-addr">설치 주소</label><input type="text" id="reg-addr"></div>
+      <div class="v2-dlg-row"><label for="reg-addr2">상세 주소</label><input type="text" id="reg-addr2"></div>
+    </div>
+    <div id="reg-usim-fields" style="display:none;">
+      <div class="v2-dlg-row"><label for="reg-link">연결할 인터넷·TV 계약</label><select id="reg-link"></select></div>
+    </div>
+    <div class="v2-dlg-err" id="reg-error"></div>
+    <div class="modal-actions">
+      <button class="secondary-btn" onclick="closeRegisterModal()">취소</button>
+      <button class="primary-btn" onclick="submitRegister(this)">등록</button>
+    </div>
+  </div>
+</div>
+
 <div id="login-modal" class="modal-overlay">
   <div class="modal-box" style="max-width:360px;">
     <h3>관리자 로그인</h3>
@@ -846,6 +868,96 @@ PASS 앱 → 전체 → 명의도용방지 → 해당 통신사 해제
 <script src="Calculator.js?v=20261006a"></script>
 <script src="StatusRules.js?v=20261016a"></script>
 <script src="Supabaseservice.js?v=20261019a"></script>
+<script>
+/* =========================================================================
+   CS v2 3단계 — 제안상품 [📝 계약등록] (registerContract 호출)
+   - 기존 [➕ 최종반영]·상담 저장 흐름은 그대로 두고 옆에 추가한 기능입니다.
+   - 계약은 '작성중'으로 만들어지고 상품은 item_status='상품제안'으로 기록됩니다(Supabaseservice.js).
+   ========================================================================= */
+let registeredMap = {};            // 제안 ID → [계약 ID...]
+let regTarget = null, regAllowDup = false, regBusy = false;
+
+function regButtonHtml(id){
+  const n = (registeredMap[id] || []).length;
+  return `<button type="button" class="mini-btn mini-btn-primary" onclick="openRegisterModal('${id}')">📝 계약등록${n ? ' (추가)' : ''}</button>`;
+}
+function regBadgeHtml(id){
+  const ids = registeredMap[id] || [];
+  return ids.length ? `<div class="v3-reg-badge" title="이 제안으로 만들어진 계약">✔ 등록됨 · ${ids.map(formatContractNo).join(', ')}</div>` : '';
+}
+async function refreshRegistered(){
+  const id = currentCustomerId;
+  if (!id || typeof isLoggedIn === 'undefined' || !isLoggedIn || typeof findRegisteredByProposal !== 'function') { registeredMap = {}; renderProposalLists(); return; }
+  const r = await findRegisteredByProposal(id);
+  if (id !== currentCustomerId) return;
+  registeredMap = r.ok ? (r.byProposal || {}) : {};
+  if (!r.ok) showToast('⚠ 등록 현황을 읽지 못했습니다: ' + r.error);
+  renderProposalLists();
+}
+async function openRegisterModal(proposalId){
+  if (typeof isLoggedIn === 'undefined' || !isLoggedIn) { alert('계약등록은 로그인 후 사용할 수 있습니다.'); openLoginModal(); return; }
+  if (!currentCustomerId) { alert('저장된 고객만 계약을 등록할 수 있습니다.\n먼저 [고객정보 저장] 또는 상담 저장으로 고객을 저장해 주세요.'); return; }
+  const p = reflectedProducts.find(x => x.id === proposalId);
+  if (!p) return;
+  await refreshRegistered();                     // 다른 화면에서 등록했을 수 있으므로 한 번 더 읽음
+  const existing = registeredMap[proposalId] || [];
+  regAllowDup = false;
+  if (existing.length) {
+    if (!confirm(`이미 등록된 상품입니다 (${existing.map(formatContractNo).join(', ')}).\n다른 계약으로 하나 더 등록할까요?`)) return;
+    regAllowDup = true;
+  }
+  regTarget = p;
+  const isHome = p.type === 'home';
+  document.getElementById('reg-desc').textContent = isHome
+    ? `${p.carrierName} · ${p.internetLabel} · ${p.tvLabel} → 인터넷·TV 계약(작성중)을 만듭니다.`
+    : `${p.carrier} · ${p.planName} → 유심 계약(작성중)을 만듭니다.`;
+  document.getElementById('reg-label-req').textContent = regAllowDup ? '(필수 · 예: A집, B집)' : '(선택 · 예: A집, 본가)';
+  setVal('reg-label', ''); setVal('reg-zip', ''); setVal('reg-addr', ''); setVal('reg-addr2', '');
+  document.getElementById('reg-home-fields').style.display = isHome ? '' : 'none';
+  document.getElementById('reg-usim-fields').style.display = isHome ? 'none' : '';
+  document.getElementById('reg-error').textContent = '';
+  if (!isHome) {
+    const sel = document.getElementById('reg-link');
+    sel.innerHTML = '<option value="">연결 안 함 (나중에 계약 카드에서 연결)</option>';
+    const r = await findHomeCandidatesForUsim(currentCustomerId, p.carrier);
+    if (r.ok) sel.innerHTML += r.candidates.map(h => `<option value="${h.contractId}">${formatContractNo(h.contractId)}${h.label ? ' · ' + escHtml(h.label) : ''}${h.group ? ' (' + escHtml(h.group) + ')' : ''} · ${escHtml(h.status || '')}</option>`).join('');
+    else document.getElementById('reg-error').textContent = '연결할 계약 후보를 읽지 못했습니다: ' + r.error;
+  }
+  document.getElementById('reg-modal').style.display = 'flex';
+}
+function closeRegisterModal(){ document.getElementById('reg-modal').style.display = 'none'; regTarget = null; }
+
+async function submitRegister(btn){
+  if (!regTarget || regBusy) return;
+  const label = (elVal('reg-label') || '').trim();
+  const errBox = document.getElementById('reg-error');
+  errBox.textContent = '';
+  if (regAllowDup && !label) { errBox.textContent = '같은 상품을 다시 등록할 때는 구분 이름(예: A집, B집)을 입력해 주세요.'; return; }
+  const isHome = regTarget.type === 'home';
+  regBusy = true; setBtnLoading(btn, '등록 중...');
+  try {
+    const cid = currentCustomerId;
+    const r = await registerContract({
+      customerId: cid, proposal: regTarget, contractType: regTarget.type, label,
+      address: isHome ? (elVal('reg-addr') || null) : null, addressDetail: isHome ? (elVal('reg-addr2') || null) : null, addressZip: isHome ? (elVal('reg-zip') || null) : null,
+      linkedContractId: isHome ? null : (elVal('reg-link') || null),
+      allowDuplicate: regAllowDup, helpers: consultSaveHelpers()
+    });
+    if (!r.ok) {
+      if (r.duplicate) { await refreshRegistered(); errBox.textContent = '이미 등록된 제안입니다. 창을 닫고 다시 [계약등록]을 눌러 주세요.'; return; }
+      errBox.textContent = '등록 실패: ' + r.error + (r.rolledBack ? ' (만들던 계약은 정리했습니다)' : '');
+      return;
+    }
+    closeRegisterModal();
+    showToast(`✓ ${formatContractNo(r.contract.contract_id)} 계약이 등록되었습니다 (작성중)`);
+    const msgs = ((r.stateMessages || []).map(m => m.text)).concat(r.warnings || []);
+    if (msgs.length) alert('등록되었습니다.\n\n안내:\n- ' + msgs.slice(0, 5).join('\n- '));
+    if (!isHome && !r.contract.linked_contract_id) showToast('ℹ 인터넷·TV 계약과 연결하지 않았습니다. 고객상세의 계약 카드에서 연결할 수 있습니다');
+    await refreshRegistered();
+    try { await afterContractChange(cid); } catch (e) {}      // 고객 목록·상세·상태 카드 갱신
+  } finally { regBusy = false; clearBtnLoading(btn); }
+}
+</script>
 <script>
 // 인터넷/TV 통신사 열 목록: KT·LG·SKB·SKT·SKY 5개(config.js 의 CARRIERS)
 const HOME_CARRIERS = (typeof CARRIERS !== 'undefined') ? CARRIERS : [];
@@ -1719,11 +1831,13 @@ function buildProposalUsimCard(p){
         </span>
       </div>` : ''}
       ${isLoggedIn ? `<div class="info-row"><span>수수료${agBadgeHtml(uci.agency, uci.agencies)}</span><span>${commission.toLocaleString()}원</span></div>` : ''}
+      ${regBadgeHtml(p.id)}
       <div class="usim-line-actions">
         <label class="phone-teen-toggle">
           <input type="checkbox" ${p.teen ? 'checked' : ''} onchange="updateAddedUsimLine('${p.id}', 'teen', this.checked)">
           청소년
         </label>
+        ${canFinalize ? regButtonHtml(p.id) : ''}
         ${canFinalize ? `<button type="button" class="mini-btn mini-btn-primary" onclick="moveProposalToFinal('${p.id}')">➕ 최종반영</button>` : ''}
       </div>
     </div>
@@ -2404,7 +2518,9 @@ function buildProposalHomeRow(item){
       <div class="info-row sub-item-row"><span>인터넷</span><span>${comm.internetComm.toLocaleString()}원</span></div>
       ${item.tvTier !== 'none' ? `<div class="info-row sub-item-row"><span>TV</span><span>${comm.tvComm.toLocaleString()}원</span></div>` : ''}
       ${agOthersRowsHtml(comm, true)}` : ''}
+      ${regBadgeHtml(item.id)}
       <div class="usim-line-actions">
+        ${regButtonHtml(item.id)}
         <button type="button" class="mini-btn mini-btn-primary" onclick="moveProposalToFinal('${item.id}')">➕ 최종반영</button>
       </div>
     </div>
@@ -6704,5 +6820,14 @@ try { const nav = document.querySelector('.tab-nav'); if (nav && window.ResizeOb
     <button type="button" class="primary-btn" id="cs-edit-save-btn" onclick="saveCustomerOnlyFromConsult(this)">💾 고객정보 저장</button>
   </div>
 </aside>
+
+<script>
+// 고객을 상담 화면으로 불러올 때마다 등록 현황도 새로 읽습니다 (기존 함수는 그대로 두고 뒤에 이어 붙임)
+(function(){
+  const base = fillConsultFormFromCustomer;
+  fillConsultFormFromCustomer = function(c){ registeredMap = {}; const r = base.apply(this, arguments); setTimeout(refreshRegistered, 0); return r; };
+})();
+
+</script>
 </body>
 </html>
