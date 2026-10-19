@@ -969,6 +969,128 @@ async function v2LoadTaskList(){
     });
   }
 }
+
+/* =========================================================================
+   6-6 대시보드 새 상태 현황 (추가만) : 상담 상태·고객 구분·제외 사유(고객), 상품 상태·지급·환수(상품), 접수 이력·유치(지표 뷰)
+   - 기존 퍼널 대시보드(옛 customer_status 기준)는 컷오버(G4)까지 그대로 두고, 그 위에 새 기준 블록을 붙입니다.
+   - 고객 칩을 누르면 해당 고객 목록이 아래 리스트에 표시됩니다. 상품·지급·환수 칩은 건수만 표시합니다.
+   ========================================================================= */
+var v2ND = { data: null, seq: 0 };
+var v2CustSel = { kind: 'state', value: '상담중' };   // kind: state | seg | excl
+const V2_ND_STATES = ['상담대기', '상담중', '상담종료'];
+const V2_ND_SEGS = ['가망고객', '잠재고객', '제외고객'];
+const V2_ND_EXCL = ['타사가입', '기존유지', '장기부재', '신용불량', '설치불가', '오인입', '타부서', '기타'];
+const V2_ND_ITEM = ['상품제안', '접수대기', '접수보류', '접수완료', '개통완료', '접수불가', '접수취소'];
+const V2_ND_PAY = ['지급요청', '지급보류', '지급완료', '지급제외'];
+const V2_ND_REFUND = ['환수요청', '환수완료'];
+
+async function v2FetchNewDash(){
+  const [cu, it, ac] = await Promise.all([
+    s2FetchAll((a, b) => sb.from('customers').select('customer_id,consult_state,customer_segment,exclude_reason').order('customer_id', { ascending: true }).range(a, b)),
+    s2FetchAll((a, b) => sb.from('contract_items').select('item_id,item_status,pay_status,refund_status').order('item_id', { ascending: true }).range(a, b)),
+    sb.from('v_metric_acquisition').select('*').limit(1)
+  ]);
+  if (cu.error) return { error: cu.error.message };
+  if (it.error) return { error: it.error.message };
+  const d = { total: cu.rows.length, unset: 0, state: {}, seg: {}, excl: {}, item: {}, pay: {}, refund: {}, itemUnset: 0, acq: (ac && !ac.error && ac.data && ac.data[0]) || null };
+  const inc = (o, k) => { o[k] = (o[k] || 0) + 1; };
+  cu.rows.forEach(r => {
+    if (!r.consult_state) { d.unset++; return; }
+    inc(d.state, r.consult_state);
+    if (r.customer_segment) inc(d.seg, r.customer_segment);
+    if (r.exclude_reason) inc(d.excl, r.exclude_reason);
+  });
+  it.rows.forEach(r => {
+    if (!r.item_status) { d.itemUnset++; return; }
+    inc(d.item, r.item_status);
+    if (r.pay_status) inc(d.pay, r.pay_status);
+    if (r.refund_status) inc(d.refund, r.refund_status);
+  });
+  d.itemTotal = it.rows.length;
+  return d;
+}
+
+function v2NewDashHtml(d){
+  if (!d) return `<div class="fd-section-title">새 상태 현황 <small>(상태 개편 기준)</small></div><div class="wide-table-empty">불러오는 중...</div>`;
+  if (d.error) return `<div class="fd-section-title">새 상태 현황</div><div class="wide-table-empty">조회 실패: ${escHtml(d.error)}</div>`;
+  const cchip = (kind, value, label, n) => {
+    const on = dashMode === 'v2cust' && v2CustSel.kind === kind && v2CustSel.value === value;
+    return `<button type="button" class="fd-sub ${on ? 'is-active' : ''} ${n === 0 ? 'zero' : ''}" onclick="v2OpenCust('${kind}','${value}')">${escHtml(label)}<span>${n.toLocaleString()}명</span></button>`;
+  };
+  const nchip = (label, n) => `<span class="fd-sub ${n === 0 ? 'zero' : ''}" style="cursor:default">${escHtml(label)}<span>${n.toLocaleString()}건</span></span>`;
+  const acq = d.acq ? `접수 이력 계약 ${Number(d.acq.received_contracts).toLocaleString()}건 · 유치 고객 ${Number(d.acq.acquired_customers).toLocaleString()}명 · 취소율 ${d.acq.cancel_rate_pct == null ? '-' : d.acq.cancel_rate_pct + '%'}` : '';
+  return `
+    <div class="fd-section-title">새 상태 현황 <small>(상태 개편 기준 · 고객 ${d.total.toLocaleString()}명)</small></div>
+    <div class="fd-subs fd-subs-flat">
+      ${V2_ND_STATES.map(s => cchip('state', s, s, d.state[s] || 0)).join('')}
+      <span class="fd-sep"></span>
+      ${V2_ND_SEGS.map(s => cchip('seg', s, s.replace('고객', ''), d.seg[s] || 0)).join('')}
+    </div>
+    <div class="fd-subs fd-subs-flat">
+      <span class="cust-ov-sub">제외 사유</span>
+      ${V2_ND_EXCL.map(s => cchip('excl', s, s, d.excl[s] || 0)).join('')}
+    </div>
+    <div class="fd-subs fd-subs-flat">
+      <span class="cust-ov-sub">상품 상태</span>
+      ${V2_ND_ITEM.map(s => nchip(s, d.item[s] || 0)).join('')}
+    </div>
+    <div class="fd-subs fd-subs-flat">
+      <span class="cust-ov-sub">지급·환수</span>
+      ${V2_ND_PAY.map(s => nchip(s, d.pay[s] || 0)).join('')}
+      <span class="fd-sep"></span>
+      ${V2_ND_REFUND.map(s => nchip(s, d.refund[s] || 0)).join('')}
+    </div>
+    ${acq ? `<div class="fd-note">${escHtml(acq)}</div>` : ''}
+    ${d.unset ? `<div class="fd-note">⚠ 새 상태가 비어 있는 고객 ${d.unset.toLocaleString()}명</div>` : ''}
+    ${d.itemUnset ? `<div class="fd-note">⚠ 새 상태가 비어 있는 상품 ${d.itemUnset.toLocaleString()}건</div>` : ''}
+    <div class="fd-note">아래 "고객 현황·계약 현황"은 옛 기준(customer_status 등)이며 컷오버 전까지 참고용입니다.</div>`;
+}
+
+async function v2RenderNewDash(){
+  const box = document.getElementById('funnel-dashboard');
+  if (!box) return;
+  let host = document.getElementById('v2-newdash');
+  if (!host) {
+    const row = box.querySelector('.funnel-due-row');
+    if (!row) return;
+    row.insertAdjacentHTML('afterend', '<div id="v2-newdash"></div>');
+    host = document.getElementById('v2-newdash');
+  }
+  host.innerHTML = v2NewDashHtml(v2ND.data);   // 이전 값이 있으면 먼저 보여 줌
+  const seq = ++v2ND.seq;
+  try {
+    if (typeof isLoggedIn === 'undefined' || !isLoggedIn) return;
+    const d = await v2FetchNewDash();
+    if (seq !== v2ND.seq) return;
+    v2ND.data = d;
+    const h2 = document.getElementById('v2-newdash');
+    if (h2) h2.innerHTML = v2NewDashHtml(d);
+  } catch (e) { console.warn('새 상태 현황 집계 실패', e); }
+}
+
+function v2OpenCust(kind, value){
+  v2CustSel = { kind, value };
+  dashMode = 'v2cust';
+  renderFunnelDashboard();
+  loadDashList();
+}
+
+async function v2LoadCustStateList(){
+  const box = document.getElementById('dash-list-card');
+  if (!box) return;
+  const col = { state: 'consult_state', seg: 'customer_segment', excl: 'exclude_reason' }[v2CustSel.kind];
+  const title = '새 상태 › ' + v2CustSel.value;
+  const seq = ++dashListSeq;
+  box.innerHTML = `<div class="dash-list-head"><h3>${escHtml(title)}</h3></div><div class="wide-table-empty">불러오는 중...</div>`;
+  const r = await sb.from('customers').select('*', { count: 'exact' }).eq(col, v2CustSel.value).order('updated_at', { ascending: false }).limit(DASH_LIST_LIMIT);
+  if (seq !== dashListSeq) return;
+  if (r.error) { box.innerHTML = `<div class="dash-list-head"><h3>${escHtml(title)}</h3></div><div class="wide-table-empty">조회 실패: ${escHtml(r.error.message)}</div>`; return; }
+  const rows = r.data || [];
+  await loadCustomerListExtras(rows);
+  if (seq !== dashListSeq) return;
+  dashRows = rows;
+  renderDashList(title, r.count == null ? null : r.count);
+}
 </script>
 <script>
 /* =========================================================================
@@ -3835,7 +3957,7 @@ function renderFunnelDashboard(){
       <button type="button" class="funnel-due-chip is-overdue ${dashMode === 'v2stale' ? 'is-on' : ''}" onclick="v2OpenTask('v2stale')" title="상품제안 상태로 설정일수(기본 7일) 이상 지난 상품이 있는 고객 (상담종료 제외)">⌛ 제안 방치 <b id="v2n-stale">${v2TaskCounts.stale === null ? '…' : v2TaskCounts.stale.toLocaleString()}</b></button>
       <button type="button" class="funnel-due-chip is-overdue ${dashMode === 'overdue' ? 'is-on' : ''}" onclick="loadContactDueList('overdue')" title="상담중(고객부재·상담예약) 고객 중 예정 시각이 지난 건">⚠ 컨택 지연 <b>${dashDue.overdue.toLocaleString()}</b></button>
     </div>
-    <div class="fd-section-title">고객 현황 <small>(단위: 명)</small></div>
+    <div class="fd-section-title">고객 현황 <small>(단위: 명 · 옛 기준)</small></div>
     <div class="fd-groups">
       ${CUSTOMER_STATUSES.map(s => `
         <button type="button" class="fd-group stage-s${CUSTOMER_STATUS_STAGE[s]} ${dashMode === 'status' && s === curGroup ? 'is-active' : ''}" onclick="selectDashGroup('${s}')"${s === '상담완료' ? ' title="접수대기·접수보류·접수완료 계약이 있는 고객 (접수 이력이 있는 고객은 ' + c.acquiredCustomers.toLocaleString() + '명)"' : ''}>
@@ -3849,7 +3971,7 @@ function renderFunnelDashboard(){
           ${escHtml(i.label)}<span>${i.count.toLocaleString()}명</span>
         </button>`).join('')}
     </div>
-    <div class="fd-section-title">계약 현황 <small>(단위: 건 · 접수 이력이 있는 계약 ${ct.acquired.toLocaleString()}건)</small></div>
+    <div class="fd-section-title">계약 현황 <small>(단위: 건 · 옛 기준 · 접수 이력이 있는 계약 ${ct.acquired.toLocaleString()}건)</small></div>
     <div class="fd-subs fd-subs-flat">
       ${DASH_CONTRACT_STATUS_CHIPS.map(s => chip('status', s, s, ct.byStatus[s] || 0)).join('')}
     </div>
@@ -7037,9 +7159,9 @@ try { const nav = document.querySelector('.tab-nav'); if (nav && window.ResizeOb
 })();
 (function(){
   const baseLoad = loadDashList;
-  loadDashList = async function(){ if (dashMode === 'v2due' || dashMode === 'v2stale') return v2LoadTaskList(); return baseLoad.apply(this, arguments); };
+  loadDashList = async function(){ if (dashMode === 'v2due' || dashMode === 'v2stale') return v2LoadTaskList(); if (dashMode === 'v2cust') return v2LoadCustStateList(); return baseLoad.apply(this, arguments); };
   const baseRender = renderFunnelDashboard;
-  renderFunnelDashboard = function(){ const r = baseRender.apply(this, arguments); setTimeout(v2RefreshTaskCounts, 0); return r; };
+  renderFunnelDashboard = function(){ const r = baseRender.apply(this, arguments); setTimeout(v2RefreshTaskCounts, 0); setTimeout(v2RenderNewDash, 0); return r; };
 })();
 // 고객을 상담 화면으로 불러올 때마다 등록 현황도 새로 읽습니다 (기존 함수는 그대로 두고 뒤에 이어 붙임)
 (function(){
