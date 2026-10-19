@@ -3401,6 +3401,39 @@ async function probeCustomerSchema(){
   return CUSTOMER_SCHEMA;
 }
 
+/* 6-5c ③: 상담 탭 "다음 컨택"(시각 포함)을 바꿔 저장하면 상담예약일 규칙(R-08)에 맞게 고객 구분을 다시 계산합니다.
+   - next_contact_at 은 기존처럼 시각까지 그대로 저장되며, 이 함수는 값을 덮어쓰지 않습니다(구분·상담 상태·이력만 정리).
+   - 날짜가 바뀐 경우에만 적용하고(시각만 바뀌면 그대로), 실패해도 상담 저장은 계속합니다. */
+function v2KstDate(v){
+  if (!v) return '';
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? '' : new Date(d.getTime() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+}
+async function v2ReadNextContact(customerId){
+  try {
+    const r = await sb.from('customers').select('next_contact_at').eq('customer_id', customerId).limit(1);
+    if (r.error) return undefined;
+    return (r.data && r.data[0]) ? (r.data[0].next_contact_at || null) : null;
+  } catch (e) { return undefined; }          // 이전 값을 못 읽으면 건드리지 않음
+}
+async function v2ReclassifyAfterNextContact(customerId, prev, saved, savedRow){
+  if (prev === undefined) return;
+  if (typeof statusApply !== 'function' || typeof isLoggedIn === 'undefined' || !isLoggedIn) return;
+  if (v2KstDate(prev) === v2KstDate(saved)) return;
+  try {
+    let r = null;
+    if (v2KstDate(saved)) r = await statusApply({ customerId, event: 'reevaluate', args: ['다음 컨택 변경'] });
+    else if (savedRow && savedRow.customer_segment === '잠재고객') r = await statusSetSeg(customerId, '가망');   // 예약일을 지우면 잠재 → 가망
+    else return;
+    if (r && r.ok && r.changed) {
+      showToast('✓ 다음 컨택 날짜에 맞춰 고객 구분을 정리했습니다');
+      if (typeof refreshAfterConsultStatus === 'function') await refreshAfterConsultStatus(customerId);
+    } else if (r && !r.ok && !r.needs) {
+      console.warn('다음 컨택 재분류를 적용하지 못했습니다', r.userMessage || r.error);
+    }
+  } catch (e) { console.warn('다음 컨택 재분류 실패', e); }
+}
+
 async function saveConsultation(btn){
   if (typeof COMMISSION_MOCK_ON !== 'undefined' && COMMISSION_MOCK_ON) { alert('수수료 에이전시 테스트 모드(?commMock=1)에서는 상담을 저장할 수 없습니다.\n주소의 ?commMock=1 을 빼고 다시 열어 주세요.'); return; }
   const contact = normalizeContact(elVal('cust-contact'));
@@ -3440,6 +3473,7 @@ async function saveConsultation(btn){
     }
 
     // 1) 고객 기본정보
+    const prevNextContact = customerId ? await v2ReadNextContact(customerId) : null;   // 6-5c ③: 다음 컨택 날짜가 바뀌었는지 비교용
     const payload = buildCustomerPayload(!customerId);
     const res = customerId
       ? await sb.from('customers').update(payload).eq('customer_id', customerId).select()
@@ -3449,6 +3483,7 @@ async function saveConsultation(btn){
     currentCustomerId = customerId;
     consultLoadedContact = contact;
     if (consultLoadState === 'none') consultLoadState = 'ok';
+    await v2ReclassifyAfterNextContact(customerId, prevNextContact, payload.next_contact_at, res.data && res.data[0]);   // 6-5c ③
 
     // 1-b) 상태값 (S7-6) : 선택칸을 바꾼 경우에만 changeStatus 로 저장 (이력 1건). 실패해도 아래 상담 내용 저장은 계속합니다.
     let statusChanged = false, statusFail = null;
