@@ -926,7 +926,8 @@ async function addContractItem(opts){
     const ins = await sb.from('contract_items').insert({
       contract_id: cid, customer_id: contract.customer_id, product_type: o.productType,
       carrier: (o.carrier || '').trim() || null, product_name: (o.productName || '').trim() || null,
-      monthly_fee: fee, commission: comm, progress_status: '설치대기', source: 'app'
+      monthly_fee: fee, commission: comm, progress_status: '설치대기', source: 'app',
+      item_status: '상품제안', proposed_at: new Date().toISOString()      // 상태 개편(5-10): 새 상태 칼럼도 함께 기록 (옛 화면 호환을 위해 progress_status 도 유지)
     }).select('*');
     if (ins.error) return s6Err('상품 추가에 실패했습니다: ' + ins.error.message);
     const item = ins.data[0];
@@ -935,6 +936,8 @@ async function addContractItem(opts){
       await sb.from('contract_items').delete().eq('item_id', item.item_id);
       return s6Err('이력 저장에 실패해 상품을 추가하지 않았습니다: ' + h.error);
     }
+    // 처리할 상품이 새로 생겼으니 상담 상태를 맞춥니다 (R-02 상담대기→상담중, R-14 상담종료→상담중). 실패해도 상품 추가는 유지.
+    if (typeof StatusRules !== 'undefined' && typeof statusAfterProductAdded === 'function') { try { await statusAfterProductAdded(contract.customer_id); } catch (e) { /* 무시 */ } }
     return { ok: true, item };
   } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
 }
@@ -2418,3 +2421,41 @@ const statusEndConsult  = (customerId, choice)               => statusApply({ cu
 const statusRecordAbsence = (customerId, connected, absenceCount) => statusApply({ customerId, event: 'recordAbsence', args: [!!connected], absenceCount });
 const statusConfirmAbsence = (customerId, absenceCount)     => statusApply({ customerId, event: 'confirmAbsenceExclude', args: [], absenceCount });
 const statusAfterProductAdded = customerId                   => statusApply({ customerId, event: 'onProductAdded', args: [] });
+
+// ============================================================
+// 상태 개편 5-10 : 상품 변경 (D-02)  — 2026-10-19
+//  - 기존 상품은 접수취소(사유: 상품변경), 새 상품은 상품제안으로 같은 계약에 만들고 change_from_item_id 로 변경 전 상품을 연결합니다.
+//  - 순서: 규칙 검사(StatusRules.changeProduct) → 새 상품 행 만들기 → 이력 + 기존 상품/고객 갱신(stSave). 저장이 실패하면 만든 새 상품 행을 지웁니다.
+//  - o: { customerId, itemId, product:{ carrier, name, monthlyFee, commission } }   product.name 필수. 구분(product_type)은 기존 상품과 같게 만듭니다.
+//  - 결과: statusApply 와 같음 { ok, changed, customer, messages, historyIds } + newItemId. 개통·지급이 진행된 상품이면 messages 에 환수 확인 안내가 옵니다.
+// ============================================================
+async function statusChangeProduct(o){
+  try {
+    o = o || {};
+    const le = s6LoginErr(); if (le) return s6Err(le);
+    if (typeof StatusRules === 'undefined') return s6Err('StatusRules.js 가 불러와지지 않았습니다.');
+    const itemId = Number(o.itemId);
+    if (!Number.isFinite(itemId)) return s6Err('상품 ID가 올바르지 않습니다.');
+    const p = o.product || {};
+    const name = String(p.name || '').trim();
+    const fee = s6Int(p.monthlyFee), comm = s6Int(p.commission);
+    if (Number.isNaN(fee) || Number.isNaN(comm)) return s6Err('요금·수수료는 숫자로 입력해 주세요.');
+    const l = await stLoad(o.customerId, o);
+    if (!l.ok) return l;
+    const oldRaw = l.raw.items.find(r => r.item_id === itemId);
+    if (!oldRaw) return s6Err('상품을 찾을 수 없습니다.');
+    const res = StatusRules.changeProduct(l.customer, itemId, { name: name }, l.cfg);
+    if (res.error) return { ok: false, error: res.error.text, code: res.error.code, userMessage: res.error.text };
+    const ins = await sb.from('contract_items').insert({
+      contract_id: oldRaw.contract_id, customer_id: oldRaw.customer_id, product_type: oldRaw.product_type,
+      carrier: (p.carrier || '').trim() || null, product_name: name, monthly_fee: fee, commission: comm,
+      progress_status: '설치대기', item_status: '상품제안', proposed_at: new Date().toISOString(),
+      change_from_item_id: itemId, source: 'app'
+    }).select('*');
+    if (ins.error) return s6Err('새 상품을 만들지 못해 변경하지 않았습니다: ' + ins.error.message);
+    const newRow = ins.data[0];
+    const sv = await stSave(l, res.customer);     // 새 상품은 이미 만들었으므로 stSave 는 이력 + 기존 상품·고객 값만 저장
+    if (!sv.ok) { await sb.from('contract_items').delete().eq('item_id', newRow.item_id); return sv; }
+    return { ok: true, changed: true, newItemId: newRow.item_id, customer: res.customer, messages: res.messages, confirm: null, historyIds: sv.historyIds };
+  } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
+}
