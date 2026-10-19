@@ -845,7 +845,7 @@ PASS 앱 → 전체 → 명의도용방지 → 해당 통신사 해제
 <script src="config.js?v=20261006b"></script>
 <script src="Calculator.js?v=20261006a"></script>
 <script src="StatusRules.js?v=20261016a"></script>
-<script src="Supabaseservice.js?v=20261016a"></script>
+<script src="Supabaseservice.js?v=20261019a"></script>
 <script>
 // 인터넷/TV 통신사 열 목록: KT·LG·SKB·SKT·SKY 5개(config.js 의 CARRIERS)
 const HOME_CARRIERS = (typeof CARRIERS !== 'undefined') ? CARRIERS : [];
@@ -4622,7 +4622,7 @@ function renderDetailSummary(){
   const cts = (detailBundle.contracts || []).filter(c => c.effective_status !== '계약취소');
   let fee = 0, gift = 0, comm = 0;
   cts.forEach(c => {
-    (c.items || []).filter(i => i.progress_status !== '접수취소').forEach(i => { fee += Number(i.monthly_fee) || 0; });
+    (c.items || []).filter(i => i.progress_status !== '접수취소' && i.item_status !== '접수취소').forEach(i => { fee += Number(i.monthly_fee) || 0; });
     gift += Number(c.gift_total) || 0; comm += Number(c.commission_total) || 0;
   });
   const canceled = (detailBundle.contracts || []).length - cts.length;
@@ -5513,7 +5513,8 @@ function v2ItemControlsHtml(it){
     + `<label>상품 ${sel('pstatus', st, O.pstatus, false, '상품 상태 (사유가 필요한 상태는 선택 후 입력창이 열립니다)', false)}</label>`
     + `<label>지급 ${sel('pay', pay, O.pay, dead, dead ? '접수불가·접수취소 상품에는 지급을 설정할 수 없습니다' : '고객지급', true)}${payDateBtn}</label>`
     + `<label>환수 ${sel('refund', refund, O.refund, !(pay === '지급완료' || refund !== '-'), '환수는 지급완료 상품만 요청할 수 있습니다', true)}</label>`
-    + `<label>정산 ${sel('settle', settle, O.settle, !(st === '개통완료' || settle !== '-'), '수수료 정산은 개통완료 이후에 입력할 수 있습니다', true)}</label></div>`;
+    + `<label>정산 ${sel('settle', settle, O.settle, !(st === '개통완료' || settle !== '-'), '수수료 정산은 개통완료 이후에 입력할 수 있습니다', true)}</label>`
+    + (!dead && typeof statusChangeProduct === 'function' ? `<button type="button" class="mini-btn" title="이 상품을 접수취소(상품변경)하고 새 상품을 제안으로 만듭니다" onclick="v2ChangeProduct(${it.item_id})">🔄 상품 변경</button>` : '') + `</div>`;
 }
 
 /* 입력 모달: o = { title, desc, fields:[{id,label,type,value,options,placeholder,hint}], ok, noCancel, validate(values)→오류문구 }
@@ -5745,6 +5746,25 @@ async function v2ReengageConvert(){
   catch (e) { r = { ok: false, error: e && e.message ? e.message : String(e) }; }
   await v2FinishStatus(r, cid);
 }
+
+/* 상품 변경 (5-10, D-02): 기존 상품은 접수취소(사유: 상품변경), 같은 계약에 새 상품을 상품제안으로 만들고 변경 전 상품과 연결 */
+async function v2ChangeProduct(itemId){
+  const cid = detailCustomerId; if (!cid || typeof statusChangeProduct !== 'function') return;
+  let it = null;
+  for (const c of ((detailBundle && detailBundle.contracts) || [])) { const f = c.items.find(i => i.item_id === itemId); if (f) it = f; }
+  if (!it) return;
+  const d = await v2Dialog({ title: '상품 변경', ok: '변경',
+    desc: '기존 상품(' + (it.product_name || formatItemNo(itemId)) + ')은 접수취소(사유: 상품변경)로 바뀌고, 같은 계약에 새 상품이 상품제안으로 만들어집니다. 개통·지급이 진행된 상품이면 환수 확인 안내가 표시됩니다.',
+    fields: [{ id: 'carrier', label: '통신사', type: 'text', value: it.carrier || '' }, { id: 'name', label: '새 상품명', type: 'text', value: '' },
+             { id: 'fee', label: '월요금(원)', type: 'text', value: it.monthly_fee == null ? '' : String(it.monthly_fee) },
+             { id: 'comm', label: '수수료(원)', type: 'text', value: it.commission == null ? '' : String(it.commission) }],
+    validate: v => v.name.trim() ? '' : '새 상품명을 입력해 주세요.' });
+  if (!d) return;
+  let r;
+  try { r = await statusChangeProduct({ customerId: cid, itemId, product: { carrier: d.carrier, name: d.name, monthlyFee: d.fee, commission: d.comm } }); }
+  catch (e) { r = { ok: false, error: e && e.message ? e.message : String(e) }; }
+  await v2FinishStatus(r, cid);
+}
 /* ===== v2 상태 변경 UI 끝 ===== */
 
 
@@ -5868,7 +5888,7 @@ function renderContractCard(ct, all){
   const typeOptions = (S6_ITEM_TYPES[ct.contract_type] || []).map(t => `<option value="${t}">${S6_ITEM_TYPE_LABEL[t]}</option>`).join('');
   const usimFull = ct.contract_type === 'usim' && ct.items.length >= 1;
 
-  const liveItems = ct.items.filter(i => i.progress_status !== '접수취소');
+  const liveItems = ct.items.filter(i => i.progress_status !== '접수취소' && i.item_status !== '접수취소');   // 새 상태로 접수취소(상품변경 등)된 상품도 합계에서 뺍니다
   const feeSum = liveItems.reduce((a, i) => a + (Number(i.monthly_fee) || 0), 0);
   const stageCls = (typeof CONTRACT_STATUS_STAGE !== 'undefined' && CONTRACT_STATUS_STAGE[ct.contract_status]) || 0;
   const headChips = `<span class="cust-status-chip stage-${stageCls}">${escHtml(ct.contract_status)}</span>`
