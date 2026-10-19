@@ -6165,6 +6165,15 @@ async function openCustomerByIdV2(id){
   await openCustomerDetail(id);
 }
 
+/* 6-5c ①: 새 상품 상태(item_status)가 있는 상품·계약은 옛 선택칸(계약 접수·지급·환수, 설치 진행)을 잠가
+   옛 칼럼과 새 칼럼이 어긋나지 않게 합니다. 새 상태가 없는 옛 데이터는 그대로 바꿀 수 있습니다. (옛 칼럼 삭제는 G4) */
+function v2OldLockHtml(html, locked){
+  if (!locked) return html;
+  return html.replace('<select class="ct-select"', '<select class="ct-select" disabled title="새 상태 기준 데이터입니다. 상품 행의 \'상태 변경\' 줄에서 바꿔 주세요."');
+}
+function v2ItemHasNewStatus(it){ return !!(it && it.item_status); }
+function v2ContractHasNewStatus(ct){ return !!(ct && (ct.items || []).some(v2ItemHasNewStatus)); }
+
 function renderContractCard(ct, all){
   const cid = ct.contract_id;
   const draft = ct.contract_status === '작성중' && !ct.received_at;
@@ -6186,7 +6195,7 @@ function renderContractCard(ct, all){
       <td><input type="text" id="it-${it.item_id}-name" value="${escAttr(it.product_name || '')}"></td>
       <td><input type="text" inputmode="numeric" id="it-${it.item_id}-fee" value="${escAttr(fmtMoney(it.monthly_fee))}"></td>
       <td><input type="text" inputmode="numeric" id="it-${it.item_id}-comm" value="${escAttr(fmtMoney(it.commission))}">${it.detail && it.detail.commissionAgency ? `<span class="ag-sub" title="상담 저장 당시 수수료를 준 에이전시">${escHtml(it.detail.commissionAgency)}</span>` : ''}</td>
-      <td>${ctSelectHtml(ITEM_PROGRESS, it.progress_status, `changeItemProgress(this, ${it.item_id}, ${cid})`, false)}
+      <td>${v2OldLockHtml(ctSelectHtml(ITEM_PROGRESS, it.progress_status, `changeItemProgress(this, ${it.item_id}, ${cid})`, false), v2ItemHasNewStatus(it))}
           ${it.progress_status === '접수취소' && it.cancel_reason ? `<div class="cust-ov-sub">${escHtml(it.cancel_reason)}</div>` : ''}${v2ItemStatusHtml(it)}</td>
       <td class="ct-row-actions"><span class="mini-btn-row">
         <button type="button" class="mini-btn" onclick="saveItemUi(${it.item_id}, this)">저장</button>
@@ -6221,10 +6230,10 @@ function renderContractCard(ct, all){
     </div>
     <div class="ct-body">
     <div class="ct-status-row">
-      <span class="cust-ov-sub" title="상품별 새 상태는 아래 상품 행의 '상태 변경'에서 바꿉니다">계약 단위(옛 방식)</span>
-      <label>접수 ${ctSelectHtml(CONTRACT_STATUS_OPTIONS, ct.contract_status, `changeContractStatus(this, ${cid}, 'status')`, false)}</label>
-      <label>지급 ${ctSelectHtml(PAYOUT_STATUSES, ct.payout_status, `changeContractStatus(this, ${cid}, 'payout')`, true, '해당 없음')}</label>
-      <label>환수 ${ctSelectHtml(CLAWBACK_STATUSES, ct.clawback_status, `changeContractStatus(this, ${cid}, 'clawback')`, true, '해당 없음')}</label>
+      <span class="cust-ov-sub" title="상품별 새 상태는 아래 상품 행의 '상태 변경'에서 바꿉니다">${v2ContractHasNewStatus(ct) ? '계약 단위(옛 방식 · 읽기 전용)' : '계약 단위(옛 방식)'}</span>
+      <label>접수 ${v2OldLockHtml(ctSelectHtml(CONTRACT_STATUS_OPTIONS, ct.contract_status, `changeContractStatus(this, ${cid}, 'status')`, false), v2ContractHasNewStatus(ct))}</label>
+      <label>지급 ${v2OldLockHtml(ctSelectHtml(PAYOUT_STATUSES, ct.payout_status, `changeContractStatus(this, ${cid}, 'payout')`, true, '해당 없음'), v2ContractHasNewStatus(ct))}</label>
+      <label>환수 ${v2OldLockHtml(ctSelectHtml(CLAWBACK_STATUSES, ct.clawback_status, `changeContractStatus(this, ${cid}, 'clawback')`, true, '해당 없음'), v2ContractHasNewStatus(ct))}</label>
       ${ct.status_reason && ct.contract_status === '접수불가' ? `<span class="cust-ov-sub">접수불가 사유: ${escHtml(ct.status_reason)}</span>` : ''}
     </div>
     <div class="ct-items-wrap">
