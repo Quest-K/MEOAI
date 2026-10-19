@@ -85,6 +85,13 @@
 .v2-chip.ok{background:#e6f1ea;color:#2f7d4f;}.v2-chip.go{background:#e7f0fb;color:#2b6cb0;}
 .v2-chip.hold{background:#fff3d6;color:#8a5a12;}.v2-chip.bad{background:#fbe9e7;color:#c0392b;}
 .v2-chip.none{background:#f3f1ec;color:#a0a4ab;}
+.v2-ctl{display:flex;flex-wrap:wrap;gap:6px 10px;margin-top:6px;padding:6px 8px;border:1px dashed #d9d4c8;border-radius:8px;background:#faf9f6;font-size:11px;align-items:center;}
+.v2-ctl label{display:inline-flex;align-items:center;gap:4px;color:#6a6d74;}
+.v2-ctl select{font-size:11px;padding:2px 4px;max-width:112px;}
+.v2-ctl-tag{font-weight:700;color:#8a5a12;}
+.v2-dlg-row{margin:8px 0;}.v2-dlg-row label{display:block;font-size:12px;color:#555;margin-bottom:3px;}
+.v2-dlg-row input,.v2-dlg-row select,.v2-dlg-row textarea{width:100%;box-sizing:border-box;}
+.v2-dlg-err{color:#c0392b;font-size:12px;min-height:16px;}
 </style>
 </head>
 <body>
@@ -5484,6 +5491,178 @@ function v2UsimLinkHtml(ct, all){
 }
 
 
+/* ===== v2 상태 변경 UI 시작 (5-4 나머지 + 5-5 사유 모달) — 2026-10-19 =====
+   - 상품 행 아래에 [상태 변경] 줄을 추가: 상품 상태 · 지급 · 환수 · 정산 드롭다운. 저장은 Supabaseservice.js 의 statusSet* (규칙: StatusRules.js).
+   - 규칙이 "입력이 더 필요하다(needs)"고 답하면 모달로 받아 같은 이벤트를 다시 호출합니다: reason(사유) · years(재영업 1/3년) · endChoice(제외/잠재).
+   - 새 상태 칼럼만 바꿉니다. 옛 "설치 진행" 선택(progress_status)·계약 접수/지급/환수 선택과는 별개로 저장됩니다. */
+function v2Opt(){ return (typeof StatusRules !== 'undefined' && StatusRules.OPT) || null; }
+function v2TodayKst(){ return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10); }
+
+function v2ItemControlsHtml(it){
+  const O = v2Opt();
+  if (!O || typeof statusApply !== 'function' || !it || !('item_status' in it)) return '';
+  const st = it.item_status || '', pay = it.pay_status || '-', settle = it.pay_invoice_status || '-', refund = it.refund_status || '-';
+  const dead = st === '접수불가' || st === '접수취소';
+  const opt = (v, cur, label) => `<option value="${escAttr(v)}"${v === cur ? ' selected' : ''}>${escHtml(label || v)}</option>`;
+  const sel = (kind, cur, list, disabled, title, withNone) => `<select class="v2-sel" data-prev="${escAttr(cur === '-' ? '' : cur)}" ${disabled ? 'disabled' : ''} title="${escAttr(title || '')}" onchange="v2StatusChange(this, ${it.item_id}, '${kind}')">`
+    + (withNone ? opt('', cur === '-' ? '' : cur, '해당 없음') : (cur ? '' : '<option value="" selected disabled>미설정</option>'))
+    + list.map(v => opt(v, cur)).join('') + '</select>';
+  const payDateBtn = pay === '지급완료'
+    ? `<button type="button" class="mini-btn" title="지급완료일 수정" onclick="v2EditPayDate(${it.item_id})">📅 ${escHtml(it.paid_at ? String(it.paid_at).slice(0, 10) : '지급완료일')}</button>` : '';
+  return `<div class="v2-ctl"><span class="v2-ctl-tag">상태 변경</span>`
+    + `<label>상품 ${sel('pstatus', st, O.pstatus, false, '상품 상태 (사유가 필요한 상태는 선택 후 입력창이 열립니다)', false)}</label>`
+    + `<label>지급 ${sel('pay', pay, O.pay, dead, dead ? '접수불가·접수취소 상품에는 지급을 설정할 수 없습니다' : '고객지급', true)}${payDateBtn}</label>`
+    + `<label>환수 ${sel('refund', refund, O.refund, !(pay === '지급완료' || refund !== '-'), '환수는 지급완료 상품만 요청할 수 있습니다', true)}</label>`
+    + `<label>정산 ${sel('settle', settle, O.settle, !(st === '개통완료' || settle !== '-'), '수수료 정산은 개통완료 이후에 입력할 수 있습니다', true)}</label></div>`;
+}
+
+/* 입력 모달: o = { title, desc, fields:[{id,label,type,value,options,placeholder,hint}], ok, noCancel, validate(values)→오류문구 }
+   확인 → { id: 값 … }, 취소 → null */
+function v2Dialog(o){
+  return new Promise(resolve => {
+    const ov = document.createElement('div');
+    ov.className = 'modal-overlay'; ov.style.display = 'flex'; ov.style.zIndex = '10050';
+    const fields = (o.fields || []).map(f => {
+      const id = 'v2dlg-' + f.id;
+      let ctl;
+      if (f.type === 'select') ctl = `<select id="${id}">${(f.options || []).map(x => `<option value="${escAttr(x.value)}"${String(x.value) === String(f.value) ? ' selected' : ''}>${escHtml(x.label)}</option>`).join('')}</select>`;
+      else if (f.type === 'textarea') ctl = `<textarea id="${id}" rows="3" placeholder="${escAttr(f.placeholder || '')}">${escHtml(f.value || '')}</textarea>`;
+      else ctl = `<input id="${id}" type="${f.type || 'text'}" value="${escAttr(f.value == null ? '' : f.value)}" ${f.type === 'number' ? 'inputmode="numeric" min="0"' : ''} placeholder="${escAttr(f.placeholder || '')}">`;
+      return `<div class="v2-dlg-row"><label for="${id}">${escHtml(f.label)}</label>${ctl}${f.hint ? `<div class="cust-ov-sub">${escHtml(f.hint)}</div>` : ''}</div>`;
+    }).join('');
+    ov.innerHTML = `<div class="modal-box" style="max-width:420px;"><h3 style="margin:0 0 6px;">${escHtml(o.title || '')}</h3>`
+      + (o.desc ? `<p class="modal-desc" style="white-space:pre-line;">${escHtml(o.desc)}</p>` : '')
+      + fields + `<div class="v2-dlg-err" id="v2dlg-err"></div><div class="modal-actions">`
+      + (o.noCancel ? '' : '<button type="button" class="mini-btn" data-act="cancel">취소</button>')
+      + `<button type="button" class="mini-btn mini-btn-primary" data-act="ok">${escHtml(o.ok || '확인')}</button></div></div>`;
+    const onKey = e => { if (e.key === 'Escape' && !o.noCancel) done(null); };
+    const done = v => { document.removeEventListener('keydown', onKey); ov.remove(); resolve(v); };
+    ov.addEventListener('click', e => {
+      const act = e.target && e.target.getAttribute ? e.target.getAttribute('data-act') : null;
+      if (act === 'cancel') return done(null);
+      if (act !== 'ok') return;
+      const vals = {};
+      (o.fields || []).forEach(f => { const el = ov.querySelector('#v2dlg-' + f.id); vals[f.id] = el ? el.value : ''; });
+      const msg = o.validate ? o.validate(vals) : '';
+      if (msg) { ov.querySelector('#v2dlg-err').textContent = msg; return; }
+      done(vals);
+    });
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(ov);
+  });
+}
+
+/* 규칙이 요구한 추가 입력 받기. 취소하면 null */
+async function v2AskNeeds(n){
+  const O = v2Opt() || { excl: [] };
+  if (n.code === 'reason') {
+    const list = n.options || [];
+    const d = await v2Dialog({ title: (n.status || '') + ' 사유', desc: '사유를 선택해 주세요. "기타"를 고르면 메모가 필요합니다.',
+      fields: [{ id: 'reason', label: '사유', type: 'select', options: list.map(x => ({ value: x, label: x })), value: list[0] },
+               { id: 'memo', label: '메모', type: 'textarea', placeholder: '기타일 때 필수' }],
+      validate: v => (v.reason === '기타' && !v.memo.trim()) ? '기타를 선택한 경우 메모를 입력해 주세요.' : '' });
+    return d ? { reason: d.reason, memo: d.memo.trim() } : null;
+  }
+  if (n.code === 'years') {
+    const sg = n.suggest || {};
+    const lab = y => y + '년 뒤' + (sg[y] && sg[y].date ? ' (' + sg[y].date + ')' : '');
+    const d = await v2Dialog({ title: '재영업 예약', desc: '모든 지급이 끝났습니다. 몇 년 뒤에 다시 연락할까요? 선택하면 상담종료 + 잠재고객으로 바뀝니다.',
+      fields: [{ id: 'years', label: '재영업 시점', type: 'select', value: '1', options: (n.options || [1, 3]).map(y => ({ value: String(y), label: lab(y) })) }], ok: '상담종료' });
+    return d ? { years: Number(d.years) } : null;
+  }
+  if (n.code === 'endChoice') {
+    const m = await v2Dialog({ title: '상담 종료 방식', desc: (n.reason || '') + '\n환수가 끝나 상담을 종료합니다. 종료 방식을 선택해 주세요.',
+      fields: [{ id: 'mode', label: '종료 방식', type: 'select', value: '제외', options: [{ value: '제외', label: '제외 (사유 선택)' }, { value: '잠재', label: '잠재 (재영업 예약일 입력)' }] }], ok: '다음' });
+    if (!m) return null;
+    if (m.mode === '제외') {
+      const d = await v2Dialog({ title: '제외 사유', fields: [{ id: 'reason', label: '사유', type: 'select', value: O.excl[0], options: O.excl.map(x => ({ value: x, label: x })) },
+        { id: 'memo', label: '메모', type: 'textarea', placeholder: '기타일 때 필수' }],
+        validate: v => (v.reason === '기타' && !v.memo.trim()) ? '기타를 선택한 경우 메모를 입력해 주세요.' : '' });
+      return d ? { endChoice: { mode: '제외', reason: d.reason, memo: d.memo.trim() } } : null;
+    }
+    const d = await v2Dialog({ title: '재영업 예약일', desc: '가망 기준 개월 수를 넘는 날짜를 입력해 주세요.',
+      fields: [{ id: 'date', label: '재컨택 예약일', type: 'date' }], validate: v => v.date ? '' : '날짜를 입력해 주세요.' });
+    return d ? { endChoice: { mode: '잠재', date: d.date } } : null;
+  }
+  return undefined;   // 알 수 없는 요구
+}
+
+/* 한 건 저장: needs 가 오면 모달로 받아 다시 호출 (최대 4번). → statusSet* 결과 또는 { cancelled:true } */
+async function v2RunStatus(cid, itemId, kind, val, opts){
+  const fn = { pstatus: statusSetProduct, pay: statusSetPay, refund: statusSetRefund, settle: statusSetSettle }[kind];
+  let o = Object.assign({}, opts || {});
+  for (let i = 0; i < 4; i++) {
+    const r = await fn(cid, itemId, val, o);
+    if (r.ok || !r.needs) return r;
+    const more = await v2AskNeeds(r.needs);
+    if (more === null) return { cancelled: true };
+    if (more === undefined) return { ok: false, error: '추가 입력이 필요합니다 (' + r.needs.code + ')' };
+    o = Object.assign(o, more);
+  }
+  return { ok: false, error: '입력을 처리하지 못했습니다. 다시 시도해 주세요.' };
+}
+
+/* 결과 표시 + 화면 갱신. 성공이면 true */
+async function v2FinishStatus(r, cid){
+  if (!r || r.cancelled) return false;
+  if (!r.ok) { alert('변경 실패: ' + (r.userMessage || r.error || '알 수 없는 오류')); return false; }
+  showToast(r.changed ? '✓ 변경되었습니다' : '변경된 내용이 없습니다');
+  await afterContractChange(cid);
+  const msgs = (r.messages || []).map(m => '· ' + m.text);
+  if (msgs.length) await v2Dialog({ title: '안내', desc: msgs.join('\n'), ok: '확인', noCancel: true });
+  return true;
+}
+
+async function v2StatusChange(selectEl, itemId, kind){
+  const cid = detailCustomerId;
+  const prev = selectEl.getAttribute('data-prev') || '';
+  const revert = () => { selectEl.value = prev; };
+  if (!cid) { revert(); return; }
+  const to = selectEl.value;
+  const val = to === '' ? '-' : to;
+  const it = (() => { for (const c of ((detailBundle && detailBundle.contracts) || [])) { const f = c.items.find(i => i.item_id === itemId); if (f) return f; } return null; })();
+  let opts = {};
+  if (kind === 'pay' && val === '지급완료') {
+    const d = await v2Dialog({ title: '지급완료 처리', desc: '지급완료일을 확인해 주세요. 나중에 수정할 수 있습니다.', ok: '지급완료',
+      fields: [{ id: 'date', label: '지급완료일', type: 'date', value: v2TodayKst() }], validate: v => v.date ? '' : '날짜를 입력해 주세요.' });
+    if (!d) { revert(); return; }
+    opts.doneDate = d.date;
+  } else if (kind === 'refund' && val === '환수완료') {
+    const d = await v2Dialog({ title: '환수완료 처리', ok: '환수완료',
+      fields: [{ id: 'date', label: '환수완료일', type: 'date', value: v2TodayKst() }], validate: v => v.date ? '' : '날짜를 입력해 주세요.' });
+    if (!d) { revert(); return; }
+    opts.doneDate = d.date;
+  } else if (kind === 'settle' && (val === '발행완료' || val === '수금완료')) {
+    const isCollect = val === '수금완료';
+    const d = await v2Dialog({ title: isCollect ? '수금완료 처리' : '세금계산서 발행완료 처리', ok: val,
+      desc: isCollect ? '발행완료 후에만 수금완료로 바꿀 수 있고, 수금일은 발행일보다 빠를 수 없습니다.' : '',
+      fields: [{ id: 'date', label: isCollect ? '수금일' : '발행일', type: 'date', value: v2TodayKst() },
+               { id: 'amount', label: isCollect ? '수금 금액(원)' : '발행 금액(원)', type: 'number', value: isCollect && it && it.pay_invoice_amount != null ? it.pay_invoice_amount : '' }],
+      validate: v => !v.date ? '날짜를 입력해 주세요.' : (v.amount === '' || !(Number(v.amount) >= 0)) ? '금액을 입력해 주세요.' : '' });
+    if (!d) { revert(); return; }
+    opts = { date: d.date, amount: Number(d.amount) };
+  }
+  document.querySelectorAll('.v2-ctl select').forEach(s => { s.disabled = true; });
+  let r;
+  try { r = await v2RunStatus(cid, itemId, kind, val, opts); }
+  catch (e) { r = { ok: false, error: e && e.message ? e.message : String(e) }; }
+  const ok = await v2FinishStatus(r, cid);
+  if (!ok) { revert(); document.querySelectorAll('.v2-ctl select').forEach(s => { s.disabled = false; }); }
+}
+
+async function v2EditPayDate(itemId){
+  const cid = detailCustomerId; if (!cid) return;
+  let cur = '';
+  for (const c of ((detailBundle && detailBundle.contracts) || [])) { const f = c.items.find(i => i.item_id === itemId); if (f) cur = f.paid_at ? String(f.paid_at).slice(0, 10) : ''; }
+  const d = await v2Dialog({ title: '지급완료일 수정', desc: '재영업 예약일은 자동으로 바뀌지 않습니다.', ok: '저장',
+    fields: [{ id: 'date', label: '지급완료일', type: 'date', value: cur }], validate: v => v.date ? '' : '날짜를 입력해 주세요.' });
+  if (!d) return;
+  let r;
+  try { r = await statusSetPayDate(cid, itemId, d.date); } catch (e) { r = { ok: false, error: e && e.message ? e.message : String(e) }; }
+  await v2FinishStatus(r, cid);
+}
+/* ===== v2 상태 변경 UI 끝 ===== */
+
 /* 상품 행의 새 상태 표시 (CS v2 · 보기 전용): 상품 상태 · 지급 · 정산 · 환수
    칼럼: item_status, item_status_reason, pay_status, is_pay_exempt, paid_at, pay_invoice_status, refund_status, change_from_item_id
    상세 데이터에 새 칼럼이 아예 없으면(옛 서비스 파일) 아무것도 그리지 않습니다. */
@@ -5500,7 +5679,7 @@ function v2ItemStatusHtml(it){
   if (it.pay_invoice_status) out.push(chip({ '발행예정': '', '발행완료': 'go', '수금완료': 'ok' }[it.pay_invoice_status] || '', '정산', it.pay_invoice_status));
   if (it.refund_status) out.push(chip('bad', '환수', it.refund_status));
   if (it.change_from_item_id) out.push(chip('', '변경 전', formatItemNo(it.change_from_item_id)));
-  return `<div class="v2-item-st">${out.join('')}</div>`;
+  return `<div class="v2-item-st">${out.join('')}</div>${v2ItemControlsHtml(it)}`;
 }
 
 /* 계약 카드 추가 영역 (CS v2): 계약 정보 요약 · 유심↔인터넷 연결 변경 · 결합할인 · 최근 변경 메모 */
