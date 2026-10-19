@@ -4611,7 +4611,7 @@ function renderDetailStatusCards(){
     + card('고객 구분', seg ? chip(segCls, seg) : none, escHtml(segSub))
     + card('상담예약일', reserve ? `${escHtml(reserve)}${due ? ' <span class="sc-due">도래</span>' : ''}` : '<span class="sc-none-text">-</span>', escHtml(reserveSub))
     + card('제외 사유', exclBody, exclSub)
-    + `</div><div class="sc-note">새 상태 구조 기준입니다. 지금은 보기만 하며, 변경은 다음 단계에서 추가됩니다.</div>`;
+    + `</div>` + (v2CustomerControlsHtml(cu) || '<div class="sc-note">새 상태 구조 기준입니다. 이 화면에서는 보기만 가능합니다.</div>');
 }
 
 // 상세 상단 요약 줄 (계약 수·월요금·사은품·수수료 합계, 계약취소 제외)
@@ -5533,7 +5533,7 @@ function v2Dialog(o){
     ov.innerHTML = `<div class="modal-box" style="max-width:420px;"><h3 style="margin:0 0 6px;">${escHtml(o.title || '')}</h3>`
       + (o.desc ? `<p class="modal-desc" style="white-space:pre-line;">${escHtml(o.desc)}</p>` : '')
       + fields + `<div class="v2-dlg-err" id="v2dlg-err"></div><div class="modal-actions">`
-      + (o.noCancel ? '' : '<button type="button" class="mini-btn" data-act="cancel">취소</button>')
+      + (o.noCancel ? '' : `<button type="button" class="mini-btn" data-act="cancel">${escHtml(o.cancelText || '취소')}</button>`)
       + `<button type="button" class="mini-btn mini-btn-primary" data-act="ok">${escHtml(o.ok || '확인')}</button></div></div>`;
     const onKey = e => { if (e.key === 'Escape' && !o.noCancel) done(null); };
     const done = v => { document.removeEventListener('keydown', onKey); ov.remove(); resolve(v); };
@@ -5571,45 +5571,77 @@ async function v2AskNeeds(n){
     return d ? { years: Number(d.years) } : null;
   }
   if (n.code === 'endChoice') {
-    const m = await v2Dialog({ title: '상담 종료 방식', desc: (n.reason || '') + '\n환수가 끝나 상담을 종료합니다. 종료 방식을 선택해 주세요.',
-      fields: [{ id: 'mode', label: '종료 방식', type: 'select', value: '제외', options: [{ value: '제외', label: '제외 (사유 선택)' }, { value: '잠재', label: '잠재 (재영업 예약일 입력)' }] }], ok: '다음' });
-    if (!m) return null;
-    if (m.mode === '제외') {
-      const d = await v2Dialog({ title: '제외 사유', fields: [{ id: 'reason', label: '사유', type: 'select', value: O.excl[0], options: O.excl.map(x => ({ value: x, label: x })) },
+    const preset = n.preset || ((n.options || []).length === 1 ? n.options[0] : '');
+    let mode = preset;
+    if (!mode) {
+      const m = await v2Dialog({ title: '상담 종료 방식', desc: (n.reason ? n.reason + '\n' : '') + '상담을 종료합니다. 종료 방식을 선택해 주세요.',
+        fields: [{ id: 'mode', label: '종료 방식', type: 'select', value: '제외', options: [{ value: '제외', label: '제외 (사유 선택)' }, { value: '잠재', label: '잠재 (재영업 예약일 입력)' }] }], ok: '다음' });
+      if (!m) return null;
+      mode = m.mode;
+    }
+    if (mode === '제외') {
+      const d = await v2Dialog({ title: '제외 사유', desc: '선택한 사유는 이력에 남습니다.', fields: [{ id: 'reason', label: '사유', type: 'select', value: O.excl[0], options: O.excl.map(x => ({ value: x, label: x })) },
         { id: 'memo', label: '메모', type: 'textarea', placeholder: '기타일 때 필수' }],
         validate: v => (v.reason === '기타' && !v.memo.trim()) ? '기타를 선택한 경우 메모를 입력해 주세요.' : '' });
       return d ? { endChoice: { mode: '제외', reason: d.reason, memo: d.memo.trim() } } : null;
     }
-    const d = await v2Dialog({ title: '재영업 예약일', desc: '가망 기준 개월 수를 넘는 날짜를 입력해 주세요.',
+    const d = await v2Dialog({ title: '재영업 예약일', desc: '가망 기준 개월 수(기본 3개월)를 넘는 날짜를 입력해 주세요.',
       fields: [{ id: 'date', label: '재컨택 예약일', type: 'date' }], validate: v => v.date ? '' : '날짜를 입력해 주세요.' });
     return d ? { endChoice: { mode: '잠재', date: d.date } } : null;
   }
   return undefined;   // 알 수 없는 요구
 }
 
-/* 한 건 저장: needs 가 오면 모달로 받아 다시 호출 (최대 4번). → statusSet* 결과 또는 { cancelled:true } */
-async function v2RunStatus(cid, itemId, kind, val, opts){
-  const fn = { pstatus: statusSetProduct, pay: statusSetPay, refund: statusSetRefund, settle: statusSetSettle }[kind];
+/* 저장 호출 공통: call(opts) → statusSet* 결과. needs 가 오면 모달로 받아 다시 호출(최대 4번).
+   재영업 예약일이 가망 범위여서 거절되면(DATE_TOO_SOON) 안내 후 날짜만 다시 받음. → 결과 또는 { cancelled:true } */
+async function v2RunWith(call, opts){
   let o = Object.assign({}, opts || {});
-  for (let i = 0; i < 4; i++) {
-    const r = await fn(cid, itemId, val, o);
-    if (r.ok || !r.needs) return r;
-    const more = await v2AskNeeds(r.needs);
-    if (more === null) return { cancelled: true };
-    if (more === undefined) return { ok: false, error: '추가 입력이 필요합니다 (' + r.needs.code + ')' };
-    o = Object.assign(o, more);
+  for (let i = 0; i < 5; i++) {
+    const r = await call(o);
+    if (r.ok) return r;
+    if (r.needs) {
+      const more = await v2AskNeeds(r.needs);
+      if (more === null) return { cancelled: true };
+      if (more === undefined) return { ok: false, error: '추가 입력이 필요합니다 (' + r.needs.code + ')' };
+      o = Object.assign(o, more);
+      continue;
+    }
+    if (r.code === 'DATE_TOO_SOON' && o.endChoice && o.endChoice.mode === '잠재') {
+      alert(r.userMessage || r.error);
+      const more = await v2AskNeeds({ code: 'endChoice', preset: '잠재' });
+      if (more === null) return { cancelled: true };
+      o = Object.assign(o, more);
+      continue;
+    }
+    return r;
   }
   return { ok: false, error: '입력을 처리하지 못했습니다. 다시 시도해 주세요.' };
 }
+function v2RunStatus(cid, itemId, kind, val, opts){
+  const fn = { pstatus: statusSetProduct, pay: statusSetPay, refund: statusSetRefund, settle: statusSetSettle }[kind];
+  return v2RunWith(o => fn(cid, itemId, val, o), opts);
+}
 
-/* 결과 표시 + 화면 갱신. 성공이면 true */
+/* 결과 표시 + 화면 갱신. 성공이면 true.
+   제외(타사가입·기존유지) 처리 뒤 규칙이 재영업 전환을 제안하면(reengage-suggest) 날짜를 받아 바로 잠재로 전환할 수 있습니다. */
 async function v2FinishStatus(r, cid){
   if (!r || r.cancelled) return false;
   if (!r.ok) { alert('변경 실패: ' + (r.userMessage || r.error || '알 수 없는 오류')); return false; }
   showToast(r.changed ? '✓ 변경되었습니다' : '변경된 내용이 없습니다');
   await afterContractChange(cid);
-  const msgs = (r.messages || []).map(m => '· ' + m.text);
+  const all = r.messages || [];
+  const sug = all.find(m => m.code === 'reengage-suggest');
+  const msgs = all.filter(m => m.code !== 'reengage-suggest').map(m => '· ' + m.text);
   if (msgs.length) await v2Dialog({ title: '안내', desc: msgs.join('\n'), ok: '확인', noCancel: true });
+  if (sug) {
+    const d = await v2Dialog({ title: '재영업 예약으로 전환할까요?', desc: sug.text + '\n약정 만료 예상일 등 다시 연락할 날짜를 입력하면 상담종료 + 잠재고객으로 바뀝니다.',
+      fields: [{ id: 'date', label: '재컨택 예약일', type: 'date' }], ok: '잠재로 전환', cancelText: '그대로 제외',
+      validate: v => v.date ? '' : '날짜를 입력해 주세요.' });
+    if (d) {
+      const r2 = await v2RunWith(o => statusEndConsult(cid, o.endChoice), { endChoice: { mode: '잠재', date: d.date } });
+      await v2FinishStatus(r2, cid);
+    }
+  }
   return true;
 }
 
@@ -5661,7 +5693,60 @@ async function v2EditPayDate(itemId){
   try { r = await statusSetPayDate(cid, itemId, d.date); } catch (e) { r = { ok: false, error: e && e.message ? e.message : String(e) }; }
   await v2FinishStatus(r, cid);
 }
+
+/* ---- 고객 단위 상태 변경 (5-7): 상담 상태 · 고객 구분 · 상담예약일 · 제외→잠재 전환 ---- */
+function v2CustomerControlsHtml(cu){
+  const O = v2Opt();
+  if (!O || typeof statusApply !== 'function' || !cu) return '';
+  const state = cu.consult_state || '', seg = v2SegLabel(cu.customer_segment);
+  const reserve = cu.next_contact_at ? String(cu.next_contact_at).slice(0, 10) : '';
+  const opt = (v, cur, label) => `<option value="${escAttr(v)}"${v === cur ? ' selected' : ''}>${escHtml(label || v)}</option>`;
+  const sel = (kind, cur, list, withNone) => `<select class="v2-sel" data-prev="${escAttr(cur)}" onchange="v2CustomerChange(this, '${kind}')">`
+    + (withNone ? opt('', cur, '구분 없음') : (cur ? '' : '<option value="" selected disabled>미설정</option>')) + list.map(v => opt(v, cur)).join('') + '</select>';
+  const conv = (seg === '제외' && ['타사가입', '기존유지'].includes(cu.exclude_reason))
+    ? `<button type="button" class="mini-btn" title="약정 만료 예상일 등으로 재영업 예약" onclick="v2ReengageConvert()">🔁 재영업 예약(잠재)으로 전환</button>` : '';
+  return `<div class="v2-ctl v2-ctl-cust"><span class="v2-ctl-tag">상태 변경</span>`
+    + `<label>상담 상태 ${sel('consult', state, O.consult, false)}</label>`
+    + `<label>고객 구분 ${sel('seg', seg, O.seg, true)}</label>`
+    + `<label>상담예약일 <input type="date" id="v2-reserve-input" value="${escAttr(reserve)}" style="font-size:11px;">`
+    + `<button type="button" class="mini-btn" onclick="v2ReserveSave(false)">저장</button>`
+    + (reserve ? `<button type="button" class="mini-btn" onclick="v2ReserveSave(true)">해제</button>` : '') + `</label>${conv}</div>`
+    + `<div class="sc-note">상담 종료·제외는 상담 상태 또는 고객 구분에서 선택하면 사유 입력창이 열립니다. 진행 중인 상품이 있으면 종료할 수 없습니다.</div>`;
+}
+async function v2CustomerChange(selectEl, kind){
+  const cid = detailCustomerId;
+  const prev = selectEl.getAttribute('data-prev') || '';
+  const revert = () => { selectEl.value = prev; };
+  if (!cid) { revert(); return; }
+  const val = selectEl.value;
+  document.querySelectorAll('.v2-ctl select').forEach(s => { s.disabled = true; });
+  let r;
+  try { r = await v2RunWith(o => kind === 'consult' ? statusSetConsult(cid, val, o) : statusSetSeg(cid, val, o), {}); }
+  catch (e) { r = { ok: false, error: e && e.message ? e.message : String(e) }; }
+  const ok = await v2FinishStatus(r, cid);
+  if (!ok) { revert(); document.querySelectorAll('.v2-ctl select').forEach(s => { s.disabled = false; }); }
+}
+async function v2ReserveSave(clear){
+  const cid = detailCustomerId; if (!cid) return;
+  const el = document.getElementById('v2-reserve-input');
+  const date = clear ? '' : (el ? el.value : '');
+  if (!clear && !date) { alert('상담예약일을 입력해 주세요.'); return; }
+  let r;
+  try { r = await statusSetReserve(cid, date); } catch (e) { r = { ok: false, error: e && e.message ? e.message : String(e) }; }
+  await v2FinishStatus(r, cid);
+}
+async function v2ReengageConvert(){
+  const cid = detailCustomerId; if (!cid) return;
+  const d = await v2Dialog({ title: '재영업 예약(잠재)으로 전환', desc: '다시 연락할 날짜를 입력하면 상담종료 + 잠재고객으로 바뀌고 제외 사유는 해제됩니다.',
+    fields: [{ id: 'date', label: '재컨택 예약일', type: 'date' }], ok: '전환', validate: v => v.date ? '' : '날짜를 입력해 주세요.' });
+  if (!d) return;
+  let r;
+  try { r = await v2RunWith(o => statusEndConsult(cid, o.endChoice), { endChoice: { mode: '잠재', date: d.date } }); }
+  catch (e) { r = { ok: false, error: e && e.message ? e.message : String(e) }; }
+  await v2FinishStatus(r, cid);
+}
 /* ===== v2 상태 변경 UI 끝 ===== */
+
 
 /* 상품 행의 새 상태 표시 (CS v2 · 보기 전용): 상품 상태 · 지급 · 정산 · 환수
    칼럼: item_status, item_status_reason, pay_status, is_pay_exempt, paid_at, pay_invoice_status, refund_status, change_from_item_id
