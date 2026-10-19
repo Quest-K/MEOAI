@@ -1091,6 +1091,100 @@ async function v2LoadCustStateList(){
   dashRows = rows;
   renderDashList(title, r.count == null ? null : r.count);
 }
+
+/* =========================================================================
+   6-7 실적조회 새 기준 (추가만) : 상태 개편 §6 지표 정의
+   - 접수 이력 계약 = 소속 상품 중 first_received_at 이 있는 계약. 기간은 그 계약의 가장 이른 first_received_at 기준, 이후 취소돼도 유지
+   - 유치 고객 = 접수 이력 계약이 1건 이상인 고객. 유치율 = 기간 내 등록 고객 중 유치 고객 ÷ 기간 내 등록 고객
+   - 취소율 = 접수 이력 계약 중 현재 계약 상태(v_contract_state_v2)가 '취소'인 계약 ÷ 접수 이력 계약
+   - 지급·환수 현황 = 상품 단위 건수(상품의 first_received_at 이 기간 안인 상품). 금액은 contract_fee_lines 연결(F단계) 뒤에 추가
+   - 기존 실적조회(옛 계약 단위 기준)는 컷오버(G4)까지 그대로 두고 그 위에 이 블록을 붙입니다.
+   ========================================================================= */
+var v2PerfSeq = 0;
+
+function v2PerfCompute(customers, items, states, lo, hi){
+  const loT = lo ? new Date(lo).getTime() : -Infinity, hiT = hi ? new Date(hi).getTime() : Infinity;
+  const inP = t => { const x = new Date(t).getTime(); return !isNaN(x) && x >= loT && x <= hiT; };
+  const byCt = {};
+  items.forEach(it => {
+    if (!it.first_received_at) return;
+    const t = new Date(it.first_received_at).getTime();
+    if (isNaN(t)) return;
+    const c = byCt[it.contract_id] || (byCt[it.contract_id] = { customer_id: it.customer_id, min: t });
+    if (t < c.min) c.min = t;
+  });
+  const cts = Object.keys(byCt).filter(id => byCt[id].min >= loT && byCt[id].min <= hiT);
+  const canceled = cts.filter(id => states[id] === '취소').length;
+  const acqAll = new Set(Object.keys(byCt).map(id => byCt[id].customer_id));     // 기간과 무관한 유치 고객 (유치율 계산용)
+  const acqInPeriod = new Set(cts.map(id => byCt[id].customer_id));
+  const regIds = new Set(customers.map(c => c.customer_id));
+  let regAcq = 0; regIds.forEach(id => { if (acqAll.has(id)) regAcq++; });
+  const itemsP = items.filter(it => it.first_received_at && inP(it.first_received_at));
+  const cnt = (rows, f, list) => { const o = {}; list.forEach(k => { o[k] = 0; }); rows.forEach(r => { if (r[f] && k0(o, r[f])) o[r[f]]++; }); return o; };
+  const k0 = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+  const st = {}, sg = {};
+  customers.forEach(c => { if (c.consult_state) st[c.consult_state] = (st[c.consult_state] || 0) + 1; if (c.customer_segment) sg[c.customer_segment] = (sg[c.customer_segment] || 0) + 1; });
+  return {
+    registered: customers.length, regAcq, acqRate: customers.length ? regAcq / customers.length : null,
+    receivedContracts: cts.length, acquiredCustomers: acqInPeriod.size, canceled, cancelRate: cts.length ? canceled / cts.length : null,
+    itemsReceived: itemsP.length,
+    pay: cnt(itemsP, 'pay_status', V2_ND_PAY), refund: cnt(itemsP, 'refund_status', V2_ND_REFUND), item: cnt(itemsP, 'item_status', V2_ND_ITEM),
+    state: st, seg: sg
+  };
+}
+
+async function v2FetchPerfNew(from, to){
+  const b = s8Bounds(from, to);
+  if (b.error) return { error: b.error };
+  const [cu, it, cs] = await Promise.all([
+    s2FetchAll((a, z) => { let q = sb.from('customers').select('customer_id,consult_state,customer_segment,created_at'); if (b.lo) q = q.gte('created_at', b.lo); if (b.hi) q = q.lte('created_at', b.hi); return q.order('customer_id', { ascending: true }).range(a, z); }),
+    s2FetchAll((a, z) => sb.from('contract_items').select('item_id,contract_id,customer_id,item_status,pay_status,refund_status,first_received_at').not('first_received_at', 'is', null).order('item_id', { ascending: true }).range(a, z)),
+    s2FetchAll((a, z) => sb.from('v_contract_state_v2').select('contract_id,contract_state').order('contract_id', { ascending: true }).range(a, z))
+  ]);
+  const err = cu.error || it.error || cs.error;
+  if (err) return { error: err.message };
+  const states = {}; cs.rows.forEach(r => { states[r.contract_id] = r.contract_state; });
+  return v2PerfCompute(cu.rows, it.rows, states, b.lo, b.hi);
+}
+
+function v2PerfHtml(d, from, to){
+  if (!d) return '';
+  if (d.error) return `<div class="perf-warn">새 기준 실적 조회 실패: ${escHtml(d.error)}</div>`;
+  const pct = v => v == null ? '-' : (v * 100).toFixed(1) + '%';
+  const card = (label, value, title) => `<div class="perf-card"${title ? ` title="${escAttr(title)}"` : ''}><small>${escHtml(label)}</small><b>${value}</b></div>`;
+  const chips = (o, list, unit) => list.map(k => `<span class="fd-sub ${(o[k] || 0) === 0 ? 'zero' : ''}" style="cursor:default">${escHtml(k)}<span>${(o[k] || 0).toLocaleString()}${unit}</span></span>`).join('');
+  const period = (from || to) ? `${from || '처음'} ~ ${to || '오늘'}` : '전체 기간';
+  return `
+    <div class="fd-section-title">새 기준 실적 <small>(상태 개편 · ${escHtml(period)})</small></div>
+    <div class="perf-cards">
+      ${card('등록 고객 (기간 내)', d.registered.toLocaleString(), '고객 최초 등록일 기준')}
+      ${card('유치율', pct(d.acqRate), '기간 내 등록 고객 중 접수 이력 계약이 1건 이상인 고객 ÷ 기간 내 등록 고객 (' + d.regAcq + '명)')}
+      ${card('접수 이력 계약', d.receivedContracts.toLocaleString(), '소속 상품 중 하나라도 접수완료로 처음 바뀐 계약 (가장 이른 접수 시각이 기간 안). 이후 취소돼도 유지')}
+      ${card('유치 고객 (기간 내 접수)', d.acquiredCustomers.toLocaleString(), '기간 안에 접수 이력 계약이 생긴 고객 수')}
+      ${card('취소율', pct(d.cancelRate), '접수 이력 계약 중 현재 계약 상태가 취소인 계약 ' + d.canceled + '건 ÷ 접수 이력 계약. 일부 상품만 취소되고 나머지가 진행·완료이면 취소 아님')}
+    </div>
+    <div class="fd-subs fd-subs-flat"><span class="cust-ov-sub">상담 상태</span>${chips(d.state, V2_ND_STATES, '명')}<span class="fd-sep"></span><span class="cust-ov-sub">고객 구분</span>${chips(d.seg, V2_ND_SEGS, '명')}</div>
+    <div class="fd-subs fd-subs-flat"><span class="cust-ov-sub">접수 상품 ${d.itemsReceived.toLocaleString()}건</span>${chips(d.item, V2_ND_ITEM, '건')}</div>
+    <div class="fd-subs fd-subs-flat"><span class="cust-ov-sub">지급</span>${chips(d.pay, V2_ND_PAY, '건')}<span class="fd-sep"></span><span class="cust-ov-sub">환수</span>${chips(d.refund, V2_ND_REFUND, '건')}</div>
+    <p class="perf-note">지급·환수·상품 상태는 상품 단위 건수입니다(접수 시각이 기간 안인 상품). 금액은 수수료 상품별 연결(contract_fee_lines) 이후에 추가됩니다.
+      아래 기존 실적(옛 계약 단위 기준)은 컷오버 전까지 참고용입니다.</p>`;
+}
+
+async function v2RenderPerfNew(){
+  const summary = document.getElementById('perf-summary');
+  if (!summary) return;
+  let host = document.getElementById('v2-perf-new');
+  if (!host) { summary.insertAdjacentHTML('beforebegin', '<div id="v2-perf-new"></div>'); host = document.getElementById('v2-perf-new'); }
+  if (typeof isLoggedIn === 'undefined' || !isLoggedIn) { host.innerHTML = ''; return; }
+  const seq = ++v2PerfSeq;
+  const from = elVal('perf-from'), to = elVal('perf-to');
+  host.innerHTML = '<div class="wide-table-empty">새 기준 실적 불러오는 중...</div>';
+  let d;
+  try { d = await v2FetchPerfNew(from, to); } catch (e) { d = { error: e && e.message ? e.message : String(e) }; }
+  if (seq !== v2PerfSeq) return;
+  const h = document.getElementById('v2-perf-new');
+  if (h) h.innerHTML = v2PerfHtml(d, from, to);
+}
 </script>
 <script>
 /* =========================================================================
@@ -7160,6 +7254,8 @@ try { const nav = document.querySelector('.tab-nav'); if (nav && window.ResizeOb
 (function(){
   const baseLoad = loadDashList;
   loadDashList = async function(){ if (dashMode === 'v2due' || dashMode === 'v2stale') return v2LoadTaskList(); if (dashMode === 'v2cust') return v2LoadCustStateList(); return baseLoad.apply(this, arguments); };
+  const baseLoadPerf = loadPerformance;
+  loadPerformance = async function(){ const r = await baseLoadPerf.apply(this, arguments); try { await v2RenderPerfNew(); } catch (e) { console.warn('새 기준 실적 실패', e); } return r; };
   const baseRender = renderFunnelDashboard;
   renderFunnelDashboard = function(){ const r = baseRender.apply(this, arguments); setTimeout(v2RefreshTaskCounts, 0); setTimeout(v2RenderNewDash, 0); return r; };
 })();
