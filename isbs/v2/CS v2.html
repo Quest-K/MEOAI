@@ -92,6 +92,8 @@
 .v2-dlg-row{margin:8px 0;}.v2-dlg-row label{display:block;font-size:12px;color:#555;margin-bottom:3px;}
 .v2-dlg-row input,.v2-dlg-row select,.v2-dlg-row textarea{width:100%;box-sizing:border-box;}
 .v2-dlg-err{color:#c0392b;font-size:12px;min-height:16px;}
+.v2-list-newchip{margin-bottom:3px;}
+.v2-task-days{color:#c0392b;font-size:11px;}
 .v3-reg-badge{margin:6px 0 0;padding:3px 8px;border-radius:6px;background:#e8f5e9;color:#1b5e20;font-size:12px;display:inline-block;}
 </style>
 </head>
@@ -524,6 +526,8 @@
                    onkeydown="if(event.key==='Enter') searchCustomers()">
             <button type="button" class="cust-search-copy-btn" title="입력된 연락처 복사" onclick="copySearchContact()">📋</button>
             <select id="cust-search-status"></select>
+            <select id="cust-search-cstate" title="상담 상태(새 체계)"><option value="">상담 상태 전체</option><option>상담대기</option><option>상담중</option><option>상담종료</option></select>
+            <select id="cust-search-seg" title="고객 구분(새 체계)"><option value="">고객 구분 전체</option><option value="가망">가망</option><option value="잠재">잠재</option><option value="제외">제외</option></select>
             <button type="button" id="cust-search-btn" class="primary-btn" onclick="searchCustomers(this)">🔍 조회</button>
             <button type="button" class="secondary-btn" onclick="loadRecentCustomers(this)">최근 등록</button>
             <button type="button" class="secondary-btn" onclick="exportCustomerListCsv()" title="현재 조회된 목록을 엑셀에서 열 수 있는 파일로 저장합니다">📥 엑셀 다운로드</button>
@@ -868,6 +872,90 @@ PASS 앱 → 전체 → 명의도용방지 → 해당 통신사 해제
 <script src="Calculator.js?v=20261006a"></script>
 <script src="StatusRules.js?v=20261016a"></script>
 <script src="Supabaseservice.js?v=20261019a"></script>
+<script>
+/* =========================================================================
+   6-4 업무 목록 (새 상태 기준) : 예약일 도래 · 제안 방치
+   - 예약일 도래: 상담 상태가 상담종료가 아니고 상담예약일(next_contact_at)이 오늘 끝까지 이내
+   - 제안 방치: item_status='상품제안'인 상품이 crm_settings.proposal_stale_days(기본 7)일 이상 지난 고객, 상담종료 제외
+   ========================================================================= */
+var v2TaskCounts = { due: null, stale: null };
+var v2TaskCache = { due: [], stale: [], days: {} };
+var v2TaskSeq = 0;
+
+async function v2FetchTasks(){
+  const seq = ++v2TaskSeq;
+  const end = new Date(); end.setHours(23, 59, 59, 999);
+  const staleDays = (typeof stLoadCfg === 'function') ? (await stLoadCfg()).staleDays : 7;
+  const cutoff = new Date(Date.now() - staleDays * 86400000).toISOString();
+  const [dueRes, itRes] = await Promise.all([
+    sb.from('customers').select('*').neq('consult_state', '상담종료').not('consult_state', 'is', null).not('next_contact_at', 'is', null).lte('next_contact_at', end.toISOString()).order('next_contact_at', { ascending: true }).limit(500),
+    sb.from('contract_items').select('customer_id,proposed_at').eq('item_status', '상품제안').lte('proposed_at', cutoff).limit(2000)
+  ]);
+  if (seq !== v2TaskSeq) return null;
+  if (dueRes.error) return { error: dueRes.error.message };
+  if (itRes.error) return { error: itRes.error.message };
+  const oldest = {};
+  (itRes.data || []).forEach(r => { if (r.proposed_at && (!oldest[r.customer_id] || r.proposed_at < oldest[r.customer_id])) oldest[r.customer_id] = r.proposed_at; });
+  const ids = Object.keys(oldest).map(Number);
+  let staleRows = [];
+  if (ids.length) {
+    const cr = await sb.from('customers').select('*').in('customer_id', ids).limit(500);
+    if (cr.error) return { error: cr.error.message };
+    staleRows = (cr.data || []).filter(c => c.consult_state !== '상담종료');
+  }
+  const days = {};
+  staleRows.forEach(c => { days[c.customer_id] = Math.floor((Date.now() - new Date(oldest[c.customer_id]).getTime()) / 86400000); });
+  staleRows.sort((a, b) => days[b.customer_id] - days[a.customer_id]);
+  return { due: dueRes.data || [], stale: staleRows, days, staleDays };
+}
+
+async function v2RefreshTaskCounts(){
+  try {
+    if (typeof isLoggedIn === 'undefined' || !isLoggedIn) return;
+    const r = await v2FetchTasks();
+    if (!r || r.error) return;
+    v2TaskCache = r; v2TaskCounts = { due: r.due.length, stale: r.stale.length };
+    const a = document.getElementById('v2n-due'), b = document.getElementById('v2n-stale');
+    if (a) a.textContent = v2TaskCounts.due.toLocaleString();
+    if (b) b.textContent = v2TaskCounts.stale.toLocaleString();
+  } catch (e) { console.warn('업무 목록 집계 실패', e); }
+}
+
+function v2OpenTask(kind){
+  dashMode = kind;
+  renderFunnelDashboard();
+  loadDashList();
+}
+
+async function v2LoadTaskList(){
+  const box = document.getElementById('dash-list-card');
+  if (!box) return;
+  const kind = dashMode;
+  const title = kind === 'v2due' ? '📅 예약일 도래 (상담종료 제외)' : '⌛ 제안 방치';
+  const seq = ++dashListSeq;
+  box.innerHTML = `<div class="dash-list-head"><h3>${escHtml(title)}</h3></div><div class="wide-table-empty">불러오는 중...</div>`;
+  const r = await v2FetchTasks();
+  if (seq !== dashListSeq || !r) return;
+  if (r.error) { box.innerHTML = `<div class="dash-list-head"><h3>${escHtml(title)}</h3></div><div class="wide-table-empty">조회 실패: ${escHtml(r.error)}</div>`; return; }
+  v2TaskCache = r; v2TaskCounts = { due: r.due.length, stale: r.stale.length };
+  const rows = kind === 'v2due' ? r.due : r.stale;
+  await loadCustomerListExtras(rows);
+  if (seq !== dashListSeq) return;
+  dashRows = rows;
+  renderDashList(title + (kind === 'v2stale' ? ` (${r.staleDays}일 이상)` : ''), null);
+  const a = document.getElementById('v2n-due'), b = document.getElementById('v2n-stale');
+  if (a) a.textContent = v2TaskCounts.due.toLocaleString();
+  if (b) b.textContent = v2TaskCounts.stale.toLocaleString();
+  if (kind === 'v2stale') {
+    box.querySelectorAll('tr[onclick*="openCustomerFromDash("]').forEach(tr => {
+      const m = /openCustomerFromDash\((\d+)\)/.exec(tr.getAttribute('onclick') || '');
+      const d = m && r.days[Number(m[1])];
+      const td = tr.querySelector('td');
+      if (td && d != null) td.insertAdjacentHTML('beforeend', `<div class="v2-task-days">제안 ${d}일째</div>`);
+    });
+  }
+}
+</script>
 <script>
 /* =========================================================================
    CS v2 3단계 — 제안상품 [📝 계약등록] (registerContract 호출)
@@ -3691,6 +3779,8 @@ function renderFunnelDashboard(){
     </div>
     <div class="funnel-due-row">
       <button type="button" class="funnel-due-chip ${dashMode === 'today' ? 'is-on' : ''}" onclick="loadContactDueList('today')" title="상담중(고객부재·상담예약) 고객 중 오늘 남은 컨택 예정">⏰ 오늘 컨택 예정 <b>${dashDue.today.toLocaleString()}</b></button>
+      <button type="button" class="funnel-due-chip ${dashMode === 'v2due' ? 'is-on' : ''}" onclick="v2OpenTask('v2due')" title="새 상태 기준: 상담종료가 아닌 고객 중 상담예약일이 오늘이거나 지난 건">📅 예약일 도래 <b id="v2n-due">${v2TaskCounts.due === null ? '…' : v2TaskCounts.due.toLocaleString()}</b></button>
+      <button type="button" class="funnel-due-chip is-overdue ${dashMode === 'v2stale' ? 'is-on' : ''}" onclick="v2OpenTask('v2stale')" title="상품제안 상태로 설정일수(기본 7일) 이상 지난 상품이 있는 고객 (상담종료 제외)">⌛ 제안 방치 <b id="v2n-stale">${v2TaskCounts.stale === null ? '…' : v2TaskCounts.stale.toLocaleString()}</b></button>
       <button type="button" class="funnel-due-chip is-overdue ${dashMode === 'overdue' ? 'is-on' : ''}" onclick="loadContactDueList('overdue')" title="상담중(고객부재·상담예약) 고객 중 예정 시각이 지난 건">⚠ 컨택 지연 <b>${dashDue.overdue.toLocaleString()}</b></button>
     </div>
     <div class="fd-section-title">고객 현황 <small>(단위: 명)</small></div>
@@ -4108,6 +4198,7 @@ function renderCustomerList(rows, emptyText){
       <td class="cust-cell-1line" title="${escAttr(formatDateShort(c.created_at))}">${formatDateShort(c.created_at)}</td>
       <td class="cust-cell-1line" title="${escAttr(formatDateShort(c.updated_at))}">${formatDateShort(c.updated_at)}</td>
       <td>
+        ${c.consult_state ? `<div class="v2-list-newchip">${v2NewStatusChipHtml(c)}</div>` : ''}
         <select class="cust-status-chip stage-${CUSTOMER_STATUS_STAGE[sInfo.status] || 0}"${sInfo.legacy ? ' title="새 상태값이 아직 없어 구 상태값을 변환해 표시합니다. 선택하면 새 상태값으로 저장됩니다."' : ''}
                 onclick="event.stopPropagation()"
                 onchange="quickUpdateCustomerStatus(this, ${c.customer_id})">${customerStatusOptionsHtml(sInfo)}</select>${badge}
@@ -4642,7 +4733,7 @@ function attachFamilyHits(rows, fam){
 
 // 고객검색 조건(연락처·이름·상태값) 중 하나라도 입력되어 있는지
 function hasCustSearchCondition(){
-  return !!((elVal('cust-search-contact') || '').trim() || (elVal('cust-search-name') || '').trim() || elVal('cust-search-status'));
+  return !!((elVal('cust-search-contact') || '').trim() || (elVal('cust-search-name') || '').trim() || elVal('cust-search-status') || elVal('cust-search-cstate') || elVal('cust-search-seg'));
 }
 
 async function searchCustomers(btn){
@@ -4666,6 +4757,9 @@ async function searchCustomers(btn){
     // 이름 : 일부만 입력해도 검색 (연락처와 함께 입력하면 두 조건을 모두 만족하는 고객만 조회)
     if (nameRaw) query = query.ilike('name', `%${nameRaw}%`);
     if (status) query = query.eq('customer_status', status);   // S5: 새 고객 상태 기준
+    const cstate = elVal('cust-search-cstate'), segSel = elVal('cust-search-seg');   // 6-2: 새 상태 체계 필터
+    if (cstate) query = query.eq('consult_state', cstate);
+    if (segSel) query = query.eq('customer_segment', segSel + '고객');
 
     const { data, error } = await query.order(custListSortColumn, { ascending: custListSortAscending }).limit(100);
     if (error) { renderCustomerList([], '조회 실패: ' + error.message); return; }
@@ -6654,7 +6748,7 @@ async function activateCustTab(i){
       renderCustomerList(customerListCache);
       setVal('cust-search-contact', formatContactDisplay(c.contact));
       setVal('cust-search-name', '');
-      setVal('cust-search-status', '');
+      setVal('cust-search-status', ''); setVal('cust-search-cstate', ''); setVal('cust-search-seg', '');
       await openCustomer(c.customer_id);   // 고객조회 상세 + 탭 활성화
       fillConsultFormFromCustomer(c);      // 고객상담 화면
     } else {
@@ -6719,7 +6813,7 @@ async function quickTopSearch(rawContact, btn){
           renderCustomerList(customerListCache);
           setVal('cust-search-contact', formatContactDisplay(contact));
           setVal('cust-search-name', '');
-          setVal('cust-search-status', '');
+          setVal('cust-search-status', ''); setVal('cust-search-cstate', ''); setVal('cust-search-seg', '');
           switchTab('customers');
           showToast(`✓ 가족회선에 등록된 번호로 ${rows.length}명이 조회되었습니다`);
           return;
@@ -6734,7 +6828,7 @@ async function quickTopSearch(rawContact, btn){
       renderCustomerList(customerListCache);
       setVal('cust-search-contact', '');
       setVal('cust-search-name', contact);
-      setVal('cust-search-status', '');
+      setVal('cust-search-status', ''); setVal('cust-search-cstate', ''); setVal('cust-search-seg', '');
       switchTab('customers');
       showToast(`✓ "${contact}" 이름으로 ${data.length}명이 조회되었습니다. 목록에서 고객을 선택해주세요`);
       return;
@@ -6754,7 +6848,7 @@ async function quickTopSearch(rawContact, btn){
       renderCustomerList(customerListCache);
       setVal('cust-search-contact', formatContactDisplay(c.contact));
       setVal('cust-search-name', '');
-      setVal('cust-search-status', '');
+      setVal('cust-search-status', ''); setVal('cust-search-cstate', ''); setVal('cust-search-seg', '');
       await openCustomer(c.customer_id);
       // 고객상담 화면도 함께 채움
       fillConsultFormFromCustomer(c);
@@ -6856,6 +6950,12 @@ try { const nav = document.querySelector('.tab-nav'); if (nav && window.ResizeOb
 </aside>
 
 <script>
+(function(){
+  const baseLoad = loadDashList;
+  loadDashList = async function(){ if (dashMode === 'v2due' || dashMode === 'v2stale') return v2LoadTaskList(); return baseLoad.apply(this, arguments); };
+  const baseRender = renderFunnelDashboard;
+  renderFunnelDashboard = function(){ const r = baseRender.apply(this, arguments); setTimeout(v2RefreshTaskCounts, 0); return r; };
+})();
 // 고객을 상담 화면으로 불러올 때마다 등록 현황도 새로 읽습니다 (기존 함수는 그대로 두고 뒤에 이어 붙임)
 (function(){
   const base = fillConsultFormFromCustomer;
