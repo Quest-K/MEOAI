@@ -2978,39 +2978,46 @@ async function submitReservation(btn){
   try {
     // S7-7 : 상태는 구 funnel_status 가 아니라 changeStatus 로 '상담중 · 상담예약' 으로 바꿉니다(status_history 에 1건 기록).
     //        기존 고객의 특이사항·다음 컨택일시는 덮어쓰지 않고 이어 붙입니다(입력한 값이 있을 때만 바꿈).
-    const { data: exist, error: se } = await sb.from('customers').select('customer_id,customer_status,consult_substatus,status_reason,funnel_status').eq('contact', contact).limit(1);
+    const { data: exist, error: se } = await sb.from('customers').select('customer_id,customer_status,consult_substatus,status_reason,funnel_status,consult_state,customer_segment').eq('contact', contact).limit(1);
     if (se) { errEl.textContent = '조회 실패: ' + se.message; return; }
     const noteText = noteParts.join(' / ');
     const nextIso = parsedDate ? new Date(parsedDate).toISOString() : null;
 
     let resvCustomerId = null;
     if (exist && exist.length) {
-      const curLabel = custStatusLabelText(custStatusInfo(exist[0]));
-      if (!confirm(`동일한 연락처(${formatContactDisplay(contact)})의 고객이 이미 등록되어 있습니다.\n(현재 상태: ${curLabel})\n기존 정보를 상담예약 상태로 업데이트할까요?`)) return;
+      const curLabel = v2ConsultStateOf(exist[0]) + (exist[0].customer_segment ? ' · ' + String(exist[0].customer_segment).replace(/고객$/, '') : '');
+      if (!confirm(`동일한 연락처(${formatContactDisplay(contact)})의 고객이 이미 등록되어 있습니다.\n(현재 상태: ${curLabel})\n기존 정보에 상담예약일을 등록할까요?`)) return;
       resvCustomerId = exist[0].customer_id;
-      if (nextIso) {
-        const up = await sb.from('customers').update({ next_contact_at: nextIso }).eq('customer_id', resvCustomerId).select('customer_id');
-        if (up.error) { errEl.textContent = '등록 실패: ' + up.error.message; return; }
-      }
       if (noteText) await prependNoteLine(resvCustomerId, `[${formatNoteStamp(new Date())}] 상담예약 등록: ${noteText}`);
     } else {
       const ins = await sb.from('customers').insert({
         contact, customer_status: DEFAULT_CUSTOMER_STATUS, funnel_status: DEFAULT_FUNNEL_STATUS,   // 구 funnel_status 는 아직 읽는 화면·DB 제약 대비로만 넣음
-        next_contact_at: nextIso, notes: noteText || null
+        consult_state: '상담대기', notes: noteText || null
       }).select('customer_id');
       if (ins.error) { errEl.textContent = '등록 실패: ' + ins.error.message; return; }
       resvCustomerId = (ins.data && ins.data[0]) ? ins.data[0].customer_id : null;
       if (!resvCustomerId) { errEl.textContent = '등록 결과를 확인하지 못했습니다. 고객조회에서 확인해주세요.'; return; }
     }
 
-    const rs = await applyConsultStatus(resvCustomerId, RESERVATION_CUSTOMER_STATE);
+    // 6-5b: 상담예약 = 상담예약일(next_contact_at). 규칙(statusSetReserve)으로 날짜·고객 구분·이력을 저장한 뒤, 시각까지 정확히 남기려고 같은 날짜의 시각을 덧씁니다.
+    let rs = { ok: true, changed: false };
+    if (nextIso) {
+      const dateOnly = new Date(new Date(nextIso).getTime() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+      const r1 = await statusSetReserve(resvCustomerId, dateOnly);
+      if (!r1.ok) rs = { ok: false, error: r1.userMessage || r1.error };
+      else {
+        rs = { ok: true, changed: !!r1.changed };
+        const tu = await sb.from('customers').update({ next_contact_at: nextIso }).eq('customer_id', resvCustomerId);
+        if (tu.error) rs = { ok: false, error: '예약 시각 저장 실패: ' + tu.error.message };
+      }
+    }
     if (!rs.ok) {
-      errEl.textContent = `고객 정보는 저장되었지만 상태를 '상담예약'으로 바꾸지 못했습니다: ${rs.error || rs.userMessage}  (같은 번호로 [등록]을 다시 누르면 이어서 처리됩니다)`;
+      errEl.textContent = `고객 정보는 저장되었지만 상담예약일을 저장하지 못했습니다: ${rs.error}  (같은 번호로 [등록]을 다시 누르면 이어서 처리됩니다)`;
       await searchOrRefresh();
       return;
     }
 
-    showToast(rs.changed ? '✓ 상담예약이 등록되었습니다' : '✓ 상담예약이 등록되었습니다 (이미 상담예약 상태였습니다)');
+    showToast(nextIso ? (rs.changed ? '✓ 상담예약이 등록되었습니다' : '✓ 상담예약이 등록되었습니다 (같은 날짜가 이미 등록되어 있었습니다)') : '✓ 고객을 등록했습니다 (예상 시점을 날짜로 읽지 못해 상담예약일은 비워 두었습니다)');
     closeReservationModal();
     if (currentCustomerId === resvCustomerId || detailCustomerId === resvCustomerId) await refreshAfterConsultStatus(resvCustomerId);   // 열려 있는 상담 화면·상세의 상태 칸을 새 값으로
     await searchOrRefresh();
@@ -3195,13 +3202,13 @@ function initFunnelSelects(){
    - 선택칸을 채운 시점의 값(consultStatusBase)에서 바뀐 경우에만 저장할 때 상태를 변경합니다 → 같은 값으로 다시 저장해도 이력이 늘지 않고,
      연락처로 찾은 기존 고객의 상태를 상담 화면의 기본값(상담대기)이 덮어쓰지도 않습니다.
    - 상태는 changeStatus 를 거쳐 status_history 에 1건 기록됩니다. */
-let consultStatusBase = DEFAULT_CUSTOMER_STATUS;
+let consultStatusBase = '상담대기';
 
-function setConsultStatusSelect(info){
-  const cur = info || { status: DEFAULT_CUSTOMER_STATUS, substatus: '', reason: '', legacy: false };
+function setConsultStatusSelect(row){
+  const cur = v2ConsultStateOf(row);
   const sel = document.getElementById('cust-funnel-status');
-  if (sel) sel.innerHTML = customerStatusOptionsHtml(cur);
-  consultStatusBase = encodeCustStatus(cur);
+  if (sel) sel.innerHTML = v2ConsultOptionsHtml(row || { consult_state: '상담대기' });
+  consultStatusBase = cur;
 }
 
 // 사용자가 선택칸을 바꿨다면 새 선택값, 그대로면 null
@@ -3210,21 +3217,17 @@ function consultStatusChange(){
   return v && v !== consultStatusBase ? v : null;
 }
 
-// 선택값('상태' 또는 '상태|세부')을 고객에게 적용 : { ok, changed, error }
+// 선택한 상담 상태('상담대기'|'상담중'|'상담종료')를 새 규칙으로 적용 : { ok, changed, cancelled, error }
+//  상담종료는 제외 사유·잠재 예약일 입력창이 열리고, 사용자가 취소하면 { ok:true, changed:false, cancelled:true }
 async function applyConsultStatus(customerId, value){
-  const [status, detail] = String(value).split('|');
-  const { data, error } = await sb.from('customers').select('customer_status,consult_substatus,status_reason,funnel_status').eq('customer_id', customerId).limit(1);
-  if (error) return { ok: false, error: '현재 상태를 읽지 못했습니다: ' + error.message };
-  if (!data || !data[0]) return { ok: false, error: '고객을 찾을 수 없습니다.' };
-  const info = custStatusInfo(data[0]);
-  if (!info.legacy && info.status === '상담중' && status === '상담중') {      // 상담중 안에서는 부가표시만 변경
-    return changeStatus({ target: 'customer', id: customerId, axis: 'substatus', to: detail || null });
-  }
-  return changeStatus({
-    target: 'customer', id: customerId, to: status,
-    reason: (status === '이탈' || status === '제외') ? (detail || null) : null,
-    substatus: status === '상담중' ? (detail || null) : null
-  });
+  try {
+    if (typeof statusSetConsult !== 'function') return { ok: false, error: '새 상태 저장 함수를 불러오지 못했습니다.' };
+    const r = await v2RunWith(o => statusSetConsult(customerId, String(value), o), {});
+    if (r && r.cancelled) return { ok: true, changed: false, cancelled: true };
+    if (!r.ok) return { ok: false, error: r.userMessage || r.error || '알 수 없는 오류' };
+    await v2ShowMessages(r, customerId);
+    return { ok: true, changed: !!r.changed };
+  } catch (e) { return { ok: false, error: e && e.message ? e.message : String(e) }; }
 }
 
 // 상태가 바뀐 뒤 : 상담 화면 선택칸·고객조회 목록·열려 있는 상세·대시보드를 저장된 값으로 맞춤
@@ -3232,7 +3235,7 @@ async function refreshAfterConsultStatus(customerId){
   const { data } = await sb.from('customers').select('*').eq('customer_id', customerId).limit(1);
   const row = data && data[0];
   if (!row) return;
-  if (currentCustomerId === customerId) setConsultStatusSelect(custStatusInfo(row));
+  if (currentCustomerId === customerId) setConsultStatusSelect(row);
   const c0 = customerListCache.find(x => x.customer_id === customerId);
   if (c0) { Object.assign(c0, row); renderCustomerList(customerListCache); }
   if (detailCustomerId === customerId) syncDetailStatusSelect(row);
@@ -3334,7 +3337,7 @@ function buildCustomerPayload(isNew){
     next_contact_at: nextContact ? new Date(nextContact).toISOString() : null
   };
   if (home) payload.desired_product = home.tvTier !== 'none' ? '인터넷,TV' : '인터넷';   // 상품이 없을 때 기존 값을 지우지 않습니다
-  if (isNew) { payload.customer_status = DEFAULT_CUSTOMER_STATUS; payload.funnel_status = DEFAULT_FUNNEL_STATUS; }
+  if (isNew) { payload.customer_status = DEFAULT_CUSTOMER_STATUS; payload.funnel_status = DEFAULT_FUNNEL_STATUS; payload.consult_state = '상담대기'; }   // 6-1: 새 고객은 상담대기 + 구분 없음 (옛 칼럼은 DB 제약 호환용)
 
   if (CUSTOMER_SCHEMA.hasTags) {
     payload.customer_tags = Array.from(selectedCustomerTags);
@@ -4213,9 +4216,9 @@ function renderCustomerList(rows, emptyText){
       <td class="cust-cell-1line" title="${escAttr(formatDateShort(c.updated_at))}">${formatDateShort(c.updated_at)}</td>
       <td>
         ${c.consult_state ? `<div class="v2-list-newchip">${v2NewStatusChipHtml(c)}</div>` : ''}
-        <select class="cust-status-chip stage-${CUSTOMER_STATUS_STAGE[sInfo.status] || 0}"${sInfo.legacy ? ' title="새 상태값이 아직 없어 구 상태값을 변환해 표시합니다. 선택하면 새 상태값으로 저장됩니다."' : ''}
+        <select class="cust-status-chip stage-${v2ConsultStage(c)}"${c.consult_state ? '' : ' title="새 상태값이 아직 없어 옛 상태값을 변환해 표시합니다. 선택하면 새 상태값으로 저장됩니다."'}
                 onclick="event.stopPropagation()"
-                onchange="quickUpdateCustomerStatus(this, ${c.customer_id})">${customerStatusOptionsHtml(sInfo)}</select>${badge}
+                onchange="quickUpdateCustomerStatus(this, ${c.customer_id})">${v2ConsultOptionsHtml(c)}</select>${badge}
       </td>
     </tr>
   `;}).join('');
@@ -4625,39 +4628,17 @@ function updateSortArrows(){
 //  - 이력 저장이 실패하면 상태가 바뀌지 않고 안내 문구가 표시됩니다.
 //  - '상담중 · 고객부재'로 바꾸면 컨택 이력이 없을 때 1차 컨택을 자동 반영·예약합니다(autoStartContactCycle, S7-8).
 async function quickUpdateCustomerStatus(selectEl, customerId){
-  const [status, detail] = String(selectEl.value).split('|');
-  const c0 = customerListCache.find(x => x.customer_id === customerId);
-  const info = c0 ? custStatusInfo(c0) : null;
-  const restore = () => { if (info) selectEl.value = encodeCustStatus(info); };
   selectEl.disabled = true;
   let r;
-  if (info && status === '상담중' && info.status === '상담중') {
-    r = await changeStatus({ target: 'customer', id: customerId, axis: 'substatus', to: detail || null });   // 상담중 안에서 부가표시만 변경
-  } else {
-    r = await changeStatus({ target: 'customer', id: customerId, to: status,
-      reason: (status === '이탈' || status === '제외') ? detail : null, substatus: status === '상담중' ? (detail || null) : null });
-  }
+  try { r = await v2RunWith(o => statusSetConsult(customerId, selectEl.value, o), {}); }
+  catch (e) { r = { ok: false, error: e && e.message ? e.message : String(e) }; }
   selectEl.disabled = false;
-  if (!r.ok) { alert('상태값 변경 실패: ' + r.error); restore(); return; }
-  if (!r.changed) { showToast(r.userMessage); return; }
-
-  // 저장된 값을 다시 읽어 목록 캐시·칩 색을 맞춘다 (자동 전환이 있었다면 그 결과도 반영)
-  const { data } = await sb.from('customers').select('customer_status,status_reason,consult_substatus,updated_at').eq('customer_id', customerId).limit(1);
-  if (data && data[0]) {
-    if (c0) Object.assign(c0, data[0]);
-    selectEl.className = `cust-status-chip stage-${CUSTOMER_STATUS_STAGE[data[0].customer_status] || 0}`;
-  }
-  if (r.autoError) alert(r.userMessage);
-  showToast('✓ 상태값이 변경되었습니다');
-  loadFunnelDashboard();
-  if (c0) renderCustomerList(customerListCache);
-  if (detailCustomerId === customerId) { if (c0) syncDetailStatusSelect(c0); refreshDetailBundle(customerId); }
-  if (status === CONTACT_CYCLE_NEW.status && (detail || '') === CONTACT_CYCLE_NEW.substatus) {
-    try {
-      const au = await autoStartContactCycle(customerId);
-      if (au && au.statusError) alert(`컨택은 반영되었지만 고객 상태는 바뀌지 않았습니다.\n${au.statusError}`);
-    } catch (e) { console.warn('고객부재 재안내 자동 시작 실패', e); }
-  }
+  if (r.cancelled) { v2RestoreSelect(selectEl); return; }
+  if (!r.ok) { alert('상태 변경 실패: ' + (r.userMessage || r.error || '알 수 없는 오류')); v2RestoreSelect(selectEl); return; }
+  showToast(r.changed ? '✓ 상담 상태가 변경되었습니다' : '변경된 내용이 없습니다');
+  await afterContractChange(customerId);                                   // 목록 캐시·칩·상세·대시보드·고객 탭
+  if (currentCustomerId === customerId) await refreshAfterConsultStatus(customerId);   // 열려 있는 상담 화면 선택칸
+  await v2ShowMessages(r, customerId);
 }
 
 function formatDateShort(iso){
@@ -4942,7 +4923,7 @@ async function openCustomer(id){
       </div>
       <div class="form-group">
         <label>고객 상태(기존 방식) <span class="cust-note-hint">선택하면 바로 저장됩니다</span></label>
-        <select id="cf-status" onchange="quickUpdateCustomerStatus(this, ${c.customer_id})">${customerStatusOptionsHtml(custStatusInfo(c))}</select>
+        <select id="cf-status" onchange="quickUpdateCustomerStatus(this, ${c.customer_id})">${v2ConsultOptionsHtml(c)}</select>
       </div>
       <div class="form-group">
         <label>기존 인터넷</label>
@@ -5000,7 +4981,7 @@ async function openCustomer(id){
 
   renderCustomerProducts(c);
   renderContactSection(c.customer_id);
-  detailHistoryFilter = 'all';
+  detailHistoryFilter = 'all'; detailHistoryShown = 10;
   refreshDetailBundle(c.customer_id);   // 계약 카드 + 이력 (S6)
   detailCustomerTags = new Set(Array.isArray(c.customer_tags) ? c.customer_tags : []);
   renderDetailCustomerTags();
@@ -5460,7 +5441,7 @@ async function applyContactCycle(customerId){
       await sb.from('customer_contacts').update({ scheduled_at: sched.toISOString() }).eq('id', nextRow.id);
     }
     if (!nextRow || !nextRow.contacted_at) { patch.next_contact_at = sched.toISOString(); nextAt = patch.next_contact_at; }
-    if (canStartCycle) statusChange = { substatus: CONTACT_CYCLE_NEW.substatus };   // 부재 기록 → 상담중 · 고객부재
+    // 6-5b: 옛 '상담중 · 고객부재' 부가표시는 더 이상 바꾸지 않습니다. 부재 횟수·3회 제외는 v2SyncAbsence(새 규칙)가 처리합니다.
     if (isBeyondHolidayCoverage(sched)) showToast(`⚠ 공휴일 목록이 ${KOREAN_HOLIDAYS_LAST_YEAR}년까지라 이후 일정은 주말만 제외하고 계산했습니다`);
   } else {
     exhausted = true;   // 마지막 회차까지 부재
@@ -5642,6 +5623,7 @@ async function logStatusChange(customerId, fromStatus, toStatus){
    ========================================================================= */
 let detailBundle = null;               // 현재 열린 고객의 loadCustomerBundle 결과
 let detailHistoryFilter = 'all';       // 'all' | 'common' | 계약 ID(숫자)
+let detailHistoryShown = 10;          // 통합 이력에 보여 주는 건수 (처음 10건, [더보기]로 10건씩 늘림)
 let detailBundleSeq = 0;
 let ctOpenMap = {};                    // 계약 ID -> 펼침 여부(사용자가 바꾼 값). 없으면 ctIsOpen 의 기본 규칙
 const CT_OPEN_STATUSES = ['작성중', '접수대기', '접수보류'];   // 처리할 일이 남은 계약은 기본으로 펼침
@@ -5661,7 +5643,9 @@ function toggleCtCard(cid){
   ctOpenMap[cid] = el.classList.toggle('is-open');
 }
 
-const HISTORY_AXIS_LABEL = { status: '상태', substatus: '부가표시', progress: '진행', payout: '지급', clawback: '환수' };
+const HISTORY_AXIS_LABEL = { status: '상태', substatus: '부가표시', progress: '진행', payout: '지급', clawback: '환수',
+  consult_state: '상담 상태', customer_segment: '고객 구분', next_contact_at: '상담예약일',
+  item_status: '상품 상태', pay_status: '고객지급', paid_at: '지급완료일', refund_status: '환수', pay_invoice_status: '수수료 정산' };   // 뒤의 8개는 새 상태 구조(5-11)
 const CONTRACT_STATUS_OPTIONS = CONTRACT_STATUSES;
 
 function fmtMoney(v){ return v === null || v === undefined || v === '' ? '' : Number(v).toLocaleString(); }
@@ -5694,7 +5678,7 @@ async function refreshDetailBundle(customerId){
 // 상세 화면 상단의 고객 상태 칸을 최신 값으로 맞춤
 function syncDetailStatusSelect(c){
   const sel = document.getElementById('cf-status');
-  if (sel && c) sel.innerHTML = customerStatusOptionsHtml(custStatusInfo(c));
+  if (sel && c) sel.innerHTML = v2ConsultOptionsHtml(c);
   const chip = document.getElementById('cd-status-chip');
   if (chip && c) chip.innerHTML = v2NewStatusChipHtml(c) || custStatusChipHtml(custStatusInfo(c));
 }
@@ -5896,7 +5880,13 @@ async function v2FinishStatus(r, cid){
   if (!r.ok) { alert('변경 실패: ' + (r.userMessage || r.error || '알 수 없는 오류')); return false; }
   showToast(r.changed ? '✓ 변경되었습니다' : '변경된 내용이 없습니다');
   await afterContractChange(cid);
-  const all = r.messages || [];
+  await v2ShowMessages(r, cid);
+  return true;
+}
+
+/* 규칙이 돌려준 안내 메시지 표시. 재영업 전환 제안(reengage-suggest)이 있으면 날짜를 받아 바로 전환할 수 있게 함 */
+async function v2ShowMessages(r, cid){
+  const all = (r && r.messages) || [];
   const sug = all.find(m => m.code === 'reengage-suggest');
   const msgs = all.filter(m => m.code !== 'reengage-suggest').map(m => '· ' + m.text);
   if (msgs.length) await v2Dialog({ title: '안내', desc: msgs.join('\n'), ok: '확인', noCancel: true });
@@ -5909,7 +5899,6 @@ async function v2FinishStatus(r, cid){
       await v2FinishStatus(r2, cid);
     }
   }
-  return true;
 }
 
 async function v2StatusChange(selectEl, itemId, kind){
@@ -6031,6 +6020,25 @@ async function v2ChangeProduct(itemId){
   catch (e) { r = { ok: false, error: e && e.message ? e.message : String(e) }; }
   await v2FinishStatus(r, cid);
 }
+
+/* ---- 6-5b: 고객 상태 선택칸을 새 상태(상담 상태)로 통일 ----
+   선택지는 상담대기 / 상담중 / 상담종료 3개. 상담종료를 고르면 제외 사유·잠재 예약일 입력창이 열립니다(5-7과 같은 모달).
+   새 상태값이 아직 없는 고객은 옛 상태에서 변환해 보여 줍니다. */
+function v2ConsultStateOf(c){
+  if (c && c.consult_state) return c.consult_state;
+  const st = c && c.customer_status;
+  return (st === '이탈' || st === '제외') ? '상담종료' : (st === '상담중' || st === '상담완료') ? '상담중' : '상담대기';
+}
+function v2ConsultStage(c){
+  const st = v2ConsultStateOf(c), seg = c && c.customer_segment ? String(c.customer_segment).replace(/고객$/, '') : '';
+  return CUSTOMER_STATUS_STAGE[st === '상담종료' ? (seg === '제외' ? '제외' : '상담완료') : st] || 0;
+}
+function v2ConsultOptionsHtml(c){
+  const cur = v2ConsultStateOf(c);
+  const list = (v2Opt() && v2Opt().consult) || ['상담대기', '상담중', '상담종료'];
+  return list.map(v => `<option value="${escAttr(v)}"${v === cur ? ' selected data-cur="1"' : ''}>${escHtml(v)}</option>`).join('');
+}
+function v2RestoreSelect(selectEl){ const o = selectEl && selectEl.querySelector('option[data-cur]'); if (o) selectEl.value = o.value; }
 /* ===== v2 상태 변경 UI 끝 ===== */
 
 
@@ -6264,12 +6272,17 @@ function historyChip(row, value){
   if (value === null || value === undefined || value === '') return '';
   const stage = row.target_type === 'customer' && row.axis === 'status' ? CUSTOMER_STATUS_STAGE[value]
     : row.target_type === 'contract' && row.axis === 'status' ? CONTRACT_STATUS_STAGE[value] : 0;
-  return `<span class="cust-status-chip stage-${stage || 0}">${escHtml(value)}</span>`;
+  const shown = row.axis === 'customer_segment' ? v2SegLabel(value) : (row.axis === 'next_contact_at' || row.axis === 'paid_at') ? String(value).slice(0, 10) : value;
+  return `<span class="cust-status-chip stage-${stage || 0}">${escHtml(shown)}</span>`;
 }
 
 function historyTargetLabel(r){
   if (r.target_type === 'contract' && r.contract_id) return formatContractNo(r.contract_id) + ' 계약';
-  if (r.target_type === 'item' && r.item_id) return formatItemNo(r.item_id) + ' 상품';
+  if (r.target_type === 'item' && r.item_id) {
+    let nm = '';
+    for (const c of ((detailBundle && detailBundle.contracts) || [])) { const f = (c.items || []).find(i => i.item_id === r.item_id); if (f && f.product_name) nm = f.product_name; }
+    return formatItemNo(r.item_id) + ' 상품' + (nm ? ' (' + nm + ')' : '');
+  }
   return '고객';
 }
 
@@ -6279,7 +6292,8 @@ async function renderStatusLogSection(customerId, fromBundle){
   if (!box || !detailBundle) return;
   const f = detailHistoryFilter;
   const all = detailBundle.history;
-  const rows = all.filter(r => f === 'all' ? true : f === 'common' ? !r.contract_id : r.contract_id === f).slice(0, 100);
+  const filtered = all.filter(r => f === 'all' ? true : f === 'common' ? !r.contract_id : r.contract_id === f);
+  const rows = filtered.slice(0, detailHistoryShown);
   const btn = (key, label) => `<button type="button" class="fd-sub ${f === key ? 'is-active' : ''}" onclick="setHistoryFilter(${typeof key === 'number' ? key : `'${key}'`})">${escHtml(label)}</button>`;
   const filters = `<div class="fd-subs fd-subs-flat">${btn('all', '전체')}${btn('common', '공통')}${detailBundle.contracts.map(c => btn(c.contract_id, formatContractNo(c.contract_id))).join('')}</div>`;
   const list = rows.length ? `<div class="status-log-list">${rows.map(r => `
@@ -6294,10 +6308,16 @@ async function renderStatusLogSection(customerId, fromBundle){
       </span>
       <span class="status-log-by">${r.changed_by ? escHtml(r.changed_by) : '-'}</span>
     </div>`).join('')}</div>` : `<div class="wide-table-empty">해당하는 변경 이력이 없습니다.</div>`;
-  box.innerHTML = filters + list + (all.length >= 500 ? `<div class="fd-note">최근 500건까지만 읽었습니다.</div>` : '');
+  const more = filtered.length > rows.length
+    ? `<button type="button" class="mini-btn" onclick="showMoreHistory()">더보기 (${Math.min(10, filtered.length - rows.length)}건 더)</button>` : '';
+  const fold = detailHistoryShown > 10 && filtered.length > 10 ? `<button type="button" class="mini-btn" onclick="foldHistory()">접기</button>` : '';
+  const foot = filtered.length ? `<div class="fd-note" style="display:flex;gap:8px;align-items:center;">최근 ${rows.length}건 / 전체 ${filtered.length}건 ${more}${fold}</div>` : '';
+  box.innerHTML = filters + list + foot + (all.length >= 500 ? `<div class="fd-note">최근 500건까지만 읽었습니다.</div>` : '');
 }
 
-function setHistoryFilter(f){ detailHistoryFilter = f; renderStatusLogSection(detailCustomerId, true); }
+function setHistoryFilter(f){ detailHistoryFilter = f; detailHistoryShown = 10; renderStatusLogSection(detailCustomerId, true); }
+function showMoreHistory(){ detailHistoryShown += 10; renderStatusLogSection(detailCustomerId, true); }
+function foldHistory(){ detailHistoryShown = 10; renderStatusLogSection(detailCustomerId, true); }
 
 /* ---------- 화면 동작 (모두 실패 시 안내 문구를 띄우고 값을 되돌립니다) ---------- */
 async function changeContractStatus(selectEl, contractId, axis){
@@ -6518,7 +6538,7 @@ function fillConsultFormFromCustomer(c){
   setVal('cust-notes', c.notes || '');
   setVal('cust-note-input', '');
   setVal('cust-inflow', c.inflow_route || '');
-  setConsultStatusSelect(custStatusInfo(c));   // S7-6: 새 고객 상태(없으면 구 상태값을 변환해 표시)
+  setConsultStatusSelect(c);   // 6-5b: 새 상담 상태(없으면 옛 상태값을 변환해 표시)
   setVal('cust-next-contact', toLocalInputValue(c.next_contact_at));
   if (c.telecom) setSelectIfExists('cust-mobile-carrier', c.telecom);
 
