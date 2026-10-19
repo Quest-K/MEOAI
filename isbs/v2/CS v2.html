@@ -3465,6 +3465,14 @@ function custStatusLabelText(info){
   const d = custStatusDetail(info);
   return (CUSTOMER_STATUS_LABEL[info.status] || info.status) + (d ? ' · ' + d : '');
 }
+// 새 상태 구조(consult_state·customer_segment)가 있는 고객은 이름 옆 칩을 새 값으로 표시 (없으면 옛 칩)
+function v2NewStatusChipHtml(c){
+  if (!c || !c.consult_state) return '';
+  const seg = c.customer_segment ? String(c.customer_segment).replace(/고객$/, '') : '';
+  const st = c.consult_state;
+  const stage = CUSTOMER_STATUS_STAGE[st === '상담종료' ? (seg === '제외' ? '제외' : '상담완료') : st] || 0;
+  return `<span class="cust-status-chip stage-${stage}" title="새 상태 기준 (상담 상태 · 고객 구분)">${escHtml(st)}${seg ? ' · ' + escHtml(seg) : ''}</span>`;
+}
 function custStatusChipHtml(info){
   const t = info.legacy ? ' title="새 상태값이 아직 없어 구 상태값을 변환해 표시합니다"' : '';
   return `<span class="cust-status-chip stage-${CUSTOMER_STATUS_STAGE[info.status] || 0}"${t}>${escHtml(custStatusLabelText(info))}${info.legacy ? '*' : ''}</span>`;
@@ -4671,7 +4679,7 @@ async function openCustomer(id){
       <div class="cd-title">
         <span class="cd-name">${escHtml(c.name || '(이름 없음)')}</span>
         <span class="cd-contact">${escHtml(formatContactDisplay(c.contact))}</span>
-        <span id="cd-status-chip">${custStatusChipHtml(custStatusInfo(c))}</span>
+        <span id="cd-status-chip">${v2NewStatusChipHtml(c) || custStatusChipHtml(custStatusInfo(c))}</span>
       </div>
       <div class="cd-actions">
         <button type="button" class="secondary-btn" onclick="switchTab('customers')">← 목록</button>
@@ -5430,7 +5438,7 @@ function syncDetailStatusSelect(c){
   const sel = document.getElementById('cf-status');
   if (sel && c) sel.innerHTML = customerStatusOptionsHtml(custStatusInfo(c));
   const chip = document.getElementById('cd-status-chip');
-  if (chip && c) chip.innerHTML = custStatusChipHtml(custStatusInfo(c));
+  if (chip && c) chip.innerHTML = v2NewStatusChipHtml(c) || custStatusChipHtml(custStatusInfo(c));
 }
 
 // 계약·상품 변경 뒤 공통 마무리 : 목록·대시보드·상세를 새 값으로
@@ -5912,6 +5920,7 @@ function renderContractCard(ct, all){
     </div>
     <div class="ct-body">
     <div class="ct-status-row">
+      <span class="cust-ov-sub" title="상품별 새 상태는 아래 상품 행의 '상태 변경'에서 바꿉니다">계약 단위(옛 방식)</span>
       <label>접수 ${ctSelectHtml(CONTRACT_STATUS_OPTIONS, ct.contract_status, `changeContractStatus(this, ${cid}, 'status')`, false)}</label>
       <label>지급 ${ctSelectHtml(PAYOUT_STATUSES, ct.payout_status, `changeContractStatus(this, ${cid}, 'payout')`, true, '해당 없음')}</label>
       <label>환수 ${ctSelectHtml(CLAWBACK_STATUSES, ct.clawback_status, `changeContractStatus(this, ${cid}, 'clawback')`, true, '해당 없음')}</label>
