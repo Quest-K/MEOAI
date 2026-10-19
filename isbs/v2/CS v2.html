@@ -5375,6 +5375,39 @@ async function applyContactCycle(customerId){
   return { exhausted, connected, nextAt, nextNo, last, statusError, statusChanged };
 }
 
+// 6-5: 컨택 이력(customer_contacts)에서 연속 부재 횟수를 세어 새 상태 규칙에 전달합니다.
+//  - 부재 기록 → statusRecordAbsence (3회째면 '제외(장기부재) 처리할까요?' 확인 → 승인 시 statusConfirmAbsence)
+//  - 연결 기록 → 부재 횟수 초기화
+//  - 새 상태 저장이 실패해도 컨택 기록은 이미 저장됐으므로 안내만 하고 멈추지 않습니다.
+async function v2SyncAbsence(cid){
+  try {
+    if (typeof statusRecordAbsence !== 'function' || typeof StatusRules === 'undefined') return null;
+    const { data, error } = await sb.from('customer_contacts').select('attempt_no,result,contacted_at').eq('customer_id', cid).order('attempt_no', { ascending: true });
+    if (error) return null;
+    const done = (data || []).filter(r => r.contacted_at);
+    const last = done[done.length - 1];
+    if (!last) return null;
+    const connected = last.result === CONTACT_RESULT_CONNECTED;
+    let streak = 0;
+    for (let i = done.length - 1; i >= 0 && done[i].result === CONTACT_RESULT_ABSENT; i--) streak++;
+    if (!connected && last.result !== CONTACT_RESULT_ABSENT) return null;
+    const r = await statusRecordAbsence(cid, connected, connected ? done.filter(x => x.result === CONTACT_RESULT_ABSENT).length : streak - 1);
+    if (!r.ok) { showToast('⚠ 새 상태(부재 횟수)를 저장하지 못했습니다: ' + (r.userMessage || r.error || '')); return r; }
+    const msgs = (r.messages || []).filter(m => m.code !== 'absence-limit').map(m => '· ' + m.text);
+    if (r.confirm && r.confirm.code === 'absenceExclude') {
+      const d = await v2Dialog({ title: '고객부재 ' + r.confirm.count + '회', desc: '연속 ' + r.confirm.count + '회 부재입니다.\n제외(장기부재)로 처리할까요? 처리하면 상담종료 + 제외가 됩니다.', ok: '제외 처리', cancelText: '나중에' });
+      if (d) {
+        const r2 = await statusConfirmAbsence(cid, r.confirm.count);
+        await v2FinishStatus(r2, cid);
+        return r2;
+      }
+    }
+    await refreshAfterConsultStatus(cid);
+    if (msgs.length) await v2Dialog({ title: '안내', desc: msgs.join('\n'), ok: '확인', noCancel: true });
+    return r;
+  } catch (e) { console.warn('부재 횟수 기록 실패', e); return null; }
+}
+
 async function saveContactAttempt(customerId, n, btn){
   const at = elVal(`ct-${n}-at`);
   const method = elVal(`ct-${n}-method`) || CONTACT_METHODS[0];
@@ -5406,6 +5439,7 @@ async function saveContactAttempt(customerId, n, btn){
     }
 
     const out = await applyContactCycle(customerId);
+    const nr = wasRecorded ? null : await v2SyncAbsence(customerId);     // 새 상태 체계: 부재 횟수 기록·3회 도달 시 제외 확인(6-5)
     if (out && out.connected) {
       showToast(`✓ ${n}차 컨택이 기록되었습니다 (연결 · 재안내 종료)`);
     } else if (out && out.nextAt) {
@@ -5416,7 +5450,7 @@ async function saveContactAttempt(customerId, n, btn){
     if (out && out.statusError) {
       alert(`컨택은 기록되었지만 고객 상태는 바뀌지 않았습니다.\n${out.statusError}\n\n고객 상태는 고객조회 상세에서 직접 바꿔 주세요.`);
     }
-    if (out && out.exhausted) {   // 자동 전환하지 않고, 담당자가 직접 변경하도록 안내만 합니다
+    if (out && out.exhausted && !(nr && nr.ok)) {   // 새 상태 체계로 처리되지 않았을 때만 옛 안내 · 자동 전환하지 않고, 담당자가 직접 변경하도록 안내만 합니다
       alert(`${CONTACT_RULES.maxAttempts}회 모두 부재입니다.\n재안내를 더 진행하지 않으려면 고객 상태를 '${CONTACT_CLOSED_NEW.status} · ${CONTACT_CLOSED_NEW.reason}'로 직접 변경해주세요.`);
     }
     await renderContactSection(customerId);
