@@ -13,6 +13,16 @@
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <link rel="stylesheet" href="Styles.css?v=20261007c">
+<style id="v2-ui-fixes">
+/* 요구1) 특이사항 입력칸 : 마우스를 올리면 강조되고, 아래쪽 모서리를 끌어 위·아래로 높이를 조절할 수 있습니다 (상담 화면·고객상세 공통) */
+textarea.cust-note-log, #cust-notes, #cf-notes{resize:vertical !important;min-height:72px;max-height:75vh;overflow:auto;box-sizing:border-box;transition:border-color .15s, box-shadow .15s;}
+textarea.cust-note-log:hover, #cust-notes:hover, #cf-notes:hover{border-color:#c8892b;box-shadow:0 0 0 2px rgba(200,137,43,.15);}
+/* 요구2) 고객상담 상단 고정 : 상단 메뉴 → 고객 정보 줄 → 단계 탭 순서로 겹치지 않게 쌓음.
+   각 높이는 화면에서 직접 재서(--cs-hdr-h, --cs-strip-h) 위치를 잡으므로 줄이 늘어나거나 메뉴가 두 줄이 되어도 겹치지 않습니다. */
+:root{--cs-hdr-h:0px;--cs-strip-h:0px;}
+#cs-cust-strip{position:sticky !important;top:var(--cs-hdr-h) !important;z-index:41 !important;background:#fff;}
+#cs-wiz-nav{position:sticky !important;top:calc(var(--cs-hdr-h) + var(--cs-strip-h)) !important;z-index:40 !important;background:#fff;border-bottom:1px solid #eee8dc;}
+</style>
 <style id="reco-align-override">
 /* 추천상품 : 속도·공유기·TV채널·셋탑 버튼의 높이와 시작 위치를 같게 맞춤 */
 .reco-controls{align-items:flex-start;}
@@ -309,7 +319,7 @@
                     onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();addConsultNote(document.getElementById('cust-note-add-btn'));}"></textarea>
                   <button type="button" id="cust-note-add-btn" class="mini-btn mini-btn-primary" onclick="addConsultNote(this)">+ 추가</button>
                 </div>
-                <textarea id="cust-notes" class="cust-note-log" rows="5" placeholder="누적된 특이사항이 여기에 표시됩니다." oninput="mirrorNotes('cs')"></textarea>
+                <textarea id="cust-notes" class="cust-note-log" rows="5" title="아래쪽 모서리를 끌어 높이를 조절할 수 있습니다" placeholder="누적된 특이사항이 여기에 표시됩니다." oninput="mirrorNotes('cs')"></textarea>
               </div>
             </div>
           </div>
@@ -537,9 +547,9 @@
           <div class="cust-list-wrap">
             <table class="cust-list-table hide-comm" id="cust-list-table">
               <colgroup>
-                <col style="width:9%"><col style="width:10%"><col style="width:19%">
-                <col style="width:7%"><col style="width:7%"><col class="col-comm" style="width:7%">
-                <col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:11%">
+                <col style="width:8%"><col style="width:10%"><col style="width:16%">
+                <col style="width:6%"><col style="width:6%"><col class="col-comm" style="width:6%">
+                <col style="width:9%"><col style="width:9%"><col style="width:9%"><col style="width:11%"><col style="width:10%">
               </colgroup>
               <thead>
                 <tr>
@@ -553,10 +563,11 @@
                   <th onclick="sortCustomerList('created_at')">최초<br>등록<span class="sort-arrow" id="sort-arrow-created_at"></span></th>
                   <th onclick="sortCustomerList('updated_at')">최종수정<span class="sort-arrow" id="sort-arrow-updated_at"></span></th>
                   <th class="no-sort">상태값</th>
+                  <th class="no-sort">상담이력</th>
                 </tr>
               </thead>
               <tbody id="cust-list">
-                <tr><td colspan="10"><div class="reflected-empty">조회 결과가 여기에 표시됩니다.</div></td></tr>
+                <tr><td colspan="11"><div class="reflected-empty">조회 결과가 여기에 표시됩니다.</div></td></tr>
               </tbody>
             </table>
           </div>
@@ -4455,7 +4466,7 @@ function renderCustomerList(rows, emptyText){
   if (table) table.classList.toggle('hide-comm', !isLoggedIn);
   updateSortArrows();
   if (!customerListCache.length) {
-    el.innerHTML = `<tr><td colspan="10"><div class="reflected-empty">${emptyText || '조회 결과가 없습니다.'}</div></td></tr>`;
+    el.innerHTML = `<tr><td colspan="11"><div class="reflected-empty">${emptyText || '조회 결과가 없습니다.'}</div></td></tr>`;
     if (logs) logs.textContent = '조회 결과 0건';
     return;
   }
@@ -4488,6 +4499,7 @@ function renderCustomerList(rows, emptyText){
                 onclick="event.stopPropagation()"
                 onchange="quickUpdateCustomerStatus(this, ${c.customer_id})">${v2ConsultOptionsHtml(c)}</select>${badge}
       </td>
+      <td class="dash-hist-cell"><button type="button" class="mini-btn dash-hist-btn" onclick="event.stopPropagation(); toggleDashHistory(this, ${c.customer_id})" title="${escAttr(String(c.notes || '').trim().split('\n').slice(0, 5).join('\n').slice(0, 500) || '눌러서 상담이력 펼치기')}">상담이력 <span class="dash-hist-chev">▾</span></button></td>
     </tr>
   `;}).join('');
 }
@@ -7282,6 +7294,30 @@ try { const nav = document.querySelector('.tab-nav'); if (nav && window.ResizeOb
   fillConsultFormFromCustomer = function(c){ registeredMap = {}; const r = base.apply(this, arguments); setTimeout(refreshRegistered, 0); return r; };
 })();
 
+</script>
+<script id="cs-sticky-offsets">
+/* 고객상담 상단 고정 위치 맞추기 : 상단 메뉴(.tab-nav)와 고객 정보 줄(#cs-cust-strip)의 실제 높이를 재서 CSS 변수에 넣습니다. */
+(function(){
+  function update(){
+    var root = document.documentElement, hdr = document.querySelector('.tab-nav'), strip = document.getElementById('cs-cust-strip');
+    if (!hdr || !strip) return;
+    var cs = getComputedStyle(hdr), pinned = cs.position === 'sticky' || cs.position === 'fixed';
+    var hdrH = pinned ? Math.round(hdr.getBoundingClientRect().height + (parseFloat(cs.top) || 0)) : 0;
+    var stripH = strip.offsetHeight || 0;
+    root.style.setProperty('--cs-hdr-h', hdrH + 'px');
+    root.style.setProperty('--cs-strip-h', stripH + 'px');
+  }
+  window.csUpdateStickyOffsets = update;
+  window.addEventListener('load', update);
+  window.addEventListener('resize', update);
+  document.addEventListener('DOMContentLoaded', update);
+  if (typeof ResizeObserver === 'function') {
+    var ro = new ResizeObserver(update);
+    function watch(){ var a = document.querySelector('.tab-nav'), b = document.getElementById('cs-cust-strip'); if (a) ro.observe(a); if (b) ro.observe(b); }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch); else watch();
+  }
+  setTimeout(update, 300); setTimeout(update, 1200);   // 글꼴·고객 탭이 늦게 그려지는 경우 대비
+})();
 </script>
 </body>
 </html>
