@@ -108,7 +108,9 @@
 .sm-b.st-need b{ color:#c0392b; } .sm-b.st-plan b{ color:#999; } .sm-b.st-done b{ color:#1E7E34; } .sm-b.st-wait b{ color:#2a6fb0; }
 .sm-b.st-sum{ background:#FFF7E6; cursor:default; }
 .sm-filter{ flex-wrap:wrap; gap:6px; align-items:center; }
-.sm-chk{ font-size:13px; display:inline-flex; align-items:center; gap:4px; }
+.sm-date{ font-size:12px; padding:2px 4px; border:1px solid #D9D2C3; border-radius:6px; }
+.sm-st-sel{ min-width:84px; }
+.sm-chk{ white-space:nowrap; font-size:13px; display:inline-flex; align-items:center; gap:4px; }
 .sm-actions{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:8px 0; }
 .sm-panel{ border:1px solid #E5E0D6; border-radius:10px; padding:12px; margin:8px 0; background:#FFFDF8; }
 .sm-table{ width:max-content; min-width:100%; border-collapse:collapse; font-size:12px; }
@@ -654,7 +656,9 @@
       <div class="sm-actions">
         <button type="button" class="primary-btn" id="sm-issue-btn" onclick="smOpenInvoiceModal()">🧾 선택 건 계산서 묶음 등록 (<span id="sm-sel-n">0</span>건)</button>
         <button type="button" class="secondary-btn" onclick="smTogglePanel('invoices')">세금계산서 목록</button>
-        <button type="button" class="secondary-btn" onclick="smTogglePanel('agencies')">업체 정보</button>
+        <button type="button" class="secondary-btn" onclick="smTogglePanel('agencies')">업체 정보 (사업자 등록)</button>
+        <select id="sm-defag" title="기본 업체" onchange="smSetDefAgency(this.value)"></select>
+        <button type="button" class="mini-btn" onclick="smApplyDefaultAgency(this)" title="현재 조회 결과 중 업체가 비어 있는 건에 기본 업체를 입력">기본 업체 일괄 입력</button>
         <span class="cust-ov-sub" id="sm-warn"></span>
       </div>
       <div id="sm-panel-invoices" class="sm-panel" style="display:none"></div>
@@ -1018,7 +1022,7 @@ PASS 앱 → 전체 → 명의도용방지 → 해당 통신사 해제
    - 차감 = 상부가 고객에게 직접 지급한 사은품, 정산금액 = 수수료 − 차감, 입금예정액 = 정산금액 + 부가세,
      영업이익 = 수수료 − 사은품 총액, 영업이익률 = 영업이익 ÷ 수수료
    ========================================================================= */
-var SM = { from: '', to: '', agency: '', state: '', q: '', showCancel: false, data: null, rows: [], sel: {}, seq: 0, edit: null, inv: null, col: null, schemaOk: true, agKey: 'agency_id' };
+var SM = { single: null, from: '', to: '', agency: '', state: '', q: '', showCancel: false, data: null, rows: [], sel: {}, seq: 0, edit: null, inv: null, col: null, schemaOk: true, agKey: 'agency_id' };
 const SM_VAT_RATE = 0.1;
 const SM_DEAD = ['접수불가', '접수취소'];
 const SM_STATES = ['발행예정', '발행필요', '발행완료', '수금완료'];
@@ -1047,7 +1051,7 @@ function smBuildRows(d){
     const recv = items.map(i => i.first_received_at).filter(Boolean).sort();
     const recvDate = smYmd(recv[0] || ct.received_at || ct.created_at);
     const inst = act.map(i => i.installed_at).filter(Boolean).sort();
-    const instDate = allOpen && inst.length ? smYmd(inst[inst.length - 1]) : '';
+    const instDate = inst.length ? smYmd(inst[inst.length - 1]) : '';
     const nm = t => act.filter(i => i.product_type === t).map(i => i.product_name || '').filter(Boolean).join(', ');
     const carriers = Array.from(new Set(act.map(i => i.carrier).filter(Boolean))).join('/');
     const progress = dead ? '취소' : allOpen ? '설치완료' : (act.some(i => i.item_status === '접수보류') ? '접수보류' : act.some(i => i.item_status === '상품제안') ? '상품제안' : '접수·설치 전');
@@ -1141,7 +1145,7 @@ function smTableHtml(rows){
     const inv = r.inv;
     const canSel = r.state === '발행필요';
     const gift = (amt, st) => amt ? `${smWon(amt)}${st ? ` <span class="cust-ov-sub">${escHtml(st)}</span>` : ''}` : '';
-    const agOpts = ['<option value="">미지정</option>'].concat(smAgencyNames().map(n => `<option value="${escAttr(n)}" ${n === r.agency ? 'selected' : ''}>${escHtml(n)}</option>`)).join('');
+    const agOpts = smOpts(r.agency, true);
     return `<tr class="${r.dead ? 'sm-dead' : ''}">
       <td><input type="checkbox" ${canSel ? '' : 'disabled'} ${SM.sel[r.id] ? 'checked' : ''} onchange="smToggleSel(${r.id}, this.checked)"></td>
       <td>${escHtml(r.recvDate)}</td>
@@ -1150,15 +1154,15 @@ function smTableHtml(rows){
       <td>${escHtml(r.progress)}</td>
       <td><select class="ct-select" onchange="smSetAgency(${r.id}, this.value)">${agOpts}</select></td>
       <td>${escHtml(r.carriers)}</td><td>${escHtml(r.internet)}</td><td>${escHtml(r.tv)}</td><td>${escHtml(r.usim)}</td>
-      <td>${escHtml(r.instDate)}</td>
-      <td class="n">${smWon(r.giftTotal)}${r.giftUnassigned ? ' <span class="sm-warnb" title="상부/하부 지급 구분이 비어 있어 하부(직접 지급)로 계산했습니다. 편집에서 지정해 주세요.">구분?</span>' : ''}</td>
+      <td><input type="date" class="sm-date" value="${escAttr(r.instDate)}" onchange="smSetInstall(${r.id}, this.value)"></td>
+      <td class="n">${smWon(r.giftTotal)}</td>
       <td class="n">${smWon(r.card)}</td><td class="n">${smWon(r.cash)}</td>
       <td class="n">${gift(r.ua, r.uaSt)}</td><td class="n">${gift(r.la, r.laSt)}</td>
       <td class="n" title="${escAttr(r.feeSrc)}">${smWon(r.feeTotal)}${r.feeSrc === '수기' ? ' <span class="cust-ov-sub">수기</span>' : ''}</td>
       <td class="n">${smWon(r.fee.internet)}</td><td class="n">${smWon(r.fee.tv)}</td><td class="n">${smWon(r.fee.bundle)}</td><td class="n">${smWon(r.fee.add_tv)}</td><td class="n">${smWon(r.fee.usim)}</td><td class="n">${smWon(r.fee.other)}</td>
       <td class="n">${smWon(r.deduct)}</td><td class="n"><b>${smWon(r.settle)}</b></td><td class="n">${smWon(r.vat)}</td><td class="n">${smWon(r.expected)}</td>
       <td class="n" style="color:${r.profit >= 0 ? '#1E7E34' : '#D9534F'}">${smWon(r.profit)}</td><td class="n">${smPct(r.margin)}</td>
-      <td><span class="sm-chip ${smStateCls(r.state)}">${r.state === '발행완료' || r.state === '수금완료' ? '발행완료' : r.state}</span>${r.hold ? ' <span class="cust-ov-sub">보류</span>' : ''}</td>
+      <td>${r.state === '수금완료' ? '<span class="sm-chip st-done" title="수금 처리에서 되돌릴 수 있습니다">수금완료</span>' : `<select class="ct-select sm-st-sel ${smStateCls(r.state)}" onchange="smChangeState(${r.id}, this.value)">${['발행예정', '발행필요', '발행완료'].map(x => `<option ${x === r.state ? 'selected' : ''}>${x}</option>`).join('')}</select>`}</td>
       <td>${inv ? escHtml(inv.issue_date || '') : ''}</td><td>${inv ? escHtml(inv.memo || '') : ''}</td>
       <td>${inv ? `<span class="sm-chip ${inv.collect_status === '수금완료' ? 'st-done' : 'st-wait'}">${escHtml(inv.collect_status)}</span>` : ''}</td>
       <td>${inv ? escHtml(inv.collect_status === '수금완료' ? (inv.collect_date || '') : (inv.expected_collect_date || '')) : ''}</td>
@@ -1174,11 +1178,26 @@ function smTableHtml(rows){
   return `<table class="sm-table">${head}<tbody>${body}${tot}</tbody></table>`;
 }
 
-function smAgencyNames(){
-  const names = [];
-  ((SM.data && SM.data.agencies) || []).forEach(a => { const n = a.agency_name || a[SM.agKey] || a.name; if (n && names.indexOf(n) < 0) names.push(n); });
-  SM_AGENCIES_DEFAULT.forEach(n => { if (names.indexOf(n) < 0 && !SM.data) names.push(n); });
-  return names;
+function smAgencies(){
+  const out = [];
+  ((SM.data && SM.data.agencies) || []).forEach(a => { const k = a[SM.agKey]; if (k === null || k === undefined) return; out.push({ key: String(k), name: String(a.agency_name || a.name || k) }); });
+  return out;
+}
+function smAgName(key){ if (key === null || key === undefined || key === '') return ''; const f = smAgencies().find(x => x.key === String(key)); return f ? f.name : String(key); }
+function smAgencyNames(){ return smAgencies().map(x => x.name); }
+function smDefAgency(){ try { return localStorage.getItem('sm_def_agency') || ''; } catch (e) { return ''; } }
+function smSetDefAgency(v){ try { localStorage.setItem('sm_def_agency', v || ''); } catch (e) {} showToast(v ? '✓ 기본 업체: ' + smAgName(v) : '기본 업체를 해제했습니다'); }
+async function smApplyDefaultAgency(btn){
+  if (!smNeedSchema()) return;
+  const def = smDefAgency(); if (!def) { alert('먼저 [기본 업체]를 선택해 주세요.'); return; }
+  const ids = smFilterRows(SM.rows, SM).filter(r => !r.dead && !r.agency && !r.inv).map(r => r.id);
+  if (!ids.length) { alert('현재 조회 결과에 업체가 비어 있는 건이 없습니다.'); return; }
+  if (!confirm(`현재 조회 결과 중 업체가 비어 있는 ${ids.length}건에 "${smAgName(def)}"을(를) 입력할까요?`)) return;
+  setBtnLoading(btn, '적용 중...');
+  try {
+    for (const ch of s2Chunk(ids, S2_ID_CHUNK)) { const r = await sb.from('contracts').update({ agency_id: def }).in('contract_id', ch); if (r.error) { alert('적용 실패: ' + r.error.message); break; } }
+    showToast('✓ 업체가 입력되었습니다'); await loadSettlement();
+  } finally { clearBtnLoading(btn); }
 }
 
 function smRender(){
@@ -1190,7 +1209,8 @@ function smRender(){
   const t = document.getElementById('sm-table'); if (t) t.innerHTML = smTableHtml(rows);
   const n = document.getElementById('sm-sel-n'); if (n) n.textContent = Object.keys(SM.sel).length;
   const sel = document.getElementById('sm-agency');
-  if (sel) { const cur = SM.agency; sel.innerHTML = '<option value="">업체 전체</option>' + smAgencyNames().concat(['(미지정)']).map(x => `<option value="${escAttr(x)}" ${x === cur ? 'selected' : ''}>${escHtml(x)}</option>`).join(''); }
+  if (sel) { const cur = SM.agency; sel.innerHTML = '<option value="">업체 전체</option>' + smAgencies().map(a => `<option value="${escAttr(a.key)}" ${a.key === cur ? 'selected' : ''}>${escHtml(a.name)}</option>`).join('') + `<option value="(미지정)" ${cur === '(미지정)' ? 'selected' : ''}>(미지정)</option>`; }
+  const dsel = document.getElementById('sm-defag'); if (dsel) dsel.innerHTML = smOpts(smDefAgency(), true).replace('미지정', '기본 업체 없음');
   const w = document.getElementById('sm-warn');
   if (w) w.textContent = SM.schemaOk ? '' : '⚠ 정산용 DB 칼럼이 없습니다. v2_settlement.sql 을 먼저 실행해 주세요 (조회만 가능).';
   smRenderPanels();
@@ -1282,11 +1302,11 @@ function smToggleSel(id, on){ if (on) SM.sel[id] = true; else delete SM.sel[id];
 function smSelAll(cb){ smFilterRows(SM.rows, SM).forEach(r => { if (r.state === '발행필요') { if (cb.checked) SM.sel[r.id] = true; else delete SM.sel[r.id]; } }); smRender(); }
 
 /* ---------- 쓰기 공통 ---------- */
-function smCloseModal(id){ const m = document.getElementById(id); if (m) m.style.display = 'none'; }
+function smCloseModal(id){ if (id === 'sm-inv-modal') SM.single = null; const m = document.getElementById(id); if (m) m.style.display = 'none'; }
 function smOpenModal(id){ const m = document.getElementById(id); if (m) m.style.display = 'flex'; }
 function smNeedSchema(){ if (!SM.schemaOk) { alert('정산용 DB 칼럼이 없습니다. v2_settlement.sql 을 먼저 실행해 주세요.'); return false; } return true; }
 function smErr(id, msg){ const e = document.getElementById(id); if (e) e.textContent = msg || ''; }
-function smOpts(selected, withBlank){ return (withBlank ? '<option value="">미지정</option>' : '') + smAgencyNames().map(n => `<option value="${escAttr(n)}" ${n === selected ? 'selected' : ''}>${escHtml(n)}</option>`).join(''); }
+function smOpts(selected, withBlank){ return (withBlank ? '<option value="">미지정</option>' : '') + smAgencies().map(a => `<option value="${escAttr(a.key)}" ${a.key === String(selected || '') ? 'selected' : ''}>${escHtml(a.name)}</option>`).join(''); }
 
 async function smSetAgency(id, val){
   if (!smNeedSchema()) { smRender(); return; }
@@ -1336,14 +1356,15 @@ async function smSaveRow(btn){
 }
 
 /* ---------- 계산서 묶음 등록 (발행완료는 수기) ---------- */
-function smSelRows(){ return SM.rows.filter(r => SM.sel[r.id] && r.state === '발행필요'); }
-function smOpenInvoiceModal(){
+function smSelRows(){ if (SM.single != null) return SM.rows.filter(r => r.id === SM.single && !r.inv && !r.dead); return SM.rows.filter(r => SM.sel[r.id] && r.state === '발행필요'); }
+function smOpenInvoiceModal(single){
   if (!smNeedSchema()) return;
+  SM.single = (typeof single === 'number') ? single : null;
   const rows = smSelRows();
   if (!rows.length) { alert('발행필요 상태의 계약을 먼저 선택해 주세요. (설치완료 후 미발행 건만 선택할 수 있습니다)'); return; }
   const ags = Array.from(new Set(rows.map(r => r.agency).filter(Boolean)));
-  if (ags.length > 1) { alert('선택한 계약의 업체가 서로 다릅니다 (' + ags.join(', ') + '). 업체별로 나누어 등록해 주세요.'); return; }
-  document.getElementById('sm-i-agency').innerHTML = smOpts(ags[0] || '', true);
+  if (ags.length > 1) { alert('선택한 계약의 업체가 서로 다릅니다 (' + ags.map(smAgName).join(', ') + '). 업체별로 나누어 등록해 주세요.'); return; }
+  document.getElementById('sm-i-agency').innerHTML = smOpts(ags[0] || smDefAgency(), true);
   document.getElementById('sm-i-date').value = smToday();
   document.getElementById('sm-i-memo').value = '';
   document.getElementById('sm-i-exp').value = '';
@@ -1382,7 +1403,7 @@ async function smCreateInvoice(btn){
       const ur = await sb.from('contract_items').update({ pay_invoice_status: '발행완료', pay_invoice_date: date }).in('item_id', itemIds);
       if (ur.error) warn = '상품 정산 상태 반영 실패: ' + ur.error.message;
     }
-    SM.sel = {}; smCloseModal('sm-inv-modal');
+    SM.sel = {}; SM.single = null; smCloseModal('sm-inv-modal');
     showToast('✓ 세금계산서 묶음이 등록되었습니다 (' + rows.length + '건)' + (warn ? ' · ' + warn : ''));
     if (warn) alert(warn);
     await loadSettlement();
@@ -1396,6 +1417,7 @@ function smTogglePanel(k){
   if (other) other.style.display = 'none';
   el.style.display = el.style.display === 'none' ? '' : 'none';
   smRenderPanels();
+  if (el.style.display !== 'none' && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 function smRenderPanels(){
   const pi = document.getElementById('sm-panel-invoices'), pa = document.getElementById('sm-panel-agencies');
@@ -1408,7 +1430,7 @@ function smInvoicesHtml(){
   const cnt = {}; SM.rows.forEach(r => { if (r.inv) cnt[r.inv.invoice_id] = (cnt[r.inv.invoice_id] || 0) + 1; });
   const f = SM.agency && SM.agency !== '(미지정)' ? inv.filter(v => v.agency_id === SM.agency) : inv;
   return `<div class="perf-scroll"><table class="perf-table"><thead><tr><th>발행일</th><th>업체</th><th>적요</th><th class="num">건수</th><th class="num">공급가액</th><th class="num">부가세</th><th class="num">합계</th><th>수금</th><th>예정일</th><th>수금일</th><th class="num">입금액</th><th></th></tr></thead><tbody>
-    ${f.map(v => `<tr><td>${escHtml(v.issue_date || '')}</td><td>${escHtml(v.agency_id || '')}</td><td>${escHtml(v.memo || '')}</td><td class="num">${cnt[v.invoice_id] || 0}</td>
+    ${f.map(v => `<tr><td>${escHtml(v.issue_date || '')}</td><td>${escHtml(smAgName(v.agency_id))}</td><td>${escHtml(v.memo || '')}</td><td class="num">${cnt[v.invoice_id] || 0}</td>
       <td class="num">${smWon(v.supply_amount)}</td><td class="num">${smWon(v.vat_amount)}</td><td class="num">${smWon(v.total_amount)}</td>
       <td><span class="sm-chip ${v.collect_status === '수금완료' ? 'st-done' : 'st-wait'}">${escHtml(v.collect_status)}</span></td>
       <td>${escHtml(v.expected_collect_date || '')}</td><td>${escHtml(v.collect_date || '')}</td><td class="num">${smWon(v.collect_amount)}</td>
@@ -1418,7 +1440,7 @@ function smInvoicesHtml(){
 function smOpenCollect(id){
   const v = ((SM.data && SM.data.invoices) || []).find(x => x.invoice_id === id); if (!v) return;
   SM.col = id;
-  document.getElementById('sm-c-title').textContent = `· ${v.agency_id} ${v.issue_date}`;
+  document.getElementById('sm-c-title').textContent = `· ${smAgName(v.agency_id)} ${v.issue_date}`;
   document.getElementById('sm-c-status').value = v.collect_status;
   document.getElementById('sm-c-exp').value = v.expected_collect_date || '';
   document.getElementById('sm-c-date').value = v.collect_date || smToday();
@@ -1456,7 +1478,7 @@ async function smCancelInvoice(id){
   if (!smNeedSchema()) return;
   const v = ((SM.data && SM.data.invoices) || []).find(x => x.invoice_id === id); if (!v) return;
   const rows = SM.rows.filter(x => x.inv && x.inv.invoice_id === id);
-  if (!confirm(`${v.agency_id} ${v.issue_date} 세금계산서 묶음(${rows.length}건)의 발행을 취소할까요?\n연결된 계약은 발행필요 상태로 돌아가고, 계산서 정보는 삭제됩니다.` + (v.collect_status === '수금완료' ? '\n※ 수금완료 처리된 건입니다.' : ''))) return;
+  if (!confirm(`${smAgName(v.agency_id)} ${v.issue_date} 세금계산서 묶음(${rows.length}건)의 발행을 취소할까요?\n연결된 계약은 발행필요 상태로 돌아가고, 계산서 정보는 삭제됩니다.` + (v.collect_status === '수금완료' ? '\n※ 수금완료 처리된 건입니다.' : ''))) return;
   const itemIds = rows.flatMap(x => x.itemIds);
   const cr = await sb.from('contracts').update({ settle_invoice_id: null }).eq('settle_invoice_id', id);
   if (cr.error) { alert('취소 실패: ' + cr.error.message); return; }
@@ -1465,6 +1487,36 @@ async function smCancelInvoice(id){
   if (dr.error) { alert('계산서 삭제 실패: ' + dr.error.message); }
   showToast('✓ 발행이 취소되었습니다');
   await loadSettlement();
+}
+
+/* ---------- 행에서 바로 고치기: 설치일 · 계산서 상태 ---------- */
+async function smSetInstall(id, val){
+  if (!smNeedSchema()) { smRender(); return; }
+  const r = SM.rows.find(x => x.id === id); if (!r) return;
+  if (!r.itemIds.length) { alert('개통완료 상태의 상품이 없어 설치일을 저장할 수 없습니다.\n상품 상태를 먼저 개통완료로 바꿔 주세요.'); smRender(); return; }
+  const u = await sb.from('contract_items').update({ installed_at: val || null }).in('item_id', r.itemIds);
+  if (u.error) { alert('설치일 저장 실패: ' + u.error.message); await loadSettlement(); return; }
+  r.instDate = val || ''; showToast('✓ 설치일이 저장되었습니다');
+}
+async function smChangeState(id, val){
+  if (!smNeedSchema()) { smRender(); return; }
+  const r = SM.rows.find(x => x.id === id); if (!r || val === r.state) return;
+  if (val === '발행완료') { smOpenInvoiceModal(id); smRender(); return; }
+  if (val === '발행필요' && !r.allOpen) { alert('설치완료(개통완료) 전의 건은 발행필요로 올릴 수 없습니다.\n상품 상태를 개통완료로 바꾸면 자동으로 발행필요가 됩니다.'); smRender(); return; }
+  if (r.state === '발행완료') {
+    const inv = r.inv, same = SM.rows.filter(x => x.inv && inv && x.inv.invoice_id === inv.invoice_id);
+    if (!confirm(`발행완료를 ${val}(으)로 되돌릴까요?\n이 계약만 세금계산서 묶음에서 빠지고, ` + (same.length > 1 ? `묶음의 나머지 ${same.length - 1}건은 그대로 유지됩니다(공급가액은 남은 건 기준으로 다시 계산).` : '다른 계약이 없는 묶음이라 계산서 정보가 삭제됩니다.'))) { smRender(); return; }
+    const cr = await sb.from('contracts').update({ settle_invoice_id: null, settle_hold: val === '발행예정' }).eq('contract_id', id);
+    if (cr.error) { alert('저장 실패: ' + cr.error.message); await loadSettlement(); return; }
+    if (r.itemIds.length) { const ur = await sb.from('contract_items').update({ pay_invoice_status: '발행예정', pay_invoice_date: null, pay_collect_date: null }).in('item_id', r.itemIds); if (ur.error) alert('상품 정산 상태 되돌리기 실패: ' + ur.error.message); }
+    const rest = same.filter(x => x.id !== id);
+    if (!rest.length) await sb.from('settlement_invoices').delete().eq('invoice_id', inv.invoice_id);
+    else { const sup = rest.reduce((a, x) => a + x.settle, 0), vat = Math.round(sup * SM_VAT_RATE); await sb.from('settlement_invoices').update({ supply_amount: sup, vat_amount: vat, total_amount: sup + vat, updated_at: new Date().toISOString() }).eq('invoice_id', inv.invoice_id); }
+  } else {
+    const cr = await sb.from('contracts').update({ settle_hold: val === '발행예정' }).eq('contract_id', id);
+    if (cr.error) { alert('저장 실패: ' + cr.error.message); await loadSettlement(); return; }
+  }
+  showToast('✓ ' + val + '(으)로 변경되었습니다'); await loadSettlement();
 }
 
 /* ---------- 업체 정보 ---------- */
