@@ -1264,7 +1264,18 @@ function smQuick(k){
   smApplyFilter();
 }
 function smSetState(s){ SM.state = (SM.state === s) ? '' : s; const el = document.getElementById('sm-state'); if (el) el.value = SM.state; smApplyFilter(); }
-function smOpenCustomer(id){ try { openCustomerFromDash(id); } catch (e) { alert('고객을 열지 못했습니다.'); } }
+async function smOpenCustomer(id){
+  try {
+    // 고객상담 화면은 대시보드 목록(dashRows)에서 고객을 찾으므로, 목록에 없으면 이 고객을 먼저 넣어 둡니다.
+    if (!Array.isArray(dashRows)) dashRows = [];
+    if (!dashRows.some(x => x.customer_id === id)) {
+      const r = await sb.from('customers').select('*').eq('customer_id', id).limit(1);
+      if (r.error || !r.data || !r.data[0]) { alert('고객 정보를 불러오지 못했습니다.' + (r.error ? '\n' + r.error.message : '')); return; }
+      dashRows = dashRows.concat([r.data[0]]);
+    }
+    await openCustomerFromDash(id);
+  } catch (e) { alert('고객을 열지 못했습니다: ' + (e && e.message ? e.message : e)); }
+}
 
 /* ---------- 선택 ---------- */
 function smToggleSel(id, on){ if (on) SM.sel[id] = true; else delete SM.sel[id]; const n = document.getElementById('sm-sel-n'); if (n) n.textContent = Object.keys(SM.sel).length; }
