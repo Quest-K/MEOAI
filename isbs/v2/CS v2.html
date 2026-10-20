@@ -108,6 +108,23 @@
 .sm-b.st-need b{ color:#c0392b; } .sm-b.st-plan b{ color:#999; } .sm-b.st-done b{ color:#1E7E34; } .sm-b.st-wait b{ color:#2a6fb0; }
 .sm-b.st-sum{ background:#FFF7E6; cursor:default; }
 .sm-filter{ flex-wrap:wrap; gap:6px; align-items:center; }
+.sm-statebar{ display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
+.sm-sbtn{ border:1px solid #D9D2C3; background:#fff; border-radius:999px; padding:5px 12px; font-size:13px; cursor:pointer; }
+.sm-sbtn b{ margin-left:4px; }
+.sm-sbtn.is-on{ font-weight:700; border-width:2px; }
+.sm-sbtn.st-plan.is-on, .sm-sbtn.st-plan:hover{ background:#ECECE8; border-color:#8A8A80; }
+.sm-sbtn.st-need.is-on, .sm-sbtn.st-need:hover{ background:#FCE4E1; border-color:#D9534F; }
+.sm-sbtn.st-wait.is-on, .sm-sbtn.st-wait:hover{ background:#DDEBFA; border-color:#2F7FD1; }
+.sm-sbtn.st-done.is-on, .sm-sbtn.st-done:hover{ background:#DDF1E2; border-color:#2E9E4F; }
+.sm-table tr.sm-r-발행예정 td{ background:#F3F3F0; }
+.sm-table tr.sm-r-발행필요 td{ background:#FDEEEC; }
+.sm-table tr.sm-r-발행완료 td{ background:#E9F2FC; }
+.sm-table tr.sm-r-수금완료 td{ background:#E6F5EA; }
+.sm-table tr.sm-r-발행예정 td:first-child{ box-shadow:inset 4px 0 0 #8A8A80; }
+.sm-table tr.sm-r-발행필요 td:first-child{ box-shadow:inset 4px 0 0 #D9534F; }
+.sm-table tr.sm-r-발행완료 td:first-child{ box-shadow:inset 4px 0 0 #2F7FD1; }
+.sm-table tr.sm-r-수금완료 td:first-child{ box-shadow:inset 4px 0 0 #2E9E4F; }
+.sm-table tr.sm-dead td{ opacity:.55; }
 .sm-date{ font-size:12px; padding:2px 4px; border:1px solid #D9D2C3; border-radius:6px; }
 .sm-st-sel{ min-width:84px; }
 .sm-chk{ white-space:nowrap; font-size:13px; display:inline-flex; align-items:center; gap:4px; }
@@ -653,6 +670,7 @@
         <button type="button" class="primary-btn" onclick="smApplyFilter(this)">🔍 조회</button>
         <button type="button" class="secondary-btn" onclick="loadSettlement(this)">↻ 새로고침</button>
       </div>
+      <div id="sm-statebar" class="sm-statebar"></div>
       <div class="sm-actions">
         <button type="button" class="primary-btn" id="sm-issue-btn" onclick="smOpenInvoiceModal()">🧾 선택 건 계산서 묶음 등록 (<span id="sm-sel-n">0</span>건)</button>
         <button type="button" class="secondary-btn" onclick="smTogglePanel('invoices')">세금계산서 목록</button>
@@ -1157,7 +1175,7 @@ function smTableHtml(rows){
     const canSel = r.state === '발행필요';
     const gift = (amt, st) => amt ? `${smWon(amt)}${st ? ` <span class="cust-ov-sub">${escHtml(st)}</span>` : ''}` : '';
     const agOpts = smOpts(r.agency, true);
-    return `<tr class="${r.dead ? 'sm-dead' : ''}">
+    return `<tr class="sm-r-${r.state} ${r.dead ? 'sm-dead' : ''}">
       <td><input type="checkbox" ${canSel ? '' : 'disabled'} ${SM.sel[r.id] ? 'checked' : ''} onchange="smToggleSel(${r.id}, this.checked)"></td>
       <td>${escHtml(r.recvDate)}</td>
       <td><a href="javascript:void(0)" onclick="smOpenCustomer(${r.customerId})">${escHtml(r.name) || '(이름없음)'}</a></td>
@@ -1218,6 +1236,13 @@ function smRender(){
   const ok = {}; rows.forEach(r => { if (r.state === '발행필요' && SM.sel[r.id]) ok[r.id] = true; }); SM.sel = ok;
   const banner = smBannerHtml(smBanner(rows.length || SM.state ? smFilterRows(SM.rows, Object.assign({}, SM, { state: '' })) : rows));
   const b = document.getElementById('sm-banner'); if (b) b.innerHTML = banner;
+  const sb2 = document.getElementById('sm-statebar');
+  if (sb2) {
+    const base = smFilterRows(SM.rows, Object.assign({}, SM, { state: '' })).filter(r => !r.dead);
+    const cnt = st => st ? base.filter(r => r.state === st).length : base.length;
+    sb2.innerHTML = [['', '전체', ''], ['발행예정', '발행예정', 'st-plan'], ['발행필요', '발행필요', 'st-need'], ['발행완료', '발행완료', 'st-wait'], ['수금완료', '수금완료', 'st-done']]
+      .map(x => `<button type="button" class="sm-sbtn ${x[2]} ${SM.state === x[0] ? 'is-on' : ''}" onclick="smPickState('${x[0]}')">${x[1]}<b>${cnt(x[0])}</b></button>`).join('');
+  }
   const t = document.getElementById('sm-table'); if (t) t.innerHTML = smTableHtml(rows);
   const n = document.getElementById('sm-sel-n'); if (n) n.textContent = Object.keys(SM.sel).length;
   const sel = document.getElementById('sm-agency');
@@ -1295,6 +1320,7 @@ function smQuick(k){
   document.getElementById('sm-from').value = from; document.getElementById('sm-to').value = to;
   smApplyFilter();
 }
+function smPickState(s){ SM.state = s; const el = document.getElementById('sm-state'); if (el) el.value = s; smApplyFilter(); }
 function smSetState(s){ SM.state = (SM.state === s) ? '' : s; const el = document.getElementById('sm-state'); if (el) el.value = SM.state; smApplyFilter(); }
 async function smOpenCustomer(id){
   try {
