@@ -658,7 +658,7 @@
         <button type="button" class="secondary-btn" onclick="smTogglePanel('invoices')">세금계산서 목록</button>
         <button type="button" class="secondary-btn" onclick="smTogglePanel('agencies')">업체 정보 (사업자 등록)</button>
         <select id="sm-defag" title="기본 업체" onchange="smSetDefAgency(this.value)"></select>
-        <button type="button" class="mini-btn" onclick="smApplyDefaultAgency(this)" title="현재 조회 결과 중 업체가 비어 있는 건에 기본 업체를 입력">기본 업체 일괄 입력</button>
+        <button type="button" class="mini-btn" onclick="smApplyDefaultAgency(this)" title="업체가 저장되지 않은 건에 통신사 기준 자동 업체(추정 불가는 기본 업체)를 저장">업체 자동 저장</button>
         <span class="cust-ov-sub" id="sm-warn"></span>
       </div>
       <div id="sm-panel-invoices" class="sm-panel" style="display:none"></div>
@@ -1037,6 +1037,16 @@ function smToday(){ return smYmd(new Date()); }
 function smStateCls(s){ return s === '발행예정' ? 'st-plan' : s === '발행필요' ? 'st-need' : s === '발행완료' ? 'st-wait' : 'st-done'; }
 
 /* ---------- 계산 (화면과 분리) ---------- */
+function smAutoAgency(carriers, agencies){
+  // agencies.description 의 "취급 통신사: ..." 로 업체를 추정합니다("전체"는 제외). 통신사가 여러 업체에 걸치면 비웁니다.
+  const cs = (carriers || []).map(c => String(c).replace(/\s/g, '').toUpperCase()).filter(Boolean);
+  if (!cs.length) return '';
+  const map = (agencies || []).filter(a => a.description && String(a.description).indexOf('전체') < 0).map(a => ({ key: String(a.agency_id != null ? a.agency_id : (a.agency_name || a.name || '')),
+    toks: String(a.description).replace(/^[^:]*:/, '').split(',').map(t => t.replace(/\s/g, '').toUpperCase()).filter(Boolean) }));
+  const hit = new Set();
+  for (const c of cs) { const m = map.find(a => a.toks.some(t => t.indexOf(c) === 0)); if (!m) return ''; hit.add(m.key); }
+  return hit.size === 1 ? Array.from(hit)[0] : '';
+}
 function smBuildRows(d){
   const itemsBy = {}, linesBy = {}, custBy = {}, invBy = {};
   d.items.forEach(i => { (itemsBy[i.contract_id] = itemsBy[i.contract_id] || []).push(i); });
@@ -1053,7 +1063,8 @@ function smBuildRows(d){
     const inst = act.map(i => i.installed_at).filter(Boolean).sort();
     const instDate = inst.length ? smYmd(inst[inst.length - 1]) : '';
     const nm = t => act.filter(i => i.product_type === t).map(i => i.product_name || '').filter(Boolean).join(', ');
-    const carriers = Array.from(new Set(act.map(i => i.carrier).filter(Boolean))).join('/');
+    const carrierList = Array.from(new Set(act.map(i => i.carrier).filter(Boolean)));
+    const carriers = carrierList.join('/');
     const progress = dead ? '취소' : allOpen ? '설치완료' : (act.some(i => i.item_status === '접수보류') ? '접수보류' : act.some(i => i.item_status === '상품제안') ? '상품제안' : '접수·설치 전');
 
     // 수수료: 수수료 내역(contract_fee_lines) > 상품 수수료 합계 > 계약 값 / 수기 수정이 있으면 그 값
@@ -1087,7 +1098,7 @@ function smBuildRows(d){
     const cu = custBy[ct.customer_id] || {};
     return {
       id: ct.contract_id, customerId: ct.customer_id, name: cu.name || '', contact: cu.contact || '', recvDate, instDate, progress, dead, allOpen,
-      agency: ct.agency_id || (inv ? inv.agency_id : '') || '', carriers, internet: nm('internet'), tv: nm('tv'), usim: nm('usim'),
+      agencySaved: ct.agency_id || (inv ? inv.agency_id : '') || '', agency: ct.agency_id || (inv ? inv.agency_id : '') || smAutoAgency(carrierList, d.agencies), carriers, internet: nm('internet'), tv: nm('tv'), usim: nm('usim'),
       giftTotal, card, cash, ua, uaSt: ct.settle_gift_upper_status || '', la, laSt: ct.settle_gift_lower_status || '', giftUnassigned: !explicit && giftTotal > 0,
       fee, feeTotal, feeSrc, deduct, settle, vat, expected, profit, margin, state, inv, hold: !!ct.settle_hold, memo: ct.settle_memo || '', feeOverride: (ov !== null && !isNaN(ov)) ? ov : null,
       itemIds: act.filter(i => i.item_status === '개통완료').map(i => i.item_id)
@@ -1189,14 +1200,15 @@ function smDefAgency(){ try { return localStorage.getItem('sm_def_agency') || ''
 function smSetDefAgency(v){ try { localStorage.setItem('sm_def_agency', v || ''); } catch (e) {} showToast(v ? '✓ 기본 업체: ' + smAgName(v) : '기본 업체를 해제했습니다'); }
 async function smApplyDefaultAgency(btn){
   if (!smNeedSchema()) return;
-  const def = smDefAgency(); if (!def) { alert('먼저 [기본 업체]를 선택해 주세요.'); return; }
-  const ids = smFilterRows(SM.rows, SM).filter(r => !r.dead && !r.agency && !r.inv).map(r => r.id);
-  if (!ids.length) { alert('현재 조회 결과에 업체가 비어 있는 건이 없습니다.'); return; }
-  if (!confirm(`현재 조회 결과 중 업체가 비어 있는 ${ids.length}건에 "${smAgName(def)}"을(를) 입력할까요?`)) return;
-  setBtnLoading(btn, '적용 중...');
+  const def = smDefAgency();
+  const targets = smFilterRows(SM.rows, SM).filter(r => !r.dead && !r.agencySaved && !r.inv).map(r => ({ id: r.id, ag: r.agency || def })).filter(x => x.ag);
+  if (!targets.length) { alert('저장할 건이 없습니다. (통신사로 업체를 추정할 수 없는 건은 [기본 업체]를 고르면 그 업체로 저장됩니다)'); return; }
+  if (!confirm(`업체가 저장되지 않은 ${targets.length}건에 통신사 기준 자동 업체(추정 불가 건은 기본 업체)를 저장할까요?`)) return;
+  setBtnLoading(btn, '저장 중...');
   try {
-    for (const ch of s2Chunk(ids, S2_ID_CHUNK)) { const r = await sb.from('contracts').update({ agency_id: def }).in('contract_id', ch); if (r.error) { alert('적용 실패: ' + r.error.message); break; } }
-    showToast('✓ 업체가 입력되었습니다'); await loadSettlement();
+    const by = {}; targets.forEach(x => { (by[x.ag] = by[x.ag] || []).push(x.id); });
+    for (const ag of Object.keys(by)) for (const ch of s2Chunk(by[ag], S2_ID_CHUNK)) { const r = await sb.from('contracts').update({ agency_id: ag }).in('contract_id', ch); if (r.error) { alert('저장 실패: ' + r.error.message); await loadSettlement(); return; } }
+    showToast('✓ 업체가 저장되었습니다'); await loadSettlement();
   } finally { clearBtnLoading(btn); }
 }
 
