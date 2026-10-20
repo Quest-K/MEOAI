@@ -1045,6 +1045,10 @@ const SM_VAT_RATE = 0.1;
 const SM_DEAD = ['접수불가', '접수취소'];
 const SM_STATES = ['발행예정', '발행필요', '발행완료', '수금완료'];
 const SM_AG_FIELDS = [['biz_no', '사업자등록번호'], ['ceo_name', '대표자'], ['biz_address', '사업장 주소'], ['biz_type', '업태'], ['biz_item', '종목'], ['tax_email', '세금계산서 이메일'], ['contact_name', '담당자'], ['contact_phone', '담당자 연락처'], ['biz_memo', '메모']];
+const SM_AG_FALLBACK = [
+  { agency_id: '티인포', agency_name: '티인포', description: '취급 통신사: SKT, SKB, LG U+, LG소호' },
+  { agency_id: '티코디', agency_name: '티코디', description: '취급 통신사: KT, SKY(스카이라이프)' },
+  { agency_id: '백메가', agency_name: '백메가', description: '취급 통신사: 전체 통신사' }];
 const SM_AGENCIES_DEFAULT = ['티인포', '티코디', '백메가'];
 
 function smNum(v){ if (v === null || v === undefined || v === '') return null; const t = String(v).replace(/[,\s원]/g, ''); if (!/^-?\d+(\.\d+)?$/.test(t)) return NaN; return Number(t); }
@@ -1249,7 +1253,8 @@ function smRender(){
   if (sel) { const cur = SM.agency; sel.innerHTML = '<option value="">업체 전체</option>' + smAgencies().map(a => `<option value="${escAttr(a.key)}" ${a.key === cur ? 'selected' : ''}>${escHtml(a.name)}</option>`).join('') + `<option value="(미지정)" ${cur === '(미지정)' ? 'selected' : ''}>(미지정)</option>`; }
   const dsel = document.getElementById('sm-defag'); if (dsel) dsel.innerHTML = smOpts(smDefAgency(), true).replace('미지정', '기본 업체 없음');
   const w = document.getElementById('sm-warn');
-  if (w) w.textContent = SM.schemaOk ? '' : '⚠ 정산용 DB 칼럼이 없습니다. v2_settlement.sql 을 먼저 실행해 주세요 (조회만 가능).';
+  if (w) w.textContent = !SM.schemaOk ? '⚠ 정산용 DB 칼럼이 없습니다. v2_settlement.sql 을 먼저 실행해 주세요 (조회만 가능).'
+    : (SM.data && SM.data.agFallback ? '⚠ 업체(agencies) 표를 읽지 못해 기본 3개 업체로 표시합니다. v2_agencies_biz.sql(읽기 권한 포함)을 실행해 주세요.' + (SM.data.agErr ? ' (' + SM.data.agErr + ')' : '') : '');
   smRenderPanels();
 }
 
@@ -1281,7 +1286,10 @@ async function smFetchAll(){
   const iv = await sb.from('settlement_invoices').select('*').order('issue_date', { ascending: false });
   const ag = await sb.from('agencies').select('*');
   const schemaOk = !iv.error && (contracts.length === 0 || Object.prototype.hasOwnProperty.call(contracts[0], 'settle_invoice_id'));
-  return { items, contracts, lines, customers, invoices: iv.error ? [] : (iv.data || []), agencies: ag.error ? [] : (ag.data || []), schemaOk };
+  let agencies = ag.error ? [] : (ag.data || []), agFallback = false;
+  const agErr = ag.error ? ag.error.message : '';
+  if (!agencies.length) { agFallback = true; agencies = SM_AG_FALLBACK.map(a => Object.assign({}, a)); }
+  return { items, contracts, lines, customers, invoices: iv.error ? [] : (iv.data || []), agencies, agFallback, agErr, schemaOk };
 }
 
 async function loadSettlement(btn){
@@ -1572,6 +1580,7 @@ function smAgenciesHtml(){
 async function smSaveAgency(i, btn){
   if (!smNeedSchema()) return;
   const a = SM.data.agencies[i]; if (!a) return;
+  if (SM.data.agFallback) { alert('업체 표를 읽지 못한 상태라 저장할 수 없습니다. v2_agencies_biz.sql 을 먼저 실행해 주세요.'); return; }
   const body = {}; SM_AG_FIELDS.forEach(([k]) => { body[k] = (document.getElementById(`sm-ag-${i}-${k}`).value || '').trim() || null; });
   setBtnLoading(btn, '저장 중...');
   try {
