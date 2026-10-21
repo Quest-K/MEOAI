@@ -155,6 +155,9 @@
 .reco-card-dd:hover,.reco-card-dd:focus{border-color:#c8892b;outline:none;}
 .reco-card-ov-note{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:11px;color:#a8741f;background:#fbf3e3;border-radius:6px;padding:4px 8px;margin:6px 0;}
 .reco-card-ov-note button{border:0;background:none;color:#a8741f;font-size:11px;cursor:pointer;text-decoration:underline;padding:0;}
+.cd-moved-note{font-size:12.5px;color:#7a6a4f;background:#faf7f0;border:1px dashed #e0d6c0;border-radius:8px;padding:8px 12px;margin:8px 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+#cs-cust-overview{margin-top:12px;}
+#cs-cust-overview .cd-summary{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;margin-bottom:10px;}
 </style>
 </head>
 <body>
@@ -389,6 +392,12 @@
               </div>
             </div>
           </div>
+        </div>
+
+        <!-- U-1 (2026-10-21): 고객상세에서 옮겨 온 상단 요약 줄·상태 카드. 고객을 불러왔을 때만 보입니다. -->
+        <div class="cs-card" id="cs-cust-overview" style="display:none;">
+          <div class="cd-summary" id="cd-summary">계약 정보를 불러오는 중...</div>
+          <div id="cd-status-cards"></div>
         </div>
         </div>
 
@@ -4642,6 +4651,7 @@ function syncTopSearchBox(contact){
 
 // 고객상담 화면을 빈 신규 상담으로 초기화 (연락처만 미리 채워둘 수 있음)
 function startNewConsultWithContact(contact){
+  showConsultOverview(false);
   consultDirty = false;
   currentCustomerId = null;
   consultLoadedContact = '';
@@ -5833,6 +5843,17 @@ async function openCustomerDetail(id){
   if (detailCustomerId === id) switchTab('customer-detail');
 }
 
+// U-1: 고객상담 화면의 요약 줄·상태 카드 영역 보이기/숨기기 (고객이 없으면 숨김)
+function showConsultOverview(on, loadingText){
+  const card = document.getElementById('cs-cust-overview');
+  if (!card) return;
+  card.style.display = on ? '' : 'none';
+  if (on && loadingText) {
+    const sum = document.getElementById('cd-summary'); if (sum) sum.innerHTML = `<span>${loadingText}</span>`;
+    const box = document.getElementById('cd-status-cards'); if (box) box.innerHTML = '';
+  }
+}
+
 /* 상태 요약 카드 4개 (CS v2 · 보기 전용): 상담 상태 · 고객 구분 · 상담예약일 · 제외 사유
    새 상태 구조 칼럼: consult_state, customer_segment(가망고객/잠재고객/제외고객), next_contact_at(상담예약일), exclude_reason, exclude_memo */
 function v2SegLabel(v){ return v ? String(v).replace(/고객$/, '') : ''; }
@@ -5936,8 +5957,7 @@ async function openCustomer(id){
         <button type="button" class="primary-btn" onclick="updateCustomer(${c.customer_id}, this)">💾 수정 저장</button>
       </div>
     </div>
-    <div class="cd-summary" id="cd-summary">계약 정보를 불러오는 중...</div>
-    <div id="cd-status-cards"></div>
+    <div class="cd-moved-note">계약 요약·상태 변경은 <b>고객상담</b> 화면의 고객정보 아래로 이동했습니다. <button type="button" class="mini-btn" onclick="switchTab('cs')">고객상담 열기</button></div>
 
     <div class="cd-grid">
       <div class="cd-main">
@@ -6023,6 +6043,7 @@ async function openCustomer(id){
     </section>
   `;
 
+  showConsultOverview(true, '계약 정보를 불러오는 중...');
   renderCustomerProducts(c);
   renderContactSection(c.customer_id);
   detailHistoryFilter = 'all'; detailHistoryShown = 10;
@@ -6707,11 +6728,13 @@ async function refreshDetailBundle(customerId){
     const msg = `<div class="wide-table-empty">조회 실패: ${escHtml(res.error)}</div>`;
     if (cBox) cBox.innerHTML = msg;
     if (hBox) hBox.innerHTML = msg;
+    showConsultOverview(true);
     const sBox = document.getElementById('cd-summary'); if (sBox) sBox.innerHTML = '<span>계약 정보를 불러오지 못했습니다.</span>';
     renderDetailFamily();
     return;
   }
   detailBundle = res;
+  showConsultOverview(true);
   renderDetailSummary();
   renderDetailStatusCards();
   renderDetailFamily();
@@ -7567,7 +7590,7 @@ async function deleteCustomer(id, btn){
     const { error } = await sb.from('customers').delete().eq('customer_id', id);
     if (error) { alert('삭제 실패: ' + error.message); return; }
     if (currentCustomerId === id) currentCustomerId = null;
-    if (detailCustomerId === id) detailCustomerId = null;
+    if (detailCustomerId === id) { detailCustomerId = null; showConsultOverview(false); }
     document.getElementById('cust-detail').innerHTML = `<div class="cs-card"><div class="reflected-empty">[고객조회] [고객조회]에서 고객을 선택하거나 상단 고객 탭을 누른 뒤 [고객상세] 탭을 열면 상세 정보가 표시됩니다.</div></div>`;
     const pbox = document.getElementById('cust-products'); if (pbox) pbox.innerHTML = `<div class="js-empty">선택된 고객이 없습니다.</div>`;
     switchTab('customers');
@@ -7777,7 +7800,7 @@ function closeCustTab(i, silent){
   custTabsSave(); renderCustTabs();
   if (!showsThis) return;
   if (t.id != null && t.id === detailCustomerId) {
-    detailCustomerId = null;
+    detailCustomerId = null; showConsultOverview(false);
     const det = document.getElementById('cust-detail');
     if (det) det.innerHTML = `<div class="cs-card"><div class="reflected-empty">[고객조회]에서 고객을 선택하거나 상단 고객 탭을 누른 뒤 [고객상세] 탭을 열면 상세 정보가 표시됩니다.</div></div>`;
     detailBundle = null;
@@ -7794,7 +7817,7 @@ function closeAllCustTabs(){
   custTabs = [];
   custTabActive = -1;
   custTabsSave(); renderCustTabs();
-  detailCustomerId = null; detailBundle = null;
+  detailCustomerId = null; detailBundle = null; showConsultOverview(false);
   const det = document.getElementById('cust-detail');
   if (det) det.innerHTML = `<div class="cs-card"><div class="reflected-empty">[고객조회]에서 고객을 선택하거나 상단 고객 탭을 누른 뒤 [고객상세] 탭을 열면 상세 정보가 표시됩니다.</div></div>`;
   startNewConsultWithContact('010');
