@@ -13,6 +13,15 @@
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <link rel="stylesheet" href="Styles.css?v=20261007c">
+<style id="v2-ui-fixes">
+/* 요구1) 특이사항 입력칸 : 마우스를 올리면 강조되고, 아래쪽 모서리를 끌어 위·아래로 높이를 조절할 수 있습니다 (상담 화면·고객상세 공통) */
+textarea.cust-note-log, #cust-notes, #cf-notes{resize:vertical !important;min-height:72px;max-height:75vh;overflow:auto;box-sizing:border-box;transition:border-color .15s, box-shadow .15s;}
+textarea.cust-note-log:hover, #cust-notes:hover, #cf-notes:hover{border-color:#c8892b;box-shadow:0 0 0 2px rgba(200,137,43,.15);}
+/* 요구2) 고객상담 상단 고정 : Styles.css 는 고객 정보 줄 높이를 48px 로 고정해 단계 탭 위치를 잡는데, 줄이 2줄 구성이 되어 더 높아져 겹쳤음.
+   실제 줄 높이(--cs-strip-h)를 syncNavHeight() 가 재서 넣고, 단계 탭은 상단 메뉴 + 고객 정보 줄 바로 아래에 고정합니다. */
+:root{--cs-strip-h:48px;}
+.cs-cust-strip + .cs-wiz-nav{top:calc(var(--nav-h, 134px) + var(--cs-strip-h, 48px)) !important;}
+</style>
 <style id="reco-align-override">
 /* 추천상품 : 속도·공유기·TV채널·셋탑 버튼의 높이와 시작 위치를 같게 맞춤 */
 .reco-controls{align-items:flex-start;}
@@ -371,7 +380,7 @@
                     onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();addConsultNote(document.getElementById('cust-note-add-btn'));}"></textarea>
                   <button type="button" id="cust-note-add-btn" class="mini-btn mini-btn-primary" onclick="addConsultNote(this)">+ 추가</button>
                 </div>
-                <textarea id="cust-notes" class="cust-note-log" rows="5" placeholder="누적된 특이사항이 여기에 표시됩니다." oninput="mirrorNotes('cs')"></textarea>
+                <textarea id="cust-notes" class="cust-note-log" rows="5" title="아래쪽 모서리를 끌어 높이를 조절할 수 있습니다" placeholder="누적된 특이사항이 여기에 표시됩니다." oninput="mirrorNotes('cs')"></textarea>
               </div>
             </div>
           </div>
@@ -8015,10 +8024,16 @@ async function quickTopSearch(rawContact, btn){
 function syncNavHeight(){
   const nav = document.querySelector('.tab-nav');
   if (nav) document.documentElement.style.setProperty('--nav-h', nav.offsetHeight + 'px');
+  // 고객 정보 줄(#cs-cust-strip)의 실제 높이 + 아래 여백 : 단계 탭(.cs-wiz-nav)이 이 줄 바로 아래에 고정되도록 (줄이 늘어나도 겹치지 않음)
+  const strip = document.getElementById('cs-cust-strip');
+  if (strip && strip.offsetHeight) {
+    const mb = parseFloat(getComputedStyle(strip).marginBottom) || 0;
+    document.documentElement.style.setProperty('--cs-strip-h', (strip.offsetHeight + mb) + 'px');
+  }
 }
 window.addEventListener('resize', syncNavHeight);
 window.addEventListener('load', syncNavHeight);
-try { const nav = document.querySelector('.tab-nav'); if (nav && window.ResizeObserver) new ResizeObserver(syncNavHeight).observe(nav); } catch (e) {}
+try { const nav = document.querySelector('.tab-nav'), strip = document.getElementById('cs-cust-strip'); if (window.ResizeObserver) { const ro = new ResizeObserver(syncNavHeight); if (nav) ro.observe(nav); if (strip) ro.observe(strip); } } catch (e) {}
 
 (async function init(){
   displayLastModified();
