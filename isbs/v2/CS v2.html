@@ -150,6 +150,12 @@
 .sm-ag-card input{ width:100%; box-sizing:border-box; }
 
 </style>
+<style id="reco-card-dd-style">
+.reco-card-dd{max-width:100%;font:inherit;font-size:12px;color:inherit;background:#fff;border:1px solid #d9d2c3;border-radius:6px;padding:2px 4px;cursor:pointer;}
+.reco-card-dd:hover,.reco-card-dd:focus{border-color:#c8892b;outline:none;}
+.reco-card-ov-note{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:11px;color:#a8741f;background:#fbf3e3;border-radius:6px;padding:4px 8px;margin:6px 0;}
+.reco-card-ov-note button{border:0;background:none;color:#a8741f;font-size:11px;cursor:pointer;text-decoration:underline;padding:0;}
+</style>
 </head>
 <body>
 <div class="wrap">
@@ -2226,6 +2232,7 @@ function setupRecoSeg(id, key){
   el.querySelectorAll('button').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       recoState[key] = btn.dataset.value;
+      recoCardOv = {};
       if (key === 'tv') {
         lastRecoTvTier = btn.dataset.value;
       }
@@ -2253,6 +2260,34 @@ function computeProperGiftAmount(commTotal, speedNum, tvTier){
   return Math.floor(raw / 10000) * 10000;
 }
 
+// ===== 통신사 카드별 상품 변경 (상단 속도·TV채널·셋탑 선택은 그대로 두고, 카드 안에서 그 카드만 바꿈) =====
+let recoCardOv = {};   // { 통신사키: { speed, tv, settopTier } }  상단 선택이 바뀌면 초기화됩니다.
+function recoStateFor(c){
+  const ov = recoCardOv[c] || {};
+  const st = Object.assign({}, recoState);
+  if (ov.speed) st.speed = ov.speed;
+  if (recoState.tv !== 'none') {
+    if (ov.tv) st.tv = ov.tv;
+    if (ov.settopTier) st.settopTier = ov.settopTier;
+  }
+  return st;
+}
+function recoDomOptions(segId){
+  return Array.from(document.querySelectorAll('#' + segId + ' button')).map(b => ({ value: b.dataset.value, label: b.textContent.trim() }));
+}
+async function setRecoCardValue(c, key, val){
+  const base = recoState[key];
+  recoCardOv[c] = recoCardOv[c] || {};
+  if (String(val) === String(base)) delete recoCardOv[c][key]; else recoCardOv[c][key] = val;
+  if (!Object.keys(recoCardOv[c]).length) delete recoCardOv[c];
+  if (key === 'speed' || key === 'tv') { try { await loadFinanceData(); } catch (e) {} }
+  renderRecoCards();
+}
+function resetRecoCard(c){ delete recoCardOv[c]; renderRecoCards(); }
+function recoCardSelect(c, key, st, options, labelFn){
+  return `<select class="reco-card-dd" onchange="setRecoCardValue('${c}','${key}',this.value)">${options.map(o => `<option value="${o.value}"${String(st[key]) === String(o.value) ? ' selected' : ''}>${escHtmlSafe(labelFn ? labelFn(o) : o.label)}</option>`).join('')}</select>`;
+}
+
 function renderRecoCards(){
   const container = document.getElementById('reco-carrier-cards');
   if (!container) return;
@@ -2269,9 +2304,6 @@ function renderRecoCards(){
   const isMvno = mobileCarrierRaw.includes('알뜰');
   const mobileGroup = mobileCarrierRaw.replace('알뜰', '');
 
-  const speedNum = Number(recoState.speed);
-  const tvTier = recoState.tv;
-
   container.innerHTML = recoVisibleCarriers().map(c => {
     if (excluded.includes(c)) {
       return `
@@ -2284,7 +2316,10 @@ function renderRecoCards(){
       `;
     }
 
-    const price = computePrice(c, recoState);
+    const st = recoStateFor(c);
+    const speedNum = Number(st.speed);
+    const tvTier = st.tv;
+    const price = computePrice(c, st);
     if (!price.available) {
       return `<div class="reco-product-card"><div class="reco-product-card-title reco-title-2row carrier-${c}">${carrierTitleHtml(c)}</div><div class="reflected-empty">해당 스펙의 상품 정보가 없습니다.</div></div>`;
     }
@@ -2339,9 +2374,10 @@ function renderRecoCards(){
         <div class="reco-product-card-title reco-title-2row carrier-${c}">
           ${carrierTitleHtml(c, `<span class="reco-product-total">${homeTotal.toLocaleString()}</span>`)}
         </div>
+        ${recoCardOv[c] ? `<div class="reco-card-ov-note"><span>이 카드만 상단 선택과 다르게 변경됨</span><button type="button" onclick="resetRecoCard('${c}')">↺ 상단 선택으로</button></div>` : ''}
         <div class="reco-block first">
           <div class="info-row main-label reco-subtotal-row"><span>인터넷</span><span>${internetSubtotal.toLocaleString()}</span></div>
-          <div class="info-row sub-item-row reco-sub-lv2"><span>${SPEED_LABEL[recoState.speed] || ''}</span><span>${(price.internetFee || 0).toLocaleString()}</span></div>
+          <div class="info-row sub-item-row reco-sub-lv2"><span>${recoCardSelect(c, 'speed', st, recoDomOptions('reco-seg-speed'), o => SPEED_LABEL[o.value] || o.label)}</span><span>${(price.internetFee || 0).toLocaleString()}</span></div>
           <div class="info-row sub-item-row reco-sub-lv2"><span>공유기<span class="reco-detail-sm">(${ROUTER_LABEL[recoState.router] || ''})</span></span><span>${(price.routerFee || 0).toLocaleString()}</span></div>
           <div class="info-row sub-item-row reco-sub-lv2"><span>${tvTier !== 'none' ? '인터넷+TV 결합할인' : '인터넷결합할인'}</span><span>${price.bundleDiscount ? '-' + price.bundleDiscount.toLocaleString() : '0'}</span></div>
           ${combo ? `
@@ -2350,8 +2386,8 @@ function renderRecoCards(){
         ${tvTier !== 'none' ? `
         <div class="reco-block">
           <div class="info-row main-label reco-subtotal-row"><span>TV</span><span>${tvSubtotal.toLocaleString()}</span></div>
-          <div class="info-row sub-item-row reco-sub-lv2"><span>${tvName}/${tvChannels}채널</span><span>${(price.tvFee || 0).toLocaleString()}</span></div>
-          <div class="info-row sub-item-row reco-sub-lv2"><span>셋탑박스<span class="reco-detail-sm">(${settopName})</span></span><span>${(price.settopFee || 0).toLocaleString()}</span></div>
+          <div class="info-row sub-item-row reco-sub-lv2"><span>${recoCardSelect(c, 'tv', st, recoDomOptions('reco-seg-tv'), o => { try { const r = computePrice(c, Object.assign({}, st, { tv: o.value })); return r && r.available && r.tvInfo ? `${r.tvInfo.name}/${r.tvInfo.channels || 200}채널` : o.label; } catch (e) { return o.label; } })}</span><span>${(price.tvFee || 0).toLocaleString()}</span></div>
+          <div class="info-row sub-item-row reco-sub-lv2"><span>셋탑박스 ${recoCardSelect(c, 'settopTier', st, recoDomOptions('reco-seg-settop'), o => { try { const r = computePrice(c, Object.assign({}, st, { settopTier: o.value })); return r && r.available && r.settopInfo ? r.settopInfo.name : o.label; } catch (e) { return o.label; } })}</span><span>${(price.settopFee || 0).toLocaleString()}</span></div>
           ${price.tvBundleDiscount ? `<div class="info-row sub-item-row reco-sub-lv2"><span>TV결합할인</span><span>-${price.tvBundleDiscount.toLocaleString()}</span></div>` : ''}
           ${comboTv ? `<div class="info-row sub-item-row reco-sub-lv2"><span>휴대폰 결합 IPTV 할인<span class="reco-detail-sm">(${combo.name})</span></span><span>-${comboTv.toLocaleString()}</span></div>` : ''}
           ${(price.extraTvDetails || []).map(ex => `
@@ -2390,11 +2426,12 @@ function renderRecoCards(){
 
 function reflectRecoCardToProposal(carrier){
   markConsultDirty();
-  const res = computePrice(carrier, recoState);
+  const st = recoStateFor(carrier);
+  const res = computePrice(carrier, st);
   if (!res.available) { alert('선택하신 조합으로는 가입 가능한 상품 정보가 없습니다.'); return; }
 
-  const speedNum = Number(recoState.speed);
-  const tvTier = recoState.tv;
+  const speedNum = Number(st.speed);
+  const tvTier = st.tv;
   const isDuplicate = reflectedProducts.some(p => p.type === 'home' && p.carrierKey === carrier && (p.lgVariant || null) === lgVariantOf(carrier) && p.speedNum === speedNum && p.tvTier === tvTier);
   if (isDuplicate) {
     alert('이미 동일한 조건의 인터넷/TV 제안상품이 반영되어 있습니다.');
@@ -2405,7 +2442,7 @@ function reflectRecoCardToProposal(carrier){
   const promo = PROMOTION_DATA[carrier] || { maxLimit: 450000, giftCard: 60000, cash: 390000 };
   const userGiftVal = customGiftValues[carrier] !== undefined ? customGiftValues[carrier] : (promo.maxLimit || (promo.giftCard + promo.cash));
   const gb = computeGiftBreakdown(carrier, userGiftVal);
-  const tvLabel = recoState.tv === 'none' ? '인터넷 단독' : (res.tvInfo ? `${res.tvInfo.name} (${res.tvInfo.channels || 200}채널)` : 'TV기본');
+  const tvLabel = st.tv === 'none' ? '인터넷 단독' : (res.tvInfo ? `${res.tvInfo.name} (${res.tvInfo.channels || 200}채널)` : 'TV기본');
   const settopName = res.settopInfo ? res.settopInfo.name : '기본셋톱';
 
   reflectedProducts.push({
@@ -2416,27 +2453,27 @@ function reflectRecoCardToProposal(carrier){
     lgVariant: lgVariantOf(carrier),
     speedNum: speedNum,
     tvTier: tvTier,
-    internetLabel: SPEED_LABEL[recoState.speed],
+    internetLabel: SPEED_LABEL[st.speed],
     internetFee: res.internetFee,
-    routerLabel: ROUTER_LABEL[recoState.router],
+    routerLabel: ROUTER_LABEL[st.router],
     routerFee: res.routerFee,
-    bundleDiscount: recoState.tv !== 'none' ? res.bundleDiscount : 0,
-    tvLabel: recoState.tv === 'none' ? '미포함' : tvLabel,
-    tvName: recoState.tv === 'none' ? '' : (res.tvInfo ? res.tvInfo.name : '기본형'),
-    tvChannels: recoState.tv === 'none' ? '' : (res.tvInfo ? (res.tvInfo.channels || 200) : 200),
-    tvFee: recoState.tv === 'none' ? 0 : res.tvFee,
-    settopLabel: recoState.tv === 'none' ? '-' : settopName,
-    settopFee: recoState.tv === 'none' ? 0 : res.settopFee,
-    tvBundleDiscount: recoState.tv !== 'none' ? res.tvBundleDiscount : 0,
+    bundleDiscount: st.tv !== 'none' ? res.bundleDiscount : 0,
+    tvLabel: st.tv === 'none' ? '미포함' : tvLabel,
+    tvName: st.tv === 'none' ? '' : (res.tvInfo ? res.tvInfo.name : '기본형'),
+    tvChannels: st.tv === 'none' ? '' : (res.tvInfo ? (res.tvInfo.channels || 200) : 200),
+    tvFee: st.tv === 'none' ? 0 : res.tvFee,
+    settopLabel: st.tv === 'none' ? '-' : settopName,
+    settopFee: st.tv === 'none' ? 0 : res.settopFee,
+    tvBundleDiscount: st.tv !== 'none' ? res.tvBundleDiscount : 0,
     totalFee: res.total,
     comboKey: combo ? combo.key : null,            // null = 결합할인 적용 안 함 (값이 없는 옛 데이터는 최종상품에서 최대 할인을 자동 계산)
     comboName: combo ? combo.name : '',
     comboInternetDiscount: combo ? combo.internetDiscount : 0,
     comboTvDiscount: combo ? (combo.tvDiscount || 0) : 0,
     comboPhoneDiscount: combo ? combo.phoneDiscount : 0,
-    extraTVs: recoState.tv !== 'none' ? JSON.parse(JSON.stringify(recoState.extraTVs || [])) : [],
-    extraTvFee: recoState.tv !== 'none' ? (res.extraTvFee || 0) : 0,
-    extraTvDetails: recoState.tv !== 'none' ? (res.extraTvDetails || []) : [],
+    extraTVs: st.tv !== 'none' ? JSON.parse(JSON.stringify(st.extraTVs || [])) : [],
+    extraTvFee: st.tv !== 'none' ? (res.extraTvFee || 0) : 0,
+    extraTvDetails: st.tv !== 'none' ? (res.extraTvDetails || []) : [],
     benefitTotal: userGiftVal,
     giftCard: gb.giftCard,
     cash: gb.cash + gb.extraPay,   // 추가지급은 현금에 합산
@@ -2709,6 +2746,7 @@ function setExtraTvValue(idx, key, val){
 async function applyRecoPreset(speed, tv, btnEl){
   recoState.speed = speed;
   recoState.tv = tv;
+  recoCardOv = {};
   lastRecoTvTier = tv;
   customGiftValues = {};
 
@@ -2730,6 +2768,7 @@ function syncRecoControlsUI(){
 }
 
 async function toggleRecoTvOnOff(isOn){
+  recoCardOv = {};
   if (isOn) {
     recoState.tv = lastRecoTvTier || 'basic';
   } else {
@@ -3069,8 +3108,9 @@ function recoExcludedCarriers(){
 function getRecoComboOptions(c, price){
   const lines = getProposalComboLines(c);
   if (c === 'sky' || !price || !price.available || !lines.length) return { lines, options: [] };
-  const bd = recoState.tv !== 'none' ? (Number(price.bundleDiscount) || 0) : 0;
-  return { lines, options: computeComboOptionsFor(c, lines, Number(recoState.speed), bd, recoState.tv !== 'none') };
+  const st = recoStateFor(c);
+  const bd = st.tv !== 'none' ? (Number(price.bundleDiscount) || 0) : 0;
+  return { lines, options: computeComboOptionsFor(c, lines, Number(st.speed), bd, st.tv !== 'none') };
 }
 
 // 선택된 결합할인(없으면 null) : 인터넷 할인은 월요금에서, 휴대폰 할인은 휴대폰 요금에서 차감됩니다.
@@ -3121,9 +3161,9 @@ function renderRecoComboPanel(){
   if (!DATA) { box.innerHTML = ''; return; }
 
   const excluded = recoExcludedCarriers();
-  const specText = `${SPEED_LABEL[recoState.speed] || ''}${recoState.tv !== 'none' ? ' + TV' : ' 단독'}`;
-
   const cols = recoVisibleCarriers().map(c => {
+    const stc = recoStateFor(c);
+    const specText = `${SPEED_LABEL[stc.speed] || ''}${stc.tv !== 'none' ? ' + TV' : ' 단독'}`;
     const head = `<div class="fam-accordion-card-header carrier-${c}">${CARRIER_LABEL[c]}${recoMobileTagHtml(c)}<span class="fam-card-spec">${specText}</span></div>`;
     let body;
     if (excluded.includes(c)) {
@@ -3131,7 +3171,7 @@ function renderRecoComboPanel(){
     } else if (c === 'sky') {
       body = `<div class="proposal-col-empty">SKY는 휴대폰 결합할인을 계산하지 않습니다.</div>`;
     } else {
-      const price = computePrice(c, recoState);
+      const price = computePrice(c, stc);
       const { lines, options } = getRecoComboOptions(c, price);
       if (!price.available) {
         body = `<div class="proposal-col-empty">해당 스펙의 상품 정보가 없습니다.</div>`;
@@ -4584,7 +4624,7 @@ function resetConsultCustomerExtras(){
   const before = JSON.stringify(recoState);
   recoState = { speed:'500', tv:'basic', settopTier:'basic', router:'Y', extraTVs:[] };
   lastRecoTvTier = 'basic';
-  customGiftValues = {}; recoComboSel = {}; openDiscountItems.clear();
+  customGiftValues = {}; recoComboSel = {}; recoCardOv = {}; openDiscountItems.clear();
   [['reco-seg-speed','speed'], ['reco-seg-router','router'], ['reco-seg-tv','tv'], ['reco-seg-settop','settopTier']].forEach(([id, key]) => {
     document.querySelectorAll('#' + id + ' button').forEach(b => b.classList.toggle('active', b.dataset.value === String(recoState[key])));
   });
