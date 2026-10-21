@@ -362,3 +362,11 @@ const V2_STATUS_AXES = {
     refund_invoice_status: { col: 'refund_invoice_status', values: REFUND_INVOICE_STATUSES, nullable: true }
   }
 };
+
+/* ---------- 12. 통신사 설치 가능 주소(가용) 조회 페이지 ---------- */
+// 추천상품 화면의 [KT·LG·SK 가용조회] 버튼이 새 탭으로 여는 주소입니다. 주소가 바뀌면 이 값만 고치세요.
+const CARRIER_COVERAGE_URLS = {
+  kt: 'https://help.kt.com/serviceinfo/SearchServiceAreaByAddr.do',
+  lg: 'https://www.lguplus.com/support/online/coverage-check',
+  sk: 'https://www.bworld.co.kr/myb/product/join/address/svcAveSearch.do'
+};
