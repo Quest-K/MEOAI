@@ -534,7 +534,10 @@
         </div>
         <div class="js-header-row">
           <h3>상담요약</h3>
-          <button type="button" class="js-copy-btn" onclick="copyCsSummary()">📋 복사</button>
+          <span style="display:inline-flex;gap:6px;align-items:center;">
+            <button type="button" id="js-fee-toggle-btn" class="js-copy-btn" onclick="toggleSummaryFee()" title="상담요약의 수수료 표시를 켜고 끕니다" style="display:none;">💰 수수료 ON</button>
+            <button type="button" class="js-copy-btn" onclick="copyCsSummary()">📋 복사</button>
+          </span>
         </div>
         <p class="js-desc">고객 정보와 제안 상품 내역이 변경될 때마다 자동으로 반영됩니다.</p>
 
@@ -3186,6 +3189,19 @@ function handleGiftInputChange(carrier, rawVal) {
   renderRecoCards();
 }
 
+let showSummaryFee = true;
+function syncSummaryFeeBtn(){
+  const b = document.getElementById('js-fee-toggle-btn');
+  if (!b) return;
+  b.style.display = isLoggedIn ? '' : 'none';
+  b.textContent = showSummaryFee ? '💰 수수료 ON' : '💰 수수료 OFF';
+  b.style.opacity = showSummaryFee ? '1' : '0.55';
+}
+function toggleSummaryFee(){
+  showSummaryFee = !showSummaryFee;
+  updateCsSummaryPanel();
+}
+
 function buildProductSummaryLines(p){
   if (p.type === 'usim') {
     const uci = isLoggedIn ? usimCommissionInfo(p.carrier, Number(p.fee) || 0) : null;
@@ -3197,7 +3213,7 @@ function buildProductSummaryLines(p){
     lines.push(`데이터: ${p.dataAllowance}`);
     if (isLoggedIn) {
       lines.push(`사은품: ${gift.toLocaleString()}원`);
-      lines.push(`수수료: ${commission.toLocaleString()}원${uci && uci.agency ? ` (${uci.agency})` : ''}`);
+      if (showSummaryFee) lines.push(`수수료: ${commission.toLocaleString()}원${uci && uci.agency ? ` (${uci.agency})` : ''}`);
     }
     return lines;
   }
@@ -3210,7 +3226,7 @@ function buildProductSummaryLines(p){
   }
   lines.push(`월요금 ${p.totalFee.toLocaleString()}원`);
   lines.push(`사은품 ${p.benefitTotal.toLocaleString()}원`);
-  if (isLoggedIn) {
+  if (isLoggedIn && showSummaryFee) {
     const comm = lookupCommission(p.carrierKey, p.speedNum, p.tvTier, p.lgVariant);
     lines.push(`수수료 ${comm.totalComm.toLocaleString()}원${comm.agency ? ` (${comm.agency})` : ''}`);
   }
@@ -3524,6 +3540,7 @@ function updateCsSummaryPanel(){
     });
   }
   productsEl.innerHTML = prodHtml;
+  syncSummaryFeeBtn();
 }
 
 function copyCsSummary(){
