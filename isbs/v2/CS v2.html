@@ -7214,11 +7214,18 @@ function v2EndDialog(o){
 /* 상담종료(제외·잠재) 처리 뒤 입력한 사유를 상담 메모에 한 줄로 남깁니다. 성공한 결과 r 에 v2RunWith 가 붙여 둔 입력값(__inputs)을 사용 */
 async function v2NoteEndChoice(cid, r){
   try {
-    const ec = r && r.ok && r.changed !== false && r.__inputs && r.__inputs.endChoice;
-    if (!ec || !cid) return;
-    const line = ec.mode === '잠재'
-      ? `[${formatNoteStamp(new Date())}] 상담종료(잠재): 재영업 예약 ${ec.date}`
-      : `[${formatNoteStamp(new Date())}] 상담종료(제외): ${ec.reason}${ec.memo ? ' · ' + String(ec.memo).replace(/\s*\n\s*/g, ' ') : ''}`;
+    const inp = r && r.ok && r.changed !== false && r.__inputs;
+    if (!inp || !cid) return;
+    const ec = inp.endChoice, stamp = `[${formatNoteStamp(new Date())}]`;
+    let line = '';
+    if (ec) {
+      line = ec.mode === '잠재'
+        ? `${stamp} 상담종료(잠재): 재영업 예약 ${ec.date}`
+        : `${stamp} 상담종료(제외): ${ec.reason}${ec.memo ? ' · ' + String(ec.memo).replace(/\s*\n\s*/g, ' ') : ''}`;
+    } else if (inp.years && r.customer && r.customer.reserve) {   // 모든 지급이 끝나 재영업 1·3년 뒤로 예약한 경우
+      line = `${stamp} 상담종료(잠재): 재영업 예약 ${r.customer.reserve} (${inp.years}년 뒤)`;
+    }
+    if (!line) return;
     await prependNoteLine(cid, line, undefined, true);
   } catch (e) { console.warn('상담 종료 사유를 상담 메모에 남기지 못했습니다', e); }
 }
@@ -7284,6 +7291,7 @@ async function v2FinishStatus(r, cid){
   if (!r || r.cancelled) return false;
   if (!r.ok) { alert('변경 실패: ' + (r.userMessage || r.error || '알 수 없는 오류')); return false; }
   showToast(r.changed ? '✓ 변경되었습니다' : '변경된 내용이 없습니다');
+  await v2NoteEndChoice(cid, r);   // 상담종료(제외·잠재)가 함께 처리됐으면 사유를 상담 메모에 한 줄 남김
   await afterContractChange(cid);
   await v2ShowMessages(r, cid);
   return true;
@@ -7301,7 +7309,7 @@ async function v2ShowMessages(r, cid){
       validate: v => v.date ? '' : '날짜를 입력해 주세요.' });
     if (d) {
       const r2 = await v2RunWith(o => statusEndConsult(cid, o.endChoice), { endChoice: { mode: '잠재', date: d.date } });
-      if (await v2FinishStatus(r2, cid)) await v2NoteEndChoice(cid, r2);
+      await v2FinishStatus(r2, cid);
     }
   }
 }
@@ -7385,7 +7393,6 @@ async function v2CustomerChange(selectEl, kind){
   try { r = await v2RunWith(o => kind === 'consult' ? statusSetConsult(cid, val, o) : statusSetSeg(cid, val, o), {}); }
   catch (e) { r = { ok: false, error: e && e.message ? e.message : String(e) }; }
   const ok = await v2FinishStatus(r, cid);
-  if (ok) await v2NoteEndChoice(cid, r);
   if (!ok) { revert(); document.querySelectorAll('.v2-ctl select').forEach(s => { s.disabled = false; }); }
 }
 async function v2ReserveSave(clear){
