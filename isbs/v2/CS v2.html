@@ -179,7 +179,7 @@ textarea.cust-note-log:hover, #cust-notes:hover, #cf-notes:hover{border-color:#c
     <button class="tab-btn" data-tab="settlement" onclick="switchTab('settlement')">정산</button>
     <button class="tab-btn" data-tab="customers" onclick="switchTab('customers')">고객조회</button>
     <button class="tab-btn active" data-tab="cs" onclick="switchTab('cs')">고객상담</button>
-    <button class="tab-btn" data-tab="customer-detail" onclick="switchTab('customer-detail')">고객상세</button>
+    <button class="tab-btn" data-tab="customer-detail" onclick="switchTab('cs')" style="display:none;">고객상세</button><!-- U-9: 고객상세 탭 숨김(고객상담으로 통합) -->
     <button class="tab-btn" data-tab="notice" onclick="switchTab('notice')">필수안내</button>
     <div id="auth-box" class="auth-box">
       <button class="login-trigger-btn" onclick="openLoginModal()">🔐 관리자 로그인</button>
@@ -430,6 +430,17 @@ textarea.cust-note-log:hover, #cust-notes:hover, #cf-notes:hover{border-color:#c
             <span class="mini-btn-row"><span id="contact-progress"></span><button type="button" class="mini-btn" onclick="resetContactHistory(detailCustomerId)">이력 초기화</button></span></h4>
           <div id="contact-section"><div class="wide-table-empty">불러오는 중...</div></div>
         </div>
+        <!-- U-8 (2026-10-22): 고객상세에서 옮겨 온 구 구조 이력·메타·고객 삭제 -->
+        <div class="cs-card" id="cs-cust-meta" style="display:none;margin-top:12px;">
+          <details class="cd-fold">
+            <summary>상담·제안 상품 이력 <span class="cust-note-hint">구 구조 기록 · S11에서 정리</span></summary>
+            <div id="cust-products"><div class="js-empty">불러오는 중...</div></div>
+          </details>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;">
+            <div class="cust-meta" id="cs-cust-meta-text"></div>
+            <button type="button" class="danger-btn" id="cs-cust-delete-btn" onclick="deleteCustomer(detailCustomerId, this)">고객 삭제</button>
+          </div>
+        </div>
         </div>
 
         <div class="cs-wiz-panel" id="cs-wiz-panel-2">
@@ -608,7 +619,7 @@ textarea.cust-note-log:hover, #cust-notes:hover, #cf-notes:hover{border-color:#c
       <header>
         <div class="eyebrow">CUSTOMER DATABASE</div>
         <h1>고객 조회</h1>
-        <p>연락처·이름으로 고객을 찾고, 고객을 클릭하면 [고객상담] 화면으로 이동합니다. 계약·상품·가족·컨택·이력은 [고객상세] 탭에서 한 화면으로 볼 수 있습니다.</p>
+        <p>연락처·이름으로 고객을 찾고, 고객을 클릭하면 [고객상담] 화면으로 이동합니다. 계약·상품·가족·컨택·이력도 [고객상담] 화면에서 함께 볼 수 있습니다.</p>
       </header>
       <div id="status-banner">
         <div class="banner-header">
@@ -2183,6 +2194,7 @@ let finalProducts = [];
 let isLoggedIn = false;
 
 function switchTab(tabId) {
+  if (tabId === 'customer-detail') tabId = 'cs';   // U-9: 고객상세 탭은 고객상담으로 통합됨
   try { closeCustEditDrawer(); } catch (e) {}
   document.querySelectorAll('.view-container').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
@@ -5880,8 +5892,11 @@ async function openCustomerToConsult(id){
 }
 
 async function openCustomerDetail(id){
+  // U-9: 고객상세 탭이 없어져 고객상담 화면으로 보냅니다
+  if (id !== currentCustomerId) { await loadCustomerToConsult(id); return; }
   await openCustomer(id);
-  if (detailCustomerId === id) switchTab('customer-detail');
+  switchTab('cs');
+  try { const ov = document.getElementById('cs-cust-overview'); if (ov) ov.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {}
 }
 
 // U-1: 고객상담 화면의 요약 줄·상태 카드 영역 보이기/숨기기 (고객이 없으면 숨김)
@@ -5893,6 +5908,7 @@ function showConsultOverview(on, loadingText){
   const cts = document.getElementById('cs-cust-contacts'); if (cts) cts.style.display = on ? '' : 'none';
   const ctr = document.getElementById('cs-cust-contracts'); if (ctr) ctr.style.display = on ? '' : 'none';
   const fam = document.getElementById('cs-cust-family'); if (fam) fam.style.display = on ? '' : 'none';
+  const mt = document.getElementById('cs-cust-meta'); if (mt) mt.style.display = on ? '' : 'none';   // U-8
   const hint = document.getElementById('cs-contact-hint');
   if (hint && typeof CONTACT_RULES !== 'undefined') hint.textContent = `고객부재 재안내 · 최대 ${CONTACT_RULES.maxAttempts}회 · ${CONTACT_RULES.intervalHours}시간 간격`;
   if (on && loadingText) {
@@ -6014,10 +6030,9 @@ async function openCustomer(id){
         <section class="cd-card">
           <div class="cust-ov-sub">계약·상품(보기·편집·삭제)은 <b>고객상담</b> 화면의 고객정보 아래로 이동했습니다. (U-4·U-5)</div>
         </section>
-        <details class="cd-card cd-fold">
-          <summary>상담·제안 상품 이력 <span class="cust-note-hint">구 구조 기록 · S11에서 정리</span></summary>
-          <div id="cust-products"><div class="js-empty">불러오는 중...</div></div>
-        </details>
+        <section class="cd-card">
+          <div class="cust-ov-sub">구 구조 이력·고객 삭제는 <b>고객상담</b> 화면 맨 아래로 이동했습니다. (U-8)</div>
+        </section>
       </div>
 
       <div class="cd-side">
@@ -6053,10 +6068,6 @@ async function openCustomer(id){
       </div>
     </div>
         </section>
-        <div class="cust-meta">고객ID ${c.customer_id} · 최초저장 ${formatDateShort(c.created_at)} · 최종수정 ${formatDateShort(c.updated_at)}</div>
-        <div class="cust-detail-actions">
-          <button type="button" class="danger-btn" onclick="deleteCustomer(${c.customer_id}, this)">고객 삭제</button>
-        </div>
       </div>
     </div>
 
@@ -6066,6 +6077,7 @@ async function openCustomer(id){
   `;
 
   showConsultOverview(true, '계약 정보를 불러오는 중...');
+  { const mt = document.getElementById('cs-cust-meta-text'); if (mt) mt.textContent = `고객ID ${c.customer_id} · 최초저장 ${formatDateShort(c.created_at)} · 최종수정 ${formatDateShort(c.updated_at)}`; }   // U-8
   renderCustomerProducts(c);
   renderContactSection(c.customer_id);
   detailHistoryFilter = 'all'; detailHistoryShown = 10;
