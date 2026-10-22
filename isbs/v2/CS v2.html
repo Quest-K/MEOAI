@@ -166,6 +166,9 @@ textarea.cust-note-log:hover, #cust-notes:hover, #cf-notes:hover{border-color:#c
 .reco-card-ov-note button{border:0;background:none;color:#a8741f;font-size:11px;cursor:pointer;text-decoration:underline;padding:0;}
 .cd-moved-note{font-size:12.5px;color:#7a6a4f;background:#faf7f0;border:1px dashed #e0d6c0;border-radius:8px;padding:8px 12px;margin:8px 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 #cs-cust-overview{margin-top:12px;}
+.cs-status-line{display:flex;align-items:center;gap:8px;}
+.cs-status-badge{display:inline-block;font-size:13px;font-weight:700;color:#7a5a1a;background:#fbf3e3;border:1px solid #ecd9b0;border-radius:999px;padding:3px 12px;}
+.cs-manage-contacts{margin-top:4px;}
 .ct-status-row.is-auto{opacity:.62;}
 .ct-status-row.is-auto:hover{opacity:.9;}
 #cs-cust-overview .cd-summary{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;margin-bottom:10px;}
@@ -368,12 +371,21 @@ textarea.cust-note-log:hover, #cust-notes:hover, #cf-notes:hover{border-color:#c
               <div class="form-row">
                 <div class="form-group">
                   <label>고객 상태 <span class="cust-note-hint">유치는 계약 상태에 따라 자동</span></label>
-                  <select id="cust-funnel-status" onchange="updateCsCustStrip()"></select>
+                  <div class="cs-status-line"><span id="cust-status-badge" class="cs-status-badge">-</span><button type="button" class="mini-btn" id="cust-status-edit-btn" onclick="toggleConsultStatusEdit()">상태 변경</button></div>
+                  <select id="cust-funnel-status" onchange="updateCsCustStrip()" style="display:none;margin-top:6px;"></select>
                 </div>
                 <div class="form-group">
-                  <label>추가컨택일시</label>
+                  <label>다음 연락 예정</label>
                   <input type="datetime-local" id="cust-next-contact">
                 </div>
+              </div>
+              <!-- W-3: 컨택 기록 (옛 "컨택 이력" 카드. 고객을 불러왔을 때만 보임) -->
+              <div class="form-group cs-manage-contacts" id="cs-cust-contacts" style="display:none;">
+                <label style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+                  <span>컨택 기록 <span class="cust-note-hint" id="cs-contact-hint"></span></span>
+                  <span class="mini-btn-row"><span id="contact-progress"></span><button type="button" class="mini-btn" onclick="resetContactHistory(detailCustomerId)">이력 초기화</button></span>
+                </label>
+                <div id="contact-section"><div class="wide-table-empty">불러오는 중...</div></div>
               </div>
               <div class="form-group">
                 <label>특이사항 <span class="cust-note-hint">날짜별 안내 내용이 최신순으로 누적됩니다</span></label>
@@ -425,13 +437,7 @@ textarea.cust-note-log:hover, #cust-notes:hover, #cf-notes:hover{border-color:#c
           <h4 style="margin:0 0 8px;">가족 · 연결</h4>
           <div id="cd-family"><div class="wide-table-empty">불러오는 중...</div></div>
         </div>
-        <!-- U-3 (2026-10-21): 고객상세에서 옮겨 온 컨택 이력 -->
-        <div class="cs-card" id="cs-cust-contacts" style="display:none;margin-top:12px;">
-          <h4 style="margin:0 0 8px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
-            <span>컨택 이력 <span class="cust-note-hint" id="cs-contact-hint"></span></span>
-            <span class="mini-btn-row"><span id="contact-progress"></span><button type="button" class="mini-btn" onclick="resetContactHistory(detailCustomerId)">이력 초기화</button></span></h4>
-          <div id="contact-section"><div class="wide-table-empty">불러오는 중...</div></div>
-        </div>
+        <!-- W-3 (2026-10-22): 컨택 이력은 위 "상담 관리" 카드 안으로 이동했습니다 (#cs-cust-contacts) -->
         <!-- U-8 (2026-10-22): 고객상세에서 옮겨 온 구 구조 이력·메타·고객 삭제 -->
         <div class="cs-card" id="cs-cust-meta" style="display:none;margin-top:12px;">
           <details class="cd-fold">
@@ -3764,6 +3770,17 @@ async function saveCustomerOnlyFromConsult(btn){
 }
 
 // [고객상담] 상단 고객 요약줄 : 이름·연락처·상태·통신사를 한 줄로 보여 주고, 저장된 고객이면 상세로 바로 이동
+// W-3: 고객 상태는 배지로만 보여 주고, [상태 변경]을 눌렀을 때만 선택칸을 엽니다. 닫으면 바꾸던 선택은 저장된 값으로 되돌려 보이지 않는 변경이 저장되지 않게 합니다.
+function toggleConsultStatusEdit(forceClose){
+  const sel = document.getElementById('cust-funnel-status'), btn = document.getElementById('cust-status-edit-btn');
+  if (!sel) return;
+  const open = !forceClose && sel.style.display === 'none';
+  if (!open) { sel.value = consultStatusBase; }
+  sel.style.display = open ? '' : 'none';
+  if (btn) btn.textContent = open ? '닫기' : '상태 변경';
+  updateCsCustStrip();
+}
+
 function updateCsCustStrip(){
   const set = (id, t) => { const e = document.getElementById(id); if (e) e.textContent = t; };
   const name = String(elVal('cust-name') || '').replace(NAME_PREFIX, '').trim();
@@ -3773,6 +3790,7 @@ function updateCsCustStrip(){
   const carrier = elVal('cust-mobile-carrier');
   if (currentCustomerId) { const dh = document.getElementById('cust-dup-hint'); if (dh) dh.style.display = 'none'; }
   set('cs-strip-status', st || (currentCustomerId ? '-' : '신규 상담'));
+  set('cust-status-badge', st || (currentCustomerId ? '-' : '신규 상담'));
   const btn = document.getElementById('cs-strip-detail-btn');
   if (btn) btn.disabled = !currentCustomerId;
 }
@@ -4452,6 +4470,7 @@ function setConsultStatusSelect(row){
   const sel = document.getElementById('cust-funnel-status');
   if (sel) sel.innerHTML = v2ConsultOptionsHtml(row || { consult_state: '상담대기' });
   consultStatusBase = cur;
+  try { toggleConsultStatusEdit(true); } catch (e) {}   // W-3: 고객이 바뀌면 선택칸은 다시 닫고 배지만 보여 줌
 }
 
 // 사용자가 선택칸을 바꿨다면 새 선택값, 그대로면 null
