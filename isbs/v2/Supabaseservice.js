@@ -2459,3 +2459,157 @@ async function statusChangeProduct(o){
     return { ok: true, changed: true, newItemId: newRow.item_id, customer: res.customer, messages: res.messages, confirm: null, historyIds: sv.historyIds };
   } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
 }
+
+
+// ============================================================
+// 경품고시 2단계 : 가이드 조회 · 총액 자동 배분 · 계약별 사은품 줄 저장 — 2026-10-22
+//  - 테이블·뷰(1단계 SQL v2_gift_guideline.sql): gift_guidelines · contract_gift_lines · v_gift_guideline · v_contract_gift
+//  - 사용자 확정(10-20): 총액 1칸 입력 → 인터넷 한도 → TV 한도 → 추가지원 순으로 배분. 최소 미달·최대 초과는 막지 않고 표시만.
+//    추가지원은 인터넷·TV와 별도 줄. 가이드 최소·최대는 등록 시점 값을 줄에 스냅샷.
+//  - 이 블록은 추가만 했습니다(기존 함수 변경 없음). 화면 연결은 3단계(html)에서 합니다.
+//  - 순수 계산(giftAllocate 등)은 DB 없이 쓸 수 있습니다.
+// ============================================================
+
+// 통신사 표기 변환: 화면 키(kt·lg·skb·skt·sky) / 가이드 표(kt·lg·skb·skt·skylife·hellovision) / carriers 표(KT·LG홈·SKB·SKT·SKY·LGsoho·LG헬로비전)
+const GIFT_CARRIER_ALIASES = {
+  kt: ['kt', 'KT', 'kt.'], lg: ['lg', 'LG', 'lg홈', 'LG홈', 'lgu+', 'LGU+', 'LG U+', 'lgsoho', 'LGsoho', 'LGBIZ', 'lgbiz', 'LG소호'],
+  skb: ['skb', 'SKB', 'sk브로드밴드', 'SK브로드밴드'], skt: ['skt', 'SKT', 'sk텔레콤', 'SK텔레콤'],
+  skylife: ['sky', 'SKY', 'skylife', '스카이라이프'], hellovision: ['hellovision', 'LG헬로비전', '헬로비전', '헬로']
+};
+// → 가이드 표의 carrier 값('kt'|'lg'|'skb'|'skt'|'skylife'|'hellovision') 또는 null. LG소호는 가이드가 홈 기준이라 'lg'로 봅니다.
+function giftCarrierKey(name){
+  const t = String(name == null ? '' : name).trim();
+  if (!t) return null;
+  for (const k of Object.keys(GIFT_CARRIER_ALIASES)) if (GIFT_CARRIER_ALIASES[k].includes(t) || GIFT_CARRIER_ALIASES[k].includes(t.toLowerCase())) return k;
+  return null;
+}
+
+function giftInt(v){ const n = Math.round(Number(v)); return Number.isFinite(n) && n > 0 ? n : 0; }
+
+// 가이드 행 찾기: rows 는 loadGiftGuidelines().rows(뷰 v_gift_guideline). 통신사·속도가 정확히 같은 행만(없으면 null, 임의 대체 안 함).
+function giftFindGuide(rows, carrier, speed){
+  const key = giftCarrierKey(carrier), sp = Number(speed);
+  if (!key || !Array.isArray(rows)) return null;
+  return rows.find(r => r.carrier === key && Number(r.speed) === sp) || null;
+}
+
+// 총액 자동 배분 (순수 계산)
+//   total   : 고객에게 주는 사은품 총액(원)
+//   guide   : giftFindGuide 결과 (없으면 가이드 없이 전부 인터넷 줄에 둡니다)
+//   opts    : { hasTv:boolean, extraTvCount:number(2대째부터 TV 수) }
+//   → { internet, tv, extra, guide:{internetMin,internetMax,tvMin,tvMax,bundleMin,bundleMax}, under, over, flags:[...] }
+//   배분 순서: 인터넷 ← min(총액, 인터넷 최대) → TV ← min(남은 금액, TV 최대 + 추가 TV 가산×대수) → 나머지는 추가지원.
+//   under = 총액이 (TV 포함이면 결합 최소, 아니면 인터넷 최소)에 못 미치는 금액, over = 추가지원으로 넘친 금액.
+function giftAllocate(total, guide, opts){
+  const o = opts || {};
+  const t = giftInt(total);
+  const hasTv = !!o.hasTv;
+  const extraTv = hasTv ? Math.max(0, Math.floor(Number(o.extraTvCount) || 0)) : 0;
+  if (!guide) return { internet: t, tv: 0, extra: 0, guide: null, under: 0, over: 0, flags: ['no-guide'] };
+  const g = {
+    internetMin: giftInt(guide.internet_min), internetMax: giftInt(guide.internet_max),
+    tvMin: giftInt(guide.tv_min), tvMax: giftInt(guide.tv_max) + extraTv * giftInt(guide.add_tv_amount),
+    bundleMin: giftInt(guide.bundle_min), bundleMax: giftInt(guide.bundle_max)
+  };
+  if (hasTv) g.tvMin += extraTv * giftInt(guide.add_tv_amount);
+  const internet = Math.min(t, g.internetMax);
+  let rest = t - internet;
+  const tv = hasTv ? Math.min(rest, g.tvMax) : 0;
+  rest -= tv;
+  const floor = hasTv ? (g.bundleMin + extraTv * giftInt(guide.add_tv_amount)) : g.internetMin;
+  const under = Math.max(0, floor - t);
+  const flags = [];
+  if (under) flags.push('under');
+  if (rest > 0) flags.push('over');
+  return { internet, tv, extra: rest, guide: g, under, over: rest, flags };
+}
+
+// 상품권/현금 나누기 (순수 계산): 카드 허용 통신사만 상품권을 쓰고, 기본 상품권 금액은 총액을 넘지 않게 자릅니다.
+function giftSplitCard(amount, cardDefault, cardAllowed){
+  const a = giftInt(amount);
+  const card = cardAllowed ? Math.min(a, giftInt(cardDefault)) : 0;
+  return { card, cash: a - card };
+}
+
+// 가이드 전체 읽기(뷰 v_gift_guideline, 21행 안팎). → { ok, rows }
+async function loadGiftGuidelines(){
+  try {
+    const le = s6LoginErr(); if (le) return s6Err(le);
+    const r = await sb.from('v_gift_guideline').select('*').limit(500);
+    if (r.error) return s6Err('경품고시 가이드를 읽지 못했습니다: ' + r.error.message);
+    return { ok: true, rows: r.data || [] };
+  } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
+}
+
+// 계약의 사은품 줄 읽기. → { ok, lines, hasLegacy }
+async function loadContractGift(contractId){
+  try {
+    const le = s6LoginErr(); if (le) return s6Err(le);
+    const cid = Number(contractId);
+    if (!Number.isFinite(cid)) return s6Err('계약 ID가 올바르지 않습니다.');
+    const r = await sb.from('contract_gift_lines').select('*').eq('contract_id', cid).order('gift_line_id', { ascending: true });
+    if (r.error) return s6Err('사은품 줄을 읽지 못했습니다: ' + r.error.message);
+    const lines = r.data || [];
+    return { ok: true, lines, hasLegacy: lines.some(l => l.is_legacy) };
+  } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
+}
+
+const GIFT_LINE_TYPES = ['internet', 'tv', 'extra', 'usim'];
+
+// 계약의 사은품 줄 저장(새 값으로 교체). 이전 데이터(is_legacy) 줄은 lines 에 포함해 보내지 않으면 그대로 두고, 같은 line_type 의 새 줄이 있으면 그 줄은 교체됩니다.
+//   o: { contractId, customerId, lines:[{ lineType, itemId?, cardAmount, cashAmount, guideMin?, guideMax?, guidelineId?, memo? }], syncContract?:boolean }
+//   syncContract=true 이면 contracts 의 gift_total·gift_card·gift_cash·gift_extra 도 줄 합계로 맞춥니다(기본 false).
+//   순서: 검증 → 기존 줄 백업 → 같은 line_type 줄 삭제 → 새 줄 입력 → 실패하면 백업을 되돌림.
+async function saveContractGift(o){
+  try {
+    o = o || {};
+    const le = s6LoginErr(); if (le) return s6Err(le);
+    const contractId = Number(o.contractId), customerId = Number(o.customerId);
+    if (!Number.isFinite(contractId) || !Number.isFinite(customerId)) return s6Err('계약·고객 ID가 올바르지 않습니다.');
+    const lines = Array.isArray(o.lines) ? o.lines : [];
+    const rows = [];
+    for (const l of lines) {
+      if (!GIFT_LINE_TYPES.includes(l.lineType)) return s6Err('사은품 줄 구분이 올바르지 않습니다: ' + l.lineType);
+      const card = Number(l.cardAmount || 0), cash = Number(l.cashAmount || 0);
+      if (![card, cash].every(n => Number.isInteger(n) && n >= 0)) return s6Err('사은품 금액은 0 이상의 정수여야 합니다.');
+      if (l.itemId != null && !Number.isFinite(Number(l.itemId))) return s6Err('상품 ID가 올바르지 않습니다.');
+      rows.push({
+        contract_id: contractId, customer_id: customerId, line_type: l.lineType, item_id: l.itemId == null ? null : Number(l.itemId),
+        card_amount: card, cash_amount: cash, amount: card + cash,
+        guide_min: l.guideMin == null ? null : giftInt(l.guideMin), guide_max: l.guideMax == null ? null : giftInt(l.guideMax),
+        guideline_id: l.guidelineId == null ? null : Number(l.guidelineId), is_legacy: false, memo: l.memo || null
+      });
+    }
+    if (new Set(rows.map(r => r.line_type + '|' + (r.item_id == null ? '' : r.item_id))).size !== rows.length) return s6Err('같은 구분·상품의 사은품 줄이 중복되었습니다.');
+    const types = [...new Set(rows.map(r => r.line_type))];
+    const old = await sb.from('contract_gift_lines').select('*').eq('contract_id', contractId);
+    if (old.error) return s6Err('기존 사은품 줄을 읽지 못했습니다: ' + old.error.message);
+    const backup = (old.data || []).filter(x => types.includes(x.line_type));
+    if (backup.length) {
+      const del = await sb.from('contract_gift_lines').delete().in('gift_line_id', backup.map(x => x.gift_line_id));
+      if (del.error) return s6Err('기존 사은품 줄을 지우지 못했습니다: ' + del.error.message);
+    }
+    if (rows.length) {
+      const ins = await sb.from('contract_gift_lines').insert(rows).select('*');
+      if (ins.error) {
+        let restore = '';
+        if (backup.length) {
+          const back = await sb.from('contract_gift_lines').insert(backup.map(x => { const c = Object.assign({}, x); delete c.gift_line_id; return c; }));
+          restore = back.error ? ' (되돌리기에도 실패했습니다. 이전 값: ' + JSON.stringify(backup.map(x => [x.line_type, x.amount])) + ')' : ' (이전 값으로 되돌렸습니다)';
+        }
+        return s6Err('사은품 줄 저장에 실패했습니다: ' + ins.error.message + restore);
+      }
+    }
+    let synced = false;
+    if (o.syncContract) {
+      const all = await sb.from('contract_gift_lines').select('line_type,card_amount,cash_amount,amount').eq('contract_id', contractId);
+      if (!all.error) {
+        const sum = k => (all.data || []).reduce((a, x) => a + (Number(x[k]) || 0), 0);
+        const extra = (all.data || []).filter(x => x.line_type === 'extra').reduce((a, x) => a + (Number(x.amount) || 0), 0);
+        const m = await saveContractMeta(contractId, { gift_total: sum('amount'), gift_card: sum('card_amount'), gift_cash: sum('cash_amount'), gift_extra: extra });
+        synced = !!(m && m.ok);
+      }
+    }
+    return { ok: true, saved: rows.length, replaced: backup.length, synced };
+  } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
+}
