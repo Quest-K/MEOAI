@@ -1803,7 +1803,22 @@ async function v2FetchNewDash(){
     if (r.refund_status) inc(d.refund, r.refund_status);
   });
   d.itemTotal = it.rows.length;
+  // V-1: 접수·유치·취소율은 실적조회와 같은 공통 계산(v2FetchPerfNew → v2PerfCompute, 기간 없음 = 전체)으로 구하고, 집계 뷰와 대조합니다.
+  try { d.perf = await v2FetchPerfNew('', ''); } catch (e) { d.perf = { error: e && e.message ? e.message : String(e) }; }
   return d;
+}
+
+// V-1: 공통 계산 결과(perf)와 집계 뷰(v_metric_acquisition) 값이 다르면 차이를 문자열로 돌려줍니다 (같으면 '')
+function v2AcqCrossCheck(d){
+  const a = d && d.acq, p = d && d.perf;
+  if (!a || !p || p.error) return '';
+  const diffs = [];
+  if (Number(a.received_contracts) !== p.receivedContracts) diffs.push(`접수 이력 계약 뷰 ${a.received_contracts} / 계산 ${p.receivedContracts}`);
+  if (Number(a.acquired_customers) !== p.acquiredCustomers) diffs.push(`유치 고객 뷰 ${a.acquired_customers} / 계산 ${p.acquiredCustomers}`);
+  const calcRate = p.cancelRate == null ? null : Math.round(p.cancelRate * 1000) / 10;
+  const viewRate = a.cancel_rate_pct == null ? null : Math.round(Number(a.cancel_rate_pct) * 10) / 10;
+  if (calcRate !== viewRate) diffs.push(`취소율 뷰 ${viewRate == null ? '-' : viewRate + '%'} / 계산 ${calcRate == null ? '-' : calcRate + '%'}`);
+  return diffs.join(' · ');
 }
 
 function v2NewDashHtml(d){
@@ -1814,7 +1829,11 @@ function v2NewDashHtml(d){
     return `<button type="button" class="fd-sub ${on ? 'is-active' : ''} ${n === 0 ? 'zero' : ''}" onclick="v2OpenCust('${kind}','${value}')">${escHtml(label)}<span>${n.toLocaleString()}명</span></button>`;
   };
   const nchip = (label, n) => `<span class="fd-sub ${n === 0 ? 'zero' : ''}" style="cursor:default">${escHtml(label)}<span>${n.toLocaleString()}건</span></span>`;
-  const acq = d.acq ? `접수 이력 계약 ${Number(d.acq.received_contracts).toLocaleString()}건 · 유치 고객 ${Number(d.acq.acquired_customers).toLocaleString()}명 · 취소율 ${d.acq.cancel_rate_pct == null ? '-' : d.acq.cancel_rate_pct + '%'}` : '';
+  const pf = (d.perf && !d.perf.error) ? d.perf : null;
+  const pfRate = pf && pf.cancelRate != null ? (pf.cancelRate * 100).toFixed(1) + '%' : '-';
+  const acqPf = pf ? `접수 이력 계약 ${pf.receivedContracts.toLocaleString()}건 · 유치 고객 ${pf.acquiredCustomers.toLocaleString()}명 · 취소율 ${pfRate}` : '';
+  const acqDiff = v2AcqCrossCheck(d);
+  const acq = acqPf || (d.acq ? `접수 이력 계약 ${Number(d.acq.received_contracts).toLocaleString()}건 · 유치 고객 ${Number(d.acq.acquired_customers).toLocaleString()}명 · 취소율 ${d.acq.cancel_rate_pct == null ? '-' : d.acq.cancel_rate_pct + '%'}` : '');
   return `
     <div class="fd-section-title">새 상태 현황 <small>(상태 개편 기준 · 고객 ${d.total.toLocaleString()}명)</small></div>
     <div class="fd-subs fd-subs-flat">
@@ -1837,6 +1856,7 @@ function v2NewDashHtml(d){
       ${V2_ND_REFUND.map(s => nchip(s, d.refund[s] || 0)).join('')}
     </div>
     ${acq ? `<div class="fd-note">${escHtml(acq)}</div>` : ''}
+    ${acqDiff ? `<div class="fd-note">⚠ 집계 뷰(v_metric_acquisition)와 공통 계산 값이 다릅니다 — ${escHtml(acqDiff)}</div>` : ''}
     ${d.unset ? `<div class="fd-note">⚠ 새 상태가 비어 있는 고객 ${d.unset.toLocaleString()}명</div>` : ''}
     ${d.itemUnset ? `<div class="fd-note">⚠ 새 상태가 비어 있는 상품 ${d.itemUnset.toLocaleString()}건</div>` : ''}
     <div class="fd-note">아래 "고객 현황·계약 현황"은 옛 기준(customer_status 등)이며 컷오버 전까지 참고용입니다.</div>`;
