@@ -1821,6 +1821,27 @@ function v2AcqCrossCheck(d){
   return diffs.join(' · ');
 }
 
+// V-2: 대시보드 기간 선택 (기본 전체). 기간을 정하면 실적조회와 같은 공통 계산(v2FetchPerfNew)으로 그 기간의 새 기준 실적을 보여 줍니다.
+var v2DashP = { from: '', to: '', data: null, seq: 0 };
+async function v2DashPeriodGo(btn){
+  const from = elVal('dash-from'), to = elVal('dash-to');
+  if (from && to && from > to) { alert('시작일이 종료일보다 늦습니다. 기간을 다시 선택해 주세요.'); return; }
+  v2DashP.from = from; v2DashP.to = to; v2DashP.data = null;
+  const seq = ++v2DashP.seq;
+  const host = () => document.getElementById('v2-dash-perf');
+  if (!from && !to) { const h = host(); if (h) h.innerHTML = v2PerfHtml(v2ND.data && v2ND.data.perf, '', ''); return; }
+  if (typeof isLoggedIn === 'undefined' || !isLoggedIn) { alert('실적은 관리자 로그인 후 조회할 수 있습니다.'); return; }
+  const h0 = host(); if (h0) h0.innerHTML = '<div class="wide-table-empty">새 기준 실적 불러오는 중...</div>';
+  if (btn) setBtnLoading(btn, '조회 중...');
+  let d;
+  try { d = await v2FetchPerfNew(from, to); } catch (e) { d = { error: e && e.message ? e.message : String(e) }; }
+  finally { if (btn) clearBtnLoading(btn); }
+  if (seq !== v2DashP.seq) return;
+  v2DashP.data = d;
+  const h = host(); if (h) h.innerHTML = v2PerfHtml(d, from, to);
+}
+function v2DashPeriodReset(btn){ setVal('dash-from', ''); setVal('dash-to', ''); return v2DashPeriodGo(btn); }
+
 function v2NewDashHtml(d){
   if (!d) return `<div class="fd-section-title">새 상태 현황 <small>(상태 개편 기준)</small></div><div class="wide-table-empty">불러오는 중...</div>`;
   if (d.error) return `<div class="fd-section-title">새 상태 현황</div><div class="wide-table-empty">조회 실패: ${escHtml(d.error)}</div>`;
@@ -1846,11 +1867,11 @@ function v2NewDashHtml(d){
       ${V2_ND_EXCL.map(s => cchip('excl', s, s, d.excl[s] || 0)).join('')}
     </div>
     <div class="fd-subs fd-subs-flat">
-      <span class="cust-ov-sub">상품 상태</span>
+      <span class="cust-ov-sub">상품 상태 (전체·현재)</span>
       ${V2_ND_ITEM.map(s => nchip(s, d.item[s] || 0)).join('')}
     </div>
     <div class="fd-subs fd-subs-flat">
-      <span class="cust-ov-sub">지급·환수</span>
+      <span class="cust-ov-sub">지급·환수 (전체·현재)</span>
       ${V2_ND_PAY.map(s => nchip(s, d.pay[s] || 0)).join('')}
       <span class="fd-sep"></span>
       ${V2_ND_REFUND.map(s => nchip(s, d.refund[s] || 0)).join('')}
@@ -1859,6 +1880,14 @@ function v2NewDashHtml(d){
     ${acqDiff ? `<div class="fd-note">⚠ 집계 뷰(v_metric_acquisition)와 공통 계산 값이 다릅니다 — ${escHtml(acqDiff)}</div>` : ''}
     ${d.unset ? `<div class="fd-note">⚠ 새 상태가 비어 있는 고객 ${d.unset.toLocaleString()}명</div>` : ''}
     ${d.itemUnset ? `<div class="fd-note">⚠ 새 상태가 비어 있는 상품 ${d.itemUnset.toLocaleString()}건</div>` : ''}
+    <div class="fd-section-title">새 기준 실적 <small>(기간 선택 · 기본 전체)</small></div>
+    <div class="cust-search-row perf-filter">
+      <span>기간</span>
+      <input type="date" id="dash-from" value="${escAttr(v2DashP.from)}"> ~ <input type="date" id="dash-to" value="${escAttr(v2DashP.to)}">
+      <button type="button" class="primary-btn" onclick="v2DashPeriodGo(this)">🔍 조회</button>
+      <button type="button" class="secondary-btn" onclick="v2DashPeriodReset(this)">전체 기간</button>
+    </div>
+    <div id="v2-dash-perf">${(v2DashP.from || v2DashP.to) && v2DashP.data ? v2PerfHtml(v2DashP.data, v2DashP.from, v2DashP.to) : v2PerfHtml(d.perf, '', '')}</div>
     <div class="fd-note">아래 "고객 현황·계약 현황"은 옛 기준(customer_status 등)이며 컷오버 전까지 참고용입니다.</div>`;
 }
 
