@@ -166,6 +166,8 @@ textarea.cust-note-log:hover, #cust-notes:hover, #cf-notes:hover{border-color:#c
 .reco-card-ov-note button{border:0;background:none;color:#a8741f;font-size:11px;cursor:pointer;text-decoration:underline;padding:0;}
 .cd-moved-note{font-size:12.5px;color:#7a6a4f;background:#faf7f0;border:1px dashed #e0d6c0;border-radius:8px;padding:8px 12px;margin:8px 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 #cs-cust-overview{margin-top:12px;}
+.ct-status-row.is-auto{opacity:.62;}
+.ct-status-row.is-auto:hover{opacity:.9;}
 #cs-cust-overview .cd-summary{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;margin-bottom:10px;}
 </style>
 </head>
@@ -6642,7 +6644,7 @@ function buildContactCard(customerId, n, rows, connectedNo){
         <option value="${CONTACT_RESULT_ABSENT}" ${result === CONTACT_RESULT_ABSENT ? 'selected' : ''}>${CONTACT_RESULT_ABSENT} (미연결·무응답)</option>
         <option value="${CONTACT_RESULT_CONNECTED}" ${result === CONTACT_RESULT_CONNECTED ? 'selected' : ''}>${CONTACT_RESULT_CONNECTED} (통화·응답)</option>
       </select>
-      <label>안내 내용</label>
+      <label>안내 내용 <span class="cust-note-hint">${CONTACT_RESULT_CONNECTED} 시 필수 · 특이사항에 함께 기록</span></label>
       <textarea id="ct-${n}-content" rows="2" placeholder="어떤 안내를 했는지 입력" ${dis}>${escHtml(row && row.content)}</textarea>
       <button type="button" class="mini-btn mini-btn-primary" onclick="saveContactAttempt(${customerId}, ${n}, this)" ${dis}>${recorded ? '수정 저장' : '컨택 기록'}</button>
     </div>`;
@@ -6770,6 +6772,12 @@ async function v2SyncAbsence(cid){
   } catch (e) { console.warn('부재 횟수 기록 실패', e); return null; }
 }
 
+// W-2: 컨택 기록 한 번이 특이사항(상담 메모)에 남기는 한 줄. 예) [26-10-22 11:16] 1차 컨택(전화) 부재  /  [26-10-22 11:16] 1차 컨택(전화) 연결: 안내 내용
+function contactNoteLine(when, n, method, result, content){
+  const c = (content || '').trim().replace(/\s*\n\s*/g, ' ');
+  return `[${formatNoteStamp(when)}] ${n}차 컨택(${method}) ${result}${c ? ': ' + c : ''}`;
+}
+
 async function saveContactAttempt(customerId, n, btn){
   const at = elVal(`ct-${n}-at`);
   const method = elVal(`ct-${n}-method`) || CONTACT_METHODS[0];
@@ -6777,6 +6785,11 @@ async function saveContactAttempt(customerId, n, btn){
   const content = (elVal(`ct-${n}-content`) || '').trim();
   if (!at) { alert('실제 컨택 일시를 입력해주세요.'); return; }
   if (!result) { alert('결과(부재/연결)를 선택해주세요.'); return; }
+  if (result === CONTACT_RESULT_CONNECTED && !content) {   // W-2: 통화가 된 경우 어떤 안내를 했는지는 꼭 남깁니다 (부재는 선택)
+    alert(`결과가 '${CONTACT_RESULT_CONNECTED}'이면 안내 내용을 입력해주세요.\n어떤 안내를 했는지가 특이사항(상담 메모)에도 함께 남습니다.`);
+    const ta = document.getElementById(`ct-${n}-content`); if (ta) ta.focus();
+    return;
+  }
 
   setBtnLoading(btn, '저장 중...');
   try {
@@ -6796,8 +6809,9 @@ async function saveContactAttempt(customerId, n, btn){
       : await sb.from('customer_contacts').insert(payload);
     if (error) { alert('컨택 기록 실패: ' + error.message); return; }
 
-    if (!wasRecorded) {   // 처음 기록할 때만 특이사항에 날짜별 한 줄 누적
-      await prependNoteLine(customerId, `[${formatNoteStamp(new Date(at))}] ${n}차 컨택(${method}·${result})${content ? ' ' + content : ''}`);
+    // W-2: 처음 기록할 때, 그리고 수정하면서 결과(부재↔연결)가 바뀔 때 특이사항에 날짜별 한 줄을 같은 호출에서 바로 저장합니다
+    if (!wasRecorded || (prev && prev.result !== result)) {
+      await prependNoteLine(customerId, contactNoteLine(new Date(at), n, method, result, content));
     }
 
     const out = await applyContactCycle(customerId);
@@ -6843,7 +6857,7 @@ async function autoStartContactCycle(customerId, opts){
   if (ie) { console.warn('1차 컨택 자동 반영 실패', ie.message); return null; }
 
   if (inHours) {
-    await prependNoteLine(customerId, `[${formatNoteStamp(now)}] 1차 컨택(${row.method}·${row.result}) ${row.content}`, undefined, !!opts.syncConsult);
+    await prependNoteLine(customerId, contactNoteLine(now, 1, row.method, row.result, row.content), undefined, !!opts.syncConsult);
   }
   const out = await applyContactCycle(customerId);
   if (out && out.nextAt) {
@@ -7469,8 +7483,8 @@ function renderContractCard(ct, all){
       <button type="button" class="mini-btn" style="margin-left:auto;color:#c0392b;" title="잘못 만든 계약 삭제" onclick="event.stopPropagation();deleteContractUi(${cid}, this)">🗑 삭제</button>
     </div>
     <div class="ct-body">
-    <div class="ct-status-row">
-      <span class="cust-ov-sub" title="상품별 새 상태는 아래 상품 행의 '상태 변경'에서 바꿉니다">${v2ContractHasNewStatus(ct) ? '계약 단위(옛 방식 · 읽기 전용)' : '계약 단위(옛 방식)'}</span>
+    <div class="ct-status-row${v2ContractHasNewStatus(ct) ? ' is-auto' : ''}">
+      <span class="cust-ov-sub" title="상품별 새 상태는 아래 상품 행의 '상태 변경'에서 바꿉니다">${v2ContractHasNewStatus(ct) ? '계약 요약(자동 집계 · 읽기 전용)' : '계약 단위(옛 방식)'}</span>
       <label>접수 ${v2OldLockHtml(ctSelectHtml(CONTRACT_STATUS_OPTIONS, ct.contract_status, `changeContractStatus(this, ${cid}, 'status')`, false), v2ContractHasNewStatus(ct))}</label>
       <label>지급 ${v2OldLockHtml(ctSelectHtml(PAYOUT_STATUSES, ct.payout_status, `changeContractStatus(this, ${cid}, 'payout')`, true, '해당 없음'), v2ContractHasNewStatus(ct))}</label>
       <label>환수 ${v2OldLockHtml(ctSelectHtml(CLAWBACK_STATUSES, ct.clawback_status, `changeContractStatus(this, ${cid}, 'clawback')`, true, '해당 없음'), v2ContractHasNewStatus(ct))}</label>
