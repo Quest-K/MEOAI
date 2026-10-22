@@ -166,6 +166,17 @@ textarea.cust-note-log:hover, #cust-notes:hover, #cf-notes:hover{border-color:#c
 .reco-card-ov-note button{border:0;background:none;color:#a8741f;font-size:11px;cursor:pointer;text-decoration:underline;padding:0;}
 .cd-moved-note{font-size:12.5px;color:#7a6a4f;background:#faf7f0;border:1px dashed #e0d6c0;border-radius:8px;padding:8px 12px;margin:8px 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 #cs-cust-overview{margin-top:12px;}
+.cs-state-btns{display:flex;gap:6px;}
+.cs-state-btn{flex:1;padding:8px 6px;border:1px solid #d9d2c3;border-radius:8px;background:#fff;font:inherit;font-size:13px;font-weight:600;color:#5a4b30;cursor:pointer;transition:background .12s,border-color .12s;}
+.cs-state-btn:hover:not(:disabled){border-color:#c8892b;background:#fbf3e3;}
+.cs-state-btn.active{background:#c8892b;border-color:#c8892b;color:#fff;}
+.cs-state-btn:disabled{opacity:.6;cursor:default;}
+.v2-end-sec{margin:10px 0;padding:10px 12px;border:1px solid #ece6d8;border-radius:10px;background:#fcfbf8;}
+.v2-end-title{font-size:12px;font-weight:700;color:#8a6a2a;margin-bottom:6px;}
+.v2-end-modes{display:flex;gap:6px;}
+.v2-end-mode{flex:1;padding:8px 6px;border:1px solid #d9d2c3;border-radius:8px;background:#fff;font:inherit;font-size:13px;font-weight:600;cursor:pointer;}
+.v2-end-mode.active{background:#c8892b;border-color:#c8892b;color:#fff;}
+.v2-end-mode:disabled{opacity:.45;cursor:default;}
 .cs-status-line{display:flex;align-items:center;gap:8px;}
 .cs-status-badge{display:inline-block;font-size:13px;font-weight:700;color:#7a5a1a;background:#fbf3e3;border:1px solid #ecd9b0;border-radius:999px;padding:3px 12px;}
 .cs-manage-contacts{margin-top:4px;}
@@ -370,9 +381,14 @@ textarea.cust-note-log:hover, #cust-notes:hover, #cf-notes:hover{border-color:#c
             <div class="info-subsection-body">
               <div class="form-row">
                 <div class="form-group">
-                  <label>고객 상태 <span class="cust-note-hint">유치는 계약 상태에 따라 자동</span></label>
-                  <div class="cs-status-line"><span id="cust-status-badge" class="cs-status-badge">-</span><button type="button" class="mini-btn" id="cust-status-edit-btn" onclick="toggleConsultStatusEdit()">상태 변경</button></div>
-                  <select id="cust-funnel-status" onchange="updateCsCustStrip()" style="display:none;margin-top:6px;"></select>
+                  <label>고객 상태 <span class="cust-note-hint">누르면 바로 변경됩니다 · 유치는 계약 상태에 따라 자동</span></label>
+                  <div class="cs-state-btns" id="cust-state-btns">
+                    <button type="button" class="cs-state-btn" data-state="상담대기" onclick="setConsultStateBtn('상담대기')">상담대기</button>
+                    <button type="button" class="cs-state-btn" data-state="상담중" onclick="setConsultStateBtn('상담중')">상담중</button>
+                    <button type="button" class="cs-state-btn" data-state="상담종료" onclick="setConsultStateBtn('상담종료')">상담종료</button>
+                  </div>
+                  <span id="cust-status-badge" style="display:none;"></span>
+                  <select id="cust-funnel-status" onchange="updateCsCustStrip()" style="display:none;"></select>
                 </div>
                 <div class="form-group">
                   <label>다음 연락 예정</label>
@@ -3781,8 +3797,41 @@ function toggleConsultStatusEdit(forceClose){
   updateCsCustStrip();
 }
 
+// 상태 버튼 3개(상담대기·상담중·상담종료): 저장된 고객은 누르는 즉시 변경, 신규 고객은 선택만 해 두었다가 [상담저장] 때 적용
+function syncConsultStateBtns(){
+  const sel = document.getElementById('cust-funnel-status'); const cur = sel ? sel.value : '';
+  document.querySelectorAll('#cust-state-btns .cs-state-btn').forEach(b => b.classList.toggle('active', b.dataset.state === cur));
+}
+let consultStateBusy = false;
+async function setConsultStateBtn(state){
+  const sel = document.getElementById('cust-funnel-status');
+  if (!sel || consultStateBusy) return;
+  if (!currentCustomerId) {   // 아직 저장 전인 신규 고객
+    sel.value = state; updateCsCustStrip();
+    showToast('✓ 상담 상태를 선택했습니다 (상담저장 때 적용됩니다)');
+    return;
+  }
+  if (state === consultStatusBase) return;
+  const cid = currentCustomerId;
+  consultStateBusy = true;
+  document.querySelectorAll('#cust-state-btns .cs-state-btn').forEach(b => { b.disabled = true; });
+  try {
+    const r = await applyConsultStatus(cid, state);
+    if (r.cancelled) return;
+    if (!r.ok) { alert('상태 변경 실패: ' + (r.error || '알 수 없는 오류')); return; }
+    showToast(r.changed ? '✓ 상담 상태가 변경되었습니다' : '변경된 내용이 없습니다');
+    if (detailCustomerId === cid) { try { await refreshDetailBundle(cid); } catch (e) {} }   // 상단 요약 줄·상태 카드·변경 이력도 새 값으로
+  } finally {
+    await refreshAfterConsultStatus(cid);   // 선택칸·버튼을 저장된 값으로 되돌려 맞춤 (취소·실패 포함)
+    consultStateBusy = false;
+    document.querySelectorAll('#cust-state-btns .cs-state-btn').forEach(b => { b.disabled = false; });
+    syncConsultStateBtns();
+  }
+}
+
 function updateCsCustStrip(){
   const set = (id, t) => { const e = document.getElementById(id); if (e) e.textContent = t; };
+  syncConsultStateBtns();
   const name = String(elVal('cust-name') || '').replace(NAME_PREFIX, '').trim();
   const contact = String(elVal('cust-contact') || '').replace(/\D/g, '');
   const stSel = document.getElementById('cust-funnel-status');
@@ -4487,6 +4536,7 @@ async function applyConsultStatus(customerId, value){
     const r = await v2RunWith(o => statusSetConsult(customerId, String(value), o), {});
     if (r && r.cancelled) return { ok: true, changed: false, cancelled: true };
     if (!r.ok) return { ok: false, error: r.userMessage || r.error || '알 수 없는 오류' };
+    await v2NoteEndChoice(customerId, r);   // 제외 사유·잠재 예약일을 상담 메모에 한 줄 남김
     await v2ShowMessages(r, customerId);
     return { ok: true, changed: !!r.changed };
   } catch (e) { return { ok: false, error: e && e.message ? e.message : String(e) }; }
@@ -7111,6 +7161,68 @@ function v2Dialog(o){
   });
 }
 
+/* 상담종료 한 번에 받기: ① 종료 방식(제외/잠재) 위, ② 사유 또는 재영업 예약일 아래 — 팝업 1개. 취소 → null
+   확인 → { endChoice: { mode:'제외', reason, memo } } 또는 { endChoice: { mode:'잠재', date } } (예전 두 팝업과 같은 값) */
+function v2EndDialog(o){
+  return new Promise(resolve => {
+    const ov = document.createElement('div');
+    ov.className = 'modal-overlay'; ov.style.display = 'flex'; ov.style.zIndex = '10050';
+    const lock = (o && o.lockMode) || '';
+    const excl = (o && o.excl) || [];
+    ov.innerHTML = `<div class="modal-box" style="max-width:440px;"><h3 style="margin:0 0 6px;">상담 종료</h3>`
+      + (o && o.desc ? `<p class="modal-desc" style="white-space:pre-line;">${escHtml(o.desc)}</p>` : '')
+      + `<div class="v2-end-sec"><div class="v2-end-title">① 종료 방식</div><div class="v2-end-modes">`
+      + `<button type="button" class="v2-end-mode" data-mode="제외"${lock && lock !== '제외' ? ' disabled' : ''}>제외</button>`
+      + `<button type="button" class="v2-end-mode" data-mode="잠재"${lock && lock !== '잠재' ? ' disabled' : ''}>잠재 (재영업 예약)</button></div></div>`
+      + `<div class="v2-end-sec" data-sec="제외"><div class="v2-end-title">② 제외 사유</div>`
+      + `<div class="v2-dlg-row"><label>사유</label><select id="v2end-reason">${excl.map(x => `<option value="${escAttr(x)}">${escHtml(x)}</option>`).join('')}</select></div>`
+      + `<div class="v2-dlg-row"><label>메모</label><textarea id="v2end-memo" rows="3" placeholder="기타일 때 필수 · 입력한 내용은 상담 메모에도 남습니다"></textarea></div></div>`
+      + `<div class="v2-end-sec" data-sec="잠재"><div class="v2-end-title">② 재영업 예약일</div>`
+      + `<div class="v2-dlg-row"><label>재컨택 예약일</label><input id="v2end-date" type="date"><div class="cust-ov-sub">가망 기준 개월 수(기본 3개월)를 넘는 날짜를 입력해 주세요.</div></div></div>`
+      + `<div class="v2-dlg-err" id="v2end-err"></div><div class="modal-actions">`
+      + `<button type="button" class="mini-btn" data-act="cancel">취소</button><button type="button" class="mini-btn mini-btn-primary" data-act="ok">상담종료 저장</button></div></div>`;
+    let mode = lock || '제외';
+    const paint = () => {
+      ov.querySelectorAll('.v2-end-mode').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+      ov.querySelectorAll('.v2-end-sec[data-sec]').forEach(sec => { sec.style.display = sec.dataset.sec === mode ? '' : 'none'; });
+    };
+    const onKey = e => { if (e.key === 'Escape') done(null); };
+    const done = v => { document.removeEventListener('keydown', onKey); ov.remove(); resolve(v); };
+    ov.addEventListener('click', e => {
+      const t = e.target; if (!t || !t.getAttribute) return;
+      if (t.classList && t.classList.contains('v2-end-mode') && !t.disabled) { mode = t.dataset.mode; paint(); return; }
+      const act = t.getAttribute('data-act');
+      if (act === 'cancel') return done(null);
+      if (act !== 'ok') return;
+      const err = ov.querySelector('#v2end-err');
+      if (mode === '제외') {
+        const reason = ov.querySelector('#v2end-reason').value, memo = ov.querySelector('#v2end-memo').value.trim();
+        if (!reason) { err.textContent = '제외 사유를 선택해 주세요.'; return; }
+        if (reason === '기타' && !memo) { err.textContent = '기타를 선택한 경우 메모를 입력해 주세요.'; return; }
+        return done({ endChoice: { mode: '제외', reason, memo } });
+      }
+      const date = ov.querySelector('#v2end-date').value;
+      if (!date) { err.textContent = '날짜를 입력해 주세요.'; return; }
+      done({ endChoice: { mode: '잠재', date } });
+    });
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(ov);
+    paint();
+  });
+}
+
+/* 상담종료(제외·잠재) 처리 뒤 입력한 사유를 상담 메모에 한 줄로 남깁니다. 성공한 결과 r 에 v2RunWith 가 붙여 둔 입력값(__inputs)을 사용 */
+async function v2NoteEndChoice(cid, r){
+  try {
+    const ec = r && r.ok && r.changed !== false && r.__inputs && r.__inputs.endChoice;
+    if (!ec || !cid) return;
+    const line = ec.mode === '잠재'
+      ? `[${formatNoteStamp(new Date())}] 상담종료(잠재): 재영업 예약 ${ec.date}`
+      : `[${formatNoteStamp(new Date())}] 상담종료(제외): ${ec.reason}${ec.memo ? ' · ' + String(ec.memo).replace(/\s*\n\s*/g, ' ') : ''}`;
+    await prependNoteLine(cid, line, undefined, true);
+  } catch (e) { console.warn('상담 종료 사유를 상담 메모에 남기지 못했습니다', e); }
+}
+
 /* 규칙이 요구한 추가 입력 받기. 취소하면 null */
 async function v2AskNeeds(n){
   const O = v2Opt() || { excl: [] };
@@ -7131,22 +7243,7 @@ async function v2AskNeeds(n){
   }
   if (n.code === 'endChoice') {
     const preset = n.preset || ((n.options || []).length === 1 ? n.options[0] : '');
-    let mode = preset;
-    if (!mode) {
-      const m = await v2Dialog({ title: '상담 종료 방식', desc: (n.reason ? n.reason + '\n' : '') + '상담을 종료합니다. 종료 방식을 선택해 주세요.',
-        fields: [{ id: 'mode', label: '종료 방식', type: 'select', value: '제외', options: [{ value: '제외', label: '제외 (사유 선택)' }, { value: '잠재', label: '잠재 (재영업 예약일 입력)' }] }], ok: '다음' });
-      if (!m) return null;
-      mode = m.mode;
-    }
-    if (mode === '제외') {
-      const d = await v2Dialog({ title: '제외 사유', desc: '선택한 사유는 이력에 남습니다.', fields: [{ id: 'reason', label: '사유', type: 'select', value: O.excl[0], options: O.excl.map(x => ({ value: x, label: x })) },
-        { id: 'memo', label: '메모', type: 'textarea', placeholder: '기타일 때 필수' }],
-        validate: v => (v.reason === '기타' && !v.memo.trim()) ? '기타를 선택한 경우 메모를 입력해 주세요.' : '' });
-      return d ? { endChoice: { mode: '제외', reason: d.reason, memo: d.memo.trim() } } : null;
-    }
-    const d = await v2Dialog({ title: '재영업 예약일', desc: '가망 기준 개월 수(기본 3개월)를 넘는 날짜를 입력해 주세요.',
-      fields: [{ id: 'date', label: '재컨택 예약일', type: 'date' }], validate: v => v.date ? '' : '날짜를 입력해 주세요.' });
-    return d ? { endChoice: { mode: '잠재', date: d.date } } : null;
+    return await v2EndDialog({ desc: n.reason || '', excl: O.excl || [], lockMode: preset });   // 팝업 1개로 종료 방식 + 사유/예약일을 한 번에
   }
   return undefined;   // 알 수 없는 요구
 }
@@ -7157,7 +7254,7 @@ async function v2RunWith(call, opts){
   let o = Object.assign({}, opts || {});
   for (let i = 0; i < 5; i++) {
     const r = await call(o);
-    if (r.ok) return r;
+    if (r.ok) { try { r.__inputs = o; } catch (e) {} return r; }
     if (r.needs) {
       const more = await v2AskNeeds(r.needs);
       if (more === null) return { cancelled: true };
@@ -7204,7 +7301,7 @@ async function v2ShowMessages(r, cid){
       validate: v => v.date ? '' : '날짜를 입력해 주세요.' });
     if (d) {
       const r2 = await v2RunWith(o => statusEndConsult(cid, o.endChoice), { endChoice: { mode: '잠재', date: d.date } });
-      await v2FinishStatus(r2, cid);
+      if (await v2FinishStatus(r2, cid)) await v2NoteEndChoice(cid, r2);
     }
   }
 }
@@ -7288,6 +7385,7 @@ async function v2CustomerChange(selectEl, kind){
   try { r = await v2RunWith(o => kind === 'consult' ? statusSetConsult(cid, val, o) : statusSetSeg(cid, val, o), {}); }
   catch (e) { r = { ok: false, error: e && e.message ? e.message : String(e) }; }
   const ok = await v2FinishStatus(r, cid);
+  if (ok) await v2NoteEndChoice(cid, r);
   if (!ok) { revert(); document.querySelectorAll('.v2-ctl select').forEach(s => { s.disabled = false; }); }
 }
 async function v2ReserveSave(clear){
