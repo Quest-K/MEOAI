@@ -1867,12 +1867,81 @@ function v2SettleHtml(d, from, to){
     ${diff}`;
 }
 
+// V-4: 접수 이력 계약 리스트 — 실적조회의 "유치 계약 리스트"를 새 기준(계약 단위·정산 뷰)으로 대시보드 리스트 칸에 보여 줍니다. 기간은 대시보드 기간 선택을 따릅니다.
+var v2AcqL = { sort: 'received_date', asc: false, rows: [], title: '' };
+function v2OpenAcqList(){ dashMode = 'v2acq'; renderFunnelDashboard(); loadDashList(); }
+async function v2LoadAcqList(){
+  const box = document.getElementById('dash-list-card'); if (!box) return;
+  const from = v2DashP.from, to = v2DashP.to;
+  const title = `📋 접수 이력 계약 리스트 (${(from || to) ? (from || '처음') + ' ~ ' + (to || '오늘') : '전체 기간'})`;
+  const seq = ++dashListSeq;
+  const head = `<div class="dash-list-head"><h3>${escHtml(title)}</h3></div>`;
+  box.innerHTML = head + '<div class="wide-table-empty">불러오는 중...</div>';
+  try {
+    const b = s8Bounds(from, to); if (b.error) { box.innerHTML = head + `<div class="wide-table-empty">${escHtml(b.error)}</div>`; return; }
+    const cr = await s2FetchAll((a, z) => { let q = sb.from('v_metric_settlement_contracts').select('contract_id,customer_id,agency,received_date,fee_total,gift_total,profit,margin_pct,invoice_state,is_cancelled'); if (from) q = q.gte('received_date', from); if (to) q = q.lte('received_date', to); return q.order('contract_id', { ascending: true }).range(a, z); });
+    if (cr.error) { box.innerHTML = head + `<div class="wide-table-empty">조회 실패: ${escHtml(cr.error.message || String(cr.error))}</div>`; return; }
+    const rows = cr.rows, ids = rows.map(r => r.contract_id);
+    const items = {}, states = {}, custs = {};
+    for (const ch of s2Chunk(ids, S2_ID_CHUNK)) {
+      const [ir, sr] = await Promise.all([
+        sb.from('contract_items').select('contract_id,product_type,carrier,product_name,item_status,pay_status,refund_status').in('contract_id', ch),
+        sb.from('v_contract_state_v2').select('contract_id,contract_state').in('contract_id', ch)
+      ]);
+      (ir.data || []).forEach(i => { (items[i.contract_id] = items[i.contract_id] || []).push(i); });
+      (sr.data || []).forEach(x => { states[x.contract_id] = x.contract_state; });
+    }
+    for (const ch of s2Chunk(Array.from(new Set(rows.map(r => r.customer_id))), S2_ID_CHUNK)) {
+      const r = await sb.from('customers').select('customer_id,name,contact').in('customer_id', ch);
+      (r.data || []).forEach(c => { custs[c.customer_id] = c; });
+    }
+    if (seq !== dashListSeq) return;
+    const uniq = (a, f) => Array.from(new Set(a.map(f).filter(Boolean)));
+    v2AcqL.rows = rows.map(r => {
+      const its = items[r.contract_id] || [], cu = custs[r.customer_id] || {};
+      return { id: r.contract_id, cid: r.customer_id, name: cu.name || '', contact: cu.contact || '', received_date: r.received_date || '',
+        carriers: uniq(its, i => i.carrier).join(' / ') || '-',
+        product: its.map(i => `${(typeof PERF_ITEM_TYPE_LABEL !== 'undefined' && PERF_ITEM_TYPE_LABEL[i.product_type]) || i.product_type || ''} ${i.product_name || ''}`.trim()).join(' · ') || '-',
+        state: states[r.contract_id] || '-', pay: uniq(its, i => i.pay_status).join(' / ') || '-', refund: uniq(its, i => i.refund_status).join(' / ') || '-',
+        fee: Number(r.fee_total) || 0, gift: Number(r.gift_total) || 0, profit: Number(r.profit) || 0, agency: r.agency || '', dead: !!r.is_cancelled };
+    });
+    v2AcqL.title = title;
+    v2RenderAcqList();
+  } catch (e) {
+    if (seq === dashListSeq) box.innerHTML = head + `<div class="wide-table-empty">조회 실패: ${escHtml(e && e.message ? e.message : String(e))}</div>`;
+  }
+}
+function v2AcqSort(col){ if (v2AcqL.sort === col) v2AcqL.asc = !v2AcqL.asc; else { v2AcqL.sort = col; v2AcqL.asc = (col === 'name' || col === 'state'); } v2RenderAcqList(); }
+function v2AcqListHtml(){
+  const L = v2AcqL, won = v => Number(v || 0).toLocaleString('ko-KR');
+  const rows = L.rows.slice().sort((a, b) => { const x = a[L.sort], y = b[L.sort]; const c = (typeof x === 'number' && typeof y === 'number') ? x - y : String(x).localeCompare(String(y), 'ko'); return (L.asc ? c : -c) || (b.id - a.id); });
+  const valid = rows.filter(r => !r.dead);
+  const sum = k => valid.reduce((a, r) => a + r[k], 0);
+  const th = (k, t, cls) => `<th class="${cls || ''}" style="cursor:pointer" onclick="v2AcqSort('${k}')">${t}${L.sort === k ? (L.asc ? ' ▲' : ' ▼') : ''}</th>`;
+  const body = rows.length ? rows.map(r => `<tr${r.dead ? ' class="perf-canceled"' : ''}>
+      <td>${escHtml(r.received_date)}</td>
+      <td><a href="javascript:void(0)" onclick="smOpenCustomer(${r.cid})">${escHtml(r.name) || '(이름없음)'}</a><br><small style="color:#888">${escHtml(typeof formatContactDisplay === 'function' ? formatContactDisplay(r.contact) : r.contact)}</small></td>
+      <td>${escHtml(typeof formatContractNo === 'function' ? formatContractNo(r.id) : r.id)}${r.agency ? `<br><small style="color:#888">${escHtml(r.agency)}</small>` : ''}</td>
+      <td>${escHtml(r.carriers)}</td><td class="perf-wrap">${escHtml(r.product)}</td>
+      <td>${escHtml(r.state)}</td><td>${escHtml(r.pay)}</td><td>${escHtml(r.refund)}</td>
+      <td class="num">${won(r.fee)}</td><td class="num">${won(r.gift)}</td><td class="num" style="color:${r.profit >= 0 ? '#1E7E34' : '#D9534F'}">${won(r.profit)}</td></tr>`).join('')
+    : '<tr><td colspan="11"><div class="reflected-empty">이 기간에 접수된 계약이 없습니다.</div></td></tr>';
+  return `<div class="dash-list-head"><h3>${escHtml(L.title)}</h3><span class="funnel-dash-total">${valid.length.toLocaleString()}건 (취소 제외) / 전체 ${rows.length.toLocaleString()}건</span></div>
+    <div class="cust-list-wrap perf-scroll"><table class="perf-table"><thead><tr>
+      ${th('received_date', '접수일')}${th('name', '고객')}<th>계약</th>${th('carriers', '통신사')}<th>상품</th>${th('state', '계약 상태')}<th>지급</th><th>환수</th>
+      ${th('fee', '수수료', 'num')}${th('gift', '사은품', 'num')}${th('profit', '영업이익', 'num')}</tr></thead>
+      <tbody>${body}<tr class="perf-sum"><td colspan="8">합계 (취소 제외)</td><td class="num">${won(sum('fee'))}</td><td class="num">${won(sum('gift'))}</td><td class="num">${won(sum('profit'))}</td></tr></tbody></table></div>
+    <p class="perf-note">계약 1건당 1행(정산 탭과 같은 정의). 머리글을 누르면 정렬, 고객명을 누르면 고객상담으로 이동합니다. 기간은 위 "새 기준 실적"의 기간을 따릅니다.</p>`;
+}
+function v2RenderAcqList(){ const box = document.getElementById('dash-list-card'); if (box && dashMode === 'v2acq') box.innerHTML = v2AcqListHtml(); }
+
 // V-2: 대시보드 기간 선택 (기본 전체). 기간을 정하면 실적조회와 같은 공통 계산(v2FetchPerfNew)으로 그 기간의 새 기준 실적을 보여 줍니다.
 var v2DashP = { from: '', to: '', data: null, settle: null, seq: 0 };
 async function v2DashPeriodGo(btn){
   const from = elVal('dash-from'), to = elVal('dash-to');
   if (from && to && from > to) { alert('시작일이 종료일보다 늦습니다. 기간을 다시 선택해 주세요.'); return; }
   v2DashP.from = from; v2DashP.to = to; v2DashP.data = null; v2DashP.settle = null;
+  if (dashMode === 'v2acq') loadDashList();   // V-4: 열려 있는 접수 이력 계약 리스트도 같은 기간으로 다시 조회
   const seq = ++v2DashP.seq;
   const host = () => document.getElementById('v2-dash-perf');
   const hs = () => document.getElementById('v2-dash-settle');
@@ -1937,6 +2006,7 @@ function v2NewDashHtml(d){
       <button type="button" class="secondary-btn" onclick="v2DashPeriodReset(this)">전체 기간</button>
     </div>
     <div id="v2-dash-perf">${(v2DashP.from || v2DashP.to) && v2DashP.data ? v2PerfHtml(v2DashP.data, v2DashP.from, v2DashP.to) : v2PerfHtml(d.perf, '', '')}</div>
+    <div class="fd-subs fd-subs-flat"><button type="button" class="fd-sub ${dashMode === 'v2acq' ? 'is-active' : ''}" onclick="v2OpenAcqList()">📋 접수 이력 계약 리스트<span>기간 적용</span></button></div>
     <div id="v2-dash-settle">${v2SettleHtml((v2DashP.from || v2DashP.to) ? v2DashP.settle : d.settle, v2DashP.from, v2DashP.to)}</div>
     <div class="fd-note">아래 "고객 현황·계약 현황"은 옛 기준(customer_status 등)이며 컷오버 전까지 참고용입니다.</div>`;
 }
@@ -8208,7 +8278,7 @@ try { const nav = document.querySelector('.tab-nav'), strip = document.getElemen
 })();
 (function(){
   const baseLoad = loadDashList;
-  loadDashList = async function(){ if (dashMode === 'v2due' || dashMode === 'v2stale') return v2LoadTaskList(); if (dashMode === 'v2cust') return v2LoadCustStateList(); return baseLoad.apply(this, arguments); };
+  loadDashList = async function(){ if (dashMode === 'v2due' || dashMode === 'v2stale') return v2LoadTaskList(); if (dashMode === 'v2cust') return v2LoadCustStateList(); if (dashMode === 'v2acq') return v2LoadAcqList(); return baseLoad.apply(this, arguments); };
   const baseLoadPerf = loadPerformance;
   loadPerformance = async function(){ const r = await baseLoadPerf.apply(this, arguments); try { await v2RenderPerfNew(); } catch (e) { console.warn('새 기준 실적 실패', e); } return r; };
   const baseRender = renderFunnelDashboard;
