@@ -165,24 +165,49 @@ function pickBestCommission(cands){
   return cands.reduce((best, c) => (c.totalComm > best.totalComm ? c : best), cands[0]);
 }
 
+// 셋탑 수수료(2026-10-23 결정): 셋탑 종류별로 따로 있고, 에이전시마다 다르며, 2대째 이후(추가 셋탑)는 메인 TV와 체계가 다릅니다.
+//   SETTOP_COMMISSION_ROWS = [{ carrier, agency, settop_name, kind:'main'|'extra', commission_amount, start_at }]  (수수료 재적재 후 loadSettopCommissions 로 채움)
+//   비어 있으면 셋탑 수수료는 0 → 화면에 '–'.
+let SETTOP_COMMISSION_ROWS = [];
+async function loadSettopCommissions(){
+  try {
+    const le = s6LoginErr(); if (le) return s6Err(le);
+    const r = await sb.from('fee_settop').select('*').limit(2000);
+    if (r.error) return s6Err('셋탑 수수료를 읽지 못했습니다: ' + r.error.message);
+    SETTOP_COMMISSION_ROWS = r.data || [];
+    return { ok: true, count: SETTOP_COMMISSION_ROWS.length };
+  } catch (e) { return s6Err(e && e.message ? e.message : String(e)); }
+}
+function settopFeeOf(dbKey, agency, name, kind){
+  if (!SETTOP_COMMISSION_ROWS.length || !name) return 0;
+  const rs = SETTOP_COMMISSION_ROWS.filter(r => carrierKeyOf(r.carrier) === dbKey && commissionAgencyOf(r) === agency
+    && String(r.settop_name || '').trim() === String(name).trim() && (r.kind || 'main') === kind);
+  return Number(pickLatestRow(rs)?.commission_amount) || 0;
+}
+
 // 홈(인터넷·TV) 수수료 : 기존 필드(internetComm·tvComm·totalComm)는 '가장 큰 에이전시' 값이라 기존 화면 코드가 그대로 동작합니다.
 //   추가 필드: agency(선택된 에이전시 이름 또는 null), agencies(에이전시별 후보, 합계 높은 순)
-function lookupCommission(carrierKey, speedNum, tvTier, variant){
+//   opts(선택): { settop: 메인 TV 셋탑 이름, extra: [2대째 이후 셋탑 이름…] } — 주면 셋탑·추가 셋탑 수수료가 합계에 들어갑니다.
+function lookupCommission(carrierKey, speedNum, tvTier, variant, opts){
   const dbKey = commissionKeyOf(carrierKey, variant);   // variant: LG 의 'home'|'soho' (없으면 홈)
   const rows = RAW_COMMISSION_DATA.filter(r => carrierKeyOf(r.carrier) === dbKey && normalizeSpeedValue(r.speed) === speedNum);
   const names = [];
   rows.forEach(r => { const a = commissionAgencyOf(r); if (!names.includes(a)) names.push(a); });
+  const o = opts || {};
   const cands = names.map(a => {
     const rs = rows.filter(r => commissionAgencyOf(r) === a);
     const internetComm = pickLatestRow(rs.filter(r => String(r.tv_tier) === 'none'))?.commission_amount || 0;
     const tvComm = tvTier !== 'none' ? (pickLatestRow(rs.filter(r => String(r.tv_tier) === tvTier))?.commission_amount || 0) : 0;
-    // bundleComm·settopComm·etcComm(결합·셋탑·기타 수수료)은 수수료 재적재 후 채웁니다. 지금은 0 → 화면에 '–'로 표시
-    return { agency: a, internetComm, tvComm, bundleComm: 0, settopComm: 0, etcComm: 0, totalComm: internetComm + tvComm };
+    const settopComm = tvTier !== 'none' ? settopFeeOf(dbKey, a, o.settop, 'main') : 0;
+    const extraSettopComm = tvTier !== 'none' ? (o.extra || []).reduce((sum, nm) => sum + settopFeeOf(dbKey, a, nm, 'extra'), 0) : 0;
+    return { agency: a, internetComm, tvComm, bundleComm: 0, settopComm, extraSettopComm, etcComm: 0,
+      totalComm: internetComm + tvComm + settopComm + extraSettopComm };
   });
   const best = pickBestCommission(cands);
-  if (!best) return { internetComm: 0, tvComm: 0, bundleComm: 0, settopComm: 0, etcComm: 0, totalComm: 0, agency: null, agencies: [] };
+  if (!best) return { internetComm: 0, tvComm: 0, bundleComm: 0, settopComm: 0, extraSettopComm: 0, etcComm: 0, totalComm: 0, agency: null, agencies: [] };
   return {
-    internetComm: best.internetComm, tvComm: best.tvComm, bundleComm: best.bundleComm || 0, settopComm: best.settopComm || 0, etcComm: best.etcComm || 0, totalComm: best.totalComm,
+    internetComm: best.internetComm, tvComm: best.tvComm, bundleComm: best.bundleComm || 0, settopComm: best.settopComm || 0,
+    extraSettopComm: best.extraSettopComm || 0, etcComm: best.etcComm || 0, totalComm: best.totalComm,
     agency: best.agency, agencies: cands.slice().sort((x, y) => y.totalComm - x.totalComm)
   };
 }
