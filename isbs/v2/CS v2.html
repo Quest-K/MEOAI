@@ -1140,6 +1140,93 @@ PASS 앱 → 전체 → 명의도용방지 → 해당 통신사 해제
 <script src="StatusRules.js?v=20261016a"></script>
 <script src="Supabaseservice.js?v=20261023b"></script>
 <script>
+/* =========================================================================
+   X-2 설치비(출동비) 안내 (2026-10-23)
+   - 기준 데이터: Supabase install_fees / install_fee_options (v2_install_fee.sql). 로그인 없이 조회.
+   - 인터넷 단독 / TV 1대 / TV 2대 = 표의 값, TV 3대 이상 = TV 2대 값 + IPTV추가 × (대수-2)  (2대 규칙의 연장, 사용자 결정 10-23)
+   - 표에 없는 값(조회 실패·행 없음·금액 비어 있음)은 추측하지 않고 줄을 숨깁니다. 전화·LG헬로비전은 DB에만 저장하고 여기서는 쓰지 않습니다.
+   ========================================================================= */
+var INSTALL_FEES = { rows: [], opts: [], loaded: false, loading: null, tried: false };
+var INSTALL_CARRIER_ID = { kt: 'KT', skb: 'SKB', skt: 'SKT', sky: 'SKY' };
+
+function installCarrierIdOf(p){
+  if (!p) return null;
+  if (p.carrierKey === 'lg') return p.lgVariant === 'soho' ? 'LGsoho' : 'LG홈';
+  return INSTALL_CARRIER_ID[p.carrierKey] || null;
+}
+function installTvCountOf(p){
+  if (!p || p.tvTier === 'none') return 0;
+  return 1 + ((p.extraTvDetails || []).length);
+}
+function installCondLabel(n){ return n <= 0 ? '인터넷 단독' : ('인터넷+TV ' + n + '대'); }
+
+async function loadInstallFees(force){
+  if (INSTALL_FEES.loading) return INSTALL_FEES.loading;
+  if (INSTALL_FEES.loaded && !force) return null;
+  INSTALL_FEES.loading = (async () => {
+    let changed = false;
+    try {
+      if (typeof sb === 'undefined' || !sb) return;   // 아직 준비 전이면 나중에 다시 시도(tried 는 실제 요청 뒤에만 켬)
+      INSTALL_FEES.tried = true;
+      const [a, b] = await Promise.all([sb.from('install_fees').select('*'), sb.from('install_fee_options').select('*')]);
+      try { addLog('install_fees', !a.error, a.error ? a.error.message : `${(a.data || []).length}건 조회`); } catch (e) {}
+      if (!a.error) { INSTALL_FEES.rows = a.data || []; INSTALL_FEES.opts = (!b.error && b.data) ? b.data : []; INSTALL_FEES.loaded = true; changed = true; }
+    } catch (e) { console.warn('설치비 조회 실패', e); }
+    finally { INSTALL_FEES.loading = null; }
+    if (changed) { try { updateCsSummaryPanel(); renderProposalLists(); renderFinalProducts(); } catch (e) {} }
+  })();
+  return INSTALL_FEES.loading;
+}
+
+window.addEventListener('load', function(){ try { loadInstallFees(); } catch (e) {} });   // 화면이 뜬 뒤 한 번 미리 조회 (로그인 불필요)
+
+function installPickRow(list, match){
+  const now = Date.now();
+  const ok = list.filter(r => match(r)).filter(r => {
+    const st = r.start_at ? new Date(r.start_at).getTime() : -Infinity, en = r.end_at ? new Date(r.end_at).getTime() : Infinity;
+    return st <= now && en > now;
+  });
+  ok.sort((x, y) => new Date(y.start_at || 0) - new Date(x.start_at || 0));
+  return ok[0] || null;
+}
+
+// 제안 상품 1건의 설치비 = { weekday, offday, tvCount, label, carrierId } 또는 null(값을 알 수 없을 때)
+function lookupInstallFee(p){
+  if (!p || p.type === 'usim') return null;
+  if (!INSTALL_FEES.loaded) { if (!INSTALL_FEES.tried) loadInstallFees(); return null; }
+  const cid = installCarrierIdOf(p); if (!cid) return null;
+  const n = installTvCountOf(p);
+  const cond = n <= 0 ? 'internet_only' : (n === 1 ? 'tv1' : 'tv2');
+  const row = installPickRow(INSTALL_FEES.rows, r => r.carrier_id === cid && r.cond_key === cond && r.phone_type === 'none');
+  if (!row || row.weekday_fee == null || row.offday_fee == null) return null;
+  let wd = Number(row.weekday_fee), off = Number(row.offday_fee);
+  if (n >= 3) {
+    const add = installPickRow(INSTALL_FEES.opts, r => r.carrier_id === cid && r.option_code === 'iptv_add');
+    if (!add || add.weekday_fee == null || add.offday_fee == null) return null;
+    wd += Number(add.weekday_fee) * (n - 2); off += Number(add.offday_fee) * (n - 2);
+  }
+  return { weekday: wd, offday: off, tvCount: n, label: installCondLabel(n), carrierId: cid };
+}
+
+function installFeeText(f){
+  if (!f) return '';
+  const w = f.weekday.toLocaleString() + '원';
+  return f.weekday === f.offday ? `${w} (평일·주말·야간 동일)` : `평일 ${w} / 주말·야간 ${f.offday.toLocaleString()}원`;
+}
+// 상담요약·복사용 요약 한 줄
+function installFeeSummaryLine(p){
+  const f = lookupInstallFee(p);
+  return f ? `설치비 ${installFeeText(f)} (${f.label})` : '';
+}
+// 제안상품 카드·최종상품 카드용 줄 (info-row / fc-row)
+function installFeeRowHtml(p, kind){
+  const f = lookupInstallFee(p);
+  if (!f) return '';
+  const cls = kind === 'fc' ? 'fc-row' : 'info-row';
+  return `<div class="${cls}"><span>설치비<span class="reco-detail-sm">(${escHtml(f.label)})</span></span><span>${escHtml(installFeeText(f))}</span></div>`;
+}
+</script>
+<script>
 /* 추천상품 상단 [KT·LG·SK 가용조회]: 통신사별 설치 가능 주소 조회 페이지를 새 탭으로 엽니다 (주소는 config.js CARRIER_COVERAGE_URLS).
    기존 요금절약·가성비·최고사은품 추천 설정 함수(applyRecoPreset)는 그대로 두었습니다. */
 function openCoverageCheck(key){
@@ -2838,6 +2925,7 @@ function reflectRecoCardToProposal(carrier){
     extraTVs: st.tv !== 'none' ? JSON.parse(JSON.stringify(st.extraTVs || [])) : [],
     extraTvFee: st.tv !== 'none' ? (res.extraTvFee || 0) : 0,
     extraTvDetails: st.tv !== 'none' ? (res.extraTvDetails || []) : [],
+    installFee: (() => { try { return lookupInstallFee({ type: 'home', carrierKey: carrier, lgVariant: lgVariantOf(carrier), tvTier: tvTier, extraTvDetails: st.tv !== 'none' ? (res.extraTvDetails || []) : [] }); } catch (e) { return null; } })(),   // X-3: 반영 시점 설치비(평일·주말야간) 기록
     benefitTotal: userGiftVal,
     giftCard: gb.giftCard,
     cash: gb.cash + gb.extraPay,   // 추가지급은 현금에 합산
@@ -3639,6 +3727,7 @@ function buildProductSummaryLines(p){
   }
   lines.push(`월요금 ${p.totalFee.toLocaleString()}원`);
   lines.push(`사은품 ${p.benefitTotal.toLocaleString()}원`);
+  { const il = installFeeSummaryLine(p); if (il) lines.push(il); }   // X-3: 설치비 (사은품 아래)
   if (isLoggedIn && showSummaryFee) {
     const comm = lookupCommission(p.carrierKey, p.speedNum, p.tvTier, p.lgVariant, settopCommOptsOf(p));
     lines.push(`수수료 ${comm.totalComm.toLocaleString()}원${comm.agency ? ` (${comm.agency})` : ''}`);
@@ -4043,6 +4132,7 @@ function buildProposalHomeRow(item){
       <div class="info-row sub-item-row"><span>상품권</span><span>${(item.giftCard || 0).toLocaleString()}원</span></div>
       <div class="info-row sub-item-row"><span>현금</span><span>${giftCashOf(item).toLocaleString()}원</span></div>
       ${giftCashSubRowsHtml(giftDetailFor(item.carrierKey, String(item.speedNum), item.tvTier !== 'none', (item.extraTVs || []).length, item.benefitTotal, item.giftCard), item.tvTier !== 'none', 'info')}
+      ${installFeeRowHtml(item, 'info')}
       ${isLoggedIn ? `
       <div class="info-row"><span>수수료${agBadgeHtml(comm.agency, comm.agencies)}</span><span>${comm.totalComm.toLocaleString()}원</span></div>
       ${commFiveRowsHtml(comm, item.tvTier !== 'none', 'info', (item.extraTvDetails || []).length)}
@@ -4213,6 +4303,7 @@ function buildFinalHomeCard(item, usimItems){
         ${fcRow('상품권', `${(item.giftCard || 0).toLocaleString()}원`, 'fc-sub')}
         ${fcRow('현금', `${giftCashOf(item).toLocaleString()}원`, 'fc-sub')}
         ${giftCashSubRowsHtml(giftDetailFor(item.carrierKey, String(item.speedNum), item.tvTier !== 'none', (item.extraTVs || []).length, item.benefitTotal, item.giftCard), item.tvTier !== 'none', 'fc')}
+        ${installFeeRowHtml(item, 'fc')}
       </div>
     </div>
   `;
