@@ -13,6 +13,18 @@
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <link rel="stylesheet" href="Styles.css?v=20261007c">
+<style id="v2-dash-split">
+/* W-5 대시보드 좌우 분할 : 왼쪽 "오늘 할 일(운영)", 오른쪽 "실적(성과)". 첫 화면 숫자는 8개(왼쪽 4 + 오른쪽 4), 나머지는 "더보기"에 접어 둠. 좁은 화면에서는 위아래로 쌓음 */
+.dash-split{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0 12px;align-items:start;}
+.dash-pane{border:1px solid var(--line,#e5e0d6);border-radius:12px;padding:12px 14px;background:var(--bg-raised,#fff);min-width:0;}
+.dash-pane-title{font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.dash-pane-title small{font-weight:400;color:#8a8e96;}
+.dash-pane .funnel-due-row{margin:0;display:flex;flex-wrap:wrap;gap:8px;}
+.dash-kpi{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.dash-kpi .perf-card{margin:0;}
+.dash-pane-foot{margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;}
+@media (max-width: 900px){.dash-split{grid-template-columns:1fr;}}
+</style>
 <style id="v2-ui-fixes">
 /* 요구1) 특이사항 입력칸 : 마우스를 올리면 강조되고, 아래쪽 모서리를 끌어 위·아래로 높이를 조절할 수 있습니다 (상담 화면·고객상세 공통) */
 textarea.cust-note-log, #cust-notes, #cf-notes{resize:vertical !important;min-height:72px;max-height:75vh;overflow:auto;box-sizing:border-box;transition:border-color .15s, box-shadow .15s;}
@@ -1969,11 +1981,12 @@ async function v2DashPeriodGo(btn){
   const seq = ++v2DashP.seq;
   const host = () => document.getElementById('v2-dash-perf');
   const hs = () => document.getElementById('v2-dash-settle');
-  if (!from && !to) { const h = host(); if (h) h.innerHTML = v2PerfHtml(v2ND.data && v2ND.data.perf, '', ''); const h2 = hs(); if (h2) h2.innerHTML = v2SettleHtml(v2ND.data && v2ND.data.settle, '', ''); return; }
+  if (!from && !to) { const h = host(); if (h) h.innerHTML = v2PerfHtml(v2ND.data && v2ND.data.perf, '', ''); const h2 = hs(); if (h2) h2.innerHTML = v2SettleHtml(v2ND.data && v2ND.data.settle, '', ''); v2DashKpiRender(); return; }
   if (typeof isLoggedIn === 'undefined' || !isLoggedIn) { alert('실적은 관리자 로그인 후 조회할 수 있습니다.'); return; }
   const h0 = host(); if (h0) h0.innerHTML = '<div class="wide-table-empty">새 기준 실적 불러오는 중...</div>';
   if (btn) setBtnLoading(btn, '조회 중...');
   const h1 = hs(); if (h1) h1.innerHTML = v2SettleHtml(null, from, to);
+  v2DashKpiRender();     // 기간을 바꾸는 동안 오른쪽 핵심 숫자는 "…"
   let d, sd;
   try { [d, sd] = await Promise.all([v2FetchPerfNew(from, to).catch(e => ({ error: e && e.message ? e.message : String(e) })), v2FetchSettleDash(from, to).catch(e => ({ error: e && e.message ? e.message : String(e) }))]); }
   finally { if (btn) clearBtnLoading(btn); }
@@ -1981,6 +1994,7 @@ async function v2DashPeriodGo(btn){
   v2DashP.data = d; v2DashP.settle = sd;
   const h = host(); if (h) h.innerHTML = v2PerfHtml(d, from, to);
   const h3 = hs(); if (h3) h3.innerHTML = v2SettleHtml(sd, from, to);
+  v2DashKpiRender();
 }
 function v2DashPeriodReset(btn){ setVal('dash-from', ''); setVal('dash-to', ''); return v2DashPeriodGo(btn); }
 
@@ -2040,12 +2054,17 @@ async function v2RenderNewDash(){
   if (!box) return;
   let host = document.getElementById('v2-newdash');
   if (!host) {
-    const row = box.querySelector('.funnel-due-row');
-    if (!row) return;
-    row.insertAdjacentHTML('afterend', '<div id="v2-newdash"></div>');
+    const body = box.querySelector('#dash-more-body');          // W-5: "더보기" 안 맨 위
+    if (body) body.insertAdjacentHTML('afterbegin', '<div id="v2-newdash"></div>');
+    else {
+      const row = box.querySelector('.funnel-due-row');
+      if (!row) return;
+      row.insertAdjacentHTML('afterend', '<div id="v2-newdash"></div>');
+    }
     host = document.getElementById('v2-newdash');
   }
   host.innerHTML = v2NewDashHtml(v2ND.data);   // 이전 값이 있으면 먼저 보여 줌
+  v2DashKpiRender();
   const seq = ++v2ND.seq;
   try {
     if (typeof isLoggedIn === 'undefined' || !isLoggedIn) return;
@@ -2054,6 +2073,7 @@ async function v2RenderNewDash(){
     v2ND.data = d;
     const h2 = document.getElementById('v2-newdash');
     if (h2) h2.innerHTML = v2NewDashHtml(d);
+    v2DashKpiRender();
   } catch (e) { console.warn('새 상태 현황 집계 실패', e); }
 }
 
@@ -5013,6 +5033,7 @@ let dashDue = { today: 0, overdue: 0 };        // 고객부재·상담예약 중
 let dashSel = { group: '상담중', sub: '' };    // sub: '' 전체 | 'sub:상품안내' | 'reason:타사가입' | 'flag:unpaid' | 'flag:clawback'
 let dashContractSel = { kind: 'status', value: '접수대기' };   // kind: status | payout | clawback
 var dashOldOpen = false;   // V-5: 옛 기준 현황 접힘 상태 (기본 접힘)
+var dashMoreOpen = false;  // W-5: 대시보드 "더보기" 접이식 열림 상태 (다시 그려도 유지)
 let dashMode = 'status';                       // 'status'(고객) | 'contract' | 'today' | 'overdue'
 let dashRows = [];
 let dashListSeq = 0;
@@ -5141,14 +5162,28 @@ function renderFunnelDashboard(){
   box.innerHTML = `
     <div class="funnel-dash-head">
       <span class="funnel-dash-title">🧭 대시보드</span>
-      <span class="funnel-dash-total">전체 고객 ${c.total.toLocaleString()}명 · 계약 ${ct.total.toLocaleString()}건 <button type="button" class="mini-btn" onclick="loadFunnelDashboard()">↻ 새로고침</button></span>
+      <span class="funnel-dash-total"><button type="button" class="mini-btn" onclick="loadFunnelDashboard()">↻ 새로고침</button></span>
     </div>
+    <div class="dash-split" id="dash-split">
+    <section class="dash-pane dash-pane-left">
+      <div class="dash-pane-title">⏰ 오늘 할 일 <small>(운영)</small></div>
     <div class="funnel-due-row">
       <button type="button" class="funnel-due-chip ${dashMode === 'today' ? 'is-on' : ''}" onclick="loadContactDueList('today')" title="상담중(고객부재·상담예약) 고객 중 오늘 남은 컨택 예정">⏰ 오늘 컨택 예정 <b>${dashDue.today.toLocaleString()}</b></button>
       <button type="button" class="funnel-due-chip ${dashMode === 'v2due' ? 'is-on' : ''}" onclick="v2OpenTask('v2due')" title="새 상태 기준: 상담종료가 아닌 고객 중 상담예약일이 오늘이거나 지난 건">📅 예약일 도래 <b id="v2n-due">${v2TaskCounts.due === null ? '…' : v2TaskCounts.due.toLocaleString()}</b></button>
       <button type="button" class="funnel-due-chip is-overdue ${dashMode === 'v2stale' ? 'is-on' : ''}" onclick="v2OpenTask('v2stale')" title="상품제안 상태로 설정일수(기본 7일) 이상 지난 상품이 있는 고객 (상담종료 제외)">⌛ 제안 방치 <b id="v2n-stale">${v2TaskCounts.stale === null ? '…' : v2TaskCounts.stale.toLocaleString()}</b></button>
       <button type="button" class="funnel-due-chip is-overdue ${dashMode === 'overdue' ? 'is-on' : ''}" onclick="loadContactDueList('overdue')" title="상담중(고객부재·상담예약) 고객 중 예정 시각이 지난 건">⚠ 컨택 지연 <b>${dashDue.overdue.toLocaleString()}</b></button>
     </div>
+    </section>
+    <section class="dash-pane dash-pane-right">
+      <div class="dash-pane-title">📈 실적 <small id="v2-kpi-period">(${escHtml(v2DashKpiHtml().period)})</small></div>
+      <div class="dash-kpi" id="v2-dash-kpi">${v2DashKpiHtml().html}</div>
+      <div class="dash-pane-foot"><button type="button" class="mini-btn" onclick="v2DashOpenPeriod()">기간 변경 ▸</button><button type="button" class="mini-btn" onclick="v2DashOpenMore()">상세 보기 ▸</button></div>
+    </section>
+    </div>
+    <details class="cd-fold" id="dash-more" ${dashMoreOpen ? 'open' : ''} ontoggle="dashMoreOpen = this.open">
+    <summary><b>더보기</b> <span class="cust-note-hint">상태별 현황 · 기간 실적 · 정산 · 옛 기준 (W-5)</span></summary>
+    <div id="dash-more-body">
+    <div class="fd-note">전체 고객 ${c.total.toLocaleString()}명 · 계약 ${ct.total.toLocaleString()}건 (옛 기준 집계)</div>
     <details class="cd-fold" id="dash-old-fold" ${dashOldOpen ? 'open' : ''} ontoggle="dashOldOpen = this.open">
     <summary><b>옛 기준 현황 (고객·계약)</b> <span class="cust-note-hint">컷오버 전 참고용 · 위 새 기준으로 대체 중 (V-5)</span></summary>
     <div class="fd-section-title">고객 현황 <small>(단위: 명 · 옛 기준)</small></div>
@@ -5177,8 +5212,42 @@ function renderFunnelDashboard(){
     ${c.unclassified ? `<div class="fd-note">⚠ 새 상태값(customer_status)이 아직 없는 고객 ${c.unclassified.toLocaleString()}명 — 위 고객 현황에 포함되지 않았습니다. 컷오버(S9) 때 이전 SQL을 다시 실행하면 채워집니다.</div>` : ''}
     ${classified !== c.total - c.unclassified ? `<div class="fd-note">⚠ 정의되지 않은 고객 상태값이 있는 고객 ${(c.total - c.unclassified - classified).toLocaleString()}명</div>` : ''}
     </details>
+    </div>
+    </details>
     ${dashTruncated ? `<div class="fd-note">⚠ 조회 건수가 안전 상한(${S2_MAX_ROWS.toLocaleString()})을 넘어 일부만 집계되었습니다.</div>` : ''}
   `;
+}
+
+/* W-5 대시보드 오른쪽 "실적" 핵심 4개 : 접수 이력 계약 · 유치율 · 취소율 · 미수금 (대시보드 기간 선택과 연동, 나머지 숫자는 "더보기") */
+function v2DashKpiHtml(){
+  const base = v2ND.data || null;
+  const useP = !!(v2DashP.from || v2DashP.to);
+  const pf = useP ? v2DashP.data : (base && base.perf);
+  const st = useP ? v2DashP.settle : (base && base.settle);
+  const period = useP ? `${v2DashP.from || '처음'} ~ ${v2DashP.to || '오늘'}` : '전체 기간';
+  const pct = v => v == null ? '-' : (v * 100).toFixed(1) + '%';
+  const card = (label, value, title) => `<div class="perf-card" title="${escAttr(title || '')}"><small>${escHtml(label)}</small><b>${value}</b></div>`;
+  const okP = pf && !pf.error, okS = st && !st.error;
+  const html = [
+    card('접수 이력 계약', okP ? pf.receivedContracts.toLocaleString() : '…', '소속 상품 중 하나라도 접수완료로 처음 바뀐 계약 (가장 이른 접수 시각이 기간 안). 이후 취소돼도 유지'),
+    card('유치율', okP ? pct(pf.acqRate) : '…', '기간 내 등록 고객 중 접수 이력 계약이 1건 이상인 고객 ÷ 기간 내 등록 고객'),
+    card('취소율', okP ? pct(pf.cancelRate) : '…', '접수 이력 계약 중 현재 계약 상태가 취소인 계약 ÷ 접수 이력 계약'),
+    card('미수금', okS ? Number(st.unpaid || 0).toLocaleString('ko-KR') + '원' : '…', '세금계산서 발행완료 계약의 입금예정액 합계 (수금 전, 접수일 기준·취소 제외). 상세는 정산 탭')
+  ].join('');
+  return { html, period };
+}
+function v2DashKpiRender(){
+  const box = document.getElementById('v2-dash-kpi'); if (!box) return;
+  const k = v2DashKpiHtml();
+  box.innerHTML = k.html;
+  const p = document.getElementById('v2-kpi-period'); if (p) p.textContent = '(' + k.period + ')';
+}
+function v2DashOpenMore(){
+  const m = document.getElementById('dash-more'); if (m) { m.open = true; dashMoreOpen = true; }
+}
+function v2DashOpenPeriod(){
+  v2DashOpenMore();
+  setTimeout(() => { const f = document.getElementById('dash-from'); if (f) { try { f.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {} f.focus(); } }, 60);
 }
 
 function selectDashGroup(status){
