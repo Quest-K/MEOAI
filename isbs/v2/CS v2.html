@@ -1138,7 +1138,7 @@ PASS 앱 → 전체 → 명의도용방지 → 해당 통신사 해제
 <script src="config.js?v=20261022a"></script>
 <script src="Calculator.js?v=20261006a"></script>
 <script src="StatusRules.js?v=20261016a"></script>
-<script src="Supabaseservice.js?v=20261023a"></script>
+<script src="Supabaseservice.js?v=20261023b"></script>
 <script>
 /* 추천상품 상단 [KT·LG·SK 가용조회]: 통신사별 설치 가능 주소 조회 페이지를 새 탭으로 엽니다 (주소는 config.js CARRIER_COVERAGE_URLS).
    기존 요금절약·가성비·최고사은품 추천 설정 함수(applyRecoPreset)는 그대로 두었습니다. */
@@ -2630,7 +2630,13 @@ function giftCashSubRowsHtml(d, hasTv, mode){
   }).join('');
 }
 // 대리점 판매 수수료 5줄: 인터넷 · TV · 결합 · 셋탑 · 기타. 결합·셋탑·기타는 수수료 재적재 후 값이 들어오며, 그 전에는 '–'.
-function commFiveRowsHtml(comm, hasTv, mode){
+// 제안·최종 상품에서 수수료 조회용 셋탑 정보 (메인 셋탑 이름 + 2대째 이후 셋탑 이름들)
+function settopCommOptsOf(item){
+  if (!item || item.tvTier === 'none') return {};
+  const main = item.settopLabel && item.settopLabel !== '-' ? item.settopLabel : null;
+  return { settop: main, extra: (item.extraTvDetails || []).map(ex => ex.settopName) };
+}
+function commFiveRowsHtml(comm, hasTv, mode, extraCount){
   const n = v => Number(v) || 0;
   const dash = '–';
   const rows = [['인터넷 수수료', n(comm.internetComm).toLocaleString()]];
@@ -2638,6 +2644,7 @@ function commFiveRowsHtml(comm, hasTv, mode){
     rows.push(['TV 수수료', n(comm.tvComm).toLocaleString()]);
     rows.push(['결합수수료', n(comm.bundleComm) ? n(comm.bundleComm).toLocaleString() : dash]);
     rows.push(['셋탑수수료', n(comm.settopComm) ? n(comm.settopComm).toLocaleString() : dash]);
+    if (extraCount > 0) rows.push(['추가 셋탑수수료', n(comm.extraSettopComm) ? n(comm.extraSettopComm).toLocaleString() : dash]);
   }
   rows.push(['기타수수료', n(comm.etcComm) ? n(comm.etcComm).toLocaleString() : dash]);
   return rows.map(r => {
@@ -2705,12 +2712,12 @@ function renderRecoCards(){
     let commHtml = '';
     let properGiftRowHtml = '';
     if (isLoggedIn) {
-      const comm = lookupCommission(c, speedNum, tvTier, lgVariantOf(c));
+      const comm = lookupCommission(c, speedNum, tvTier, lgVariantOf(c), { settop: price.settopInfo ? price.settopInfo.name : null, extra: (price.extraTvDetails || []).map(ex => ex.settopName) });
       const margin = comm.totalComm - userGiftVal;
       commHtml = `
         <div class="reco-block">
           <div class="info-row main-label"><span>대리점 판매 수수료${agMulti(comm) ? '' : agBadgeHtml(comm.agency, comm.agencies)}</span><span>${comm.totalComm.toLocaleString()}</span></div>
-          ${commFiveRowsHtml(comm, tvTier !== 'none', 'reco')}
+          ${commFiveRowsHtml(comm, tvTier !== 'none', 'reco', (price.extraTvDetails || []).length)}
           ${agAgencyRowsHtml(comm, false)}
           <div class="total-row reco-margin-row"><span>최종마진</span><span class="amount" style="color:${margin >= 0 ? '#1E7E34' : '#D9534F'};">${margin.toLocaleString()}</span></div>
         </div>
@@ -3633,7 +3640,7 @@ function buildProductSummaryLines(p){
   lines.push(`월요금 ${p.totalFee.toLocaleString()}원`);
   lines.push(`사은품 ${p.benefitTotal.toLocaleString()}원`);
   if (isLoggedIn && showSummaryFee) {
-    const comm = lookupCommission(p.carrierKey, p.speedNum, p.tvTier, p.lgVariant);
+    const comm = lookupCommission(p.carrierKey, p.speedNum, p.tvTier, p.lgVariant, settopCommOptsOf(p));
     lines.push(`수수료 ${comm.totalComm.toLocaleString()}원${comm.agency ? ` (${comm.agency})` : ''}`);
   }
   return lines;
@@ -4015,7 +4022,7 @@ function copyCsSummary(){
 
 
 function buildProposalHomeRow(item){
-  const comm = isLoggedIn ? lookupCommission(item.carrierKey, item.speedNum, item.tvTier, item.lgVariant) : null;
+  const comm = isLoggedIn ? lookupCommission(item.carrierKey, item.speedNum, item.tvTier, item.lgVariant, settopCommOptsOf(item)) : null;
   return `
     <div class="phone-line usim-added-line">
       <div class="usim-added-row">
@@ -4038,7 +4045,7 @@ function buildProposalHomeRow(item){
       ${giftCashSubRowsHtml(giftDetailFor(item.carrierKey, String(item.speedNum), item.tvTier !== 'none', (item.extraTVs || []).length, item.benefitTotal, item.giftCard), item.tvTier !== 'none', 'info')}
       ${isLoggedIn ? `
       <div class="info-row"><span>수수료${agBadgeHtml(comm.agency, comm.agencies)}</span><span>${comm.totalComm.toLocaleString()}원</span></div>
-      ${commFiveRowsHtml(comm, item.tvTier !== 'none', 'info')}
+      ${commFiveRowsHtml(comm, item.tvTier !== 'none', 'info', (item.extraTvDetails || []).length)}
       ${agOthersRowsHtml(comm, true)}` : ''}
       ${regBadgeHtml(item.id)}
       <div class="usim-line-actions">
@@ -4282,13 +4289,13 @@ function renderCommissionPanels(homeItem, usimItems){
   if (!homeItem) {
     homePanel.innerHTML = `<div class="reflected-empty">최종상품이 반영되면 수수료 정보가 표시됩니다.</div>`;
   } else {
-    const comm = lookupCommission(homeItem.carrierKey, homeItem.speedNum, homeItem.tvTier, homeItem.lgVariant);
+    const comm = lookupCommission(homeItem.carrierKey, homeItem.speedNum, homeItem.tvTier, homeItem.lgVariant, settopCommOptsOf(homeItem));
     const margin = comm.totalComm - homeItem.benefitTotal;
     homePanel.innerHTML = `
       <div class="final-card fc-simple">
         <div class="fc-sec">
           ${fcRow(`총 수수료${agBadgeHtml(comm.agency, comm.agencies)}`, `${comm.totalComm.toLocaleString()}원`, 'fc-strong')}
-          ${commFiveRowsHtml(comm, homeItem.tvTier !== 'none', 'fc')}
+          ${commFiveRowsHtml(comm, homeItem.tvTier !== 'none', 'fc', (homeItem.extraTvDetails || []).length)}
           ${agOthersRowsHtml(comm, true).replace(/info-row sub-item-row/g, 'fc-row fc-sub')}
         </div>
         <div class="fc-sec">
@@ -4738,7 +4745,7 @@ function agOthersRowsHtml(info, withUnit){
 
 function homeCommissionOf(item){
   if (!item || !isLoggedIn) return null;
-  try { return lookupCommission(item.carrierKey, item.speedNum, item.tvTier, item.lgVariant).totalComm; }
+  try { return lookupCommission(item.carrierKey, item.speedNum, item.tvTier, item.lgVariant, settopCommOptsOf(item)).totalComm; }
   catch (e) { return null; }
 }
 
@@ -4792,7 +4799,7 @@ function consultSaveHelpers(){
   return {
     homeCommission: item => homeCommissionOf(item),
     usimCommission: (carrier, fee) => { if (!isLoggedIn) return null; try { return usimCommissionInfo(carrier, fee).amount; } catch (e) { return null; } },
-    homeAgency: item => { if (!item || !isLoggedIn) return null; try { return lookupCommission(item.carrierKey, item.speedNum, item.tvTier, item.lgVariant).agency || null; } catch (e) { return null; } },
+    homeAgency: item => { if (!item || !isLoggedIn) return null; try { return lookupCommission(item.carrierKey, item.speedNum, item.tvTier, item.lgVariant, settopCommOptsOf(item)).agency || null; } catch (e) { return null; } },
     usimAgency: (carrier, fee) => { if (!isLoggedIn) return null; try { return usimCommissionInfo(carrier, fee).agency || null; } catch (e) { return null; } }
   };
 }
