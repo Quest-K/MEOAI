@@ -3565,9 +3565,18 @@ function renderFamilyDiscountAccordion(){
 }
 
 // 지급 사은품을 경품고시제 한도 안에서 상품권 -> 현금 순으로 채우고, 한도를 넘는 금액은 추가지급으로 분리합니다.
+// 상품권을 줄 수 있는 통신사(KT·헬로비전)만 true. 노션 경품고시 기준: SKB·SKT·SKY·LG 는 전액 현금. 가이드를 아직 못 읽었으면 예전처럼 true. (2026-10-23)
+function giftCardAllowedFor(carrier){
+  try {
+    if (!GIFT_GUIDE_ROWS || typeof giftCarrierKey !== 'function') return true;
+    const key = giftCarrierKey(carrier);
+    const row = GIFT_GUIDE_ROWS.find(r => r.carrier === key);
+    return row ? row.card_allowed !== false : true;
+  } catch (e) { return true; }
+}
 function computeGiftBreakdown(carrier, giftTotal){
   const promo = PROMOTION_DATA[carrier] || { giftCard: 60000, cash: 340000 };
-  const noticeGiftCard = promo.giftCard || 0;
+  const noticeGiftCard = giftCardAllowedFor(carrier) ? (promo.giftCard || 0) : 0;
   const noticeTotal = promo.maxLimit || (noticeGiftCard + (promo.cash || 0));
   const noticeCash = Math.max(0, noticeTotal - noticeGiftCard);
   const total = Math.max(0, Number(giftTotal) || 0);
