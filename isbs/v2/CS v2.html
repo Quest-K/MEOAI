@@ -1138,7 +1138,7 @@ PASS 앱 → 전체 → 명의도용방지 → 해당 통신사 해제
 <script src="config.js?v=20261022a"></script>
 <script src="Calculator.js?v=20261006a"></script>
 <script src="StatusRules.js?v=20261016a"></script>
-<script src="Supabaseservice.js?v=20261022a"></script>
+<script src="Supabaseservice.js?v=20261023a"></script>
 <script>
 /* 추천상품 상단 [KT·LG·SK 가용조회]: 통신사별 설치 가능 주소 조회 페이지를 새 탭으로 엽니다 (주소는 config.js CARRIER_COVERAGE_URLS).
    기존 요금절약·가성비·최고사은품 추천 설정 함수(applyRecoPreset)는 그대로 두었습니다. */
@@ -2595,6 +2595,58 @@ function giftPreviewHtml(c, st, total){
   return `<div class="reco-detail-sm reco-gift-preview" title="${escAttr(tip)}">배분 미리보기 · 인터넷 ${a.internet.toLocaleString()}${hasTv ? ` · TV ${a.tv.toLocaleString()}` : ''} · 추가지원 ${a.extra.toLocaleString()}${warn ? `<div class="reco-gift-warns">${warn}</div>` : ''}</div>`;
 }
 
+// ===== 지급 사은품 세부(상품권 · 현금[인터넷·TV·추가]) · 수수료 5줄 (2026-10-23 요청) =====
+// 상품권은 인터넷 배분 안에서 먼저 차감하고, 현금 = 인터넷 현금 + TV 현금 + 추가. 추가 = 총액 − 상품권 − 인터넷 현금 − TV 현금.
+// 경품고시 가이드가 없는 조합이면 has:false 를 돌려주고, 호출한 쪽은 예전 방식(상품권·현금)으로 표시합니다. (표시 전용 · 저장 값은 바뀌지 않음)
+function giftDetailFor(carrier, speed, hasTv, extraTvCount, total, cardAmount){
+  try {
+    if (typeof isLoggedIn === 'undefined' || !isLoggedIn || !GIFT_GUIDE_ROWS || typeof giftFindGuide !== 'function') return { has: false };
+    const guide = giftFindGuide(GIFT_GUIDE_ROWS, carrier, speed);
+    if (!guide) return { has: false };
+    const t = Math.max(0, Number(total) || 0);
+    const a = giftAllocate(t, guide, { hasTv, extraTvCount: hasTv ? (extraTvCount || 0) : 0 });
+    const card = Math.min(t, Math.max(0, Number(cardAmount) || 0));
+    const internetCash = Math.max(0, a.internet - card);
+    const tvCash = hasTv ? a.tv : 0;
+    const extra = Math.max(0, t - card - internetCash - tvCash);
+    return { has: true, card, internetCash, tvCash, extra, cashTotal: internetCash + tvCash + extra, under: a.under, over: a.over };
+  } catch (e) { return { has: false }; }
+}
+function giftWarnHtml(d){
+  if (!d || !d.has) return '';
+  const w = (d.under > 0 ? `<span class="reco-gift-warn" title="가이드 최소 금액에 못 미칩니다">⚠ 최소 미달 ${d.under.toLocaleString()}</span>` : '')
+    + (d.over > 0 ? `<span class="reco-gift-warn" title="인터넷·TV 가이드 최대를 넘은 금액은 추가로 분리됩니다">⚠ 최대 초과 ${d.over.toLocaleString()} → 추가</span>` : '');
+  return w ? `<div class="reco-gift-warns">${w}</div>` : '';
+}
+// 현금 세부 3줄 (mode: 'reco' | 'info' | 'fc')
+function giftCashSubRowsHtml(d, hasTv, mode){
+  if (!d || !d.has) return '';
+  const rows = [['인터넷', d.internetCash]].concat(hasTv ? [['TV', d.tvCash]] : []).concat([['추가', d.extra]]);
+  return rows.map(r => {
+    const v = r[1].toLocaleString();
+    if (mode === 'fc') return fcRow(`· ${r[0]}`, `${v}원`, 'fc-sub');
+    if (mode === 'info') return `<div class="info-row sub-item-row reco-sub-lv2"><span>${r[0]}</span><span>${v}원</span></div>`;
+    return `<div class="info-row sub-item-row reco-sub-lv2"><span>${r[0]}</span><span>${v}</span></div>`;
+  }).join('');
+}
+// 대리점 판매 수수료 5줄: 인터넷 · TV · 결합 · 셋탑 · 기타. 결합·셋탑·기타는 수수료 재적재 후 값이 들어오며, 그 전에는 '–'.
+function commFiveRowsHtml(comm, hasTv, mode){
+  const n = v => Number(v) || 0;
+  const dash = '–';
+  const rows = [['인터넷 수수료', n(comm.internetComm).toLocaleString()]];
+  if (hasTv) {
+    rows.push(['TV 수수료', n(comm.tvComm).toLocaleString()]);
+    rows.push(['결합수수료', n(comm.bundleComm) ? n(comm.bundleComm).toLocaleString() : dash]);
+    rows.push(['셋탑수수료', n(comm.settopComm) ? n(comm.settopComm).toLocaleString() : dash]);
+  }
+  rows.push(['기타수수료', n(comm.etcComm) ? n(comm.etcComm).toLocaleString() : dash]);
+  return rows.map(r => {
+    const unit = (mode !== 'reco' && r[1] !== dash) ? '원' : '';
+    if (mode === 'fc') return fcRow(r[0].replace(' 수수료', ''), `${r[1]}${unit}`, 'fc-sub');
+    return `<div class="info-row sub-item-row"><span>${r[0]}</span><span>${r[1]}${unit}</span></div>`;
+  }).join('');
+}
+
 function renderRecoCards(){
   ensureGiftGuidelines();
   const container = document.getElementById('reco-carrier-cards');
@@ -2648,6 +2700,7 @@ function renderRecoCards(){
     const userGiftVal = customGiftValues[c] !== undefined ? customGiftValues[c] : (promo.maxLimit || (promo.giftCard + promo.cash));
     // 상품권·현금은 경품고시제 한도 안에서만 표시하고, 한도를 넘는 금액은 추가지급으로 분리
     const gb = computeGiftBreakdown(c, userGiftVal);
+    const gd = giftDetailFor(c, st.speed, tvTier !== 'none', (st.extraTVs || []).length, userGiftVal, gb.giftCard);
 
     let commHtml = '';
     let properGiftRowHtml = '';
@@ -2657,8 +2710,7 @@ function renderRecoCards(){
       commHtml = `
         <div class="reco-block">
           <div class="info-row main-label"><span>대리점 판매 수수료${agMulti(comm) ? '' : agBadgeHtml(comm.agency, comm.agencies)}</span><span>${comm.totalComm.toLocaleString()}</span></div>
-          <div class="info-row sub-item-row"><span>인터넷 수수료</span><span>${comm.internetComm.toLocaleString()}</span></div>
-          ${tvTier !== 'none' ? `<div class="info-row sub-item-row"><span>TV 수수료</span><span>${comm.tvComm.toLocaleString()}</span></div>` : ''}
+          ${commFiveRowsHtml(comm, tvTier !== 'none', 'reco')}
           ${agAgencyRowsHtml(comm, false)}
           <div class="total-row reco-margin-row"><span>최종마진</span><span class="amount" style="color:${margin >= 0 ? '#1E7E34' : '#D9534F'};">${margin.toLocaleString()}</span></div>
         </div>
@@ -2666,15 +2718,7 @@ function renderRecoCards(){
 
       const properGiftPercent = computeProperGiftPercent(speedNum, tvTier);
       const properGiftAmount = computeProperGiftAmount(comm.totalComm, speedNum, tvTier);
-      properGiftRowHtml = `
-        <div class="info-row sub-item-row proper-gift-row">
-          <span>적정사은품</span><span>${properGiftAmount.toLocaleString()}</span>
-        </div>
-        <div class="proper-gift-detail-row">
-          <span class="reco-detail-sm">수수료 ${comm.totalComm.toLocaleString()} × ${properGiftPercent}%</span>
-          <button type="button" class="proper-gift-apply-btn" onclick="handleGiftInputChange('${c}', '${properGiftAmount}')">적용</button>
-        </div>
-      `;
+      // 적정사은품 줄은 화면에서 삭제했습니다(2026-10-23 요청). 계산 함수(computeProperGift*)는 보존합니다.
     }
 
     return `
@@ -2720,11 +2764,15 @@ function renderRecoCards(){
             </span>
           </div>
           <div class="reco-detail-sm reco-notice-hint">경품고시제 한도 ${gb.noticeTotal.toLocaleString()}</div>
+          ${gd.has ? `
+          ${giftWarnHtml(gd)}
+          <div class="info-row sub-item-row"><span>상품권</span><span>${gd.card.toLocaleString()}</span></div>
+          <div class="info-row sub-item-row"><span>현금</span><span>${gd.cashTotal.toLocaleString()}</span></div>
+          ${giftCashSubRowsHtml(gd, tvTier !== 'none', 'reco')}` : `
           ${giftPreviewHtml(c, st, userGiftVal)}
           <div class="info-row sub-item-row"><span>상품권</span><span>${gb.giftCard.toLocaleString()}</span></div>
           <div class="info-row sub-item-row"><span>현금</span><span>${gb.cash.toLocaleString()}</span></div>
-          ${gb.extraPay > 0 ? `<div class="info-row sub-item-row reco-extra-pay-row"><span>추가지급</span><span>${gb.extraPay.toLocaleString()}</span></div>` : ''}
-          ${properGiftRowHtml}
+          ${gb.extraPay > 0 ? `<div class="info-row sub-item-row reco-extra-pay-row"><span>추가지급</span><span>${gb.extraPay.toLocaleString()}</span></div>` : ''}`}
         </div>
         ${commHtml}
         <button type="button" class="join-btn" onclick="reflectRecoCardToProposal('${c}')">✨ 상품반영</button>
@@ -3978,10 +4026,10 @@ function buildProposalHomeRow(item){
       <div class="info-row"><span>사은품</span><span>${item.benefitTotal.toLocaleString()}원</span></div>
       <div class="info-row sub-item-row"><span>상품권</span><span>${(item.giftCard || 0).toLocaleString()}원</span></div>
       <div class="info-row sub-item-row"><span>현금</span><span>${giftCashOf(item).toLocaleString()}원</span></div>
+      ${giftCashSubRowsHtml(giftDetailFor(item.carrierKey, String(item.speedNum), item.tvTier !== 'none', (item.extraTVs || []).length, item.benefitTotal, item.giftCard), item.tvTier !== 'none', 'info')}
       ${isLoggedIn ? `
       <div class="info-row"><span>수수료${agBadgeHtml(comm.agency, comm.agencies)}</span><span>${comm.totalComm.toLocaleString()}원</span></div>
-      <div class="info-row sub-item-row"><span>인터넷</span><span>${comm.internetComm.toLocaleString()}원</span></div>
-      ${item.tvTier !== 'none' ? `<div class="info-row sub-item-row"><span>TV</span><span>${comm.tvComm.toLocaleString()}원</span></div>` : ''}
+      ${commFiveRowsHtml(comm, item.tvTier !== 'none', 'info')}
       ${agOthersRowsHtml(comm, true)}` : ''}
       ${regBadgeHtml(item.id)}
       <div class="usim-line-actions">
@@ -4148,6 +4196,7 @@ function buildFinalHomeCard(item, usimItems){
         ${fcRow('지급 사은품', `${item.benefitTotal.toLocaleString()}원`, 'fc-strong fc-gold')}
         ${fcRow('상품권', `${(item.giftCard || 0).toLocaleString()}원`, 'fc-sub')}
         ${fcRow('현금', `${giftCashOf(item).toLocaleString()}원`, 'fc-sub')}
+        ${giftCashSubRowsHtml(giftDetailFor(item.carrierKey, String(item.speedNum), item.tvTier !== 'none', (item.extraTVs || []).length, item.benefitTotal, item.giftCard), item.tvTier !== 'none', 'fc')}
       </div>
     </div>
   `;
@@ -4230,14 +4279,14 @@ function renderCommissionPanels(homeItem, usimItems){
       <div class="final-card fc-simple">
         <div class="fc-sec">
           ${fcRow(`총 수수료${agBadgeHtml(comm.agency, comm.agencies)}`, `${comm.totalComm.toLocaleString()}원`, 'fc-strong')}
-          ${fcRow('인터넷', `${comm.internetComm.toLocaleString()}원`, 'fc-sub')}
-          ${homeItem.tvTier !== 'none' ? fcRow('TV', `${comm.tvComm.toLocaleString()}원`, 'fc-sub') : ''}
+          ${commFiveRowsHtml(comm, homeItem.tvTier !== 'none', 'fc')}
           ${agOthersRowsHtml(comm, true).replace(/info-row sub-item-row/g, 'fc-row fc-sub')}
         </div>
         <div class="fc-sec">
           ${fcRow('지급 사은품', `-${homeItem.benefitTotal.toLocaleString()}원`, 'fc-strong')}
           ${fcRow('상품권', `${(homeItem.giftCard || 0).toLocaleString()}원`, 'fc-sub')}
           ${fcRow('현금', `${giftCashOf(homeItem).toLocaleString()}원`, 'fc-sub')}
+          ${giftCashSubRowsHtml(giftDetailFor(homeItem.carrierKey, String(homeItem.speedNum), homeItem.tvTier !== 'none', (homeItem.extraTVs || []).length, homeItem.benefitTotal, homeItem.giftCard), homeItem.tvTier !== 'none', 'fc')}
         </div>
         <div class="fc-hero fc-hero-margin"><span>마진</span><strong style="color:${margin >= 0 ? '#1E7E34' : '#D9534F'};">${margin.toLocaleString()}원</strong></div>
       </div>
