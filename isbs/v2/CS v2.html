@@ -178,6 +178,7 @@ textarea.cust-note-log:hover, #cust-notes:hover, #cf-notes:hover{border-color:#c
 .reco-card-ov-note button{border:0;background:none;color:#a8741f;font-size:11px;cursor:pointer;text-decoration:underline;padding:0;}
 .cd-moved-note{font-size:12.5px;color:#7a6a4f;background:#faf7f0;border:1px dashed #e0d6c0;border-radius:8px;padding:8px 12px;margin:8px 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 #cs-cust-overview{margin-top:12px;}
+.reco-gift-preview{color:#7a6a4f;margin:2px 0 4px;}
 .cs-state-btns{display:flex;gap:6px;}
 .cs-state-btn{flex:1;padding:8px 6px;border:1px solid #d9d2c3;border-radius:8px;background:#fff;font:inherit;font-size:13px;font-weight:600;color:#5a4b30;cursor:pointer;transition:background .12s,border-color .12s;}
 .cs-state-btn:hover:not(:disabled){border-color:#c8892b;background:#fbf3e3;}
@@ -2564,7 +2565,33 @@ function recoCardSelect(c, key, st, options, labelFn){
   return `<select class="reco-card-dd" onchange="setRecoCardValue('${c}','${key}',this.value)">${options.map(o => `<option value="${o.value}"${String(st[key]) === String(o.value) ? ' selected' : ''}>${escHtmlSafe(labelFn ? labelFn(o) : o.label)}</option>`).join('')}</select>`;
 }
 
+// ===== 경품고시 3-1·3-2 (2026-10-23): 가이드를 읽어 두고, 추천 카드에 "배분 미리보기" 한 줄만 보여 줍니다 (저장·합계 로직은 그대로) =====
+let GIFT_GUIDE_ROWS = null;        // v_gift_guideline 행들 (로그인 후 1회 읽음)
+let giftGuideState = 'idle';       // idle → loading → ready | failed
+async function ensureGiftGuidelines(){
+  if (giftGuideState !== 'idle' || typeof isLoggedIn === 'undefined' || !isLoggedIn || typeof loadGiftGuidelines !== 'function') return;
+  giftGuideState = 'loading';
+  try {
+    const r = await loadGiftGuidelines();
+    if (r && r.ok) { GIFT_GUIDE_ROWS = r.rows || []; giftGuideState = 'ready'; try { addLog('v_gift_guideline', true, `${GIFT_GUIDE_ROWS.length}건 로드 완료`); } catch (e) {} }
+    else { giftGuideState = 'failed'; try { addLog('v_gift_guideline', false, (r && r.error) || '읽지 못했습니다'); } catch (e) {} }
+  } catch (e) { giftGuideState = 'failed'; }
+  if (giftGuideState === 'ready') renderRecoCards();   // 읽은 뒤 미리보기를 한 번 다시 그림
+}
+function giftPreviewHtml(c, st, total){
+  if (typeof isLoggedIn === 'undefined' || !isLoggedIn || !GIFT_GUIDE_ROWS || typeof giftFindGuide !== 'function') return '';
+  const guide = giftFindGuide(GIFT_GUIDE_ROWS, c, st.speed);
+  if (!guide) return '';   // 가이드가 없는 속도·통신사는 표시하지 않음 (임의 대체 안 함)
+  const hasTv = st.tv !== 'none';
+  const a = giftAllocate(total, guide, { hasTv, extraTvCount: hasTv ? (st.extraTVs || []).length : 0 });
+  const g = a.guide || {};
+  const tip = `가이드 한도 · 인터넷 ${(g.internetMin || 0).toLocaleString()}~${(g.internetMax || 0).toLocaleString()}`
+    + (hasTv ? ` · TV ${(g.tvMin || 0).toLocaleString()}~${(g.tvMax || 0).toLocaleString()} · 결합 ${(g.bundleMin || 0).toLocaleString()}~${(g.bundleMax || 0).toLocaleString()}` : '');
+  return `<div class="reco-detail-sm reco-gift-preview" title="${escAttr(tip)}">배분 미리보기 · 인터넷 ${a.internet.toLocaleString()}${hasTv ? ` · TV ${a.tv.toLocaleString()}` : ''} · 추가지원 ${a.extra.toLocaleString()}</div>`;
+}
+
 function renderRecoCards(){
+  ensureGiftGuidelines();
   const container = document.getElementById('reco-carrier-cards');
   if (!container) return;
   if (!DATA) {
@@ -2688,6 +2715,7 @@ function renderRecoCards(){
             </span>
           </div>
           <div class="reco-detail-sm reco-notice-hint">경품고시제 한도 ${gb.noticeTotal.toLocaleString()}</div>
+          ${giftPreviewHtml(c, st, userGiftVal)}
           <div class="info-row sub-item-row"><span>상품권</span><span>${gb.giftCard.toLocaleString()}</span></div>
           <div class="info-row sub-item-row"><span>현금</span><span>${gb.cash.toLocaleString()}</span></div>
           ${gb.extraPay > 0 ? `<div class="info-row sub-item-row reco-extra-pay-row"><span>추가지급</span><span>${gb.extraPay.toLocaleString()}</span></div>` : ''}
