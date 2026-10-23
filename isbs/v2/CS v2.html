@@ -1158,7 +1158,7 @@ function installTvCountOf(p){
   if (!p || p.tvTier === 'none') return 0;
   return 1 + ((p.extraTvDetails || []).length);
 }
-function installCondLabel(n){ return n <= 0 ? '인터넷 단독' : ('인터넷+TV ' + n + '대'); }
+function installCondLabel(n){ return n <= 0 ? '인터넷 단독' : ('인터넷+TV' + n + '대'); }
 
 async function loadInstallFees(force){
   if (INSTALL_FEES.loading) return INSTALL_FEES.loading;
@@ -1208,22 +1208,28 @@ function lookupInstallFee(p){
   return { weekday: wd, offday: off, tvCount: n, label: installCondLabel(n), carrierId: cid };
 }
 
-function installFeeText(f){
-  if (!f) return '';
+// 표시 형식 (사용자 지정 10-23):  설치비 (인터넷+TV1대) / 평일 56,200원 / 주말,야간 71,250원  (평일·주말야간 금액이 같으면 한 줄)
+function installFeeParts(f){
+  if (!f) return [];
   const w = f.weekday.toLocaleString() + '원';
-  return f.weekday === f.offday ? `${w} (평일·주말·야간 동일)` : `평일 ${w} / 주말·야간 ${f.offday.toLocaleString()}원`;
+  return f.weekday === f.offday ? [['평일·주말·야간', w]] : [['평일', w], ['주말,야간', f.offday.toLocaleString() + '원']];
 }
-// 상담요약·복사용 요약 한 줄
-function installFeeSummaryLine(p){
+function installFeeText(f){ return installFeeParts(f).map(x => x[0] + ' ' + x[1]).join(' / '); }
+// 상담요약·복사용 요약: 제목 줄 + 들여쓴 금액 줄 (앞의 두 칸은 줄바꿈 공백이라 화면·복사 모두 유지됨)
+function installFeeSummaryLines(p){
   const f = lookupInstallFee(p);
-  return f ? `설치비 ${installFeeText(f)} (${f.label})` : '';
+  if (!f) return [];
+  const pad = '  ';
+  return [`설치비 (${f.label})`].concat(installFeeParts(f).map(x => `${pad}${x[0]} ${x[1]}`));
 }
-// 제안상품 카드·최종상품 카드용 줄 (info-row / fc-row)
+function installFeeSummaryLine(p){ return installFeeSummaryLines(p).join('\n'); }
+// 제안상품 카드·최종상품 카드용 줄: 제목 줄 + 평일 / 주말,야간 줄
 function installFeeRowHtml(p, kind){
   const f = lookupInstallFee(p);
   if (!f) return '';
-  const cls = kind === 'fc' ? 'fc-row' : 'info-row';
-  return `<div class="${cls}"><span>설치비<span class="reco-detail-sm">(${escHtml(f.label)})</span></span><span>${escHtml(installFeeText(f))}</span></div>`;
+  const main = kind === 'fc' ? 'fc-row' : 'info-row', sub = kind === 'fc' ? 'fc-row fc-sub' : 'info-row sub-item-row';
+  return `<div class="${main}"><span>설치비<span class="reco-detail-sm">(${escHtml(f.label)})</span></span><span></span></div>`
+    + installFeeParts(f).map(x => `<div class="${sub}"><span>${escHtml(x[0])}</span><span>${escHtml(x[1])}</span></div>`).join('');
 }
 </script>
 <script>
@@ -3727,7 +3733,7 @@ function buildProductSummaryLines(p){
   }
   lines.push(`월요금 ${p.totalFee.toLocaleString()}원`);
   lines.push(`사은품 ${p.benefitTotal.toLocaleString()}원`);
-  { const il = installFeeSummaryLine(p); if (il) lines.push(il); }   // X-3: 설치비 (사은품 아래)
+  lines.push(...installFeeSummaryLines(p));   // X-3: 설치비 (사은품 아래, 제목 + 평일 / 주말,야간)
   if (isLoggedIn && showSummaryFee) {
     const comm = lookupCommission(p.carrierKey, p.speedNum, p.tvTier, p.lgVariant, settopCommOptsOf(p));
     lines.push(`수수료 ${comm.totalComm.toLocaleString()}원${comm.agency ? ` (${comm.agency})` : ''}`);
