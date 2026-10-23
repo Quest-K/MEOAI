@@ -176,12 +176,13 @@ function lookupCommission(carrierKey, speedNum, tvTier, variant){
     const rs = rows.filter(r => commissionAgencyOf(r) === a);
     const internetComm = pickLatestRow(rs.filter(r => String(r.tv_tier) === 'none'))?.commission_amount || 0;
     const tvComm = tvTier !== 'none' ? (pickLatestRow(rs.filter(r => String(r.tv_tier) === tvTier))?.commission_amount || 0) : 0;
-    return { agency: a, internetComm, tvComm, totalComm: internetComm + tvComm };
+    // bundleComm·settopComm·etcComm(결합·셋탑·기타 수수료)은 수수료 재적재 후 채웁니다. 지금은 0 → 화면에 '–'로 표시
+    return { agency: a, internetComm, tvComm, bundleComm: 0, settopComm: 0, etcComm: 0, totalComm: internetComm + tvComm };
   });
   const best = pickBestCommission(cands);
-  if (!best) return { internetComm: 0, tvComm: 0, totalComm: 0, agency: null, agencies: [] };
+  if (!best) return { internetComm: 0, tvComm: 0, bundleComm: 0, settopComm: 0, etcComm: 0, totalComm: 0, agency: null, agencies: [] };
   return {
-    internetComm: best.internetComm, tvComm: best.tvComm, totalComm: best.totalComm,
+    internetComm: best.internetComm, tvComm: best.tvComm, bundleComm: best.bundleComm || 0, settopComm: best.settopComm || 0, etcComm: best.etcComm || 0, totalComm: best.totalComm,
     agency: best.agency, agencies: cands.slice().sort((x, y) => y.totalComm - x.totalComm)
   };
 }
