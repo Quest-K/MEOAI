@@ -13,6 +13,23 @@
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inconsolata:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <link rel="stylesheet" href="Styles.css?v=20261007c">
+<style id="v2-ct-summary">
+/* W-6 고객상담 맨 아래 "이 고객의 계약·실적 요약" (읽기 전용) */
+.cs-ct-summary{margin:14px 0 4px;}
+.cs-ct-summary > summary{cursor:pointer;padding:6px 2px;}
+.cs-ct-sum-line{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0;}
+.cs-ct-sum-line .v2-chip{white-space:nowrap;}
+.cs-ct-table{width:100%;border-collapse:collapse;font-size:12px;}
+.cs-ct-table th,.cs-ct-table td{padding:6px 8px;border-bottom:1px solid var(--line,#eee8dc);text-align:left;vertical-align:top;}
+.cs-ct-table th{color:#6a6d74;font-weight:600;white-space:nowrap;}
+.cs-ct-table td.num,.cs-ct-table th.num{text-align:right;white-space:nowrap;}
+.cs-ct-table tr.cs-ct-row{cursor:pointer;}
+.cs-ct-table tr.cs-ct-row:hover{background:#faf7f0;}
+.cs-ct-table tr.cs-ct-dead{opacity:.55;}
+.cs-ct-table tr.cs-ct-total td{font-weight:700;background:#faf7f0;}
+.cs-ct-note{margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.ct-card-flash{outline:2px solid #c8892b;transition:outline-color .6s;}
+</style>
 <style id="v2-dash-split">
 /* W-5 대시보드 좌우 분할 : 왼쪽 "오늘 할 일(운영)", 오른쪽 "실적(성과)". 첫 화면 숫자는 8개(왼쪽 4 + 오른쪽 4), 나머지는 "더보기"에 접어 둠. 좁은 화면에서는 위아래로 쌓음 */
 .dash-split{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0 12px;align-items:start;}
@@ -617,6 +634,11 @@ textarea.cust-note-log:hover, #cust-notes:hover, #cf-notes:hover{border-color:#c
       </div>
 
         </div>
+
+      <details class="cd-fold cs-ct-summary" id="cs-ct-summary" style="display:none;">
+        <summary><b>이 고객의 계약·실적 요약</b> <span class="cust-note-hint" id="cs-ct-summary-hint">읽기 전용 · 저장된 값 기준</span></summary>
+        <div id="cs-ct-summary-body"><div class="wide-table-empty">저장된 고객을 열면 계약·실적 요약이 표시됩니다.</div></div>
+      </details>
       </div>
 
       <!-- 상담요약 -->
@@ -6418,12 +6440,14 @@ function showConsultOverview(on, loadingText){
   const ctr = document.getElementById('cs-cust-contracts'); if (ctr) ctr.style.display = on ? '' : 'none';
   const fam = document.getElementById('cs-cust-family'); if (fam) fam.style.display = on ? '' : 'none';
   const mt = document.getElementById('cs-cust-meta'); if (mt) mt.style.display = on ? '' : 'none';   // U-8
+  const cs6 = document.getElementById('cs-ct-summary'); if (cs6) cs6.style.display = on ? '' : 'none';   // W-6
   const hint = document.getElementById('cs-contact-hint');
   if (hint && typeof CONTACT_RULES !== 'undefined') hint.textContent = `고객부재 재안내 · 최대 ${CONTACT_RULES.maxAttempts}회 · ${CONTACT_RULES.intervalHours}시간 간격`;
   if (on && loadingText) {
     const hb = document.getElementById('status-log-section'); if (hb) hb.innerHTML = '<div class="wide-table-empty">불러오는 중...</div>';
     const cb = document.getElementById('contact-section'); if (cb) cb.innerHTML = '<div class="wide-table-empty">불러오는 중...</div>';
     const kb = document.getElementById('contract-section'); if (kb) kb.innerHTML = '<div class="wide-table-empty">불러오는 중...</div>';
+    renderCsCtSummary('loading');
     const fb = document.getElementById('cd-family'); if (fb) fb.innerHTML = '<div class="wide-table-empty">불러오는 중...</div>';
     const sum = document.getElementById('cd-summary'); if (sum) sum.innerHTML = `<span>${loadingText}</span>`;
     const box = document.getElementById('cd-status-cards'); if (box) box.innerHTML = '';
@@ -7284,6 +7308,7 @@ async function refreshDetailBundle(customerId){
     if (cBox) cBox.innerHTML = msg;
     if (hBox) hBox.innerHTML = msg;
     showConsultOverview(true);
+    renderCsCtSummary('error', res.error);
     const sBox = document.getElementById('cd-summary'); if (sBox) sBox.innerHTML = '<span>계약 정보를 불러오지 못했습니다.</span>';
     renderDetailFamily();
     return;
@@ -7316,6 +7341,95 @@ async function afterContractChange(customerId){
   }
   loadFunnelDashboard();
   await refreshDetailBundle(customerId);
+}
+
+
+/* =========================================================================
+   W-6 고객상담 맨 아래 "이 고객의 계약·실적 요약" (읽기 전용 · 입력 없음)
+   - 이미 불러온 detailBundle(계약·상품)만 읽음(새 조회 없음). 금액은 **저장된 값 기준**이라 정산 탭 계산(수수료표·차감 반영)과 다를 수 있음.
+   - 계약 상태는 DB 뷰 v_contract_state_v2 와 같은 규칙으로 계산(csCtStateOf).
+   ========================================================================= */
+function csCtStateOf(items){
+  const all = items || [];
+  const its = all.filter(i => i.item_status);
+  if (!its.length) return null;
+  const dead = i => i.item_status === '접수불가' || i.item_status === '접수취소';
+  if (its.every(dead)) return '취소';
+  if (all.some(i => i.refund_status)) return '환수';
+  const live = its.filter(i => !dead(i));
+  const ps = i => i.pay_status || '';
+  const inProg = i => (['접수대기', '접수보류', '접수완료', '개통완료'].includes(i.item_status) && ps(i) !== '지급완료' && !(ps(i) === '지급제외' && i.item_status === '개통완료')) || ['지급요청', '지급보류'].includes(ps(i));
+  if (live.some(inProg)) return '진행';
+  if (live.some(i => ps(i) === '지급완료' || (ps(i) === '지급제외' && i.item_status === '개통완료'))) return '완료';
+  return '제안';
+}
+function csCtCount(list, key){
+  const o = {}; list.forEach(i => { const v = i[key]; if (v) o[v] = (o[v] || 0) + 1; });
+  const s = Object.keys(o).map(k => `${k} ${o[k]}`).join(' · ');
+  return s || '-';
+}
+function csCtGoCard(contractId){
+  try { goCsStep(1); } catch (e) {}
+  setTimeout(() => {
+    const el = document.getElementById('ct-card-' + contractId);
+    if (!el) return;
+    try { el.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) {}
+    el.classList.add('ct-card-flash'); setTimeout(() => el.classList.remove('ct-card-flash'), 1400);
+  }, 60);
+}
+// mode: undefined(데이터로 그림) | 'loading' | 'error'
+function renderCsCtSummary(mode, errText){
+  const box = document.getElementById('cs-ct-summary-body'); if (!box) return;
+  const hint = document.getElementById('cs-ct-summary-hint');
+  const setHint = t => { if (hint) hint.textContent = t; };
+  if (mode === 'loading') { box.innerHTML = '<div class="wide-table-empty">불러오는 중...</div>'; setHint('불러오는 중...'); return; }
+  if (mode === 'error') { box.innerHTML = `<div class="wide-table-empty">불러오지 못했습니다${errText ? ': ' + escHtml(errText) : ''}</div>`; setHint('불러오지 못했습니다'); return; }
+  if (!detailCustomerId || !detailBundle) {
+    box.innerHTML = '<div class="wide-table-empty">저장된 고객을 열면 계약·실적 요약이 표시됩니다.</div>'; setHint('읽기 전용 · 저장된 값 기준'); return;
+  }
+  const cts = detailBundle.contracts || [];
+  if (!cts.length) {
+    box.innerHTML = '<div class="wide-table-empty">등록된 계약이 없습니다. 위쪽 [+ 신규 계약 접수]로 만들 수 있습니다.</div>'; setHint('계약 없음'); return;
+  }
+  const allItems = [].concat(...cts.map(c => c.items || []));
+  const TYPE = { internet: '인터넷', tv: 'TV', usim: '유심' };
+  const ST_ORDER = ['상품제안', '접수대기', '접수보류', '접수완료', '개통완료', '접수불가', '접수취소'];
+  // W-6b 개수와 상태 한 줄
+  const stCnt = {}; let unset = 0;
+  allItems.forEach(i => { if (i.item_status) stCnt[i.item_status] = (stCnt[i.item_status] || 0) + 1; else unset++; });
+  const chips = ST_ORDER.filter(s => stCnt[s]).map(s => `<span class="v2-chip">${escHtml(s)} ${stCnt[s]}</span>`).join('')
+    + (unset ? `<span class="v2-chip none" title="새 상태값이 아직 없는 상품">미설정 ${unset}</span>` : '');
+  const line = `<div class="cs-ct-sum-line"><b>계약 ${cts.length}건 · 상품 ${allItems.length}개</b>${chips}</div>`;
+  // W-6c·d 계약별 표 (금액은 저장값 기준)
+  const showFee = !!isLoggedIn;
+  const feeOf = c => (c.commission_total != null && Number(c.commission_total) > 0) ? Number(c.commission_total) : (c.items || []).reduce((a, i) => a + (Number(i.commission) || 0), 0);
+  const giftOf = c => Number(c.gift_total) > 0 ? Number(c.gift_total) : ((Number(c.gift_card) || 0) + (Number(c.gift_cash) || 0) + (Number(c.gift_extra) || 0));
+  let sumGift = 0, sumFee = 0, live = 0;
+  const rows = cts.map(c => {
+    const items = c.items || [];
+    const state = csCtStateOf(items);
+    const dead = state === '취소';
+    const g = giftOf(c), f = feeOf(c);
+    if (!dead) { sumGift += g; sumFee += f; live++; }
+    const shown = items.filter(i => i.item_status !== '접수취소' && i.item_status !== '접수불가');
+    const list = (shown.length ? shown : items);
+    const prods = list.slice(0, 3).map(i => `${TYPE[i.product_type] || i.product_type || ''} ${i.product_name || i.carrier || ''}`.trim()).join(' · ') + (list.length > 3 ? ` 외 ${list.length - 3}개` : '');
+    const rcv = c.received_at || items.map(i => i.first_received_at).filter(Boolean).sort()[0];
+    return `<tr class="cs-ct-row${dead ? ' cs-ct-dead' : ''}" onclick="csCtGoCard(${Number(c.contract_id)})" title="누르면 위쪽 계약 카드로 이동합니다">`
+      + `<td>${escHtml(formatContractNo(c.contract_id))}${c.label ? ' · ' + escHtml(c.label) : ''}<div class="cust-ov-sub">${c.contract_type === 'usim' ? '유심' : '인터넷·TV'}</div></td>`
+      + `<td>${rcv ? escHtml(String(rcv).slice(0, 10)) : '-'}</td>`
+      + `<td>${escHtml(prods) || '-'}</td>`
+      + `<td><span class="v2-chip">${state ? escHtml(state) : '-'}</span></td>`
+      + `<td>${escHtml(csCtCount(items.filter(i => i.item_status !== '접수취소' && i.item_status !== '접수불가'), 'pay_status'))}</td>`
+      + `<td>${escHtml(csCtCount(items, 'refund_status'))}</td>`
+      + `<td class="num">${g > 0 ? v2Won(g) : '-'}</td>`
+      + `<td class="num">${showFee ? (f > 0 ? v2Won(f) : '-') : '-'}</td></tr>`;
+  }).join('');
+  const total = `<tr class="cs-ct-total"><td colspan="6">합계 (취소 계약 제외 · ${live}건)</td><td class="num">${sumGift > 0 ? v2Won(sumGift) : '-'}</td><td class="num">${showFee ? (sumFee > 0 ? v2Won(sumFee) : '-') : '-'}</td></tr>`;
+  const table = `<div class="perf-scroll"><table class="cs-ct-table"><thead><tr><th>계약</th><th>접수일</th><th>상품</th><th>계약 상태</th><th>지급</th><th>환수</th><th class="num">사은품</th><th class="num">수수료</th></tr></thead><tbody>${rows}${total}</tbody></table></div>`;
+  const note = `<div class="cs-ct-note fd-note">저장된 값 기준입니다. 수수료·정산 금액은 정산 탭 계산(수수료표·차감 반영)과 다를 수 있습니다.${showFee ? '' : ' (수수료는 로그인 후 표시)'} <button type="button" class="mini-btn" onclick="switchTab('settlement')">정산 탭에서 보기 ▸</button></div>`;
+  box.innerHTML = line + table + note;
+  setHint(`계약 ${cts.length}건 · 상품 ${allItems.length}개 (읽기 전용 · 저장된 값 기준)`);
 }
 
 /* ---------- 계약 카드 ---------- */
@@ -7947,6 +8061,7 @@ function renderContractSection(){
     </div>
     ${cts.length ? cts.map(c => renderContractCard(c, cts)).join('') : `<div class="wide-table-empty">등록된 계약이 없습니다. [+ 신규 계약 접수]로 만들어 주세요.</div>`}`;
   fillContractCombos();
+  renderCsCtSummary();      // W-6: 맨 아래 계약·실적 요약
 }
 function toggleNewContractForm(){
   const f = document.getElementById('new-contract-form');
