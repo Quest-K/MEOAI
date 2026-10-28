@@ -1193,7 +1193,7 @@ PASS 앱 → 전체 → 명의도용방지 → 해당 통신사 해제
 <script src="config.js?v=20261022a"></script>
 <script src="Calculator.js?v=20261006a"></script>
 <script src="StatusRules.js?v=20261016a"></script>
-<script src="Supabaseservice.js?v=20261023b"></script>
+<script src="Supabaseservice.js?v=20261028a"></script>
 <script>
 /* =========================================================================
    X-2 설치비(출동비) 안내 (2026-10-23)
@@ -2865,9 +2865,11 @@ function renderRecoCards(){
     if (isLoggedIn) {
       const comm = lookupCommission(c, speedNum, tvTier, lgVariantOf(c), { settop: price.settopInfo ? price.settopInfo.name : null, extra: (price.extraTvDetails || []).map(ex => ex.settopName) });
       const margin = comm.totalComm - userGiftVal;
+      const feeWarn = (typeof FEE !== 'undefined' && !FEE.loaded) ? '<div class="reflected-empty" style="font-size:11px;">수수료 표(fee_rates)를 읽지 못해 0원으로 표시됩니다. [수수료] 탭에서 확인해 주세요.</div>' : '';
       commHtml = `
         <div class="reco-block">
-          <div class="info-row main-label"><span>대리점 판매 수수료${agMulti(comm) ? '' : agBadgeHtml(comm.agency, comm.agencies)}</span><span>${comm.totalComm.toLocaleString()}</span></div>
+          ${feeWarn}
+          <div class="info-row main-label"><span>대리점 판매 수수료${agBadgeHtml(comm.agency, comm.agencies)}</span><span>${comm.totalComm.toLocaleString()}</span></div>
           ${commFiveRowsHtml(comm, tvTier !== 'none', 'reco', (price.extraTvDetails || []).length)}
           ${agAgencyRowsHtml(comm, false)}
           <div class="total-row reco-margin-row"><span>최종마진</span><span class="amount" style="color:${margin >= 0 ? '#1E7E34' : '#D9534F'};">${margin.toLocaleString()}</span></div>
@@ -4885,11 +4887,14 @@ function agBadgeHtml(agency, agencies){
 function agMulti(info){ return !!(info && info.agencies && info.agencies.length >= 2); }
 // 에이전시별 수수료 줄(높은 순). 후보가 2곳 이상일 때만 표시: "(에이전시명) 수수료  금액"
 function agAgencyRowsHtml(info, withUnit){
-  if (!agMulti(info)) return '';
-  return info.agencies.map((a, i) => {
+  const miss = (info && info.missingAgencies) ? info.missingAgencies : [];
+  if (!agMulti(info) && !(info && info.agencies && info.agencies.length && miss.length)) return '';
+  const rows = info.agencies.map((a, i) => {
     const amt = Number(a.totalComm != null ? a.totalComm : a.amount || 0).toLocaleString() + (withUnit ? '원' : '');
-    return `<div class="info-row sub-item-row ag-agency-row${i === 0 ? ' ag-agency-first ag-agency-top' : ''}"><span>${escHtml(a.agency || '이름 없음')} 수수료</span><span>${amt}</span></div>`;
-  }).join('');
+    return `<div class="info-row sub-item-row ag-agency-row${i === 0 ? ' ag-agency-first ag-agency-top' : ''}"><span>${escHtml(a.agency || '이름 없음')} 수수료${i === 0 && info.agencies.length > 1 ? ' ▲' : ''}</span><span>${amt}</span></div>`;
+  });
+  miss.forEach(m => rows.push(`<div class="info-row sub-item-row ag-agency-row"><span style="color:#999;">${escHtml(m)} 수수료</span><span style="color:#999;">미입력</span></div>`));
+  return rows.join('');
 }
 // 선택되지 않은 에이전시(비교용) 행들. 후보가 1곳이면 없음.
 function agOthersRowsHtml(info, withUnit){
@@ -8994,6 +8999,7 @@ async function feeEdit(inp){
     const r = await sb.from('fee_rates').upsert(payload, { onConflict: 'agency,carrier_key,internet_speed,tv_plan' });
     if (r.error) throw r.error;
     showToast('✓ 저장되었습니다');
+    try { if (DATA) renderRecoCards(); } catch (e2) {}   // 추천상품 수수료도 새 값으로
   } catch (e) {
     FEE.rows = prev; feeRender();
     alert('저장하지 못했습니다: ' + ((e && e.message) ? e.message : e));
