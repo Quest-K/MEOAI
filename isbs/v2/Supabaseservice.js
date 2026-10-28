@@ -227,12 +227,17 @@ function feeRatesCandidates(fk, speedNum, tvTier){
 
 // 홈(인터넷·TV) 수수료 : 기존 필드(internetComm·tvComm·totalComm)는 '가장 큰 에이전시' 값이라 기존 화면 코드가 그대로 동작합니다.
 //   추가 필드: agency(선택된 에이전시 이름 또는 null), agencies(에이전시별 후보, 합계 높은 순), missingAgencies(값이 비어 비교에서 빠진 에이전시)
-//   opts(선택): { settop: 메인 TV 셋탑 이름, extra: [2대째 이후 셋탑 이름…] } — 주면 셋탑·추가 셋탑 수수료가 합계에 들어갑니다.
+//   opts(선택): { settop: 메인 TV 셋탑 이름, extra: [2대째 이후 셋탑 이름…], onlyAgency: 에이전시 이름(주면 그 에이전시 값만) } — settop·extra 를 주면 셋탑·추가 셋탑 수수료가 합계에 들어갑니다.
 function lookupCommission(carrierKey, speedNum, tvTier, variant, opts){
   const dbKey = commissionKeyOf(carrierKey, variant);   // 셋탑 수수료 표(fee_settop)용 키
   const fk = feeRatesCarrierKey(carrierKey, variant);   // fee_rates 용 키 (LG 소호 = lgsoho)
   const o = opts || {};
-  const { found, missing } = feeRatesCandidates(fk, speedNum, tvTier);
+  let { found, missing } = feeRatesCandidates(fk, speedNum, tvTier);
+  // opts.onlyAgency: 그 에이전시 값만 사용(예: 추천상품 화면은 '백메가' 기준). 그 에이전시 값이 없으면 0원 + 미입력으로 처리합니다.
+  if (o.onlyAgency) {
+    found = found.filter(f => f.agency === o.onlyAgency);
+    missing = found.length ? [] : [o.onlyAgency];
+  }
   const cands = found.map(f => {
     const settopComm = tvTier !== 'none' ? settopFeeOf(dbKey, f.agency, o.settop, 'main') : 0;
     const extraSettopComm = tvTier !== 'none' ? (o.extra || []).reduce((sum, nm) => sum + settopFeeOf(dbKey, f.agency, nm, 'extra'), 0) : 0;
