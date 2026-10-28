@@ -18,7 +18,7 @@ const LG_VARIANT_DEFAULT = 'home';
 const BRAND_LABEL = { kt:'KT', lg:'LG', skb:'SKB', skt:'SKT', sky:'SKY' };
 
 const TV_BUNDLE_DISCOUNT = {
-  kt: { low:2090, basic:2640, premium:2640 },
+  kt: { low:2640, basic:2640, premium:2640 },   // 2026-10-28: 베이직(저가형)도 2,640원 (TV 단가 14,190→14,740 변경과 함께)
   lg: { low:2200, basic:2200, premium:2200 },
   skb: { low:2200, basic:2200, premium:2200 },
   skt: { low:2200, basic:2200, premium:2200 },
