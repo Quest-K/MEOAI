@@ -1193,7 +1193,7 @@ PASS 앱 → 전체 → 명의도용방지 → 해당 통신사 해제
 <script src="config.js?v=20261022a"></script>
 <script src="Calculator.js?v=20261006a"></script>
 <script src="StatusRules.js?v=20261016a"></script>
-<script src="Supabaseservice.js?v=20261028a"></script>
+<script src="Supabaseservice.js?v=20261028b"></script>
 <script>
 /* =========================================================================
    X-2 설치비(출동비) 안내 (2026-10-23)
@@ -2500,6 +2500,8 @@ function clearBtnLoading(btn){
 let openDiscountItems = new Set();
 // 추천상품에서 통신사별로 선택한 휴대폰 결합할인 { 통신사키: 결합할인 key } (없으면 적용 안 함)
 let recoComboSel = {};
+// 추천상품 화면의 대리점 판매 수수료(와 최종마진)는 이 에이전시 값만 사용합니다. 다시 비교 표시로 되돌리려면 null 로 바꿉니다.
+const RECO_FEE_AGENCY = '백메가';
 let state = { speed:'500', tv:'basic', settopTier:'basic', router:'Y', tcDistMode:'equal' };
 let lastTvTier = 'basic';
 let addedUsimLines = []; 
@@ -2863,7 +2865,7 @@ function renderRecoCards(){
     let commHtml = '';
     let properGiftRowHtml = '';
     if (isLoggedIn) {
-      const comm = lookupCommission(c, speedNum, tvTier, lgVariantOf(c), { settop: price.settopInfo ? price.settopInfo.name : null, extra: (price.extraTvDetails || []).map(ex => ex.settopName) });
+      const comm = lookupCommission(c, speedNum, tvTier, lgVariantOf(c), { settop: price.settopInfo ? price.settopInfo.name : null, extra: (price.extraTvDetails || []).map(ex => ex.settopName), onlyAgency: RECO_FEE_AGENCY });
       const margin = comm.totalComm - userGiftVal;
       const feeWarn = (typeof FEE !== 'undefined' && !FEE.loaded) ? '<div class="reflected-empty" style="font-size:11px;">수수료 표(fee_rates)를 읽지 못해 0원으로 표시됩니다. [수수료] 탭에서 확인해 주세요.</div>' : '';
       commHtml = `
@@ -4888,7 +4890,7 @@ function agMulti(info){ return !!(info && info.agencies && info.agencies.length 
 // 에이전시별 수수료 줄(높은 순). 후보가 2곳 이상일 때만 표시: "(에이전시명) 수수료  금액"
 function agAgencyRowsHtml(info, withUnit){
   const miss = (info && info.missingAgencies) ? info.missingAgencies : [];
-  if (!agMulti(info) && !(info && info.agencies && info.agencies.length && miss.length)) return '';
+  if (!agMulti(info) && !(info && info.agencies && info.agencies.length && miss.length) && !(info && info.agencies && !info.agencies.length && miss.length)) return '';
   const rows = info.agencies.map((a, i) => {
     const amt = Number(a.totalComm != null ? a.totalComm : a.amount || 0).toLocaleString() + (withUnit ? '원' : '');
     return `<div class="info-row sub-item-row ag-agency-row${i === 0 ? ' ag-agency-first ag-agency-top' : ''}"><span>${escHtml(a.agency || '이름 없음')} 수수료${i === 0 && info.agencies.length > 1 ? ' ▲' : ''}</span><span>${amt}</span></div>`;
