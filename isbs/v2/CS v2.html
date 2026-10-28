@@ -216,12 +216,22 @@ textarea.cust-note-log:hover, #cust-notes:hover, #cf-notes:hover{border-color:#c
 .ct-status-row.is-auto:hover{opacity:.9;}
 #cs-cust-overview .cd-summary{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;margin-bottom:10px;}
 .fee-filter select{min-width:120px;}
-.fee-in{width:96px;text-align:right;padding:3px 6px;border:1px solid #E2DCCB;border-radius:4px;font:inherit;font-variant-numeric:tabular-nums;background:#fff;}
-.fee-in.fee-edited{background:#FFF6DC;border-color:#D9A93B;}
+.fee-in{width:92px;text-align:right;padding:3px 6px;border:1px solid #E2DCCB;border-radius:4px;font:inherit;font-variant-numeric:tabular-nums;background:#fff;}
 .fee-in.fee-neg{color:#B3261E;}
-.fee-na{color:#bbb;text-align:center;}
-.fee-tbl td.fee-c,.fee-tbl td.fee-c2{text-align:center;}
-.fee-tbl tr.fee-grp td{border-top:2px solid #D8CFB8;}
+.fee-na{color:#bbb;}
+.fee-tbl td.fee-c{text-align:center;}
+.fee-tbl td.fee-car{font-weight:700;background:#FAF7F0;}
+.fee-agtag{display:block;font-size:11px;font-weight:400;color:#888;}
+.fee-tbl td.fee-tot{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;}
+.fee-tbl td.fee-maxcol{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;background:#FFFCF3;}
+.fee-maxag{display:block;font-size:11px;font-weight:400;color:#888;}
+.fee-tbl td.fee-max{background:#E6F5EA;color:#1E7B3A;}
+.fee-tbl th.fee-gh{cursor:pointer;user-select:none;}
+.fee-tbl th.fee-ga{background:#F6EFD9;}
+.fee-tbl th.fee-gb{background:#E3EEF9;}
+.fee-tbl tr.fee-h2 th{top:30px;}
+.fee-tbl tr.fee-grp td{border-top:3px solid #D8CFB8;}
+.fee-tbl tr.fee-sp td{border-top:2px solid #E8E0CC;}
 </style>
 </head>
 <body>
@@ -821,14 +831,14 @@ textarea.cust-note-log:hover, #cust-notes:hover, #cf-notes:hover{border-color:#c
     </div>
   </div>
 
-  <!-- VIEW: 수수료 (에이전시·통신사별 수수료표) -->
+  <!-- VIEW: 수수료 (통신사별 에이전시 수수료 비교, Supabase fee_rates) -->
   <div id="view-fee" class="view-container">
     <div class="cs-card">
-      <h3>수수료 <small class="sm-sub">에이전시 · 통신사별 인터넷 / TV / 결합 수수료표 (금액 단위: 원)</small></h3>
+      <h3>수수료 <small class="sm-sub">통신사별 에이전시 수수료 비교 (금액 단위: 원)</small></h3>
       <div class="cust-search-row fee-filter">
-        <span>에이전시</span><select id="fee-agency" onchange="feeRender()"></select>
         <span>통신사</span><select id="fee-carrier" onchange="feeRender()"></select>
-        <button type="button" class="secondary-btn" onclick="feeReset(this)">↺ 정책표 기본값으로</button>
+        <button type="button" class="secondary-btn" id="fee-toggle-all" onclick="feeToggleAll()">▸ 인터넷·TV 수수료 펼치기</button>
+        <button type="button" class="secondary-btn" onclick="feeLoad(true).then(feeRender)">↻ 새로고침</button>
         <span class="cust-ov-sub" id="fee-msg"></span>
       </div>
       <div id="fee-table" class="perf-scroll"></div>
@@ -8840,172 +8850,149 @@ try { const nav = document.querySelector('.tab-nav'), strip = document.getElemen
 
 
 /* ============================================================
-   [수수료] 에이전시 · 통신사별 수수료표
-   - 정책표(2026-10 기준 이미지)의 값을 기본값으로 담았고, 화면에서 고친 값은 이 브라우저(localStorage)에 저장됩니다.
-   - 열 정의: 인터넷수수료 = 인터넷 상품 수수료합계(기본+추가)
-              TV수수료     = TV 상품 기본수수료 + 추가수수료
-              결합수수료   = TV 상품 결합수수료
-     → 인터넷수수료 + TV수수료 + 결합수수료 = 정책표의 인터넷+TV 합계와 같습니다.
-   - 기본값은 FEE_DEFAULT_AGENCY 에만 채워져 있고, 다른 에이전시는 빈 칸으로 시작합니다.
-   - 나중에 Supabase 테이블로 옮길 때는 feeLoadStore / feeSaveStore 두 함수만 바꾸면 됩니다.
+   [수수료] 통신사별 에이전시 수수료 비교표  (Supabase: fee_rates, v2_fee_rates.sql)
+   - 한 줄 = 통신사 x 인터넷(없음/100/500/1기가) x TV(없음/요금제)
+   - 총수수료 = 인터넷수수료 + TV수수료 (TV수수료는 정책표의 TV 기본+결합+추가 합계)
+   - 통신사별 담당 에이전시: KT·스카이라이프 = 티코디 / LG·LG소호·SKB·SKT = 티인포 / 비교 대상 = 백메가
+   - 금액 칸은 로그인한 사용자만 보고 고칠 수 있으며, 고치면 바로 fee_rates 에 저장(upsert)됩니다.
    ============================================================ */
-const FEE_DEFAULT_AGENCY = '티인포';
-const FEE_STORE_KEY = 'cs_fee_table_v1';
+const FEE_AGENCY_B = '백메가';
 const FEE_SPEEDS = [ { key: 'none', label: '없음' }, { key: '100', label: '100M' }, { key: '500', label: '500M' }, { key: '1000', label: '1기가' } ];
 const FEE_CARRIERS = [
-  { key: 'kt',     name: 'KT',          vat: 'VAT 포함', date: '2026-10-15', plans: ['TV베이직', 'TV라이트', 'TV에센스', '모든G', '모든G디즈니+'],
-    net: { '100': 300000, '500': 400000, '1000': 420000 },
-    tv: { '100': [[170000,160000],[170000,160000],[170000,160000],[280000,170000],[280000,170000]],
-          '500': [[170000,170000],[170000,170000],[170000,170000],[280000,180000],[280000,180000]],
-          '1000': [[170000,170000],[170000,170000],[170000,170000],[280000,180000],[280000,180000]] },
-    tvOnly: [180000, 180000, 180000, 210000, 210000] },
-  { key: 'sky',    name: '스카이라이프', vat: 'VAT 별도', date: '2026-10-20', plans: ['IPTV 베이직', 'IPTV 플러스', 'IPTV 초이스'],
-    net: { '100': 335000, '500': 395000, '1000': 395000 },
-    tv: { '100': [[130000,265000],[130000,295000],[130000,295000]],
-          '500': [[130000,265000],[130000,295000],[130000,295000]],
-          '1000': [[130000,265000],[130000,295000],[130000,295000]] },
-    tvOnly: [100000, 100000, 100000] },
-  { key: 'lg',     name: 'LG',          vat: 'VAT 별도', date: '2026-10-27', plans: ['TV실속형', 'TV프리미엄', 'TV프리미엄VOD'],
-    net: { '100': 360000, '500': 450000, '1000': 510000 },
-    tv: { '100': [[325000,0],[325000,30000],[325000,40000]],
-          '500': [[315000,0],[315000,30000],[315000,40000]],
-          '1000': [[295000,0],[295000,30000],[295000,40000]] },
-    tvOnly: null },
-  { key: 'lgsoho', name: 'LG소호',      vat: 'VAT 별도', date: '2026-10-27', plans: ['소호TV(실속형)', '소호TV(프리미엄)'],
-    net: { '100': 440000, '500': 630000, '1000': 630000 },
-    tv: { '100': [[210000,0],[210000,0]],
-          '500': [[330000,0],[330000,30000]],
-          '1000': [[330000,0],[330000,30000]] },
-    tvOnly: null },
-  { key: 'skb',    name: 'SKB',         vat: 'VAT 별도', date: '2026-10-27', plans: ['이코노미', '스탠다드', '올', 'MAX'],
-    net: { '100': 350000, '500': 440000, '1000': 440000 },
-    tv: { '100': [[415000,-110000],[415000,0],[415000,40000],[415000,40000]],
-          '500': [[415000,-110000],[415000,0],[415000,40000],[415000,40000]],
-          '1000': [[465000,-110000],[465000,0],[465000,40000],[465000,40000]] },
-    tvOnly: null },
-  { key: 'skt',    name: 'SKT',         vat: 'VAT 별도', date: '2026-10-26', plans: ['이코노미', '스탠다드', '올', 'MAX'],
-    net: { '100': 310000, '500': 420000, '1000': 470000 },
-    tv: { '100': [[250000,0],[250000,130000],[250000,170000],[285000,170000]],
-          '500': [[250000,0],[250000,150000],[250000,200000],[285000,200000]],
-          '1000': [[250000,0],[250000,150000],[250000,200000],[285000,200000]] },
-    tvOnly: null }
+  { key: 'kt',     name: 'KT',          agency: '티코디', vat: 'VAT 포함', date: '2026-10-15', plans: ['TV베이직', 'TV라이트', 'TV에센스', '모든G', '모든G디즈니+'] },
+  { key: 'sky',    name: '스카이라이프', agency: '티코디', vat: 'VAT 별도', date: '2026-10-20', plans: ['IPTV 베이직', 'IPTV 플러스', 'IPTV 초이스'] },
+  { key: 'lg',     name: 'LG',          agency: '티인포', vat: 'VAT 별도', date: '2026-10-27', plans: ['TV실속형', 'TV프리미엄', 'TV프리미엄VOD'] },
+  { key: 'lgsoho', name: 'LG소호',      agency: '티인포', vat: 'VAT 별도', date: '2026-10-27', plans: ['소호TV(실속형)', '소호TV(프리미엄)'] },
+  { key: 'skb',    name: 'SKB',         agency: '티인포', vat: 'VAT 별도', date: '2026-10-27', plans: ['이코노미', '스탠다드', '올', 'MAX'] },
+  { key: 'skt',    name: 'SKT',         agency: '티인포', vat: 'VAT 별도', date: '2026-10-26', plans: ['이코노미', '스탠다드', '올', 'MAX'] }
 ];
+var FEE = { rows: {}, loaded: false, loading: null, err: '' };
+var FEE_UI = { a: false, b: false };      // 에이전시 묶음별 [인터넷수수료·TV수수료] 펼침 여부 (기본: 접힘 = 총수수료만 비교)
 
-// 칸 키: 인터넷 n|통신사|속도 · TV수수료 t|통신사|속도|요금제번호 · 결합 c|통신사|속도|요금제번호
-function feeDefaultMap(c){
-  const m = {};
-  ['100', '500', '1000'].forEach(sp => {
-    m['n|' + c.key + '|' + sp] = c.net[sp];
-    c.plans.forEach((p, i) => { m['t|' + c.key + '|' + sp + '|' + i] = c.tv[sp][i][0]; m['c|' + c.key + '|' + sp + '|' + i] = c.tv[sp][i][1]; });
-  });
-  if (c.tvOnly) c.plans.forEach((p, i) => { m['t|' + c.key + '|none|' + i] = c.tvOnly[i]; });
-  return m;
-}
-const FEE_DEFAULTS = {};
-FEE_CARRIERS.forEach(c => Object.assign(FEE_DEFAULTS, feeDefaultMap(c)));
+function feeKey(ag, c, sp, pl){ return ag + '|' + c + '|' + sp + '|' + pl; }
+function feeSort(ci, si, ti){ return ci * 1000 + si * 100 + (ti + 1); }   // v2_fee_rates.sql 의 sort_order 와 같은 규칙
+function feeFmt(n){ return (n === null || n === undefined || n === '') ? '' : Number(n).toLocaleString('ko-KR'); }
 
-function feeLoadStore(){ try { const s = JSON.parse(localStorage.getItem(FEE_STORE_KEY) || '{}'); return (s && typeof s === 'object') ? s : {}; } catch (e) { return {}; } }
-function feeSaveStore(s){ try { localStorage.setItem(FEE_STORE_KEY, JSON.stringify(s)); return true; } catch (e) { return false; } }
-let FEE_STORE = feeLoadStore();
-
-function feeAgencyNames(){
-  let names = [];
-  try { names = smAgencies().map(a => a.name); } catch (e) {}
-  if (!names.length) { try { names = SM_AG_FALLBACK.map(a => a.agency_name); } catch (e) {} }
-  if (!names.length) names = [FEE_DEFAULT_AGENCY];
-  if (names.indexOf(FEE_DEFAULT_AGENCY) < 0) names.unshift(FEE_DEFAULT_AGENCY);
-  return names;
-}
-// 저장된 값(수정본)이 있으면 그 값, 없으면 기본 에이전시에 한해 정책표 기본값
-function feeGet(agency, key){
-  const o = FEE_STORE[agency];
-  if (o && Object.prototype.hasOwnProperty.call(o, key)) return { v: o[key], edited: true };
-  if (agency === FEE_DEFAULT_AGENCY && Object.prototype.hasOwnProperty.call(FEE_DEFAULTS, key)) return { v: FEE_DEFAULTS[key], edited: false };
-  return { v: null, edited: false };
-}
-function feeInput(agency, key){
-  const g = feeGet(agency, key);
-  const txt = (g.v === null || g.v === '' || g.v === undefined) ? '' : Number(g.v).toLocaleString('ko-KR');
-  const cls = 'fee-in' + (g.edited ? ' fee-edited' : '') + (Number(g.v) < 0 ? ' fee-neg' : '');
-  return `<input type="text" inputmode="numeric" class="${cls}" value="${escAttr(txt)}" placeholder="-" data-k="${escAttr(key)}" onchange="feeEdit(this)">`;
+async function feeLoad(force){
+  if (FEE.loading) return FEE.loading;
+  if (FEE.loaded && !force) return;
+  FEE.loading = (async () => {
+    try {
+      if (typeof sb === 'undefined') throw new Error('Supabase 연결이 없습니다');
+      const r = await sb.from('fee_rates').select('agency,carrier_key,internet_speed,tv_plan,internet_fee,tv_fee').limit(5000);
+      if (r.error) throw r.error;
+      const m = {};
+      (r.data || []).forEach(x => { m[feeKey(x.agency, x.carrier_key, x.internet_speed, x.tv_plan)] = { internet_fee: x.internet_fee, tv_fee: x.tv_fee }; });
+      FEE.rows = m; FEE.loaded = true; FEE.err = '';
+    } catch (e) { FEE.loaded = false; FEE.err = (e && e.message) ? e.message : String(e); }
+    finally { FEE.loading = null; }
+  })();
+  return FEE.loading;
 }
 
 function feeInit(){
-  const ag = document.getElementById('fee-agency'), ca = document.getElementById('fee-carrier');
-  if (!ag || !ca) return;
-  if (!ag.options.length) {
-    const cur = ag.value;
-    ag.innerHTML = feeAgencyNames().map(n => `<option value="${escAttr(n)}">${escHtml(n)}</option>`).join('');
-    ag.value = FEE_DEFAULT_AGENCY;
-  }
-  if (!ca.options.length) ca.innerHTML = '<option value="all">전체 통신사</option>' + FEE_CARRIERS.map(c => `<option value="${c.key}">${escHtml(c.name)}</option>`).join('');
+  const ca = document.getElementById('fee-carrier');
+  if (ca && !ca.options.length) ca.innerHTML = '<option value="all">전체 통신사</option>' + FEE_CARRIERS.map(c => `<option value="${c.key}">${escHtml(c.name)}</option>`).join('');
 }
+function feeTotal(ag, c, sp, pl){
+  const r = FEE.rows[feeKey(ag, c, sp, pl)];
+  if (!r || (r.internet_fee === null && r.tv_fee === null) || (r.internet_fee === undefined && r.tv_fee === undefined)) return null;
+  return (Number(r.internet_fee) || 0) + (Number(r.tv_fee) || 0);
+}
+function feeIn(ag, c, sp, ti, field){
+  const r = FEE.rows[feeKey(ag, c.key, sp, ti < 0 ? 'none' : c.plans[ti])];
+  const v = r ? r[field] : null;
+  return `<input type="text" inputmode="numeric" class="fee-in${Number(v) < 0 ? ' fee-neg' : ''}" value="${escAttr(feeFmt(v))}" placeholder="-" data-ag="${escAttr(ag)}" data-c="${c.key}" data-sp="${sp}" data-ti="${ti}" data-f="${field}" onchange="feeEdit(this)">`;
+}
+function feeToggleGroup(g){ FEE_UI[g] = !FEE_UI[g]; feeRender(); }
+function feeToggleAll(){ const open = !(FEE_UI.a && FEE_UI.b); FEE_UI.a = open; FEE_UI.b = open; feeRender(); }
 
-function feeRender(){
+async function feeRender(){
   feeInit();
-  const host = document.getElementById('fee-table');
+  const host = document.getElementById('fee-table'), note = document.getElementById('fee-note'), msg = document.getElementById('fee-msg');
   if (!host) return;
-  if (typeof isLoggedIn === 'undefined' || !isLoggedIn) {
-    host.innerHTML = '<div class="reflected-empty">수수료는 관리자 로그인 후 볼 수 있습니다.</div>';
-    const n0 = document.getElementById('fee-note'); if (n0) n0.textContent = '';
+  if (typeof isLoggedIn === 'undefined' || !isLoggedIn) { host.innerHTML = '<div class="reflected-empty">수수료는 관리자 로그인 후 볼 수 있습니다.</div>'; if (note) note.textContent = ''; return; }
+  if (!FEE.loaded) { host.innerHTML = '<div class="reflected-empty">불러오는 중...</div>'; await feeLoad(); }
+  if (!FEE.loaded) {
+    host.innerHTML = `<div class="reflected-empty">수수료 표(fee_rates)를 읽지 못했습니다. Supabase에서 v2_fee_rates.sql 을 먼저 실행해 주세요.<br><small>${escHtml(FEE.err)}</small></div>`;
+    if (note) note.textContent = '';
     return;
   }
-  const agency = elVal('fee-agency') || FEE_DEFAULT_AGENCY, sel = elVal('fee-carrier') || 'all';
+  const tb = document.getElementById('fee-toggle-all');
+  if (tb) tb.textContent = (FEE_UI.a && FEE_UI.b) ? '▾ 인터넷·TV 수수료 접기' : '▸ 인터넷·TV 수수료 펼치기';
+  const sel = elVal('fee-carrier') || 'all';
   const list = FEE_CARRIERS.filter(c => sel === 'all' || c.key === sel);
+  const agA = Array.from(new Set(list.map(c => c.agency))).join(' / ');
   let body = '';
   list.forEach(c => {
-    let first = true;
-    FEE_SPEEDS.forEach(sp => {
-      const tvOpts = [{ i: -1, label: '없음' }].concat(c.plans.map((p, i) => ({ i, label: p })));
-      tvOpts.forEach(tv => {
-        if (sp.key === 'none' && tv.i < 0) return;           // 인터넷도 TV도 없는 줄은 만들지 않음
-        const bothOn = sp.key !== 'none' && tv.i >= 0;
-        const netCell = sp.key === 'none' ? '<span class="fee-na">-</span>' : feeInput(agency, 'n|' + c.key + '|' + sp.key);
-        const tvCell = tv.i < 0 ? '<span class="fee-na">-</span>' : feeInput(agency, 't|' + c.key + '|' + sp.key + '|' + tv.i);
-        const combo = bothOn ? feeInput(agency, 'c|' + c.key + '|' + sp.key + '|' + tv.i) : '<span class="fee-na">-</span>';
-        const grpStart = first || (tv.i === -1 || (sp.key === 'none' && tv.i === 0));
-        body += `<tr class="${grpStart && !first ? 'fee-grp' : ''}">
-          <td class="fee-c">${escHtml(agency)}</td><td class="fee-c">${escHtml(c.name)}</td>
-          <td class="fee-c">${sp.label}</td><td class="n">${netCell}</td>
-          <td class="fee-c">${escHtml(tv.label)}</td><td class="n">${tvCell}</td><td class="n">${combo}</td></tr>`;
-        first = false;
-      });
+    const ci = FEE_CARRIERS.indexOf(c);
+    const tvOpts = [{ i: -1, label: '없음' }].concat(c.plans.map((p, i) => ({ i, label: p })));
+    const lines = [];
+    FEE_SPEEDS.forEach(sp => tvOpts.forEach(tv => { if (sp.key === 'none' && tv.i < 0) return; lines.push({ sp, tv }); }));   // 인터넷도 TV도 없는 줄은 없음
+    lines.forEach((ln, idx) => {
+      const sp = ln.sp.key, tv = ln.tv, pl = tv.i < 0 ? 'none' : c.plans[tv.i];
+      const tA = feeTotal(c.agency, c.key, sp, pl), tB = feeTotal(FEE_AGENCY_B, c.key, sp, pl);
+      const both = tA !== null && tB !== null;
+      const cand = []; if (tA !== null) cand.push({ ag: c.agency, v: tA }); if (tB !== null) cand.push({ ag: FEE_AGENCY_B, v: tB });
+      const mx = cand.length ? Math.max.apply(null, cand.map(x => x.v)) : null;
+      const mxAg = mx === null ? '' : cand.filter(x => x.v === mx).map(x => x.ag).join('·');
+      const cell = (ag, total, isMax, open) => {
+        const hi = both && isMax ? ' fee-max' : '';
+        let h = `<td class="fee-tot${hi}">${total === null ? '<span class="fee-na">-</span>' : feeFmt(total)}</td>`;
+        if (open) {
+          h += `<td class="n">${sp === 'none' ? '<span class="fee-na">-</span>' : feeIn(ag, c, sp, tv.i, 'internet_fee')}</td>`;
+          h += `<td class="n">${tv.i < 0 ? '<span class="fee-na">-</span>' : feeIn(ag, c, sp, tv.i, 'tv_fee')}</td>`;
+        }
+        return h;
+      };
+      const spFirst = idx === 0 || lines[idx - 1].sp.key !== sp;
+      const spCount = lines.filter(x => x.sp.key === sp).length;
+      body += `<tr class="${idx === 0 ? 'fee-grp' : (spFirst ? 'fee-sp' : '')}">`
+        + (idx === 0 ? `<td class="fee-c fee-car" rowspan="${lines.length}">${escHtml(c.name)}<span class="fee-agtag">${escHtml(c.agency)}</span></td>` : '')
+        + (spFirst ? `<td class="fee-c" rowspan="${spCount}">${ln.sp.label}</td>` : '')
+        + `<td class="fee-c">${escHtml(tv.label)}</td>`
+        + `<td class="fee-maxcol">${mx === null ? '<span class="fee-na">-</span>' : feeFmt(mx) + `<span class="fee-maxag">${escHtml(mxAg)}</span>`}</td>`
+        + cell(c.agency, tA, tA !== null && tA === mx, FEE_UI.a)
+        + cell(FEE_AGENCY_B, tB, tB !== null && tB === mx, FEE_UI.b)
+        + '</tr>';
     });
   });
-  host.innerHTML = `<table class="sm-table fee-tbl"><thead><tr><th>에이전시</th><th>통신사</th><th>인터넷</th><th>인터넷수수료</th><th>TV</th><th>TV수수료</th><th>결합수수료</th></tr></thead><tbody>${body}</tbody></table>`;
-  const note = document.getElementById('fee-note');
+  const gh = (g, label, cls) => `<th class="fee-gh ${cls}" colspan="${FEE_UI[g] ? 3 : 1}" onclick="feeToggleGroup('${g}')" title="눌러서 인터넷·TV 수수료를 ${FEE_UI[g] ? '접기' : '펼치기'}">${FEE_UI[g] ? '▾' : '▸'} ${escHtml(label)}</th>`;
+  const sub = (open, cls) => `<th class="${cls}">총수수료</th>` + (open ? `<th class="${cls}">인터넷수수료</th><th class="${cls}">TV수수료</th>` : '');
+  host.innerHTML = `<table class="sm-table fee-tbl"><thead>
+    <tr><th rowspan="2">통신사</th><th rowspan="2">인터넷</th><th rowspan="2">TV</th><th rowspan="2">최대수수료</th>${gh('a', agA, 'fee-ga')}${gh('b', FEE_AGENCY_B, 'fee-gb')}</tr>
+    <tr class="fee-h2">${sub(FEE_UI.a, 'fee-ga')}${sub(FEE_UI.b, 'fee-gb')}</tr></thead><tbody>${body}</tbody></table>`;
   if (note) {
-    const info = list.map(c => `${c.name} ${c.date} 적용·${c.vat}`).join(' / ');
-    note.innerHTML = escHtml(info) + '<br>인터넷수수료 = 인터넷 수수료합계(기본+추가) · TV수수료 = TV 기본+추가수수료 · 결합수수료 = TV 결합수수료 (인터넷과 TV를 같이 쓸 때 세 값을 더합니다). '
-      + '인터넷 "없음" 줄의 TV수수료는 TV 단독 수수료이며, 정책표에 단독 줄이 없는 통신사는 빈 칸입니다. 노란 칸은 정책표 기본값에서 고친 값입니다.';
+    note.innerHTML = escHtml(list.map(c => `${c.name}(${c.agency}) ${c.date} 적용·${c.vat}`).join(' / '))
+      + '<br>총수수료 = 인터넷수수료 + TV수수료 (TV수수료는 정책표의 기본+결합+추가수수료 합계). 최대수수료 = 에이전시 총수수료 중 큰 값이며, 두 에이전시 값이 모두 있으면 큰 쪽을 초록색으로 표시합니다. '
+      + '▸ 표시를 누르면 인터넷·TV 수수료 칸이 펼쳐지고, 그 칸에서 금액을 고치면 바로 저장됩니다 (같은 통신사·속도의 인터넷수수료는 함께 바뀝니다). 인터넷 "없음" 줄은 TV 단독입니다.';
   }
-  const msg = document.getElementById('fee-msg');
-  if (msg) msg.textContent = agency === FEE_DEFAULT_AGENCY ? '' : '이 에이전시는 아직 입력된 값이 없어 빈 칸입니다';
+  if (msg) msg.textContent = '';
 }
 
-function feeEdit(inp){
-  const agency = elVal('fee-agency') || FEE_DEFAULT_AGENCY, key = inp.getAttribute('data-k');
+async function feeEdit(inp){
+  if (typeof isLoggedIn === 'undefined' || !isLoggedIn) { alert('로그인 후 수정할 수 있습니다.'); feeRender(); return; }
+  const ag = inp.getAttribute('data-ag'), ck = inp.getAttribute('data-c'), sp = inp.getAttribute('data-sp'), f = inp.getAttribute('data-f'), ti = Number(inp.getAttribute('data-ti'));
+  const car = FEE_CARRIERS.find(c => c.key === ck); if (!car) return;
   const raw = String(inp.value || '').replace(/[,\s원]/g, '');
   let v;
-  if (raw === '') v = '';
+  if (raw === '') v = null;
   else if (/^-?\d+$/.test(raw)) v = Number(raw);
   else { showToast('숫자만 입력해 주세요'); feeRender(); return; }
-  if (!FEE_STORE[agency]) FEE_STORE[agency] = {};
-  FEE_STORE[agency][key] = v;
-  if (!feeSaveStore(FEE_STORE)) showToast('저장하지 못했습니다 (브라우저 저장공간)');
+  const ci = FEE_CARRIERS.indexOf(car), si = FEE_SPEEDS.findIndex(s => s.key === sp);
+  const targets = f === 'internet_fee' ? [-1].concat(car.plans.map((p, i) => i)) : [ti];     // 인터넷수수료는 같은 통신사·속도의 모든 TV 줄에 같이 반영
+  const payload = targets.map(t => { const o = { agency: ag, carrier_key: ck, carrier_name: car.name, internet_speed: sp, tv_plan: t < 0 ? 'none' : car.plans[t], sort_order: feeSort(ci, si, t) }; o[f] = v; return o; });
+  const prev = Object.assign({}, FEE.rows);
+  payload.forEach(o => { const k = feeKey(o.agency, o.carrier_key, o.internet_speed, o.tv_plan); const nv = Object.assign({ internet_fee: null, tv_fee: null }, FEE.rows[k] || {}); nv[f] = v; FEE.rows[k] = nv; });
   feeRender();
-}
-
-function feeReset(btn){
-  const agency = elVal('fee-agency') || FEE_DEFAULT_AGENCY, sel = elVal('fee-carrier') || 'all';
-  const what = sel === 'all' ? '전체 통신사' : (FEE_CARRIERS.find(c => c.key === sel) || {}).name;
-  if (!confirm(`${agency} · ${what}의 수수료를 정책표 기본값으로 되돌릴까요? (직접 고친 값이 사라집니다)`)) return;
-  const o = FEE_STORE[agency] || {};
-  Object.keys(o).forEach(k => { const ck = k.split('|')[1]; if (sel === 'all' || ck === sel) delete o[k]; });
-  FEE_STORE[agency] = o;
-  feeSaveStore(FEE_STORE);
-  feeRender();
-  showToast('✓ 기본값으로 되돌렸습니다');
+  try {
+    const r = await sb.from('fee_rates').upsert(payload, { onConflict: 'agency,carrier_key,internet_speed,tv_plan' });
+    if (r.error) throw r.error;
+    showToast('✓ 저장되었습니다');
+  } catch (e) {
+    FEE.rows = prev; feeRender();
+    alert('저장하지 못했습니다: ' + ((e && e.message) ? e.message : e));
+  }
 }
 
 </script>
