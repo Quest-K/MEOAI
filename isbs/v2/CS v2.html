@@ -8927,8 +8927,11 @@ async function feeRender(){
   list.forEach(c => {
     const ci = FEE_CARRIERS.indexOf(c);
     const tvOpts = [{ i: -1, label: '없음' }].concat(c.plans.map((p, i) => ({ i, label: p })));
-    const lines = [];
-    FEE_SPEEDS.forEach(sp => tvOpts.forEach(tv => { if (sp.key === 'none' && tv.i < 0) return; lines.push({ sp, tv }); }));   // 인터넷도 TV도 없는 줄은 없음
+    // 줄 순서: ① 인터넷 단독(100·500·1기가, TV 없음) → ② 인터넷+TV → ③ TV 단독(인터넷 없음). 인터넷도 TV도 없는 줄은 만들지 않음
+    const lines = [], noneSp = FEE_SPEEDS[0], netSps = FEE_SPEEDS.slice(1);
+    netSps.forEach(sp => lines.push({ sp, tv: tvOpts[0], blk: 0 }));
+    netSps.forEach(sp => c.plans.forEach((p, i) => lines.push({ sp, tv: { i, label: p }, blk: 1 })));
+    c.plans.forEach((p, i) => lines.push({ sp: noneSp, tv: { i, label: p }, blk: 2 }));
     lines.forEach((ln, idx) => {
       const sp = ln.sp.key, tv = ln.tv, pl = tv.i < 0 ? 'none' : c.plans[tv.i];
       const tA = feeTotal(c.agency, c.key, sp, pl), tB = feeTotal(FEE_AGENCY_B, c.key, sp, pl);
@@ -8945,9 +8948,11 @@ async function feeRender(){
         }
         return h;
       };
-      const spFirst = idx === 0 || lines[idx - 1].sp.key !== sp;
-      const spCount = lines.filter(x => x.sp.key === sp).length;
-      body += `<tr class="${idx === 0 ? 'fee-grp' : (spFirst ? 'fee-sp' : '')}">`
+      const prev = idx > 0 ? lines[idx - 1] : null;
+      const blkStart = !prev || prev.blk !== ln.blk;
+      const spFirst = !prev || prev.blk !== ln.blk || prev.sp.key !== sp;      // 인터넷 칸 병합은 연속된 같은 속도 줄끼리만
+      let spCount = 0; while (idx + spCount < lines.length && lines[idx + spCount].blk === ln.blk && lines[idx + spCount].sp.key === sp) spCount++;
+      body += `<tr class="${idx === 0 ? 'fee-grp' : ((blkStart || (ln.blk === 1 && spFirst)) ? 'fee-sp' : '')}">`
         + (idx === 0 ? `<td class="fee-c fee-car" rowspan="${lines.length}">${escHtml(c.name)}<span class="fee-agtag">${escHtml(c.agency)}</span></td>` : '')
         + (spFirst ? `<td class="fee-c" rowspan="${spCount}">${ln.sp.label}</td>` : '')
         + `<td class="fee-c">${escHtml(tv.label)}</td>`
@@ -8965,7 +8970,7 @@ async function feeRender(){
   if (note) {
     note.innerHTML = escHtml(list.map(c => `${c.name}(${c.agency}) ${c.date} 적용·${c.vat}`).join(' / '))
       + '<br>총수수료 = 인터넷수수료 + TV수수료 (TV수수료는 정책표의 기본+결합+추가수수료 합계). 최대수수료 = 에이전시 총수수료 중 큰 값이며, 두 에이전시 값이 모두 있으면 큰 쪽을 초록색으로 표시합니다. '
-      + '▸ 표시를 누르면 인터넷·TV 수수료 칸이 펼쳐지고, 그 칸에서 금액을 고치면 바로 저장됩니다 (같은 통신사·속도의 인터넷수수료는 함께 바뀝니다). 인터넷 "없음" 줄은 TV 단독입니다.';
+      + '▸ 표시를 누르면 인터넷·TV 수수료 칸이 펼쳐지고, 그 칸에서 금액을 고치면 바로 저장됩니다 (같은 통신사·속도의 인터넷수수료는 함께 바뀝니다). 줄 순서는 인터넷 단독 → 인터넷+TV → TV 단독(인터넷 "없음")입니다.';
   }
   if (msg) msg.textContent = '';
 }
