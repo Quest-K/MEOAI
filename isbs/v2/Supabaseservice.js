@@ -185,30 +185,66 @@ function settopFeeOf(dbKey, agency, name, kind){
   return Number(pickLatestRow(rs)?.commission_amount) || 0;
 }
 
+// ---- 홈(인터넷·TV) 수수료는 Supabase fee_rates 표 기준입니다 (2026-10-28) ----
+// 화면의 TV 등급(저가형·기본형·고급형) → fee_rates.tv_plan(정책표 요금제명) 연결표. 요금제 이름을 바꾸거나 연결을 고칠 때는 이 표만 고칩니다.
+//   · LG 기본형: 정책표에 '기본형' 줄이 없어 실속형으로 연결(백메가 정책표 표기 '실속형/기본형' 기준) — 확인 필요
+//   · LG 고급형: 프리미엄과 프리미엄VOD 금액이 다른 에이전시가 있어 일단 '프리미엄'으로 연결 — 확인 필요
+//   · KT 모든G / 모든G디즈니+, SKB·SKT 올 / MAX 는 금액이 같아 앞의 것만 연결
+const FEE_TIER_PLAN = {
+  kt:     { low: 'TV베이직',    basic: 'TV에센스',    premium: '모든G' },
+  sky:    { low: 'IPTV 베이직', basic: 'IPTV 플러스', premium: 'IPTV 플러스' },
+  lg:     { low: 'TV실속형',    basic: 'TV실속형',    premium: 'TV프리미엄' },
+  lgsoho: { low: '소호TV(실속형)', basic: '소호TV(실속형)', premium: '소호TV(프리미엄)' },
+  skb:    { low: '이코노미',    basic: '스탠다드',    premium: '올' },
+  skt:    { low: '이코노미',    basic: '스탠다드',    premium: '올' }
+};
+function feeRatesCarrierKey(carrierKey, variant){ return (carrierKey === 'lg' && variant === 'soho') ? 'lgsoho' : carrierKey; }
+function feeHasValue(v){ return v !== null && v !== undefined && v !== ''; }
+
+// fee_rates(FEE.rows: '에이전시|통신사|속도|요금제' → {internet_fee, tv_fee}) 에서 에이전시별 후보를 만듭니다.
+//   인터넷 수수료 = 그 속도의 internet_fee, TV 수수료 = 선택한 요금제 줄의 tv_fee. 둘 중 필요한 값이 비어 있으면 그 에이전시는 비교에서 빼고 missing 에 담습니다(0원으로 취급하지 않음).
+function feeRatesCandidates(fk, speedNum, tvTier){
+  const rows = (typeof FEE !== 'undefined' && FEE && FEE.rows) ? FEE.rows : {};
+  const sp = String(speedNum);
+  const plan = tvTier === 'none' ? 'none' : ((FEE_TIER_PLAN[fk] || {})[tvTier] || null);
+  const agencies = [];
+  Object.keys(rows).forEach(k => { const p = k.split('|'); if (p[1] === fk && !agencies.includes(p[0])) agencies.push(p[0]); });
+  const found = [], missing = [];
+  agencies.forEach(a => {
+    const netRow = rows[[a, fk, sp, 'none'].join('|')];
+    const planRow = (plan && plan !== 'none') ? rows[[a, fk, sp, plan].join('|')] : null;
+    let internetComm = null;
+    if (planRow && feeHasValue(planRow.internet_fee)) internetComm = Number(planRow.internet_fee);
+    else if (netRow && feeHasValue(netRow.internet_fee)) internetComm = Number(netRow.internet_fee);
+    let tvComm = 0, ok = internetComm !== null;
+    if (tvTier !== 'none') {
+      if (planRow && feeHasValue(planRow.tv_fee)) tvComm = Number(planRow.tv_fee); else ok = false;
+    }
+    if (ok) found.push({ agency: a, internetComm, tvComm }); else missing.push(a);
+  });
+  return { found, missing };
+}
+
 // 홈(인터넷·TV) 수수료 : 기존 필드(internetComm·tvComm·totalComm)는 '가장 큰 에이전시' 값이라 기존 화면 코드가 그대로 동작합니다.
-//   추가 필드: agency(선택된 에이전시 이름 또는 null), agencies(에이전시별 후보, 합계 높은 순)
+//   추가 필드: agency(선택된 에이전시 이름 또는 null), agencies(에이전시별 후보, 합계 높은 순), missingAgencies(값이 비어 비교에서 빠진 에이전시)
 //   opts(선택): { settop: 메인 TV 셋탑 이름, extra: [2대째 이후 셋탑 이름…] } — 주면 셋탑·추가 셋탑 수수료가 합계에 들어갑니다.
 function lookupCommission(carrierKey, speedNum, tvTier, variant, opts){
-  const dbKey = commissionKeyOf(carrierKey, variant);   // variant: LG 의 'home'|'soho' (없으면 홈)
-  const rows = RAW_COMMISSION_DATA.filter(r => carrierKeyOf(r.carrier) === dbKey && normalizeSpeedValue(r.speed) === speedNum);
-  const names = [];
-  rows.forEach(r => { const a = commissionAgencyOf(r); if (!names.includes(a)) names.push(a); });
+  const dbKey = commissionKeyOf(carrierKey, variant);   // 셋탑 수수료 표(fee_settop)용 키
+  const fk = feeRatesCarrierKey(carrierKey, variant);   // fee_rates 용 키 (LG 소호 = lgsoho)
   const o = opts || {};
-  const cands = names.map(a => {
-    const rs = rows.filter(r => commissionAgencyOf(r) === a);
-    const internetComm = pickLatestRow(rs.filter(r => String(r.tv_tier) === 'none'))?.commission_amount || 0;
-    const tvComm = tvTier !== 'none' ? (pickLatestRow(rs.filter(r => String(r.tv_tier) === tvTier))?.commission_amount || 0) : 0;
-    const settopComm = tvTier !== 'none' ? settopFeeOf(dbKey, a, o.settop, 'main') : 0;
-    const extraSettopComm = tvTier !== 'none' ? (o.extra || []).reduce((sum, nm) => sum + settopFeeOf(dbKey, a, nm, 'extra'), 0) : 0;
-    return { agency: a, internetComm, tvComm, bundleComm: 0, settopComm, extraSettopComm, etcComm: 0,
-      totalComm: internetComm + tvComm + settopComm + extraSettopComm };
+  const { found, missing } = feeRatesCandidates(fk, speedNum, tvTier);
+  const cands = found.map(f => {
+    const settopComm = tvTier !== 'none' ? settopFeeOf(dbKey, f.agency, o.settop, 'main') : 0;
+    const extraSettopComm = tvTier !== 'none' ? (o.extra || []).reduce((sum, nm) => sum + settopFeeOf(dbKey, f.agency, nm, 'extra'), 0) : 0;
+    return { agency: f.agency, internetComm: f.internetComm, tvComm: f.tvComm, bundleComm: 0, settopComm, extraSettopComm, etcComm: 0,
+      totalComm: f.internetComm + f.tvComm + settopComm + extraSettopComm };
   });
   const best = pickBestCommission(cands);
-  if (!best) return { internetComm: 0, tvComm: 0, bundleComm: 0, settopComm: 0, extraSettopComm: 0, etcComm: 0, totalComm: 0, agency: null, agencies: [] };
+  if (!best) return { internetComm: 0, tvComm: 0, bundleComm: 0, settopComm: 0, extraSettopComm: 0, etcComm: 0, totalComm: 0, agency: null, agencies: [], missingAgencies: missing };
   return {
     internetComm: best.internetComm, tvComm: best.tvComm, bundleComm: best.bundleComm || 0, settopComm: best.settopComm || 0,
     extraSettopComm: best.extraSettopComm || 0, etcComm: best.etcComm || 0, totalComm: best.totalComm,
-    agency: best.agency, agencies: cands.slice().sort((x, y) => y.totalComm - x.totalComm)
+    agency: best.agency, agencies: cands.slice().sort((x, y) => y.totalComm - x.totalComm), missingAgencies: missing
   };
 }
 
@@ -279,11 +315,14 @@ async function loadFinanceData() {
   const tvTierForComm = recoState.tv === 'none' ? 'none' : recoState.tv;
 
   const promoPromise = sb.from('carrier_promotions').select('*').eq('tv_tier', tvTierForPromo);
-  const commPromise = isLoggedIn ? sb.rpc('get_admin_commissions') : Promise.resolve({ data: null, error: null });
+  // 홈 수수료는 fee_rates 표(수수료 탭과 같은 데이터, FEE.rows)에서 읽습니다. 한 번 읽으면 저장해 두고, 수수료 탭에서 고치면 같이 반영됩니다.
+  const commPromise = (isLoggedIn && typeof feeLoad === 'function')
+    ? feeLoad().then(() => ({ data: null, error: (typeof FEE !== 'undefined' && !FEE.loaded) ? { message: FEE.err || 'fee_rates 를 읽지 못했습니다' } : null }))
+    : Promise.resolve({ data: null, error: null });
 
   const [commRes, promoRes] = await Promise.all([commPromise, promoPromise]);
   if (isLoggedIn) {
-    addLog('get_admin_commissions (RPC)', !commRes.error, commRes.error ? commRes.error.message : `${commRes.data?.length || 0}건 조회`);
+    addLog('fee_rates', !commRes.error, commRes.error ? commRes.error.message : `${Object.keys((typeof FEE !== 'undefined' && FEE.rows) || {}).length}건 조회`);
   }
   addLog('carrier_promotions', !promoRes.error, promoRes.error ? promoRes.error.message : `${promoRes.data?.length || 0}건 프로모션 조회`);
 
@@ -347,6 +386,7 @@ async function handleLogout(){
   isLoggedIn = false;
   COMMISSION_DATA = {};
   RAW_COMMISSION_DATA = [];
+  if (typeof FEE !== 'undefined') { FEE.rows = {}; FEE.loaded = false; FEE.err = ''; }   // 수수료는 대외비: 로그아웃하면 메모리에서도 비움
   updateAuthUI();
   if (DATA) renderRecoCards();
   renderProposalLists();
