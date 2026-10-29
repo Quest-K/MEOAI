@@ -264,6 +264,12 @@ textarea.cust-note-log:hover, #cust-notes:hover, #cf-notes:hover{border-color:#c
 .fee-tbl tr.fee-grp td{border-top:3px solid #D8CFB8;}
 .fee-tbl tr.fee-sp td{border-top:2px solid #E8E0CC;}
 </style>
+<style id="v2-unit-fixes">
+/* 정산 탭(상품 단위): 같은 계약의 상품을 묶어서 보이게 */
+.sm-table tr.sm-grp-first td{border-top:2px solid #cdbf9f;}
+.sm-table td.sm-muted a{color:#9a9a9a;}
+.sm-b b .sm-ctn{font-style:normal;font-weight:400;font-size:11px;color:#7a7a7a;}
+</style>
 </head>
 <body>
 <div class="wrap">
@@ -833,7 +839,7 @@ textarea.cust-note-log:hover, #cust-notes:hover, #cf-notes:hover{border-color:#c
   <!-- VIEW: 정산 (세금계산서·수금·영업이익 관리) -->
   <div id="view-settlement" class="view-container">
     <div class="cs-card">
-      <h3>정산 <small class="sm-sub">접수된 계약 기준 · 고객정보·상품·사은품·수수료·세금계산서·수금·영업이익</small></h3>
+      <h3>정산 <small class="sm-sub">접수된 상품 기준(한 행 = 상품 1개) · 고객정보·사은품·수수료·세금계산서·수금·영업이익</small></h3>
       <div id="sm-banner" class="sm-banner"></div>
       <div class="cust-search-row sm-filter">
         <span>접수일</span>
@@ -864,7 +870,7 @@ textarea.cust-note-log:hover, #cust-notes:hover, #cf-notes:hover{border-color:#c
       <div id="sm-table" class="perf-scroll"></div>
       <p class="perf-note">발행예정 = 아직 설치(개통) 전 · 발행필요 = 설치완료 후 아직 계산서 미발행(자동 반영, 수기로 발행예정으로 보류 가능) · 발행완료 = 계산서 묶음 등록 시 수기로 처리 · 수금은 예정/완료.
         차감 = 상부가 고객에게 직접 지급한 사은품(정산에서 제외), 정산금액 = 수수료 − 차감, 입금예정액 = 정산금액 + 부가세(10%), 영업이익 = 수수료 − 사은품 총액, 영업이익률 = 영업이익 ÷ 수수료.
-        수수료는 상담 저장 당시(날짜·통신사·업체 기준) 상품에 기록된 값이며 계약별로 수기 수정할 수 있습니다.</p>
+        수수료는 상담 저장 당시(날짜·통신사·업체 기준) 상품에 기록된 값이며 상품별로 수기 수정할 수 있습니다. 같은 계약의 인터넷·TV는 함께 선택되고(Shift+클릭: 한 상품만), 업체·설치일은 같은 계약의 비어 있는 상품에도 함께 저장됩니다.</p>
     </div>
   </div>
 
@@ -1319,9 +1325,10 @@ function openCoverageCheck(key){
 </script>
 <script>
 /* =========================================================================
-   정산 (V2) : 접수된 계약 기준 목록 · 세금계산서 묶음 · 수금 · 영업이익
-   - 한 행 = 계약 1건. 고객·상품·사은품·수수료는 기존 테이블(customers·contracts·contract_items·contract_fee_lines)에서 읽습니다.
-   - 새 칼럼·테이블은 v2_settlement.sql (agencies 사업자 정보, settlement_invoices, contracts.settle_*)
+   정산 (V2) : 접수된 상품 기준 목록 · 세금계산서 묶음 · 수금 · 영업이익
+   - 한 행 = 상품 1개(2026-10-29 상품 단위 전환, Y-3). 같은 계약의 인터넷·TV는 묶음 선택 때 함께 체크됩니다(Shift+클릭은 한 행만).
+   - 고객·상품·정산 값은 customers·contract_items(새 settle_* 칼럼)·contract_gift_lines(사은품)·contract_fee_lines(수수료)에서 읽습니다.
+   - 새 칼럼은 v2_unit_item.sql (contract_items.settle_*), 업체·계산서는 v2_settlement.sql (agencies, settlement_invoices)
    - 발행예정(설치 전) / 발행필요(설치완료·미발행, 자동) / 발행완료(묶음 등록, 수기) / 수금완료. 수금은 예정·완료
    - 차감 = 상부가 고객에게 직접 지급한 사은품, 정산금액 = 수수료 − 차감, 입금예정액 = 정산금액 + 부가세,
      영업이익 = 수수료 − 사은품 총액, 영업이익률 = 영업이익 ÷ 수수료
@@ -1356,62 +1363,83 @@ function smAutoAgency(carriers, agencies){
   return hit.size === 1 ? Array.from(hit)[0] : '';
 }
 function smBuildRows(d){
-  const itemsBy = {}, linesBy = {}, custBy = {}, invBy = {};
+  const itemsBy = {}, linesBy = {}, giftsBy = {}, custBy = {}, invBy = {}, ctBy = {};
   d.items.forEach(i => { (itemsBy[i.contract_id] = itemsBy[i.contract_id] || []).push(i); });
+  (d.contracts || []).forEach(c => { ctBy[c.contract_id] = c; });
   (d.lines || []).forEach(l => { (linesBy[l.contract_id] = linesBy[l.contract_id] || []).push(l); });
+  (d.gifts || []).forEach(g => { (giftsBy[g.contract_id] = giftsBy[g.contract_id] || []).push(g); });
   d.customers.forEach(c => { custBy[c.customer_id] = c; });
   (d.invoices || []).forEach(v => { invBy[v.invoice_id] = v; });
-  return d.contracts.map(ct => {
-    const items = (itemsBy[ct.contract_id] || []).slice().sort((a, b) => a.item_id - b.item_id);
-    const act = items.filter(i => SM_DEAD.indexOf(i.item_status) < 0);
-    const dead = items.length > 0 && act.length === 0;
-    const allOpen = act.length > 0 && act.every(i => i.item_status === '개통완료');
-    const recv = items.map(i => i.first_received_at).filter(Boolean).sort();
-    const recvDate = smYmd(recv[0] || ct.received_at || ct.created_at);
-    const inst = act.map(i => i.installed_at).filter(Boolean).sort();
-    const instDate = inst.length ? smYmd(inst[inst.length - 1]) : '';
-    const nm = t => act.filter(i => i.product_type === t).map(i => i.product_name || '').filter(Boolean).join(', ');
-    const carrierList = Array.from(new Set(act.map(i => i.carrier).filter(Boolean)));
-    const carriers = carrierList.join('/');
-    const progress = dead ? '취소' : allOpen ? '설치완료' : (act.some(i => i.item_status === '접수보류') ? '접수보류' : act.some(i => i.item_status === '상품제안') ? '상품제안' : '접수·설치 전');
+  const TYPE_LABEL = { internet: '인터넷', tv: 'TV', usim: '유심' };
+  const rows = [];
+  Object.keys(itemsBy).forEach(cidKey => {
+    const cid = Number(cidKey), ct = ctBy[cid] || {};
+    const items = itemsBy[cid].slice().sort((a, b) => a.item_id - b.item_id);
+    const act = items.filter(i => i.item_status && SM_DEAD.indexOf(i.item_status) < 0);
+    // 계약 안의 대표 상품(인터넷 우선)과 TV 상품: 계약 단위로 남은 줄(수수료 내역·추가지원 사은품)을 붙이는 곳
+    const rep = act.slice().sort((a, b) => ((b.product_type === 'internet') - (a.product_type === 'internet')) || (a.item_id - b.item_id))[0] || null;
+    const tvIt = act.find(i => i.product_type === 'tv') || rep;
+    const sibAgency = items.map(i => i.agency_id).filter(Boolean)[0] || '';
+    const lines = linesBy[cid] || [], gifts = giftsBy[cid] || [];
+    items.forEach(it => {
+      if (!it.first_received_at) return;                      // 접수 전 상품은 정산 대상이 아닙니다
+      const dead = SM_DEAD.indexOf(it.item_status) >= 0;
+      const open = it.item_status === '개통완료';
+      const recvDate = smYmd(it.first_received_at);
+      const instDate = smYmd(it.installed_at);
+      const carrierList = it.carrier ? [it.carrier] : [];
+      const nm = t => it.product_type === t ? (it.product_name || '') : '';
+      const progress = dead ? '취소' : open ? '설치완료' : it.item_status === '접수보류' ? '접수보류' : it.item_status === '상품제안' ? '상품제안' : '접수·설치 전';
 
-    // 수수료: 수수료 내역(contract_fee_lines) > 상품 수수료 합계 > 계약 값 / 수기 수정이 있으면 그 값
-    const fee = { internet: 0, tv: 0, bundle: 0, add_tv: 0, usim: 0, other: 0 };
-    const lines = linesBy[ct.contract_id] || [];
-    let feeSrc = '상품 합계';
-    if (lines.length) { lines.forEach(l => { const k = Object.prototype.hasOwnProperty.call(fee, l.fee_type) ? l.fee_type : 'other'; fee[k] += smN(l.amount); }); feeSrc = '수수료 내역'; }
-    else act.forEach(i => { const k = i.product_type === 'internet' ? 'internet' : i.product_type === 'tv' ? 'tv' : i.product_type === 'usim' ? 'usim' : 'other'; fee[k] += smN(i.commission); });
-    let feeSum = Object.keys(fee).reduce((a, k) => a + fee[k], 0);
-    const ctComm = smNum(ct.commission_total);
-    if (!lines.length && ctComm && ctComm > feeSum) { fee.other += ctComm - feeSum; feeSum = ctComm; feeSrc = feeSum && act.length ? '상품+계약 값' : '계약 값'; }
-    const ov = smNum(ct.settle_fee_override);
-    const feeTotal = (ov !== null && !isNaN(ov)) ? ov : feeSum;
-    if (ov !== null && !isNaN(ov)) feeSrc = '수기';
+      // 수수료: 이 상품의 수수료 내역(contract_fee_lines) > 상품 수수료 / 수기 수정이 있으면 그 값
+      const fee = { internet: 0, tv: 0, bundle: 0, add_tv: 0, usim: 0, other: 0 };
+      const myLines = lines.filter(l => l.item_id != null ? l.item_id === it.item_id : (rep && rep.item_id === it.item_id));
+      let feeSrc = '상품 수수료';
+      if (myLines.length) {
+        myLines.forEach(l => { const k = Object.prototype.hasOwnProperty.call(fee, l.fee_type) ? l.fee_type : (/^usim/.test(l.fee_type || '') ? 'usim' : 'other'); fee[k] += smN(l.amount); });
+        feeSrc = '수수료 내역';
+      } else {
+        const k = it.product_type === 'internet' ? 'internet' : it.product_type === 'tv' ? 'tv' : it.product_type === 'usim' ? 'usim' : 'other';
+        fee[k] += smN(it.commission);
+      }
+      const feeSum = Object.keys(fee).reduce((a, k) => a + fee[k], 0);
+      const ov = smNum(it.settle_fee_override);
+      const feeTotal = (ov !== null && !isNaN(ov)) ? ov : feeSum;
+      if (ov !== null && !isNaN(ov)) feeSrc = '수기';
 
-    // 사은품
-    const card = smN(ct.gift_card), cash = smN(ct.gift_cash);
-    let giftTotal = smN(ct.gift_total); if (!giftTotal && card + cash) giftTotal = card + cash;
-    let ua = smNum(ct.settle_gift_upper_amt), la = smNum(ct.settle_gift_lower_amt);
-    const explicit = (ua !== null && !isNaN(ua)) || (la !== null && !isNaN(la));
-    if (explicit) { ua = ua || 0; la = la || 0; } else { ua = 0; la = giftTotal; }
-    const deduct = ua;
-    const settle = feeTotal - deduct;
-    const vat = Math.round(settle * SM_VAT_RATE);
-    const expected = settle + vat;
-    const profit = feeTotal - giftTotal;
-    const margin = feeTotal ? profit / feeTotal : null;
+      // 사은품: 이 상품의 사은품 줄(인터넷·TV·유심 줄, 추가지원은 TV 상품에 표시, TV가 없으면 대표 상품)
+      const myGifts = gifts.filter(g => { const tgt = g.item_id != null ? g.item_id : (g.line_type === 'extra' ? (tvIt && tvIt.item_id) : (rep && rep.item_id)); return tgt === it.item_id; });
+      let giftTotal = 0, card = 0, cash = 0;
+      if (myGifts.length) {
+        myGifts.forEach(g => { giftTotal += smN(g.amount); if (g.line_type !== 'extra') { card += smN(g.card_amount); cash += smN(g.cash_amount); } });
+      } else if (!gifts.length && rep && rep.item_id === it.item_id) {   // 사은품 줄이 전혀 없는 계약은 계약 값을 대표 상품에
+        card = smN(ct.gift_card); cash = smN(ct.gift_cash); giftTotal = smN(ct.gift_total); if (!giftTotal && card + cash) giftTotal = card + cash;
+      }
+      let ua = smNum(it.settle_gift_upper_amt), la = smNum(it.settle_gift_lower_amt);
+      const explicit = (ua !== null && !isNaN(ua)) || (la !== null && !isNaN(la));
+      if (explicit) { ua = ua || 0; la = la || 0; } else { ua = 0; la = giftTotal; }
+      const deduct = ua;
+      const settle = feeTotal - deduct;
+      const vat = Math.round(settle * SM_VAT_RATE);
+      const expected = settle + vat;
+      const profit = feeTotal - giftTotal;
+      const margin = feeTotal ? profit / feeTotal : null;
 
-    const inv = ct.settle_invoice_id != null ? (invBy[ct.settle_invoice_id] || null) : null;
-    const state = inv ? (inv.collect_status === '수금완료' ? '수금완료' : '발행완료') : (ct.settle_hold ? '발행예정' : (allOpen ? '발행필요' : '발행예정'));
-    const cu = custBy[ct.customer_id] || {};
-    return {
-      id: ct.contract_id, customerId: ct.customer_id, name: cu.name || '', contact: cu.contact || '', recvDate, instDate, progress, dead, allOpen,
-      agencySaved: ct.agency_id || (inv ? inv.agency_id : '') || '', agency: ct.agency_id || (inv ? inv.agency_id : '') || smAutoAgency(carrierList, d.agencies), carriers, internet: nm('internet'), tv: nm('tv'), usim: nm('usim'),
-      giftTotal, card, cash, ua, uaSt: ct.settle_gift_upper_status || '', la, laSt: ct.settle_gift_lower_status || '', giftUnassigned: !explicit && giftTotal > 0,
-      fee, feeTotal, feeSrc, deduct, settle, vat, expected, profit, margin, state, inv, hold: !!ct.settle_hold, memo: ct.settle_memo || '', feeOverride: (ov !== null && !isNaN(ov)) ? ov : null,
-      itemIds: act.filter(i => i.item_status === '개통완료').map(i => i.item_id)
-    };
+      const inv = it.settle_invoice_id != null ? (invBy[it.settle_invoice_id] || null) : null;
+      const state = inv ? (inv.collect_status === '수금완료' ? '수금완료' : '발행완료') : (it.settle_hold ? '발행예정' : (open ? '발행필요' : '발행예정'));
+      const cu = custBy[it.customer_id] || {};
+      rows.push({
+        id: it.item_id, cid, ptype: it.product_type, ptypeLabel: TYPE_LABEL[it.product_type] || it.product_type || '',
+        customerId: it.customer_id, name: cu.name || '', contact: cu.contact || '', recvDate, instDate, progress, dead, allOpen: open,
+        agencySaved: it.agency_id || (inv ? inv.agency_id : '') || '', agency: it.agency_id || (inv ? inv.agency_id : '') || sibAgency || smAutoAgency(carrierList, d.agencies), carriers: carrierList.join('/'),
+        internet: nm('internet'), tv: nm('tv'), usim: nm('usim'),
+        giftTotal, card, cash, ua, uaSt: it.settle_gift_upper_status || '', la, laSt: it.settle_gift_lower_status || '', giftUnassigned: !explicit && giftTotal > 0,
+        fee, feeTotal, feeSrc, deduct, settle, vat, expected, profit, margin, state, inv, hold: !!it.settle_hold, memo: it.settle_memo || '', feeOverride: (ov !== null && !isNaN(ov)) ? ov : null,
+        itemIds: open ? [it.item_id] : []
+      });
+    });
   });
+  return rows;
 }
 
 function smFilterRows(rows, f){
@@ -1424,14 +1452,15 @@ function smFilterRows(rows, f){
     if (f.state && r.state !== f.state) return false;
     if (q && !(r.name.toLowerCase().indexOf(q) >= 0 || (qd && String(r.contact).replace(/\D/g, '').indexOf(qd) >= 0))) return false;
     return true;
-  }).sort((a, b) => (a.recvDate < b.recvDate ? 1 : a.recvDate > b.recvDate ? -1 : b.id - a.id));
+  }).sort((a, b) => (a.recvDate < b.recvDate ? 1 : a.recvDate > b.recvDate ? -1 : (b.cid - a.cid) || (a.id - b.id)));
 }
 
 function smBanner(rows){
   const live = rows.filter(r => !r.dead);
-  const o = { cnt: {}, amt: {}, fee: 0, profit: 0, gift: 0, unpaid: 0 };
-  SM_STATES.forEach(s => { o.cnt[s] = 0; o.amt[s] = 0; });
-  live.forEach(r => { o.cnt[r.state]++; o.amt[r.state] += r.expected; o.fee += r.feeTotal; o.profit += r.profit; o.gift += r.giftTotal; if (r.state === '발행완료') o.unpaid += r.expected; });
+  const o = { cnt: {}, ct: {}, amt: {}, fee: 0, profit: 0, gift: 0, unpaid: 0 }, cts = {};
+  SM_STATES.forEach(s => { o.cnt[s] = 0; o.ct[s] = 0; o.amt[s] = 0; cts[s] = {}; });
+  live.forEach(r => { cts[r.state][r.cid] = true; o.cnt[r.state]++; o.amt[r.state] += r.expected; o.fee += r.feeTotal; o.profit += r.profit; o.gift += r.giftTotal; if (r.state === '발행완료') o.unpaid += r.expected; });
+  SM_STATES.forEach(s => { o.ct[s] = Object.keys(cts[s]).length; });
   o.margin = o.fee ? o.profit / o.fee : null;
   return o;
 }
@@ -1439,17 +1468,17 @@ function smBanner(rows){
 /* ---------- 화면 ---------- */
 function smPct(v){ return v === null || v === undefined ? '' : (v * 100).toFixed(1) + '%'; }
 function smBannerHtml(b){
-  const chip = (s, cls, label, sub) => `<button type="button" class="sm-b ${cls} ${SM.state === s ? 'is-on' : ''}" onclick="smSetState('${s}')"><small>${label}</small><b>${b.cnt[s].toLocaleString()}건</b><span>${sub}</span></button>`;
+  const chip = (s, cls, label, sub) => `<button type="button" class="sm-b ${cls} ${SM.state === s ? 'is-on' : ''}" onclick="smSetState('${s}')"><small>${label}</small><b>${b.cnt[s].toLocaleString()}건<em class="sm-ctn"> (계약 ${(b.ct && b.ct[s] || 0).toLocaleString()})</em></b><span>${sub}</span></button>`;
   return chip('발행예정', 'st-plan', '발행예정 (설치 전)', '입금예정 ' + smWon(b.amt['발행예정']) + '원')
     + chip('발행필요', 'st-need', '발행필요 (설치완료·미발행)', '입금예정 ' + smWon(b.amt['발행필요']) + '원')
     + chip('발행완료', 'st-wait', '발행완료 · 수금예정', '미수금 ' + smWon(b.unpaid) + '원')
     + chip('수금완료', 'st-done', '수금완료', '입금 ' + smWon(b.amt['수금완료']) + '원')
-    + `<div class="sm-b st-sum"><small>수수료 합계</small><b>${smWon(b.fee)}원</b><span>사은품 ${smWon(b.gift)}원</span></div>`
+    + `<div class="sm-b st-sum"><small>수수료 합계 (상품 기준)</small><b>${smWon(b.fee)}원</b><span>사은품 ${smWon(b.gift)}원</span></div>`
     + `<div class="sm-b st-sum"><small>영업이익 · 이익률</small><b style="color:${b.profit >= 0 ? '#1E7E34' : '#D9534F'}">${smWon(b.profit)}원</b><span>${smPct(b.margin) || '-'}</span></div>`;
 }
 
 function smTableHtml(rows){
-  if (!rows.length) return '<div class="wide-table-empty">조건에 맞는 정산 건이 없습니다.</div>';
+  if (!rows.length) return '<div class="wide-table-empty">조건에 맞는 정산 상품이 없습니다.</div>';
   const th = (t, rs) => `<th${rs ? ' rowspan="2"' : ''}>${t}</th>`;
   const head = `<thead><tr>
     ${th('<input type="checkbox" onclick="smSelAll(this)" title="발행필요 건 전체 선택">', 1)}${th('접수일', 1)}${th('고객명', 1)}${th('연락처', 1)}${th('진행', 1)}${th('업체', 1)}
@@ -1460,15 +1489,16 @@ function smTableHtml(rows){
     <th>총액</th><th>상품권</th><th>현금</th><th>상부</th><th>하부</th>
     <th>총액</th><th>인터넷</th><th>TV</th><th>결합</th><th>추셋</th><th>유심</th><th>기타</th>
     <th>상태</th><th>발행일</th><th>적요</th><th>상태</th><th>예정일/수금일</th></tr></thead>`;
-  const body = rows.map(r => {
+  const body = rows.map((r, ix) => {
+    const cont = ix > 0 && rows[ix - 1].cid === r.cid;
     const inv = r.inv;
     const canSel = r.state === '발행필요';
     const gift = (amt, st) => amt ? `${smWon(amt)}${st ? ` <span class="cust-ov-sub">${escHtml(st)}</span>` : ''}` : '';
     const agOpts = smOpts(r.agency, true);
-    return `<tr class="sm-r-${r.state} ${r.dead ? 'sm-dead' : ''}">
-      <td><input type="checkbox" ${canSel ? '' : 'disabled'} ${SM.sel[r.id] ? 'checked' : ''} onchange="smToggleSel(${r.id}, this.checked)"></td>
+    return `<tr class="sm-r-${r.state} ${r.dead ? 'sm-dead' : ''} ${cont ? 'sm-cont' : 'sm-grp-first'}">
+      <td><input type="checkbox" data-sm-id="${r.id}" ${canSel ? '' : 'disabled'} ${SM.sel[r.id] ? 'checked' : ''} onclick="smToggleSel(${r.id}, this.checked, event)" title="같은 계약의 발행필요 상품이 함께 선택됩니다 (Shift+클릭: 이 상품만)"></td>
       <td>${escHtml(r.recvDate)}</td>
-      <td><a href="javascript:void(0)" onclick="smOpenCustomer(${r.customerId})">${escHtml(r.name) || '(이름없음)'}</a></td>
+      <td class="${cont ? 'sm-muted' : ''}"><a href="javascript:void(0)" onclick="smOpenCustomer(${r.customerId})">${escHtml(r.name) || '(이름없음)'}</a></td>
       <td>${escHtml(typeof formatContactDisplay === 'function' ? formatContactDisplay(r.contact) : r.contact)}</td>
       <td>${escHtml(r.progress)}</td>
       <td><select class="ct-select" onchange="smSetAgency(${r.id}, this.value)">${agOpts}</select></td>
@@ -1489,7 +1519,7 @@ function smTableHtml(rows){
     </tr>`;
   }).join('');
   const sum = k => rows.filter(r => !r.dead).reduce((a, r) => a + (typeof k === 'function' ? k(r) : r[k]), 0);
-  const tot = `<tr class="perf-sum"><td colspan="11">합계 (취소 제외 ${rows.filter(r => !r.dead).length}건)</td>
+  const tot = `<tr class="perf-sum"><td colspan="11">합계 (취소 제외 상품 ${rows.filter(r => !r.dead).length}건 · 계약 ${new Set(rows.filter(r => !r.dead).map(r => r.cid)).size}건)</td>
     <td class="n">${smWon(sum('giftTotal'))}</td><td class="n">${smWon(sum('card'))}</td><td class="n">${smWon(sum('cash'))}</td><td class="n">${smWon(sum('ua'))}</td><td class="n">${smWon(sum('la'))}</td>
     <td class="n">${smWon(sum('feeTotal'))}</td><td class="n">${smWon(sum(r => r.fee.internet))}</td><td class="n">${smWon(sum(r => r.fee.tv))}</td><td class="n">${smWon(sum(r => r.fee.bundle))}</td><td class="n">${smWon(sum(r => r.fee.add_tv))}</td><td class="n">${smWon(sum(r => r.fee.usim))}</td><td class="n">${smWon(sum(r => r.fee.other))}</td>
     <td class="n">${smWon(sum('deduct'))}</td><td class="n">${smWon(sum('settle'))}</td><td class="n">${smWon(sum('vat'))}</td><td class="n">${smWon(sum('expected'))}</td>
@@ -1503,6 +1533,23 @@ function smAgencies(){
   return out;
 }
 function smAgName(key){ if (key === null || key === undefined || key === '') return ''; const f = smAgencies().find(x => x.key === String(key)); return f ? f.name : String(key); }
+
+function smAgencyNames(){ return smAgencies().map(x => x.name); }
+function smDefAgency(){ try { return localStorage.getItem('sm_def_agency') || ''; } catch (e) { return ''; } }
+function smSetDefAgency(v){ try { localStorage.setItem('sm_def_agency', v || ''); } catch (e) {} showToast(v ? '✓ 기본 업체: ' + smAgName(v) : '기본 업체를 해제했습니다'); }
+async function smApplyDefaultAgency(btn){
+  if (!smNeedSchema()) return;
+  const def = smDefAgency();
+  const targets = smFilterRows(SM.rows, SM).filter(r => !r.dead && !r.agencySaved && !r.inv).map(r => ({ id: r.id, ag: r.agency || def })).filter(x => x.ag);
+  if (!targets.length) { alert('저장할 상품이 없습니다. (통신사로 업체를 추정할 수 없는 상품은 [기본 업체]를 고르면 그 업체로 저장됩니다)'); return; }
+  if (!confirm(`업체가 저장되지 않은 상품 ${targets.length}개에 통신사 기준 자동 업체(추정 불가 상품은 기본 업체)를 저장할까요?`)) return;
+  setBtnLoading(btn, '저장 중...');
+  try {
+    const by = {}; targets.forEach(x => { (by[x.ag] = by[x.ag] || []).push(x.id); });
+    for (const ag of Object.keys(by)) for (const ch of s2Chunk(by[ag], S2_ID_CHUNK)) { const r = await sb.from('contract_items').update({ agency_id: ag }).in('item_id', ch); if (r.error) { alert('저장 실패: ' + r.error.message); await loadSettlement(); return; } }
+    showToast('✓ 업체가 저장되었습니다'); await loadSettlement();
+  } finally { clearBtnLoading(btn); }
+}
 
 function smRender(){
   const rows = smFilterRows(SM.rows, SM);
@@ -1523,7 +1570,7 @@ function smRender(){
   if (sel) { const cur = SM.agency; sel.innerHTML = '<option value="">업체 전체</option>' + smAgencies().map(a => `<option value="${escAttr(a.key)}" ${a.key === cur ? 'selected' : ''}>${escHtml(a.name)}</option>`).join('') + `<option value="(미지정)" ${cur === '(미지정)' ? 'selected' : ''}>(미지정)</option>`; }
   const dsel = document.getElementById('sm-defag'); if (dsel) dsel.innerHTML = smOpts(smDefAgency(), true).replace('미지정', '기본 업체 없음');
   const w = document.getElementById('sm-warn');
-  if (w) w.textContent = !SM.schemaOk ? '⚠ 정산용 DB 칼럼이 없습니다. v2_settlement.sql 을 먼저 실행해 주세요 (조회만 가능).'
+  if (w) w.textContent = !SM.schemaOk ? '⚠ 정산용 DB 칼럼이 없습니다. v2_unit_item.sql 을 먼저 실행해 주세요 (조회만 가능).'
     : (SM.data && SM.data.agFallback ? '⚠ 업체(agencies) 표를 읽지 못해 기본 3개 업체로 표시합니다. v2_agencies_biz.sql(읽기 권한 포함)을 실행해 주세요.' + (SM.data.agErr ? ' (' + SM.data.agErr + ')' : '') : '');
   smRenderPanels();
 }
@@ -1534,19 +1581,21 @@ async function smFetchAll(){
   if (it0.error) return { error: it0.error.message };
   const ids = Array.from(new Set(it0.rows.map(r => r.contract_id)));
   const chunks = s2Chunk(ids, S2_ID_CHUNK);
-  const items = [], contracts = [], lines = [];
+  const items = [], contracts = [], lines = [], gifts = [];
   for (const ch of chunks) {
-    const [ir, cr, lr] = await Promise.all([
-      sb.from('contract_items').select('item_id,contract_id,customer_id,product_type,carrier,product_name,monthly_fee,commission,item_status,pay_status,pay_invoice_status,pay_invoice_date,pay_collect_date,first_received_at,installed_at').in('contract_id', ch).order('item_id', { ascending: true }),
-      sb.from('contracts').select('*').in('contract_id', ch).order('contract_id', { ascending: true }),
-      sb.from('contract_fee_lines').select('*').in('contract_id', ch)
+    const [ir, cr, lr, gr] = await Promise.all([
+      sb.from('contract_items').select('*').in('contract_id', ch).order('item_id', { ascending: true }),
+      sb.from('contracts').select('contract_id,customer_id,gift_total,gift_card,gift_cash,gift_extra').in('contract_id', ch).order('contract_id', { ascending: true }),
+      sb.from('contract_fee_lines').select('*').in('contract_id', ch),
+      sb.from('contract_gift_lines').select('*').in('contract_id', ch)
     ]);
     if (ir.error) return { error: 'contract_items: ' + ir.error.message };
     if (cr.error) return { error: 'contracts: ' + cr.error.message };
     items.push(...(ir.data || [])); contracts.push(...(cr.data || []));
     if (!lr.error) lines.push(...(lr.data || []));
+    if (!gr.error) gifts.push(...(gr.data || []));
   }
-  const cids = Array.from(new Set(contracts.map(c => c.customer_id)));
+  const cids = Array.from(new Set(items.map(i => i.customer_id)));
   const customers = [];
   for (const ch of s2Chunk(cids, S2_ID_CHUNK)) {
     const r = await sb.from('customers').select('customer_id,name,contact').in('customer_id', ch);
@@ -1555,11 +1604,11 @@ async function smFetchAll(){
   }
   const iv = await sb.from('settlement_invoices').select('*').order('issue_date', { ascending: false });
   const ag = await sb.from('agencies').select('*');
-  const schemaOk = !iv.error && (contracts.length === 0 || Object.prototype.hasOwnProperty.call(contracts[0], 'settle_invoice_id'));
+  const schemaOk = !iv.error && (items.length === 0 || Object.prototype.hasOwnProperty.call(items[0], 'settle_invoice_id'));
   let agencies = ag.error ? [] : (ag.data || []), agFallback = false;
   const agErr = ag.error ? ag.error.message : '';
   if (!agencies.length) { agFallback = true; agencies = SM_AG_FALLBACK.map(a => Object.assign({}, a)); }
-  return { items, contracts, lines, customers, invoices: iv.error ? [] : (iv.data || []), agencies, agFallback, agErr, schemaOk };
+  return { items, contracts, lines, gifts, customers, invoices: iv.error ? [] : (iv.data || []), agencies, agFallback, agErr, schemaOk };
 }
 
 async function loadSettlement(btn){
@@ -1614,29 +1663,39 @@ async function smOpenCustomer(id){
 }
 
 /* ---------- 선택 ---------- */
-function smToggleSel(id, on){ if (on) SM.sel[id] = true; else delete SM.sel[id]; const n = document.getElementById('sm-sel-n'); if (n) n.textContent = Object.keys(SM.sel).length; }
+function smToggleSel(id, on, ev){
+  const r = SM.rows.find(x => x.id === id);
+  // 기본: 같은 계약의 발행필요 상품을 함께 선택·해제 (Shift+클릭이면 이 상품만)
+  const group = (r && !(ev && ev.shiftKey)) ? SM.rows.filter(x => x.cid === r.cid && x.state === '발행필요') : [r].filter(Boolean);
+  group.forEach(x => { if (on) SM.sel[x.id] = true; else delete SM.sel[x.id]; const cb = document.querySelector(`#sm-table input[data-sm-id="${x.id}"]`); if (cb) cb.checked = !!on; });
+  const n = document.getElementById('sm-sel-n'); if (n) n.textContent = Object.keys(SM.sel).length;
+}
 function smSelAll(cb){ smFilterRows(SM.rows, SM).forEach(r => { if (r.state === '발행필요') { if (cb.checked) SM.sel[r.id] = true; else delete SM.sel[r.id]; } }); smRender(); }
 
 /* ---------- 쓰기 공통 ---------- */
 function smCloseModal(id){ if (id === 'sm-inv-modal') SM.single = null; const m = document.getElementById(id); if (m) m.style.display = 'none'; }
 function smOpenModal(id){ const m = document.getElementById(id); if (m) m.style.display = 'flex'; }
-function smNeedSchema(){ if (!SM.schemaOk) { alert('정산용 DB 칼럼이 없습니다. v2_settlement.sql 을 먼저 실행해 주세요.'); return false; } return true; }
+function smNeedSchema(){ if (!SM.schemaOk) { alert('정산용 DB 칼럼이 없습니다. v2_unit_item.sql(상품 단위 정산 칼럼)을 먼저 실행해 주세요.'); return false; } return true; }
 function smErr(id, msg){ const e = document.getElementById(id); if (e) e.textContent = msg || ''; }
 function smOpts(selected, withBlank){ return (withBlank ? '<option value="">미지정</option>' : '') + smAgencies().map(a => `<option value="${escAttr(a.key)}" ${a.key === String(selected || '') ? 'selected' : ''}>${escHtml(a.name)}</option>`).join(''); }
 
 async function smSetAgency(id, val){
   if (!smNeedSchema()) { smRender(); return; }
-  const r = await sb.from('contracts').update({ agency_id: val || null }).eq('contract_id', id);
+  const row = SM.rows.find(x => x.id === id); if (!row) return;
+  // 같은 계약의 아직 계산서가 없는 상품에도 같은 업체를 적용합니다(상품마다 따로 정하려면 편집에서 바꿉니다)
+  const ids = SM.rows.filter(x => x.id === id || (x.cid === row.cid && !x.inv && !x.dead)).map(x => x.id);
+  const r = await sb.from('contract_items').update({ agency_id: val || null, agency_pick_type: val ? 'manual' : null }).in('item_id', ids);
   if (r.error) { alert('업체 저장 실패: ' + r.error.message); await loadSettlement(); return; }
-  const row = SM.rows.find(x => x.id === id); if (row) row.agency = val || '';
-  showToast('✓ 업체가 저장되었습니다');
+  ids.forEach(i => { const x = SM.rows.find(y => y.id === i); if (x) { x.agency = val || ''; x.agencySaved = val || ''; } });
+  showToast('✓ 업체가 저장되었습니다' + (ids.length > 1 ? ` (같은 계약 상품 ${ids.length}개)` : ''));
+  if (ids.length > 1) smRender();
 }
 
 /* ---------- 행 편집 ---------- */
 function smOpenRowModal(id){
   const r = SM.rows.find(x => x.id === id); if (!r) return;
   SM.edit = id;
-  document.getElementById('sm-row-title').textContent = `· ${r.name} (${r.recvDate})`;
+  document.getElementById('sm-row-title').textContent = `· ${r.name} · ${r.ptypeLabel} (${r.recvDate})`;
   document.getElementById('sm-e-agency').innerHTML = smOpts(r.agency, true);
   document.getElementById('sm-e-fee').value = r.feeOverride !== null ? smWon(r.feeOverride) : '';
   document.getElementById('sm-e-fee').placeholder = '자동 ' + smWon(r.feeTotal) + (r.feeSrc === '수기' ? '' : ' (' + r.feeSrc + ')');
@@ -1664,7 +1723,7 @@ async function smSaveRow(btn){
   };
   setBtnLoading(btn, '저장 중...');
   try {
-    const r = await sb.from('contracts').update(body).eq('contract_id', id);
+    const r = await sb.from('contract_items').update(body).eq('item_id', id);
     if (r.error) { smErr('sm-e-err', '저장 실패: ' + r.error.message); return; }
     smCloseModal('sm-row-modal'); showToast('✓ 정산 정보가 저장되었습니다');
     await loadSettlement();
@@ -1677,16 +1736,16 @@ function smOpenInvoiceModal(single){
   if (!smNeedSchema()) return;
   SM.single = (typeof single === 'number') ? single : null;
   const rows = smSelRows();
-  if (!rows.length) { alert('발행필요 상태의 계약을 먼저 선택해 주세요. (설치완료 후 미발행 건만 선택할 수 있습니다)'); return; }
+  if (!rows.length) { alert('발행필요 상태의 상품을 먼저 선택해 주세요. (설치완료 후 미발행 상품만 선택할 수 있습니다)'); return; }
   const ags = Array.from(new Set(rows.map(r => r.agency).filter(Boolean)));
-  if (ags.length > 1) { alert('선택한 계약의 업체가 서로 다릅니다 (' + ags.map(smAgName).join(', ') + '). 업체별로 나누어 등록해 주세요.'); return; }
+  if (ags.length > 1) { alert('선택한 상품의 업체가 서로 다릅니다 (' + ags.map(smAgName).join(', ') + '). 업체별로 나누어 등록해 주세요.'); return; }
   document.getElementById('sm-i-agency').innerHTML = smOpts(ags[0] || smDefAgency(), true);
   document.getElementById('sm-i-date').value = smToday();
   document.getElementById('sm-i-memo').value = '';
   document.getElementById('sm-i-exp').value = '';
   const sup = rows.reduce((a, r) => a + r.settle, 0);
   document.getElementById('sm-i-supply').value = smWon(sup);
-  document.getElementById('sm-inv-desc').textContent = `선택 ${rows.length}건 · 정산금액 합계 ${smWon(sup)}원 (차감 반영). 발행완료로 등록하면 선택한 계약에 연결되고, 상품의 수수료 정산 상태도 발행완료로 바뀝니다.`;
+  document.getElementById('sm-inv-desc').textContent = `선택 상품 ${rows.length}건(계약 ${new Set(rows.map(r => r.cid)).size}건) · 정산금액 합계 ${smWon(sup)}원 (차감 반영). 발행완료로 등록하면 선택한 상품에 연결되고, 수수료 정산 상태도 발행완료로 바뀝니다.`;
   smErr('sm-i-err', ''); smInvCalc(); smOpenModal('sm-inv-modal');
 }
 function smInvCalc(){
@@ -1699,7 +1758,7 @@ async function smCreateInvoice(btn){
   if (!smNeedSchema()) return;
   const rows = smSelRows();
   const agency = elVal('sm-i-agency'), date = elVal('sm-i-date'), supply = smNum(elVal('sm-i-supply'));
-  if (!rows.length) { smErr('sm-i-err', '선택된 계약이 없습니다.'); return; }
+  if (!rows.length) { smErr('sm-i-err', '선택된 상품이 없습니다.'); return; }
   if (!agency) { smErr('sm-i-err', '업체를 선택해 주세요.'); return; }
   if (!date) { smErr('sm-i-err', '발행일을 입력해 주세요.'); return; }
   if (supply === null || isNaN(supply) || supply < 0) { smErr('sm-i-err', '공급가액을 숫자로 입력해 주세요.'); return; }
@@ -1711,14 +1770,9 @@ async function smCreateInvoice(btn){
     if (ir.error) { smErr('sm-i-err', '등록 실패: ' + ir.error.message); return; }
     invoiceId = ir.data && ir.data[0] && ir.data[0].invoice_id;
     const ids = rows.map(r => r.id);
-    const cr = await sb.from('contracts').update({ settle_invoice_id: invoiceId, agency_id: agency, settle_hold: false }).in('contract_id', ids);
-    if (cr.error) { await sb.from('settlement_invoices').delete().eq('invoice_id', invoiceId); smErr('sm-i-err', '계약 연결 실패(되돌림): ' + cr.error.message); return; }
-    const itemIds = rows.flatMap(r => r.itemIds);
-    let warn = '';
-    if (itemIds.length) {
-      const ur = await sb.from('contract_items').update({ pay_invoice_status: '발행완료', pay_invoice_date: date }).in('item_id', itemIds);
-      if (ur.error) warn = '상품 정산 상태 반영 실패: ' + ur.error.message;
-    }
+    const cr = await sb.from('contract_items').update({ settle_invoice_id: invoiceId, agency_id: agency, settle_hold: false, pay_invoice_status: '발행완료', pay_invoice_date: date }).in('item_id', ids);
+    if (cr.error) { await sb.from('settlement_invoices').delete().eq('invoice_id', invoiceId); smErr('sm-i-err', '상품 연결 실패(되돌림): ' + cr.error.message); return; }
+    const warn = '';
     SM.sel = {}; SM.single = null; smCloseModal('sm-inv-modal');
     showToast('✓ 세금계산서 묶음이 등록되었습니다 (' + rows.length + '건)' + (warn ? ' · ' + warn : ''));
     if (warn) alert(warn);
@@ -1745,7 +1799,7 @@ function smInvoicesHtml(){
   if (!inv.length) return '<div class="wide-table-empty">등록된 세금계산서가 없습니다. 목록에서 발행필요 건을 선택해 묶음으로 등록해 주세요.</div>';
   const cnt = {}; SM.rows.forEach(r => { if (r.inv) cnt[r.inv.invoice_id] = (cnt[r.inv.invoice_id] || 0) + 1; });
   const f = SM.agency && SM.agency !== '(미지정)' ? inv.filter(v => v.agency_id === SM.agency) : inv;
-  return `<div class="perf-scroll"><table class="perf-table"><thead><tr><th>발행일</th><th>업체</th><th>적요</th><th class="num">건수</th><th class="num">공급가액</th><th class="num">부가세</th><th class="num">합계</th><th>수금</th><th>예정일</th><th>수금일</th><th class="num">입금액</th><th></th></tr></thead><tbody>
+  return `<div class="perf-scroll"><table class="perf-table"><thead><tr><th>발행일</th><th>업체</th><th>적요</th><th class="num">상품</th><th class="num">공급가액</th><th class="num">부가세</th><th class="num">합계</th><th>수금</th><th>예정일</th><th>수금일</th><th class="num">입금액</th><th></th></tr></thead><tbody>
     ${f.map(v => `<tr><td>${escHtml(v.issue_date || '')}</td><td>${escHtml(smAgName(v.agency_id))}</td><td>${escHtml(v.memo || '')}</td><td class="num">${cnt[v.invoice_id] || 0}</td>
       <td class="num">${smWon(v.supply_amount)}</td><td class="num">${smWon(v.vat_amount)}</td><td class="num">${smWon(v.total_amount)}</td>
       <td><span class="sm-chip ${v.collect_status === '수금완료' ? 'st-done' : 'st-wait'}">${escHtml(v.collect_status)}</span></td>
@@ -1779,7 +1833,7 @@ async function smSaveCollect(btn){
   try {
     const r = await sb.from('settlement_invoices').update(body).eq('invoice_id', id);
     if (r.error) { smErr('sm-c-err', '저장 실패: ' + r.error.message); return; }
-    const itemIds = SM.rows.filter(x => x.inv && x.inv.invoice_id === id).flatMap(x => x.itemIds);
+    const itemIds = SM.rows.filter(x => x.inv && x.inv.invoice_id === id).map(x => x.id);
     let warn = '';
     if (itemIds.length) {
       const ur = await sb.from('contract_items').update(st === '수금완료' ? { pay_invoice_status: '수금완료', pay_collect_date: date } : { pay_invoice_status: '발행완료', pay_collect_date: null }).in('item_id', itemIds);
@@ -1794,11 +1848,9 @@ async function smCancelInvoice(id){
   if (!smNeedSchema()) return;
   const v = ((SM.data && SM.data.invoices) || []).find(x => x.invoice_id === id); if (!v) return;
   const rows = SM.rows.filter(x => x.inv && x.inv.invoice_id === id);
-  if (!confirm(`${smAgName(v.agency_id)} ${v.issue_date} 세금계산서 묶음(${rows.length}건)의 발행을 취소할까요?\n연결된 계약은 발행필요 상태로 돌아가고, 계산서 정보는 삭제됩니다.` + (v.collect_status === '수금완료' ? '\n※ 수금완료 처리된 건입니다.' : ''))) return;
-  const itemIds = rows.flatMap(x => x.itemIds);
-  const cr = await sb.from('contracts').update({ settle_invoice_id: null }).eq('settle_invoice_id', id);
+  if (!confirm(`${smAgName(v.agency_id)} ${v.issue_date} 세금계산서 묶음(상품 ${rows.length}건)의 발행을 취소할까요?\n연결된 상품은 발행필요 상태로 돌아가고, 계산서 정보는 삭제됩니다.` + (v.collect_status === '수금완료' ? '\n※ 수금완료 처리된 건입니다.' : ''))) return;
+  const cr = await sb.from('contract_items').update({ settle_invoice_id: null, pay_invoice_status: '발행예정', pay_invoice_date: null, pay_collect_date: null }).eq('settle_invoice_id', id);
   if (cr.error) { alert('취소 실패: ' + cr.error.message); return; }
-  if (itemIds.length) { const ur = await sb.from('contract_items').update({ pay_invoice_status: '발행예정', pay_invoice_date: null, pay_collect_date: null }).in('item_id', itemIds); if (ur.error) alert('상품 정산 상태 되돌리기 실패: ' + ur.error.message); }
   const dr = await sb.from('settlement_invoices').delete().eq('invoice_id', id);
   if (dr.error) { alert('계산서 삭제 실패: ' + dr.error.message); }
   showToast('✓ 발행이 취소되었습니다');
@@ -1809,27 +1861,30 @@ async function smCancelInvoice(id){
 async function smSetInstall(id, val){
   if (!smNeedSchema()) { smRender(); return; }
   const r = SM.rows.find(x => x.id === id); if (!r) return;
-  if (!r.itemIds.length) { alert('개통완료 상태의 상품이 없어 설치일을 저장할 수 없습니다.\n상품 상태를 먼저 개통완료로 바꿔 주세요.'); smRender(); return; }
-  const u = await sb.from('contract_items').update({ installed_at: val || null }).in('item_id', r.itemIds);
+  if (!r.itemIds.length) { alert('개통완료 상태의 상품이 아니라 설치일을 저장할 수 없습니다.\n상품 상태를 먼저 개통완료로 바꿔 주세요.'); smRender(); return; }
+  // 같은 계약의 개통완료 상품 중 설치일이 비어 있는 상품에도 같은 날짜를 넣어 줍니다(이미 날짜가 있는 상품은 건드리지 않음)
+  const ids = [id].concat(SM.rows.filter(x => x.cid === r.cid && x.id !== id && x.itemIds.length && !x.instDate).map(x => x.id));
+  const u = await sb.from('contract_items').update({ installed_at: val || null }).in('item_id', ids);
   if (u.error) { alert('설치일 저장 실패: ' + u.error.message); await loadSettlement(); return; }
-  r.instDate = val || ''; showToast('✓ 설치일이 저장되었습니다');
+  ids.forEach(i => { const x = SM.rows.find(y => y.id === i); if (x) x.instDate = val || ''; });
+  showToast('✓ 설치일이 저장되었습니다' + (ids.length > 1 ? ` (같은 계약 상품 ${ids.length}개)` : ''));
+  if (ids.length > 1) smRender();
 }
 async function smChangeState(id, val){
   if (!smNeedSchema()) { smRender(); return; }
   const r = SM.rows.find(x => x.id === id); if (!r || val === r.state) return;
   if (val === '발행완료') { smOpenInvoiceModal(id); smRender(); return; }
-  if (val === '발행필요' && !r.allOpen) { alert('설치완료(개통완료) 전의 건은 발행필요로 올릴 수 없습니다.\n상품 상태를 개통완료로 바꾸면 자동으로 발행필요가 됩니다.'); smRender(); return; }
+  if (val === '발행필요' && !r.allOpen) { alert('설치완료(개통완료) 전의 상품은 발행필요로 올릴 수 없습니다.\n상품 상태를 개통완료로 바꾸면 자동으로 발행필요가 됩니다.'); smRender(); return; }
   if (r.state === '발행완료') {
     const inv = r.inv, same = SM.rows.filter(x => x.inv && inv && x.inv.invoice_id === inv.invoice_id);
-    if (!confirm(`발행완료를 ${val}(으)로 되돌릴까요?\n이 계약만 세금계산서 묶음에서 빠지고, ` + (same.length > 1 ? `묶음의 나머지 ${same.length - 1}건은 그대로 유지됩니다(공급가액은 남은 건 기준으로 다시 계산).` : '다른 계약이 없는 묶음이라 계산서 정보가 삭제됩니다.'))) { smRender(); return; }
-    const cr = await sb.from('contracts').update({ settle_invoice_id: null, settle_hold: val === '발행예정' }).eq('contract_id', id);
+    if (!confirm(`발행완료를 ${val}(으)로 되돌릴까요?\n이 상품만 세금계산서 묶음에서 빠지고, ` + (same.length > 1 ? `묶음의 나머지 ${same.length - 1}건은 그대로 유지됩니다(공급가액은 남은 상품 기준으로 다시 계산).` : '다른 상품이 없는 묶음이라 계산서 정보가 삭제됩니다.'))) { smRender(); return; }
+    const cr = await sb.from('contract_items').update({ settle_invoice_id: null, settle_hold: val === '발행예정', pay_invoice_status: '발행예정', pay_invoice_date: null, pay_collect_date: null }).eq('item_id', id);
     if (cr.error) { alert('저장 실패: ' + cr.error.message); await loadSettlement(); return; }
-    if (r.itemIds.length) { const ur = await sb.from('contract_items').update({ pay_invoice_status: '발행예정', pay_invoice_date: null, pay_collect_date: null }).in('item_id', r.itemIds); if (ur.error) alert('상품 정산 상태 되돌리기 실패: ' + ur.error.message); }
     const rest = same.filter(x => x.id !== id);
     if (!rest.length) await sb.from('settlement_invoices').delete().eq('invoice_id', inv.invoice_id);
     else { const sup = rest.reduce((a, x) => a + x.settle, 0), vat = Math.round(sup * SM_VAT_RATE); await sb.from('settlement_invoices').update({ supply_amount: sup, vat_amount: vat, total_amount: sup + vat, updated_at: new Date().toISOString() }).eq('invoice_id', inv.invoice_id); }
   } else {
-    const cr = await sb.from('contracts').update({ settle_hold: val === '발행예정' }).eq('contract_id', id);
+    const cr = await sb.from('contract_items').update({ settle_hold: val === '발행예정' }).eq('item_id', id);
     if (cr.error) { alert('저장 실패: ' + cr.error.message); await loadSettlement(); return; }
   }
   showToast('✓ ' + val + '(으)로 변경되었습니다'); await loadSettlement();
@@ -2013,12 +2068,12 @@ function v2AcqCrossCheck(d){
   return diffs.join(' · ');
 }
 
-// V-3: 정산 요약 (정산 탭과 같은 정의 = 뷰 v_metric_settlement_contracts, 접수일 기준, 취소 제외). 기간은 대시보드 기간 선택과 같이 씁니다.
+// V-3: 정산 요약 (정산 탭과 같은 정의 = 상품 단위 뷰 v_metric_settlement_items, 접수일 기준, 취소 제외). 기간은 대시보드 기간 선택과 같이 씁니다.
 var V3_SETTLE_STATES = ['발행예정', '발행필요', '발행완료', '수금완료'];
 async function v2FetchSettleDash(from, to){
   const b = (typeof s8Bounds === 'function') ? s8Bounds(from, to) : { lo: null, hi: null };
   if (b.error) return { error: b.error };
-  const r = await s2FetchAll((a, z) => { let q = sb.from('v_metric_settlement_contracts').select('contract_id,received_date,fee_total,gift_total,expected_amt,profit,invoice_state,is_cancelled'); if (from) q = q.gte('received_date', from); if (to) q = q.lte('received_date', to); return q.order('contract_id', { ascending: true }).range(a, z); });
+  const r = await s2FetchAll((a, z) => { let q = sb.from('v_metric_settlement_items').select('item_id,received_date,fee_total,gift_total,expected_amt,profit,invoice_state,is_cancelled'); if (from) q = q.gte('received_date', from); if (to) q = q.lte('received_date', to); return q.order('item_id', { ascending: true }).range(a, z); });
   if (r.error) return { error: r.error.message || String(r.error) };
   const o = { cnt: {}, amt: {}, fee: 0, gift: 0, profit: 0, unpaid: 0, total: 0 };
   V3_SETTLE_STATES.forEach(k => { o.cnt[k] = 0; o.amt[k] = 0; });
@@ -2054,7 +2109,7 @@ function v2SettleHtml(d, from, to){
       ${chip('발행완료', '미수금 ' + won(d.unpaid) + '원')}
       ${chip('수금완료', '입금 ' + won(d.amt['수금완료']) + '원')}
     </div>
-    <div class="fd-note">수수료 ${won(d.fee)}원 · 사은품 ${won(d.gift)}원 · 영업이익 ${won(d.profit)}원 · 이익률 ${margin} (정산 대상 ${d.total.toLocaleString()}건, 취소 제외)</div>
+    <div class="fd-note">수수료 ${won(d.fee)}원 · 사은품 ${won(d.gift)}원 · 영업이익 ${won(d.profit)}원 · 이익률 ${margin} (정산 대상 상품 ${d.total.toLocaleString()}건, 취소 제외)</div>
     ${diff}`;
 }
 
@@ -2070,9 +2125,16 @@ async function v2LoadAcqList(){
   box.innerHTML = head + '<div class="wide-table-empty">불러오는 중...</div>';
   try {
     const b = s8Bounds(from, to); if (b.error) { box.innerHTML = head + `<div class="wide-table-empty">${escHtml(b.error)}</div>`; return; }
-    const cr = await s2FetchAll((a, z) => { let q = sb.from('v_metric_settlement_contracts').select('contract_id,customer_id,agency,received_date,fee_total,gift_total,profit,margin_pct,invoice_state,is_cancelled'); if (from) q = q.gte('received_date', from); if (to) q = q.lte('received_date', to); return q.order('contract_id', { ascending: true }).range(a, z); });
+    const cr = await s2FetchAll((a, z) => { let q = sb.from('v_metric_settlement_items').select('item_id,contract_id,customer_id,agency,received_date,fee_total,gift_total,profit,invoice_state,is_cancelled'); if (from) q = q.gte('received_date', from); if (to) q = q.lte('received_date', to); return q.order('item_id', { ascending: true }).range(a, z); });
     if (cr.error) { box.innerHTML = head + `<div class="wide-table-empty">조회 실패: ${escHtml(cr.error.message || String(cr.error))}</div>`; return; }
-    const rows = cr.rows, ids = rows.map(r => r.contract_id);
+    // 상품 단위 뷰를 계약별로 묶어서 보여 줍니다(취소된 상품의 금액은 제외, 상품이 모두 취소된 계약만 취소로 표시)
+    const grp = {};
+    cr.rows.forEach(x => {
+      const g = grp[x.contract_id] || (grp[x.contract_id] = { contract_id: x.contract_id, customer_id: x.customer_id, agency: '', received_date: x.received_date || '', fee_total: 0, gift_total: 0, profit: 0, live: 0 });
+      if (x.received_date && (!g.received_date || x.received_date < g.received_date)) g.received_date = x.received_date;
+      if (!x.is_cancelled) { g.live++; g.fee_total += Number(x.fee_total) || 0; g.gift_total += Number(x.gift_total) || 0; g.profit += Number(x.profit) || 0; if (!g.agency && x.agency) g.agency = x.agency; }
+    });
+    const rows = Object.values(grp).map(g => Object.assign(g, { is_cancelled: g.live === 0 })).sort((a, b) => a.contract_id - b.contract_id), ids = rows.map(r => r.contract_id);
     const items = {}, states = {}, custs = {};
     for (const ch of s2Chunk(ids, S2_ID_CHUNK)) {
       const [ir, sr] = await Promise.all([
