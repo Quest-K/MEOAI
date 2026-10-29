@@ -22,8 +22,63 @@ function getSettopByTier(carrier, tier) {
   return list.find(s => s.fee >= 8800) || list[list.length - 1];
 }
 
+// ---- SKY(스카이라이프) 총 요금표 (2026-10-29 반영) ----
+// 기준: 사용자 전달 요금표(기가지니A). 3년 약정 금액·결합할인은 알 수 없어 반영하지 않습니다(0원).
+// 총 요금 = 인터넷 + TV + 지니A셋탑(3,300) [+ AP(와이파이) 선택 시]. TV: low=베이직 / basic=플러스 / premium=초이스
+//  only  : 인터넷 단독 요금(AP 제외)      bundle : TV 결합 시 인터넷 요금      ap : AP(와이파이) 포함 시 추가 요금
+const SKY_PRICE_TABLE = {
+  internet: {
+    100:  { only: 23100, bundle: 19800, ap: 1100 },
+    200:  { only: 25300, bundle: 22000, ap: 0 },
+    500:  { only: 30800, bundle: 27500, ap: 0 },
+    1000: { only: 36300, bundle: 33000, ap: 0 }
+  },
+  tv: {
+    low:     { name: 'IPTV 베이직', fee: 9900 },
+    basic:   { name: 'IPTV 플러스', fee: 11000 },
+    premium: { name: 'IPTV 초이스', fee: 19800 }
+  },
+  settop: { name: '지니A셋탑', fee: 3300 }
+};
+
+// SKY 는 위 표의 "총 요금" 기준으로 계산합니다. 표에 없는 속도면 null 을 돌려 기존 DB 계산을 씁니다.
+function computeSkyPrice(st){
+  const row = SKY_PRICE_TABLE.internet[Number(st.speed)];
+  if (!row) return null;
+  const hasTv = st.tv !== 'none';
+  const internetFee = hasTv ? row.bundle : row.only;
+  const routerFee = st.router === 'Y' ? row.ap : 0;
+  let total = internetFee + routerFee;
+
+  let tvInfo = null, settopInfo = null, tvFee = 0, settopFee = 0;
+  if (hasTv) {
+    const t = SKY_PRICE_TABLE.tv[st.tv] || SKY_PRICE_TABLE.tv.basic;
+    const dbTv = (typeof DATA !== 'undefined' && DATA && DATA.sky && DATA.sky.tv && DATA.sky.tv[st.tv]) || {};
+    tvInfo = Object.assign({ channels: 200 }, dbTv, { name: t.name, fee: t.fee });
+    settopInfo = { name: SKY_PRICE_TABLE.settop.name, fee: SKY_PRICE_TABLE.settop.fee };
+    tvFee = t.fee; settopFee = settopInfo.fee;
+    total += tvFee + settopFee;
+  }
+
+  // 서브 TV: 기존 규칙(채널 요금 50% + 셋탑 전액) 유지 — SKY 서브 TV 규칙은 미확정
+  let extraTvFee = 0;
+  const extraTvDetails = [];
+  if (hasTv && Array.isArray(st.extraTVs)) {
+    st.extraTVs.forEach(ex => {
+      const t = SKY_PRICE_TABLE.tv[ex.tv] || SKY_PRICE_TABLE.tv.basic;
+      const half = Math.round(t.fee / 2);
+      extraTvFee += half + SKY_PRICE_TABLE.settop.fee;
+      extraTvDetails.push({ tvName: t.name, tvChannels: 200, tvHalfFee: half, settopName: SKY_PRICE_TABLE.settop.name, settopFee: SKY_PRICE_TABLE.settop.fee });
+    });
+    total += extraTvFee;
+  }
+
+  return { available:true, totalOnly:true, total, internetFee, routerFee, tvFee, settopFee, bundleDiscount:0, tvBundleDiscount:0, tvInfo, settopInfo, extraTvFee, extraTvDetails };
+}
+
 function computePrice(carrier, overrideState){
   const st = overrideState || state;
+  if (carrier === 'sky') { const skyRes = computeSkyPrice(st); if (skyRes) return skyRes; }
   const speedData = DATA[carrier]?.internet[st.speed];
   if (!speedData) return { available:false };
 
