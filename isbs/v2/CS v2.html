@@ -1199,7 +1199,7 @@ PASS 앱 → 전체 → 명의도용방지 → 해당 통신사 해제
 <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
 <script src="config.js?v=20261022a"></script>
-<script src="Calculator.js?v=20261029b"></script>
+<script src="Calculator.js?v=20261029c"></script>
 <script src="StatusRules.js?v=20261016a"></script>
 <script src="Supabaseservice.js?v=20261028b"></script>
 <script>
@@ -2469,7 +2469,7 @@ let DATA = null;
 // 헬로비전(hello) 보강: 경품고시 통신사 키 변환(hello→hellovision)과 수수료 조회 실패 시 0원 처리. 외부 파일 함수를 감싸기만 합니다.
 (function helloWrappers(){
   try { if (typeof giftCarrierKey === 'function') { const o = giftCarrierKey; giftCarrierKey = function(k){ return k === 'hello' ? 'hellovision' : o.apply(this, arguments); }; } } catch (e) {}
-  try { if (typeof lookupCommission === 'function') { const o = lookupCommission; lookupCommission = function(c){ try { return o.apply(this, arguments); } catch (e) { if (c === 'hello') return { totalComm: 0, agency: '', agencies: [] }; throw e; } }; } } catch (e) {}
+  try { if (typeof lookupCommission === 'function') { const o = lookupCommission; lookupCommission = function(c, speedNum, tvTier, variant){ if (c === 'hello') { const hc = computeHelloCommission(speedNum, tvTier, variant); return { totalComm: hc.totalComm, agency: '', agencies: [], internet: hc.internetComm, tv: hc.tvComm, bundle: 0, settop: 0, etc: 0 }; } try { return o.apply(this, arguments); } catch (e) { throw e; } }; } } catch (e) {}
 })();
 let COMMISSION_DATA = {};
 let RAW_COMMISSION_DATA = [];
@@ -2898,10 +2898,17 @@ function renderRecoCards(){
     let commHtml = '';
     let properGiftRowHtml = '';
     if (isLoggedIn && c === 'hello') {
+      const hc = computeHelloCommission(speedNum, tvTier, HELLO_VARIANT);
+      const hMargin = hc.totalComm - userGiftVal;
       commHtml = `
         <div class="reco-block">
-          <div class="info-row main-label"><span>대리점 판매 수수료</span><span>-</span></div>
-          <div class="reco-detail-sm reco-notice-hint">헬로비전 수수료는 아직 입력되지 않았습니다(공란).</div>
+          <div class="info-row main-label"><span>대리점 판매 수수료<span class="reco-detail-sm">(헬로 ${HELLO_VARIANT_LABEL[HELLO_VARIANT]})</span></span><span>${hc.available ? hc.totalComm.toLocaleString() : '-'}</span></div>
+          ${hc.available ? `
+          <div class="info-row sub-item-row"><span>인터넷 수수료</span><span>${hc.internetComm.toLocaleString()}</span></div>
+          ${tvTier !== 'none' ? `<div class="info-row sub-item-row"><span>TV 수수료</span><span>${hc.tvComm.toLocaleString()}</span></div>` : ''}
+          <div class="reco-detail-sm reco-notice-hint">2026-10-22 표 기준 · 서브TV 인센·결합 수수료는 미반영</div>
+          <div class="total-row reco-margin-row"><span>최종마진</span><span class="amount" style="color:${hMargin >= 0 ? '#1E7E34' : '#D9534F'};">${hMargin.toLocaleString()}</span></div>` : `
+          <div class="reco-detail-sm reco-notice-hint">이 조합의 수수료가 표에 없습니다(공란).</div>`}
         </div>
       `;
     } else if (isLoggedIn) {
