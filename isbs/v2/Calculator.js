@@ -76,9 +76,114 @@ function computeSkyPrice(st){
   return { available:true, totalOnly:true, total, internetFee, routerFee, tvFee, settopFee, bundleDiscount:0, tvBundleDiscount:0, tvInfo, settopInfo, extraTvFee, extraTvDetails };
 }
 
+// ---- LG헬로비전(hello) 요금표 (2026-10-29 반영) ----
+// 기준: 사용자 전달 "LG헬로비전 기본 요금" 표. 표에 없는 값(알뜰형 HD 요금, 공유기·결합할인, 서브TV 규칙, 수수료 등)은 비워 둡니다.
+// 합계 = 인터넷(TV 결합 시 bundle 요금) + TV + 셋탑.  유선(wire) / IPTV(ip) 두 가지.
+// TV 요금제 버튼 순서: low = 알뜰 / basic = 이코노미 / premium = 뉴베이직 (IP: basic = 프로라이트 / premium = 프로맥스)
+let HELLO_VARIANT = 'wire';
+const HELLO_VARIANT_LABEL = { wire: '유선', ip: 'IP' };
+const HELLO_PRICE_TABLE = {
+  names: { 100: '광랜라이트', 160: '광랜', 500: '기가라이트', 1000: '플래티넘기가' },
+  internet: {
+    100:  { only: 20790, bundle: 16330 },
+    160:  { only: 27610, bundle: 22160 },
+    500:  { only: 31460, bundle: 25190 },
+    1000: { only: 33000, bundle: 26400 }
+  },
+  wire: {
+    tv: {
+      low:     { name: '알뜰형 HD',    fee: null },     // 요금 자료 없음 → 공란
+      basic:   { name: '이코노미 UHD', fee: 8800 },
+      premium: { name: '뉴베이직 UHD', fee: 11000 }
+    },
+    settop: { name: 'UHD셋탑', fee: 6600 }
+  },
+  ip: {
+    tv: {
+      low:     { name: 'IPTV 해당 없음', fee: null },
+      basic:   { name: '프로라이트 IPTV', fee: 13200 },
+      premium: { name: '프로맥스 IPTV', fee: { 160: 15400, 500: 14300, 1000: 14300 } }
+    },
+    settop: { name: 'IPTV셋탑', fee: 4400 },
+    unavailableSpeeds: [100]      // 광랜라이트(100MB) IPTV 설치불가
+  }
+};
+
+function helloTvFee(variant, tier, speed){
+  const t = HELLO_PRICE_TABLE[variant] && HELLO_PRICE_TABLE[variant].tv[tier];
+  if (!t) return null;
+  const f = (t.fee !== null && typeof t.fee === 'object') ? t.fee[speed] : t.fee;
+  return (f === undefined || f === null) ? null : f;
+}
+
+function computeHelloPrice(st){
+  const speed = Number(st.speed);
+  const row = HELLO_PRICE_TABLE.internet[speed];
+  if (!row) return { available:false, reason:'헬로비전은 100M·160M·500M·1G 요금만 있습니다.' };
+  const variant = st.helloVariant || HELLO_VARIANT;
+  const set = HELLO_PRICE_TABLE[variant];
+  const hasTv = st.tv !== 'none';
+
+  const internetFee = hasTv ? row.bundle : row.only;
+  let total = internetFee;
+  let tvInfo = null, settopInfo = null, tvFee = 0, settopFee = 0;
+
+  if (hasTv) {
+    if (set.unavailableSpeeds && set.unavailableSpeeds.includes(speed)) {
+      return { available:false, reason:'광랜라이트(100MB)는 IPTV 설치불가입니다.' };
+    }
+    const t = set.tv[st.tv];
+    const fee = helloTvFee(variant, st.tv, speed);
+    if (!t || fee === null) {
+      return { available:false, reason:`${t ? t.name : 'TV'} 요금은 아직 입력되지 않았습니다(공란).` };
+    }
+    tvInfo = { name: t.name, fee, channels: 0 };      // channels 0 = 채널 수 미입력(화면에서 생략)
+    settopInfo = { name: set.settop.name, fee: set.settop.fee };
+    tvFee = fee; settopFee = set.settop.fee;
+    total += tvFee + settopFee;
+  }
+
+  // 서브 TV: 기존 규칙(채널 요금 50% + 셋탑 전액) — 헬로비전 서브 TV 규칙은 미확정
+  let extraTvFee = 0;
+  const extraTvDetails = [];
+  if (hasTv && Array.isArray(st.extraTVs)) {
+    st.extraTVs.forEach(ex => {
+      const t = set.tv[ex.tv] || set.tv.basic;
+      const fee = helloTvFee(variant, set.tv[ex.tv] ? ex.tv : 'basic', speed) || 0;
+      const half = Math.round(fee / 2);
+      extraTvFee += half + set.settop.fee;
+      extraTvDetails.push({ tvName: t.name, tvChannels: 0, tvHalfFee: half, settopName: set.settop.name, settopFee: set.settop.fee });
+    });
+    total += extraTvFee;
+  }
+
+  return { available:true, total, internetFee, routerFee:0, tvFee, settopFee, bundleDiscount:0, tvBundleDiscount:0, tvInfo, settopInfo, extraTvFee, extraTvDetails };
+}
+
+// 헬로비전을 통신사 목록·라벨에 추가 (config.js 는 수정하지 않고 여기서 보강)
+(function helloBootstrap(){
+  try {
+    if (typeof CARRIERS !== 'undefined' && Array.isArray(CARRIERS) && !CARRIERS.includes('hello')) {
+      const i = CARRIERS.indexOf('lg');
+      CARRIERS.splice(i >= 0 ? i + 1 : CARRIERS.length, 0, 'hello');
+    }
+    if (typeof CARRIER_LABEL !== 'undefined' && CARRIER_LABEL.hello === undefined) CARRIER_LABEL.hello = 'LG헬로비전';
+    if (typeof BRAND_LABEL !== 'undefined' && BRAND_LABEL.hello === undefined) BRAND_LABEL.hello = 'LG헬로비전';
+    if (typeof MOBILE_GROUP_MAP !== 'undefined' && MOBILE_GROUP_MAP.hello === undefined) MOBILE_GROUP_MAP.hello = 'LG헬로비전';
+    if (typeof SPEED_LABEL !== 'undefined' && SPEED_LABEL['160'] === undefined) SPEED_LABEL['160'] = '160M';
+    if (typeof ISP_HOME_CARRIER_MAP !== 'undefined') {
+      Object.keys(ISP_HOME_CARRIER_MAP).forEach(k => {
+        const a = ISP_HOME_CARRIER_MAP[k];
+        if (/헬로/.test(k) && Array.isArray(a) && !a.includes('hello')) a.push('hello');
+      });
+    }
+  } catch (e) { console.error('[hello] 목록 보강 실패', e); }
+})();
+
 function computePrice(carrier, overrideState){
   const st = overrideState || state;
   if (carrier === 'sky') { const skyRes = computeSkyPrice(st); if (skyRes) return skyRes; }
+  if (carrier === 'hello') return computeHelloPrice(st);
   const speedData = DATA[carrier]?.internet[st.speed];
   if (!speedData) return { available:false };
 
