@@ -160,6 +160,34 @@ function computeHelloPrice(st){
   return { available:true, total, internetFee, routerFee:0, tvFee, settopFee, bundleDiscount:0, tvBundleDiscount:0, tvInfo, settopInfo, extraTvFee, extraTvDetails };
 }
 
+// ---- LG헬로비전 수수료표 (2026-10-22 9:00 표 기준, 합계 금액) ----
+// only : 인터넷 단독(전화번들 포함) / wire·ip : TV 결합 합계 (TV 요금제별). 표에 없는 값(100M IPTV 등)은 null → 공란.
+// 현금·상품권 구분, 추가TV 인센, 결합 수수료는 아직 반영하지 않습니다.
+const HELLO_FEE_TABLE = {
+  only: { 100: 410000, 160: 470000, 500: 570000, 1000: 570000 },
+  wire: {
+    low:     { 100: 430000, 160: 490000, 500: 590000, 1000: 590000 },   // 알뜰형 HD
+    basic:   { 100: 650000, 160: 770000, 500: 870000, 1000: 870000 },   // 이코노미 UHD
+    premium: { 100: 700000, 160: 820000, 500: 920000, 1000: 920000 }    // 뉴베이직 UHD
+  },
+  ip: {
+    basic:   { 160: 820000, 500: 920000, 1000: 920000 },                // 프로라이트 IPTV
+    premium: { 160: 820000, 500: 920000, 1000: 920000 }                 // 프로맥스 IPTV
+  }
+};
+
+// 반환: { available, totalComm, internetComm(단독분), tvComm(합계-단독) }
+function computeHelloCommission(speed, tvTier, variant){
+  const sp = Number(speed);
+  const only = HELLO_FEE_TABLE.only[sp];
+  if (only === undefined) return { available:false, totalComm:0, internetComm:0, tvComm:0 };
+  if (!tvTier || tvTier === 'none') return { available:true, totalComm:only, internetComm:only, tvComm:0 };
+  const grp = HELLO_FEE_TABLE[variant === 'ip' ? 'ip' : 'wire'];
+  const total = grp[tvTier] ? grp[tvTier][sp] : undefined;
+  if (total === undefined || total === null) return { available:false, totalComm:0, internetComm:only, tvComm:0 };
+  return { available:true, totalComm:total, internetComm:only, tvComm: total - only };
+}
+
 // 헬로비전을 통신사 목록·라벨에 추가 (config.js 는 수정하지 않고 여기서 보강)
 (function helloBootstrap(){
   try {
