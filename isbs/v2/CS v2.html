@@ -71,6 +71,9 @@ textarea.cust-note-log:hover, #cust-notes:hover, #cf-notes:hover{border-color:#c
 /* 좌우 바꿈 : 설정 패널(저장·단계·입력·상담요약)을 왼쪽, 본문을 오른쪽 */
 #view-cs .cs-layout{grid-template-columns:340px minmax(0,1fr);}
 #view-cs .cs-summary-panel{order:-1;}
+/* 상담요약(제안상품)이 스크롤로 잘리지 않고 아래로 길게 펼쳐지도록 */
+#view-cs .cs-summary-panel{position:static !important;max-height:none !important;height:auto !important;overflow:visible !important;align-self:start;}
+#view-cs .cs-summary-panel .cs-card-scroll,#view-cs .cs-summary-panel .js-section,#view-cs .cs-summary-panel #cs-live-products-info,#view-cs .cs-summary-panel #cs-live-customer-info{max-height:none !important;height:auto !important;overflow:visible !important;}
 @media (max-width:1180px){
   #view-cs .cs-layout{grid-template-columns:1fr;}
 }
@@ -6574,7 +6577,8 @@ function showConsultOverview(on, loadingText){
   if (!card) return;
   card.style.display = on ? '' : 'none';
   const hist = document.getElementById('cs-cust-history'); if (hist) hist.style.display = on ? '' : 'none';
-  const cts = document.getElementById('cs-cust-contacts'); if (cts) cts.style.display = on ? '' : 'none';
+  const cts = document.getElementById('cs-cust-contacts'); if (cts) cts.style.display = '';   // 신규 고객도 컨택 기록 가능
+  if (!on) { try { renderContactSection(null); } catch (e) {} }
   const ctr = document.getElementById('cs-cust-contracts'); if (ctr) ctr.style.display = on ? '' : 'none';
   const fam = document.getElementById('cs-cust-family'); if (fam) fam.style.display = on ? '' : 'none';
   const mt = document.getElementById('cs-cust-meta'); if (mt) mt.style.display = on ? '' : 'none';   // U-8
@@ -7129,8 +7133,10 @@ async function renderContactSection(customerId){
     box.innerHTML = `<div class="wide-table-empty">customer_contacts 테이블이 없어 컨택 기록을 사용할 수 없습니다. 안내드린 SQL(customer_contacts.sql)을 Supabase에서 실행해주세요.</div>`;
     return;
   }
-  const { data, error } = await sb.from('customer_contacts').select('*').eq('customer_id', customerId).order('attempt_no', { ascending: true });
-  if (detailCustomerId !== customerId) return;   // 조회하는 동안 다른 고객을 열었으면 중단
+  const { data, error } = customerId
+    ? await sb.from('customer_contacts').select('*').eq('customer_id', customerId).order('attempt_no', { ascending: true })
+    : { data: [], error: null };   // 신규 고객: 아직 저장 전이라 빈 카드
+  if ((detailCustomerId || null) !== (customerId || null)) return;   // 조회하는 동안 다른 고객을 열었으면 중단
   if (error) { box.innerHTML = `<div class="wide-table-empty">조회 실패: ${escHtml(error.message)}</div>`; return; }
   const rows = data || [];
   const recorded = rows.filter(r => r.contacted_at);
@@ -7263,6 +7269,14 @@ async function saveContactAttempt(customerId, n, btn){
 
   setBtnLoading(btn, '저장 중...');
   try {
+    if (!customerId) {   // 신규 고객: 먼저 상담(고객 정보)을 저장해 고객ID를 만든 뒤 컨택을 기록합니다
+      clearBtnLoading(btn);
+      await saveConsultation(null);
+      customerId = currentCustomerId;
+      if (!customerId) return;
+      detailCustomerId = customerId;
+      setBtnLoading(btn, '저장 중...');
+    }
     const { data: exist, error: se } = await sb.from('customer_contacts').select('*').eq('customer_id', customerId).eq('attempt_no', n).limit(1);
     if (se) { alert('컨택 기록 조회 실패: ' + se.message); return; }
     const prev = exist && exist[0];
@@ -7341,6 +7355,7 @@ async function autoStartContactCycle(customerId, opts){
 }
 
 async function resetContactHistory(customerId){
+  if (!customerId) { renderContactSection(null); return; }
   await probeCustomerSchema();
   if (!CUSTOMER_SCHEMA.hasContactsTable) { alert('customer_contacts 테이블이 없습니다.'); return; }
   if (!confirm('이 고객의 컨택 기록(1~3차)을 모두 삭제하고 처음부터 다시 시작할까요?\n(상담 메모에 남은 기록은 그대로 유지됩니다)')) return;
