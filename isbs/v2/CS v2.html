@@ -1312,6 +1312,26 @@ function installFeeParts(f){
   const w = f.weekday.toLocaleString() + '원';
   return f.weekday === f.offday ? [['평일·주말·야간', w]] : [['평일', w], ['주말,야간', f.offday.toLocaleString() + '원']];
 }
+
+function installFeeOf(p){
+  try { return (p && p.installFee) || lookupInstallFee(p); } catch (e) { return null; }
+}
+// 상담요약 줄: ['설치비 (인터넷+TV1대)', '평일 56,200원', '주말,야간 71,250원'] — 값을 모르면 []
+function installFeeSummaryLines(p){
+  const f = installFeeOf(p); if (!f) return [];
+  return ['설치비' + (f.label ? ' (' + f.label + ')' : '')].concat(installFeeParts(f).map(x => x[0] + ' ' + x[1]));
+}
+// 제안상품/최종상품 카드 행 (mode: 'info' | 'fc')
+function installFeeRowHtml(item, mode){
+  const f = installFeeOf(item); if (!f) return '';
+  const parts = installFeeParts(f);
+  const title = '설치비' + (f.label ? ' (' + f.label + ')' : '');
+  if (mode === 'fc' && typeof fcRow === 'function') {
+    return fcRow(title, '', 'fc-strong') + parts.map(x => fcRow(x[0], x[1], 'fc-sub')).join('');
+  }
+  return `<div class="info-row"><span>${title}</span><span></span></div>` +
+    parts.map(x => `<div class="info-row sub-item-row"><span>${x[0]}</span><span>${x[1]}</span></div>`).join('');
+}
 </script>
 <script>
 /* 추천상품 상단 [KT·LG·SK 가용조회]: 통신사별 설치 가능 주소 조회 페이지를 새 탭으로 엽니다 (주소는 config.js CARRIER_COVERAGE_URLS).
@@ -8371,6 +8391,7 @@ function fillConsultFormFromCustomer(c){
   currentCustomerId = c.customer_id;
   consultLoadedContact = normalizeContact(c.contact);
   consultDirty = false;
+  try { reflectedProducts = []; finalProducts = []; addedUsimLines = []; } catch (e) {}   // 이전 고객 상품이 남아 중복 판정/렌더 오류를 내지 않게 비움
   resetConsultCustomerExtras();          // 이전 고객의 가족회선·본인회선·기존 인터넷·추천 설정이 남지 않게 먼저 비움
   syncTopSearchBox(c.contact);
   setVal('cust-name', c.name || NAME_PREFIX);
