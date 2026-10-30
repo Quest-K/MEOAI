@@ -2839,6 +2839,18 @@ function recoCardSelect(c, key, st, options, labelFn){
   return `<select class="reco-card-dd" onchange="setRecoCardValue('${c}','${key}',this.value)">${options.map(o => `<option value="${o.value}"${String(st[key]) === String(o.value) ? ' selected' : ''}>${escHtmlSafe(labelFn ? labelFn(o) : o.label)}</option>`).join('')}</select>`;
 }
 
+// 셋탑박스 선택 : KT·LG·SKB·SKT 카드는 해당 통신사의 전체 모델(settop_boxes)을 요금순으로 보여 주고,
+// SKY·헬로비전(고정 셋탑)이나 모델이 1개뿐이면 기존 3단계(기본형·고급형/AI·사운드바) 선택을 그대로 씁니다. (2026-10-30)
+function recoSettopSelect(c, st, price){
+  const list = ((DATA[c] && DATA[c].settopList) || []).slice().sort((a, b) => (Number(a.fee) - Number(b.fee)) || String(a.name).localeCompare(String(b.name), 'ko'));
+  if (c === 'sky' || c === 'hello' || list.length < 2) {
+    return recoCardSelect(c, 'settopTier', st, recoDomOptions('reco-seg-settop'), o => { try { const r = computePrice(c, Object.assign({}, st, { settopTier: o.value })); return r && r.available && r.settopInfo ? r.settopInfo.name : o.label; } catch (e) { return o.label; } });
+  }
+  const cur = price && price.settopInfo ? price.settopInfo.name : '';
+  return `<select class="reco-card-dd" onchange="setRecoCardValue('${c}','settopTier',this.value)">${list.map(s =>
+    `<option value="${escAttr('model:' + s.name)}"${s.name === cur ? ' selected' : ''}>${escHtmlSafe(s.name)} (${Number(s.fee).toLocaleString()}원)</option>`).join('')}</select>`;
+}
+
 // ===== 경품고시 3-1·3-2 (2026-10-23): 가이드를 읽어 두고, 추천 카드에 "배분 미리보기" 한 줄만 보여 줍니다 (저장·합계 로직은 그대로) =====
 let GIFT_GUIDE_ROWS = null;        // v_gift_guideline 행들 (로그인 후 1회 읽음)
 let giftGuideState = 'idle';       // idle → loading → ready | failed
@@ -3034,7 +3046,7 @@ function renderRecoCards(){
         <div class="reco-block">
           <div class="info-row main-label reco-subtotal-row"><span>TV</span><span>${price.totalOnly ? '' : tvSubtotal.toLocaleString()}</span></div>
           <div class="info-row sub-item-row reco-sub-lv2"><span>${recoCardSelect(c, 'tv', st, recoDomOptions('reco-seg-tv'), o => { if (c === 'hello') return helloTvOptLabel(st, o.value) || o.label; try { const r = computePrice(c, Object.assign({}, st, { tv: o.value })); return r && r.available && r.tvInfo ? `${r.tvInfo.name}${tvChSfx(r.tvInfo.channels === 0 ? 0 : (r.tvInfo.channels || 200))}` : o.label; } catch (e) { return o.label; } })}</span><span>${price.totalOnly ? '' : (price.tvFee || 0).toLocaleString()}</span></div>
-          <div class="info-row sub-item-row reco-sub-lv2"><span>셋탑박스 ${recoCardSelect(c, 'settopTier', st, recoDomOptions('reco-seg-settop'), o => { try { const r = computePrice(c, Object.assign({}, st, { settopTier: o.value })); return r && r.available && r.settopInfo ? r.settopInfo.name : o.label; } catch (e) { return o.label; } })}</span><span>${price.totalOnly ? '' : (price.settopFee || 0).toLocaleString()}</span></div>
+          <div class="info-row sub-item-row reco-sub-lv2"><span>셋탑박스 ${recoSettopSelect(c, st, price)}</span><span>${price.totalOnly ? '' : (price.settopFee || 0).toLocaleString()}</span></div>
           ${price.tvBundleDiscount ? `<div class="info-row sub-item-row reco-sub-lv2"><span>TV결합할인</span><span>-${price.tvBundleDiscount.toLocaleString()}</span></div>` : ''}
           ${comboTv ? `<div class="info-row sub-item-row reco-sub-lv2"><span>휴대폰 결합 IPTV 할인<span class="reco-detail-sm">(${combo.name})</span></span><span>-${comboTv.toLocaleString()}</span></div>` : ''}
           ${(price.extraTvDetails || []).map(ex => `
