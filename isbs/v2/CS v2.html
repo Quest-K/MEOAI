@@ -275,7 +275,30 @@ textarea.cust-note-log:hover, #cust-notes:hover, #cf-notes:hover{border-color:#c
 /* 상단 메뉴 그룹 : [인터넷] / [렌탈] */
 .tab-group{display:flex;align-items:center;gap:8px;padding:6px 10px 6px 14px;border:1px solid var(--paper-line);border-radius:16px;background:rgba(255,255,255,.35);}
 .tab-group-label{font-size:13px;font-weight:700;letter-spacing:.04em;color:var(--ink-dim);padding-right:10px;margin-right:2px;border-right:1px solid var(--paper-line);white-space:nowrap;}
-.rental-blank-note{padding:60px 0;text-align:center;color:#9a9a9a;font-size:14px;}
+/* 렌탈 고객상담 (MVP) */
+.rtl-wrap{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:20px;align-items:start;}
+@media (max-width:1000px){.rtl-wrap{grid-template-columns:1fr;}}
+.rtl-card{background:#fff;border:1px solid var(--paper-line);border-radius:14px;padding:18px 20px;}
+.rtl-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+.rtl-head h3{margin:0;font-size:17px;}
+.rtl-row{padding:14px 0;border-top:1px dashed var(--paper-line);}
+.rtl-row:first-of-type{border-top:0;}
+.rtl-label{font-size:13px;font-weight:700;color:var(--ink-dim);margin-bottom:8px;}
+.rtl-label small{font-weight:400;margin-left:6px;color:#9a9a9a;}
+.rtl-chips{display:flex;flex-wrap:wrap;gap:8px;}
+.rtl-chip{padding:9px 16px;font-size:14px;font-weight:600;background:#EAE8E1;border:1px solid var(--paper-line);border-radius:999px;cursor:pointer;color:var(--ink-dim);}
+.rtl-chip.on{background:var(--ink);color:#fff;border-color:var(--ink);}
+.rtl-chip:disabled{opacity:.35;cursor:not-allowed;}
+.rtl-sub{margin-top:10px;padding:10px 12px;background:#F6F4EE;border-radius:10px;}
+.rtl-sel,.rtl-inp{width:100%;max-width:420px;padding:10px 12px;font-size:14px;border:1px solid var(--paper-line);border-radius:10px;background:#fff;box-sizing:border-box;}
+.rtl-sel:disabled{background:#F2F2F2;color:#aaa;}
+.rtl-hint{font-size:12px;color:#9a9a9a;margin-top:6px;}
+.rtl-warn{margin-top:10px;padding:10px 12px;border-radius:10px;background:#FFF3E0;color:#9a5b00;font-size:13px;}
+.rtl-side{position:sticky;top:calc(var(--nav-h, 134px) + 16px);}
+.rtl-sum-row{display:flex;justify-content:space-between;gap:12px;padding:7px 0;font-size:14px;border-bottom:1px solid #f0eee8;}
+.rtl-sum-row span:first-child{color:var(--ink-dim);}
+.rtl-sum-row span:last-child{font-weight:600;text-align:right;}
+.rtl-sum-row .none{color:#bbb;font-weight:400;}
 </style>
 </head>
 <body>
@@ -753,7 +776,7 @@ textarea.cust-note-log:hover, #cust-notes:hover, #cf-notes:hover{border-color:#c
 
   <!-- VIEW R1: 렌탈 > 고객상담 (빈 화면 : 이후 렌탈 상담 화면을 이 안에 만듭니다) -->
   <div id="view-rental-cs" class="view-container">
-    <div class="rental-blank-note">렌탈 · 고객상담 (준비 중)</div>
+    <div id="rental-root"></div>
   </div>
 
   <!-- VIEW 2: 고객조회 -->
@@ -2730,6 +2753,7 @@ function switchTab(tabId) {
       noticeResizeCanvas();
     } else if (tabId === 'rental-cs') {
       document.getElementById('view-rental-cs').classList.add('active');
+      renderRental();
     }
   } catch (err) {
     console.error('switchTab render error:', tabId, err);
@@ -9075,6 +9099,144 @@ async function feeEdit(inp){
   }
 }
 
+</script>
+
+<script id="rental-mvp">
+// ============================================================
+// 렌탈 > 고객상담 (MVP) : 선택지만 고를 수 있는 화면. 상품·모델·요금 데이터는 아직 비어 있습니다.
+//  - 모든 이름은 rental/Rental/rtl 접두사로 다른 코드와 분리
+//  - 데이터가 들어오면 RENTAL_DATA 만 채우면 됩니다 (아래 주석 참고). 이후 config.js 또는 DB 로 옮길 수 있습니다.
+// ============================================================
+const RENTAL_OPTIONS = {
+  products:  ['정수기', '비데', '공기청정기', '기타'],
+  companies: ['코웨이', '쿠쿠', 'SK매직', 'LG전자', '교원웰스', '청호나이스', '기타'],
+  terms:     [3, 4, 5, 6, 7],                 // 약정기간(년) : 전체 후보. 상품·회사별로 가능한 기간은 RENTAL_DATA.terms 로 제한
+  care:      ['자가관리', '방문관리'],
+  visitCycles: [2, 4, 6, 8],                  // 방문관리 주기(개월) 기본 후보. 상품별 주기는 RENTAL_DATA.visitCycles 로 제한
+  combos:    ['단독신청', '신규결합', '기존결합']
+};
+const RENTAL_DATA = {
+  models: {},        // { '정수기|코웨이': ['모델A', '모델B'], ... }   → 3) 모델명 목록
+  terms: {},         // { '정수기|코웨이': [3, 5, 6], ... }            → 4) 가능한 약정기간 (없으면 3~7년 모두 선택 가능)
+  visitCycles: {},   // { '정수기': [2, 4], '비데': [4, 6], ... }       → 5) 방문관리 주기 (없으면 기본 2·4·6·8개월)
+  blockedCombos: []  // [{ company:'코웨이', comp:'쿠쿠', combos:['신규결합','기존결합'] }]  → 타사보상과 결합할인 중복 불가 규칙
+};
+
+let rentalState = { product:'', company:'', model:'', modelText:'', term:null, care:'', cycle:null, comp:'', combo:'' };
+
+function rentalKey(){ return rentalState.product + '|' + rentalState.company; }
+function rentalTermsAllowed(){ return RENTAL_DATA.terms[rentalKey()] || RENTAL_OPTIONS.terms; }
+function rentalCyclesAllowed(){ return RENTAL_DATA.visitCycles[rentalState.product] || RENTAL_OPTIONS.visitCycles; }
+function rentalModels(){ return RENTAL_DATA.models[rentalKey()] || []; }
+function rentalConflict(){
+  const s = rentalState;
+  if (!s.company || !s.comp || !s.combo) return '';
+  const hit = RENTAL_DATA.blockedCombos.find(r => r.company === s.company && r.comp === s.comp && (r.combos || []).includes(s.combo));
+  return hit ? `${s.comp} 타사보상은 ${s.combo}와 중복 적용할 수 없습니다.` : '';
+}
+
+function rentalSet(k, v){
+  const s = rentalState;
+  if (k === 'product' || k === 'company') {
+    s[k] = (s[k] === v) ? '' : v;
+    s.model = ''; s.modelText = '';
+    if (s.term && !rentalTermsAllowed().includes(s.term)) s.term = null;
+    if (s.cycle && !rentalCyclesAllowed().includes(s.cycle)) s.cycle = null;
+  } else if (k === 'care') {
+    s.care = (s.care === v) ? '' : v;
+    if (s.care !== '방문관리') s.cycle = null;
+  } else if (k === 'term' || k === 'cycle') {
+    const n = Number(v); s[k] = (s[k] === n) ? null : n;
+  } else {
+    s[k] = (s[k] === v) ? '' : v;
+  }
+  renderRental();
+}
+
+function rentalChips(k, list, cur, opts){
+  const o = opts || {};
+  return '<div class="rtl-chips">' + list.map(v => {
+    const label = o.fmt ? o.fmt(v) : v;
+    const off = o.allowed && !o.allowed.includes(v);
+    return `<button type="button" class="rtl-chip${cur === v ? ' on' : ''}" data-k="${k}" data-v="${v}"${off ? ' disabled' : ''}>${label}</button>`;
+  }).join('') + '</div>';
+}
+
+function renderRental(){
+  const root = document.getElementById('rental-root');
+  if (!root) return;
+  const s = rentalState;
+  const models = rentalModels();
+  const ready = s.product && s.company;
+  const compList = ['해당없음'].concat(RENTAL_OPTIONS.companies);
+
+  const modelHtml = !ready
+    ? `<select class="rtl-sel" disabled><option>상품과 회사를 먼저 선택하세요</option></select>`
+    : (models.length
+        ? `<select class="rtl-sel" data-k="model"><option value="">모델명을 선택하세요</option>${models.map(m => `<option value="${escAttr(m)}"${s.model === m ? ' selected' : ''}>${escHtml(m)}</option>`).join('')}</select>`
+        : `<input class="rtl-inp" type="text" data-k="modelText" placeholder="등록된 모델이 없습니다 — 모델명 직접 입력" value="${escAttr(s.modelText)}">
+           <div class="rtl-hint">모델 목록이 등록되면 이 칸이 목록 선택으로 바뀝니다.</div>`);
+
+  const conflict = rentalConflict();
+  root.innerHTML = `
+  <div class="rtl-wrap">
+    <div class="rtl-card">
+      <div class="rtl-head"><h3>렌탈 상담</h3><button type="button" class="mini-btn" data-act="reset">초기화</button></div>
+
+      <div class="rtl-row"><div class="rtl-label">1) 상품</div>${rentalChips('product', RENTAL_OPTIONS.products, s.product)}</div>
+      <div class="rtl-row"><div class="rtl-label">2) 회사</div>${rentalChips('company', RENTAL_OPTIONS.companies, s.company)}</div>
+      <div class="rtl-row"><div class="rtl-label">3) 상품 모델명</div>${modelHtml}</div>
+      <div class="rtl-row"><div class="rtl-label">4) 약정기간<small>상품·회사에 따라 선택 가능한 기간이 달라집니다</small></div>
+        ${rentalChips('term', RENTAL_OPTIONS.terms, s.term, { fmt: v => v + '년', allowed: rentalTermsAllowed() })}</div>
+      <div class="rtl-row"><div class="rtl-label">5) 관리방법</div>
+        ${rentalChips('care', RENTAL_OPTIONS.care, s.care)}
+        ${s.care === '방문관리' ? `<div class="rtl-sub"><div class="rtl-label">방문 주기<small>상품마다 다름</small></div>${rentalChips('cycle', RENTAL_OPTIONS.visitCycles, s.cycle, { fmt: v => v + '개월', allowed: rentalCyclesAllowed() })}</div>` : ''}
+      </div>
+      <div class="rtl-row"><div class="rtl-label">6) 타사보상<small>기존 사용 회사</small></div>${rentalChips('comp', compList, s.comp)}</div>
+      <div class="rtl-row"><div class="rtl-label">7) 결합할인<small>일부 타사보상과 중복 적용 불가</small></div>
+        ${rentalChips('combo', RENTAL_OPTIONS.combos, s.combo)}
+        ${conflict ? `<div class="rtl-warn">⚠ ${escHtml(conflict)}</div>` : ''}
+      </div>
+    </div>
+
+    <div class="rtl-card rtl-side"><div class="rtl-head"><h3>선택 요약</h3></div><div id="rtl-summary"></div></div>
+  </div>`;
+  updateRentalSummary();
+}
+
+function updateRentalSummary(){
+  const box = document.getElementById('rtl-summary');
+  if (!box) return;
+  const s = rentalState;
+  const model = s.model || s.modelText;
+  const row = (l, v) => `<div class="rtl-sum-row"><span>${l}</span><span>${v ? escHtml(String(v)) : '<span class="none">미선택</span>'}</span></div>`;
+  const care = s.care ? (s.care + (s.care === '방문관리' && s.cycle ? ' · ' + s.cycle + '개월' : '')) : '';
+  const conflict = rentalConflict();
+  box.innerHTML =
+    row('상품', s.product) + row('회사', s.company) + row('모델명', model) +
+    row('약정기간', s.term ? s.term + '년' : '') + row('관리방법', care) +
+    row('타사보상', s.comp) + row('결합할인', s.combo) +
+    (conflict ? `<div class="rtl-warn">⚠ ${escHtml(conflict)}</div>` : '');
+}
+
+(function rentalBind(){
+  const root = document.getElementById('rental-root');
+  if (!root) return;
+  root.addEventListener('click', e => {
+    const chip = e.target.closest('.rtl-chip');
+    if (chip && !chip.disabled) return rentalSet(chip.dataset.k, chip.dataset.v);
+    if (e.target.closest('[data-act="reset"]')) {
+      rentalState = { product:'', company:'', model:'', modelText:'', term:null, care:'', cycle:null, comp:'', combo:'' };
+      renderRental();
+    }
+  });
+  root.addEventListener('change', e => {
+    if (e.target.dataset.k === 'model') { rentalState.model = e.target.value; updateRentalSummary(); }
+  });
+  root.addEventListener('input', e => {
+    if (e.target.dataset.k === 'modelText') { rentalState.modelText = e.target.value; updateRentalSummary(); }
+  });
+})();
 </script>
 </body>
 </html>
