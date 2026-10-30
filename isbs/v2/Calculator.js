@@ -9,6 +9,11 @@
 function getSettopByTier(carrier, tier) {
   const list = DATA[carrier]?.settopList || [];
   if (!list.length) return { name:'기본 셋톱박스', fee:3300 };
+  // 카드 드롭다운에서 모델을 직접 고른 경우('model:모델명') : 그 모델을 그대로 사용
+  if (typeof tier === 'string' && tier.indexOf('model:') === 0) {
+    const hit = list.find(s => s.name === tier.slice(6));
+    if (hit) return hit;
+  }
   if (tier === 'basic') {
     // SK(SKB/SKT) 기본형 셋톱박스는 '스마트3'(미니 제외)를 기본으로 노출합니다. 이름이 없으면 기존 요금 기준으로 대체.
     if (carrier === 'skb' || carrier === 'skt') {
