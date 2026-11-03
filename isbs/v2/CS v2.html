@@ -646,7 +646,7 @@ textarea.cust-note-log:hover, #cust-notes:hover, #cf-notes:hover{border-color:#c
         </div>
 
         <div class="cs-wiz-panel" id="cs-wiz-panel-5">
-      <div class="pd-note">[상품설계] 1단계 · 화면 구조 확인용입니다. 요금·사은품은 <b>예시 값</b>이며 저장·DB 연결은 아직 없습니다(2단계 디테일 → 3단계 데이터 연결 순서로 진행).</div>
+      <div class="pd-note">[상품설계] 데이터 연결 단계(읽기 전용) · 통신사 상품·요금·사은품은 기존 데이터를 읽어 자동 계산하며, 이 화면에서는 아무것도 저장하지 않습니다. 디테일(색·배치)은 다음 단계에서 다듬습니다. <span id="pd-status" style="opacity:.8"></span></div>
       <div class="pd-wrap">
         <main class="pd-card">
           <h2>상품 설계</h2>
@@ -9331,26 +9331,108 @@ function updateRentalSummary(){
 </script>
 
 <script>
-/* ===== [상품설계] 1단계(화면 구조) : 목업 동작을 이 화면 안에서만 흉내 냅니다. 예시 값 · 저장 없음 · 기존 변수와 이름이 겹치지 않게 pd 접두어 ===== */
+/* ===== [상품설계] 3단계(데이터 연결, 읽기 전용): 기존 통신사 데이터(DATA·computePrice·usim_plans·경품고시 가이드)로 선택지·요금·사은품을 자동 반영합니다.
+   저장·DB 쓰기는 없습니다. 상태는 이 화면 안에만 있고(sel·on·cols), 전역에는 pd* 함수만 둡니다. ===== */
 (function(){
-  var CAR = ['KT','LG','SK'], OTHER = ['LG헬로비전','SKY','LG 소호','기타'];
-  /* 예시 DB: [항목명, 월요금, 사은품]  — 3단계에서 실제 상품 데이터(DATA)로 교체 */
-  var D = {KT:{net:[['100M',27500,250000],['500M',33000,440000],['1기가',38500,520000]],rt:[['미포함',0,0],['포함',1100,0]],tv:[['에센스/269채널',19140,0],['베이직/200채널',15400,0]],stb:[['기가지니A',3300,0],['기가지니B',4400,0]],sim:[['5GB 요금제',37000,50000],['11GB 요금제',49000,80000]]},
-    LG:{net:[['100M',27500,240000],['500M',33000,430000],['1기가',38500,510000]],rt:[['미포함',0,0],['포함',0,0]],tv:[['기본형/222채널',16500,0],['프리미엄/250채널',22000,0]],stb:[['UHD4셋탑',4400,0],['일반셋탑',2200,0]],sim:[['데이터플랜 5GB',37000,50000],['데이터플랜 12GB',50000,90000]]},
-    SK:{net:[['100M',27500,250000],['500M',33000,450000],['1기가',38500,530000]],rt:[['미포함',0,0],['포함',1100,0]],tv:[['Btv 스탠다드/234채널',15400,0],['Btv 베이직/200채널',12100,0]],stb:[['스마트3',4400,0],['일반형',3300,0]],sim:[['0청년 5GB',36000,45000],['T플랜 11GB',49500,85000]]},
-    '로헬':null};
-  D['LG헬로비전'] = {net:[['100M',22000,200000],['500M 기가라이트',25190,400000],['1기가',30800,480000]],rt:[['미포함',0,0],['포함',0,0]],tv:[['이코노미 UHD',8800,0],['스탠다드 UHD',12100,0]],stb:[['UHD셋탑',6600,0],['일반셋탑',3300,0]],sim:[['LTE 5GB',33000,40000],['LTE 11GB',44000,70000]]};
-  delete D['로헬'];
-  /* 결합할인 규칙(예시): nd=인터넷+TV 결합할인, td=TV 결합할인 / 추가TV는 요금제 50% */
-  var RULE = {KT:{nd:5500,td:2640},LG:{nd:5500,td:2200},SK:{nd:5500,td:2200},'LG헬로비전':{nd:0,td:0}};
+  var COLS_DEFAULT = ['kt','lg','skb'];
   var COMP = [['net','인터넷'],['rt','공유기'],['tv1','TV1'],['tv2','TV2'],['tv3','TV3'],['s1','유심1'],['s2','유심2'],['s3','유심3'],['s4','유심4'],['s5','유심5']];
   var ROWS = {net:[['net','인터넷 속도','net']], rt:[['rt','공유기 여부','rt']]};
   [1,2,3].forEach(function(n){ ROWS['tv'+n] = [['tv'+n,(n==1?'TV 요금제':'추가TV'+(n-1)+' 요금제'),'tv'],['stb'+n,(n==1?'셋탑박스':'추가셋탑박스'+(n-1)),'stb']]; });
   [1,2,3,4,5].forEach(function(n){ ROWS['s'+n] = [['s'+n,'유심'+n+' 요금제','sim']]; });
-  var cols = CAR.map(function(c,i){ return {id:i,car:c,fixed:true}; }), nid = 3, on = {net:true,tv1:true}, sel = {};
-  function data(car,t){ return (D[car]||D.KT)[t]; }
-  function num(n){ return n.toLocaleString('ko-KR'); }
+  var nid = 0;
+  var cols = COLS_DEFAULT.map(function(c){ return {id:nid++, car:c, fixed:true}; });
+  var on = {net:true, tv1:true}, sel = {};
+  var usimPool = null, usimState = 'idle';   // idle | loading | ready | error
+
   function el(id){ return document.getElementById(id); }
+  function num(n){ return (Number(n)||0).toLocaleString('ko-KR'); }
+  function esc(s){ return (typeof escHtml === 'function') ? escHtml(String(s == null ? '' : s)) : String(s == null ? '' : s).replace(/[&<>"]/g, function(m){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]; }); }
+  function brand(c){ return (typeof BRAND_LABEL !== 'undefined' && BRAND_LABEL[c]) || String(c).toUpperCase(); }
+  function carriers(){ return (typeof CARRIERS !== 'undefined' && CARRIERS.length) ? CARRIERS.slice() : ['kt','lg','skb','skt','sky']; }
+  function netOf(c){ return (c === 'kt') ? 'KT' : (c === 'lg') ? 'LG' : (c === 'skb' || c === 'skt') ? 'SK' : null; }   // 유심 요금제 통신망
+  function speedLabel(sp){ return (typeof SPEED_LABEL !== 'undefined' && SPEED_LABEL[sp]) || (sp + 'M'); }
+
+  /* ---- 선택지 만들기 (통신사별 기존 데이터에서) ---- */
+  function speedsOf(c){
+    var out = [];
+    if (c === 'sky' && typeof SKY_PRICE_TABLE !== 'undefined') Object.keys(SKY_PRICE_TABLE.internet).forEach(function(k){ out.push({v:String(k), fee:SKY_PRICE_TABLE.internet[k].only}); });
+    else if (c === 'hello' && typeof HELLO_PRICE_TABLE !== 'undefined') Object.keys(HELLO_PRICE_TABLE.internet).forEach(function(k){ out.push({v:String(k), fee:HELLO_PRICE_TABLE.internet[k].only}); });
+    else if (DATA && DATA[c]) Object.keys(DATA[c].internet || {}).forEach(function(k){ out.push({v:String(k), fee:DATA[c].internet[k].fee}); });
+    out.sort(function(a,b){ return Number(a.v) - Number(b.v); });
+    return out.map(function(o){ return {v:o.v, label: speedLabel(o.v) + ' (' + num(o.fee) + ')'}; });
+  }
+  function baseSpeed(c, id){ var s = sel[id+'|net']; if (s) return s; var l = speedsOf(c); return l.length ? l[0].v : '500'; }
+  function tvOptionsOf(c, id){
+    var out = [], seen = {};
+    ['low','basic','premium'].forEach(function(t){
+      var r; try { r = computePrice(c, {speed: baseSpeed(c,id), tv: t, settopTier: 'basic', router: 'N', extraTVs: []}); } catch(e){ return; }
+      if (!r || !r.available || !r.tvInfo) return;
+      var nm = r.tvInfo.name + (r.tvInfo.channels ? '/' + r.tvInfo.channels + '채널' : '');
+      if (seen[nm]) return; seen[nm] = 1;
+      out.push({v:t, label: nm + ' (' + num(r.tvFee) + ')'});
+    });
+    return out;
+  }
+  function settopOptionsOf(c, id){
+    var list = (DATA && DATA[c] && DATA[c].settopList) || [];
+    if (c !== 'sky' && c !== 'hello' && list.length) return list.map(function(s){ return {v:'model:' + s.name, label: s.name + (s.fee ? ' (' + num(s.fee) + ')' : '')}; });
+    try {   // 셋탑 목록이 없거나(SKY·헬로) 한 종류뿐이면 그 통신사 기본 셋탑 하나
+      var r = computePrice(c, {speed: baseSpeed(c,id), tv: 'basic', settopTier: 'basic', router: 'N', extraTVs: []});
+      if (r && r.available && r.settopInfo) return [{v:'basic', label: r.settopInfo.name + ' (' + num(r.settopInfo.fee) + ')'}];
+    } catch(e){}
+    return [];
+  }
+  function usimOptionsOf(c){
+    var net = netOf(c); if (!net || !usimPool) return [];
+    return usimPool.filter(function(p){ return String(p.carrier || '').toUpperCase() === net; })
+      .sort(function(a,b){ return (Number(a.monthly_fee)||0) - (Number(b.monthly_fee)||0); })
+      .map(function(p){ return {v:p.plan_name, label: p.plan_name + ' (' + num(p.monthly_fee) + ')', fee:Number(p.monthly_fee)||0}; });
+  }
+  function optionsFor(kind, c, id){
+    if (kind === 'net') return speedsOf(c);
+    if (kind === 'rt') return [{v:'N', label: ROUTER_LABEL ? ROUTER_LABEL.N : '미포함'}, {v:'Y', label: ROUTER_LABEL ? ROUTER_LABEL.Y : '포함'}];
+    if (kind === 'tv') return tvOptionsOf(c, id);
+    if (kind === 'stb') return settopOptionsOf(c, id);
+    if (kind === 'sim') return usimOptionsOf(c);
+    return [];
+  }
+
+  /* ---- 요금 계산 (Calculator.js 의 computePrice 를 그대로 사용) ---- */
+  function usimLinesOf(col){
+    var out = [], net = netOf(col.car);
+    [1,2,3,4,5].forEach(function(i){
+      if (!on['s'+i]) return;
+      var nm = sel[col.id+'|s'+i]; if (!nm) return;
+      var p = (usimPool || []).filter(function(x){ return String(x.carrier||'').toUpperCase() === net && x.plan_name === nm; })[0];
+      if (!p) return;
+      var fee = Number(p.monthly_fee) || 0, gift = 0;
+      try { if (isLoggedIn) gift = Math.max(0, usimCommissionInfo(net, fee).amount - 150000); } catch(e){}   // 추천상품 유심과 같은 기본 사은품(수수료 − 15만원)
+      out.push({n:i, name:p.plan_name, fee:fee, gift:gift});
+    });
+    return out;
+  }
+  function homeResult(col){
+    var c = col.car, id = col.id;
+    if (!on.net) return {msg:'인터넷을 선택하면 요금이 계산됩니다.'};
+    var speed = sel[id+'|net']; if (!speed) return {msg:'인터넷 속도를 선택해 주세요.'};
+    var tier = on.tv1 ? sel[id+'|tv1'] : null;
+    var extra = [];
+    if (tier) ['tv2','tv3'].forEach(function(k){ var t = on[k] ? sel[id+'|'+k] : null; if (t) extra.push({tv:t, settopTier: sel[id+'|stb'+k.slice(2)] || 'basic'}); });
+    var st = {speed: speed, tv: tier || 'none', settopTier: (tier && sel[id+'|stb1']) || 'basic', router: (on.rt && sel[id+'|rt'] === 'Y') ? 'Y' : 'N', extraTVs: extra};
+    var r; try { r = computePrice(c, st); } catch(e){ return {msg:'요금 계산 오류: ' + e.message}; }
+    if (!r || !r.available) return {msg: (r && r.reason) || '해당 스펙의 상품 정보가 없습니다.'};
+    var out = {res:r, st:st, hasTv: !!tier, extraN: extra.length, gift:0, giftNote:''};
+    if (isLoggedIn && typeof GIFT_GUIDE_ROWS !== 'undefined' && GIFT_GUIDE_ROWS && typeof giftFindGuide === 'function') {
+      var g = giftFindGuide(GIFT_GUIDE_ROWS, c, speed);
+      if (g) {   // 경품고시 가이드 최대 한도 = 인터넷 + (TV 포함 시) TV + 추가 TV 가산
+        out.gift = (Number(g.internet_max)||0) + (out.hasTv ? (Number(g.tv_max)||0) + extra.length * (Number(g.add_tv_amount)||0) : 0);
+        out.giftNote = '경품고시 한도';
+      } else out.giftNote = '경품고시 가이드 없음';
+    }
+    return out;
+  }
+
+  /* ---- 그리기 ---- */
   function drawChecks(){
     el('pd-checks').innerHTML = COMP.map(function(c){
       return '<label class="'+(on[c[0]]?'on':'')+'"><input type="checkbox" '+(on[c[0]]?'checked':'')+' onchange="pdTog(\''+c[0]+'\')">'+c[1]+'</label>'; }).join('');
@@ -9358,46 +9440,76 @@ function updateRentalSummary(){
   function drawCards(){
     var h = '';
     cols.forEach(function(col){
-      var R = RULE[col.car]||RULE.KT, net=[], tv=[], mob=[], gift=0;
-      function g(k,t){ var v = sel[col.id+'|'+k]; return v===undefined ? null : data(col.car,t)[v]; }
-      var n = on.net ? g('net','net') : null, r = on.rt ? g('rt','rt') : null;
-      if(n){ net.push([n[0],n[1]]); gift += n[2]; }
-      if(r) net.push(['공유기('+r[0]+')',r[1]]);
-      if(n && on.tv1 && g('tv1','tv') && R.nd) net.push(['인터넷+TV 결합할인',-R.nd]);
-      [1,2,3].forEach(function(i){
-        if(!on['tv'+i]) return;
-        var p = g('tv'+i,'tv'), s = g('stb'+i,'stb'), pre = i==1 ? '' : '추가';
-        if(p) tv.push([pre+p[0], i==1 ? p[1] : Math.round(p[1]/20)*10]);
-        if(s) tv.push([(i==1?'':'추가')+'셋탑박스('+s[0]+')', s[1]]);
-        if(i==1 && p && n && R.td) tv.push(['TV결합할인',-R.td]);
-      });
-      [1,2,3,4,5].forEach(function(i){ if(!on['s'+i]) return; var x = g('s'+i,'sim'); if(x){ mob.push(['유심'+i+' '+x[0],x[1]]); gift += x[2]; } });
-      function sum(a){ return a.reduce(function(s,x){ return s+x[1]; },0); }
-      function blk(name,a){ if(!a.length) return ''; return '<div class="pd-bh"><span>'+name+'</span><span>'+num(sum(a))+'</span></div>'+a.map(function(x){ return '<div class="pd-br'+(x[1]<0?' neg':'')+'"><span>'+x[0]+'</span><span>'+num(x[1])+'</span></div>'; }).join(''); }
-      var tot = sum(net)+sum(tv)+sum(mob), body = blk('인터넷',net)+blk('TV',tv)+blk('모바일',mob);
-      h += '<div class="pd-pc"><div class="pd-ph"><b>'+col.car+'</b><strong>'+num(tot)+'</strong></div>'+(body||'<div class="pd-none">선택한 상품이 없습니다.</div>')+(gift?'<div class="pd-gf"><span>지급 사은품</span><b>'+num(gift)+'</b></div>':'')+'</div>';
+      var H = homeResult(col), U = usimLinesOf(col), r = H.res;
+      var net = [], tv = [], mob = [], gift = H.gift || 0, giftLines = [];
+      if (r) {
+        net.push([speedLabel(H.st.speed), r.internetFee]);
+        if (on.rt) net.push(['공유기(' + (H.st.router === 'Y' ? '포함' : '미포함') + ')', r.routerFee]);
+        if (H.hasTv && r.bundleDiscount) net.push(['인터넷+TV 결합할인', -r.bundleDiscount]);
+        if (H.hasTv) {
+          tv.push([(r.tvInfo ? r.tvInfo.name : 'TV'), r.tvFee]);
+          if (r.settopInfo) tv.push(['셋탑박스(' + r.settopInfo.name + ')', r.settopFee]);
+          if (r.tvBundleDiscount) tv.push(['TV결합할인', -r.tvBundleDiscount]);
+          (r.extraTvDetails || []).forEach(function(ex, i){
+            tv.push(['추가TV' + (i+1) + ' ' + ex.tvName + ' (50%)', ex.tvHalfFee]);
+            tv.push(['추가셋탑박스' + (i+1) + '(' + ex.settopName + ')', ex.settopFee]);
+          });
+        }
+        if (gift) giftLines.push([H.giftNote + ' (인터넷·TV)', gift]);
+      }
+      U.forEach(function(u){ mob.push(['유심' + u.n + ' ' + u.name, u.fee]); if (u.gift) { gift += u.gift; giftLines.push(['유심' + u.n + ' 사은품', u.gift]); } });
+      function sum(a){ return a.reduce(function(s,x){ return s + x[1]; }, 0); }
+      function blk(name, a){ if(!a.length) return ''; return '<div class="pd-bh"><span>'+name+'</span><span>'+num(sum(a))+'</span></div>'+a.map(function(x){ return '<div class="pd-br'+(x[1]<0?' neg':'')+'"><span>'+esc(x[0])+'</span><span>'+num(x[1])+'</span></div>'; }).join(''); }
+      var tot = (r ? r.total : 0) + sum(mob);
+      var body = blk('인터넷', net) + blk('TV', tv) + blk('모바일', mob);
+      var msg = (!r && H.msg && (on.net || on.tv1)) ? '<div class="pd-none">'+esc(H.msg)+'</div>' : '';
+      if (!body && !msg) msg = '<div class="pd-none">선택한 상품이 없습니다.</div>';
+      var gfHtml = '';
+      if (gift) gfHtml = '<div class="pd-gf"><span>지급 사은품</span><b>'+num(gift)+'</b></div>' + giftLines.map(function(x){ return '<div class="pd-br"><span>'+esc(x[0])+'</span><span>'+num(x[1])+'</span></div>'; }).join('');
+      else if (r && H.giftNote) gfHtml = '<div class="pd-br"><span>'+esc(H.giftNote)+'</span><span>–</span></div>';
+      h += '<div class="pd-pc"><div class="pd-ph"><b>'+esc(brand(col.car))+'</b><strong>'+num(tot)+'</strong></div>' + body + msg + gfHtml + '</div>';
     });
     el('pd-cards').innerHTML = h;
   }
+  function carSelectHtml(col){
+    return '<select onchange="pdSetCar('+col.id+',this.value)">' + carriers().map(function(c){ return '<option value="'+c+'"'+(c===col.car?' selected':'')+'>'+esc(brand(c))+'</option>'; }).join('') + '</select>';
+  }
   function render(){
-    if(!el('pd-checks')) return;
+    if (!el('pd-checks')) return;
     drawChecks();
-    var t = '<tr><th class="pd-lab">통신사</th>'+cols.map(function(c){
-      var h = c.fixed ? '<b>'+c.car+'</b>' : '<select onchange="pdSetCar('+c.id+',this.value)">'+OTHER.map(function(o){ return '<option'+(o==c.car?' selected':'')+'>'+o+'</option>'; }).join('')+'</select><button type="button" class="pd-x" title="열 삭제" onclick="pdDelCol('+c.id+')">×</button>';
-      return '<th><div class="pd-hd">'+h+'</div></th>'; }).join('')+'</tr>';
+    var status = el('pd-status');
+    if (!DATA) { if (status) status.textContent = '상품 데이터를 불러오는 중입니다…'; el('pd-tbl').innerHTML = '<tr><td class="pd-empty">상품 데이터 로딩 중입니다. 잠시 후 다시 열어 주세요.</td></tr>'; el('pd-cards').innerHTML = ''; return; }
+    var needUsim = [1,2,3,4,5].some(function(i){ return on['s'+i]; });
+    if (needUsim && usimState === 'idle') loadUsim();
+    if (status) status.textContent = '데이터: 통신사 상품·요금(DATA)' + (usimState === 'ready' ? ' · 유심 요금제 ' + (usimPool||[]).length + '건' : usimState === 'loading' ? ' · 유심 요금제 불러오는 중…' : usimState === 'error' ? ' · 유심 요금제 조회 실패' : '') + (isLoggedIn ? ' · 사은품·한도(경품고시 가이드)' : ' · (로그인하면 사은품이 표시됩니다)');
+    var t = '<tr><th class="pd-lab">통신사</th>' + cols.map(function(c){
+      var hh = c.fixed ? '<b>'+esc(brand(c.car))+'</b>' : carSelectHtml(c) + '<button type="button" class="pd-x" title="열 삭제" onclick="pdDelCol('+c.id+')">×</button>';
+      return '<th><div class="pd-hd">'+hh+'</div></th>'; }).join('') + '</tr>';
     var any = false;
     COMP.forEach(function(c){
-      if(!on[c[0]]) return; any = true;
+      if (!on[c[0]]) return; any = true;
       t += '<tr><td class="pd-grp" colspan="'+(cols.length+1)+'">'+c[1]+'</td></tr>';
       ROWS[c[0]].forEach(function(r){
-        t += '<tr><td class="pd-lab">'+r[1]+'</td>'+cols.map(function(col){
-          var o = data(col.car,r[2]), cur = sel[col.id+'|'+r[0]];
-          return '<td><select onchange="pdPick('+col.id+',\''+r[0]+'\',this.value)"><option value="">선택</option>'+o.map(function(x,i){ return '<option value="'+i+'"'+(cur===i?' selected':'')+'>'+x[0]+(x[1]?' ('+x[1].toLocaleString('ko-KR')+')':'')+'</option>'; }).join('')+'</select></td>'; }).join('')+'</tr>';
+        t += '<tr><td class="pd-lab">'+r[1]+'</td>' + cols.map(function(col){
+          var o = optionsFor(r[2], col.car, col.id), cur = sel[col.id+'|'+r[0]];
+          if (r[2] === 'sim' && !netOf(col.car)) return '<td class="pd-lab">유심 요금제 없음</td>';
+          if (r[2] === 'sim' && usimState === 'loading') return '<td class="pd-lab">불러오는 중…</td>';
+          if (r[2] === 'sim' && usimState === 'error') return '<td class="pd-lab">조회 실패</td>';
+          return '<td><select onchange="pdPick('+col.id+',\''+r[0]+'\',this.value)"><option value="">선택</option>' + o.map(function(x){ return '<option value="'+esc(x.v)+'"'+(cur===x.v?' selected':'')+'>'+esc(x.label)+'</option>'; }).join('') + '</select></td>'; }).join('') + '</tr>';
       });
     });
-    if(!any) t += '<tr><td class="pd-empty" colspan="'+(cols.length+1)+'">위에서 상품 구성을 체크하면 선택 항목이 나타납니다.</td></tr>';
+    if (!any) t += '<tr><td class="pd-empty" colspan="'+(cols.length+1)+'">위에서 상품 구성을 체크하면 선택 항목이 나타납니다.</td></tr>';
     el('pd-tbl').innerHTML = t;
     drawCards();
+  }
+  async function loadUsim(){
+    usimState = 'loading';
+    try {
+      var q = await sb.from('usim_plans').select('*').eq('is_active', true);
+      if (q.error) throw q.error;
+      usimPool = q.data || []; usimState = 'ready';
+    } catch (e) { usimState = 'error'; console.warn('[상품설계] 유심 요금제 조회 실패', e); }
+    render();
   }
   var TAGS = [['연령대','단일',[['#20·30대','설명을 간결하게 하고 혜택과 개통 일정을 우선 안내',1],['#40·50대','가족 구성과 결합 혜택을 함께 확인'],['#60대 이상','천천히 설명하고 설치 방문 일정을 꼼꼼히 안내']]],
     ['관계·명의','단일',[['#본인 가입','고객 본인의 사용 패턴과 명의 조건을 기준으로 안내',1],['#대리상담·자녀 사용','실제 사용자와 명의자 확인 후 안내']]],
@@ -9409,10 +9521,14 @@ function updateRentalSummary(){
   }
   window.pdRender = function(){ render(); drawTags(); };
   window.pdTog = function(k){ on[k] = !on[k]; render(); };
-  window.pdPick = function(id,k,v){ if(v==='') delete sel[id+'|'+k]; else sel[id+'|'+k] = +v; render(); };
-  window.pdAddCol = function(){ cols.push({id:nid++,car:OTHER[0],fixed:false}); render(); };
-  window.pdDelCol = function(id){ cols = cols.filter(function(c){ return c.id!=id; }); render(); };
-  window.pdSetCar = function(id,v){ cols.forEach(function(c){ if(c.id==id){ c.car=v; Object.keys(sel).forEach(function(k){ if(k.indexOf(id+'|')==0) delete sel[k]; }); } }); render(); };
+  window.pdPick = function(id,k,v){ if(v==='') delete sel[id+'|'+k]; else sel[id+'|'+k] = v; render(); };
+  window.pdAddCol = function(){
+    var used = cols.map(function(c){ return c.car; });
+    var next = carriers().filter(function(c){ return used.indexOf(c) < 0; })[0] || carriers()[0];
+    cols.push({id:nid++, car:next, fixed:false}); render();
+  };
+  window.pdDelCol = function(id){ cols = cols.filter(function(c){ return c.id != id; }); render(); };
+  window.pdSetCar = function(id,v){ cols.forEach(function(c){ if(c.id==id){ c.car = v; Object.keys(sel).forEach(function(k){ if(k.indexOf(id+'|')==0) delete sel[k]; }); } }); render(); };
 })();
 </script>
 </body>
